@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use regex::Regex;
+use regex::{Regex, RegexBuilder};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Child;
 use tokio::sync::{Mutex, Notify, watch};
@@ -243,7 +243,7 @@ impl Vm {
             ShellStmt::FailRegex(expr) => {
                 let pat = interpolate(expr, &self.vars).await;
                 self.emit_event(LogEventKind::FailPatternSet { pattern: pat.clone() }).await;
-                let re = Regex::new(&pat).map_err(|e| Failure::Runtime {
+                let re = RegexBuilder::new(&pat).multi_line(true).crlf(true).build().map_err(|e| Failure::Runtime {
                     message: format!("invalid fail regex: {}", regex_error_summary(&e)),
                     span: Some(expr.span.clone()),
                     shell: Some(self.shell_name.clone()),
@@ -325,7 +325,7 @@ impl Vm {
             }
             Expr::MatchRegex(s) => {
                 let pattern = interpolate(s, &self.vars).await;
-                let re = Regex::new(&pattern).map_err(|e| Failure::Runtime {
+                let re = RegexBuilder::new(&pattern).multi_line(true).crlf(true).build().map_err(|e| Failure::Runtime {
                     message: format!("invalid regex: {}", regex_error_summary(&e)),
                     span: Some(s.span.clone()),
                     shell: Some(self.shell_name.clone()),
@@ -517,11 +517,34 @@ impl Vm {
     }
 }
 
+#[async_trait::async_trait]
 impl VmContext for Vm {
     fn emit_progress(&self, event: ProgressEvent) {
         if let Some(tx) = &self.progress_tx {
             let _ = tx.send(event);
         }
+    }
+
+    async fn match_literal(&mut self, pattern: &str, span: &Span) -> Result<String, Failure> {
+        self.emit_event(LogEventKind::MatchStart { pattern: pattern.to_string(), is_regex: false }).await;
+        self.emit_progress(ProgressEvent::MatchStart);
+        let match_start = Instant::now();
+        let (start, end) = self.wait_for_literal(pattern, span.clone()).await?;
+        self.emit_event(LogEventKind::MatchDone { matched: pattern.to_string(), elapsed: match_start.elapsed() }).await;
+        self.emit_progress(ProgressEvent::MatchDone);
+        self.cursor = end.max(start);
+        Ok(pattern.to_string())
+    }
+
+    async fn send_line(&mut self, line: &str, span: &Span) -> Result<(), Failure> {
+        self.send_bytes(format!("{line}\n").as_bytes(), span.clone()).await?;
+        self.emit_event(LogEventKind::Send { data: line.to_string() }).await;
+        self.emit_progress(ProgressEvent::Send);
+        Ok(())
+    }
+
+    fn shell_prompt(&self) -> &str {
+        DEFAULT_SHELL_PROMPT
     }
 }
 

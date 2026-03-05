@@ -14,6 +14,7 @@
 ## Lux features not yet in Relux
 
 ### Matching
+- Buffer reset: bare match operator with no argument resets (dumps) the output buffer, discarding all unmatched output (Lux `?` with no argument)
 - Multi-line match: match a block of expected output preserving indentation (Lux `"""?..."""`)
 - Negative match: assert that a pattern does NOT appear within the timeout (Lux `?-`)
 - Permutation match: match a set of patterns in any order (Lux `?+`)

@@ -2,9 +2,11 @@ test "echo and match" {
     shell s {
         ~5s
         > echo hello-relux
-        <= hello-relux
+        <? ^hello-relux$
+        match_ok()
 
         > echo "value=42"
-        <? value=(\d+)
+        <? ^value=(\d+)$
+        match_ok()
     }
 }

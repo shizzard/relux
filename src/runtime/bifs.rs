@@ -4,8 +4,12 @@ use crate::dsl::resolver::ir::Span;
 use crate::runtime::progress::ProgressEvent;
 use crate::runtime::result::Failure;
 
+#[async_trait]
 pub trait VmContext: Send {
     fn emit_progress(&self, event: ProgressEvent);
+    async fn match_literal(&mut self, pattern: &str, span: &Span) -> Result<String, Failure>;
+    async fn send_line(&mut self, line: &str, span: &Span) -> Result<(), Failure>;
+    fn shell_prompt(&self) -> &str;
 }
 
 #[async_trait]
@@ -29,6 +33,9 @@ pub fn lookup(name: &str, arity: usize) -> Option<Box<dyn Bif>> {
         ("uuid", 0) => Some(Box::new(Uuid)),
         ("rand", 1) => Some(Box::new(Rand)),
         ("rand", 2) => Some(Box::new(RandWithMode)),
+        ("match_prompt", 0) => Some(Box::new(MatchPrompt)),
+        ("match_exit_code", 1) => Some(Box::new(MatchExitCode)),
+        ("match_ok", 0) => Some(Box::new(MatchOk)),
         _ => None,
     }
 }
@@ -251,14 +258,77 @@ fn random_string(len: usize, charset: &[u8]) -> String {
         .collect()
 }
 
+// ─── MatchPrompt ────────────────────────────────────────────
+
+pub struct MatchPrompt;
+
+#[async_trait]
+impl Bif for MatchPrompt {
+    fn name(&self) -> &str { "match_prompt" }
+    fn arity(&self) -> usize { 0 }
+
+    async fn call(&self, vm: &mut dyn VmContext, _args: Vec<String>, span: &Span) -> Result<String, Failure> {
+        let prompt = vm.shell_prompt().to_string();
+        vm.match_literal(&prompt, span).await
+    }
+}
+
+// ─── MatchExitCode ──────────────────────────────────────────
+
+pub struct MatchExitCode;
+
+#[async_trait]
+impl Bif for MatchExitCode {
+    fn name(&self) -> &str { "match_exit_code" }
+    fn arity(&self) -> usize { 1 }
+
+    async fn call(&self, vm: &mut dyn VmContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
+        let prompt = vm.shell_prompt().to_string();
+        vm.send_line("echo $?", span).await?;
+        vm.match_literal(&args[0], span).await?;
+        vm.match_literal(&prompt, span).await
+    }
+}
+
+// ─── MatchOk ────────────────────────────────────────────────
+
+pub struct MatchOk;
+
+#[async_trait]
+impl Bif for MatchOk {
+    fn name(&self) -> &str { "match_ok" }
+    fn arity(&self) -> usize { 0 }
+
+    async fn call(&self, vm: &mut dyn VmContext, _args: Vec<String>, span: &Span) -> Result<String, Failure> {
+        let prompt = vm.shell_prompt().to_string();
+        vm.match_literal(&prompt, span).await?;
+        vm.send_line("echo $?", span).await?;
+        vm.match_literal("0", span).await?;
+        vm.match_literal(&prompt, span).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     struct DummyVm;
 
+    #[async_trait]
     impl VmContext for DummyVm {
         fn emit_progress(&self, _event: ProgressEvent) {}
+
+        async fn match_literal(&mut self, pattern: &str, _span: &Span) -> Result<String, Failure> {
+            Ok(pattern.to_string())
+        }
+
+        async fn send_line(&mut self, _line: &str, _span: &Span) -> Result<(), Failure> {
+            Ok(())
+        }
+
+        fn shell_prompt(&self) -> &str {
+            "test> "
+        }
     }
 
     fn dummy_span() -> Span {
@@ -408,12 +478,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_match_prompt() {
+        let mut vm = DummyVm;
+        let r = MatchPrompt.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        assert_eq!(r, "test> ");
+    }
+
+    #[tokio::test]
+    async fn test_match_exit_code() {
+        let mut vm = DummyVm;
+        let r = MatchExitCode.call(&mut vm, vec!["0".into()], &dummy_span()).await.unwrap();
+        assert_eq!(r, "test> ");
+    }
+
+    #[tokio::test]
+    async fn test_match_exit_code_non_numeric() {
+        let mut vm = DummyVm;
+        let r = MatchExitCode.call(&mut vm, vec!["abc".into()], &dummy_span()).await.unwrap();
+        assert_eq!(r, "test> ");
+    }
+
+    #[tokio::test]
+    async fn test_match_ok() {
+        let mut vm = DummyVm;
+        let r = MatchOk.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        assert_eq!(r, "test> ");
+    }
+
+    #[tokio::test]
     async fn test_lookup() {
         assert!(lookup("trim", 1).is_some());
         assert!(lookup("upper", 1).is_some());
         assert!(lookup("rand", 1).is_some());
         assert!(lookup("rand", 2).is_some());
         assert!(lookup("uuid", 0).is_some());
+        assert!(lookup("match_prompt", 0).is_some());
+        assert!(lookup("match_exit_code", 1).is_some());
+        assert!(lookup("match_ok", 0).is_some());
         assert!(lookup("nonexistent", 0).is_none());
         assert!(lookup("trim", 2).is_none());
     }
