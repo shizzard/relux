@@ -1,0 +1,10 @@
+test "echo and match" {
+    shell s {
+        ~a5s
+        > echo hello-relux
+        <= hello-relux
+
+        > echo "value=42"
+        <? value=(\d+)
+    }
+}

@@ -1,0 +1,149 @@
+use logos::Logos;
+use std::fmt;
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum PayloadFragment<'a> {
+    Text(&'a str),
+    Interpolation(&'a str),
+    EscapedDollar,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum StringFragment<'a> {
+    Text(&'a str),
+    Interpolation(&'a str),
+    Escape(&'a str),
+}
+
+#[derive(Logos, PartialEq, Clone)]
+#[logos(skip r" +")]
+pub enum Token<'a> {
+    #[regex(r"#[^\n]*", |lex| &lex.slice()[1..], priority = 10, allow_greedy = true)]
+    Comment(&'a str),
+
+    #[token("import")]
+    Import,
+    #[token("as")]
+    As,
+    #[token("fn")]
+    Fn,
+    #[token("effect")]
+    Effect,
+    #[token("test")]
+    Test,
+    #[token("shell")]
+    Shell,
+    #[token("let")]
+    Let,
+    #[token("need")]
+    Need,
+    #[token("cleanup")]
+    Cleanup,
+
+    #[token("{")]
+    BraceOpen,
+    #[token("}")]
+    BraceClose,
+    #[token("(")]
+    ParenOpen,
+    #[token(")")]
+    ParenClose,
+    #[token(",")]
+    Comma,
+    #[token("->")]
+    Arrow,
+    #[token("=")]
+    Eq,
+
+    #[token("=>", super::lex_payload)]
+    SendRaw(Vec<PayloadFragment<'a>>),
+    #[token(">", super::lex_payload)]
+    Send(Vec<PayloadFragment<'a>>),
+    #[token("<?", super::lex_payload)]
+    MatchRegex(Vec<PayloadFragment<'a>>),
+    #[token("<=", super::lex_payload)]
+    MatchLiteral(Vec<PayloadFragment<'a>>),
+    #[token("!?", super::lex_payload)]
+    FailRegex(Vec<PayloadFragment<'a>>),
+    #[token("!=", super::lex_payload)]
+    FailLiteral(Vec<PayloadFragment<'a>>),
+
+    #[regex(r"~[^\n]+", |lex| &lex.slice()[1..], allow_greedy = true)]
+    Timeout(&'a str),
+
+    #[token("\"\"\"", super::lex_docstring)]
+    DocString(Vec<&'a str>),
+
+    #[token("\"", super::lex_string)]
+    String(Vec<StringFragment<'a>>),
+
+    #[regex(r"\$(\{[a-zA-Z_0-9]+\}|[0-9]+)", |lex| {
+        let s = lex.slice();
+        if s.as_bytes()[1] == b'{' { &s[2..s.len()-1] } else { &s[1..] }
+    })]
+    Interpolation(&'a str),
+
+    #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*(/[a-zA-Z_][a-zA-Z0-9_]*)+")]
+    ModulePath(&'a str),
+
+    #[regex(r"[a-z_][a-zA-Z0-9_]*")]
+    Ident(&'a str),
+
+    #[regex(r"[A-Z][a-zA-Z0-9_]*")]
+    EffectIdent(&'a str),
+
+    #[token("\n")]
+    Newline,
+
+    Unrecognized(&'a str),
+}
+
+pub type Spanned<'a> = crate::Spanned<Token<'a>>;
+
+impl fmt::Display for Token<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Token::Comment(s) => write!(f, "#{s}"),
+            Token::Import => write!(f, "import"),
+            Token::As => write!(f, "as"),
+            Token::Fn => write!(f, "fn"),
+            Token::Effect => write!(f, "effect"),
+            Token::Test => write!(f, "test"),
+            Token::Shell => write!(f, "shell"),
+            Token::Let => write!(f, "let"),
+            Token::Need => write!(f, "need"),
+            Token::Cleanup => write!(f, "cleanup"),
+            Token::BraceOpen => write!(f, "{{"),
+            Token::BraceClose => write!(f, "}}"),
+            Token::ParenOpen => write!(f, "("),
+            Token::ParenClose => write!(f, ")"),
+            Token::Comma => write!(f, ","),
+            Token::Arrow => write!(f, "->"),
+            Token::Eq => write!(f, "="),
+            Token::Send(_) => write!(f, ">"),
+            Token::SendRaw(_) => write!(f, "=>"),
+            Token::MatchRegex(_) => write!(f, "<?"),
+            Token::MatchLiteral(_) => write!(f, "<="),
+            Token::FailRegex(_) => write!(f, "!?"),
+            Token::FailLiteral(_) => write!(f, "!="),
+            Token::Timeout(s) => write!(f, "~{s}"),
+            Token::DocString(_) => write!(f, "\"\"\"...\"\"\""),
+            Token::String(_) => write!(f, "\"...\""),
+            Token::Interpolation(s) => write!(f, "${{{s}}}"),
+            Token::ModulePath(s) => write!(f, "{s}"),
+            Token::Ident(s) => write!(f, "{s}"),
+            Token::EffectIdent(s) => write!(f, "{s}"),
+            Token::Newline => write!(f, "\\n"),
+            Token::Unrecognized(s) => write!(f, "<unrecognized: {s}>"),
+        }
+    }
+}
+
+impl fmt::Debug for Token<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Token::Newline => write!(f, "[newline]\n"),
+            _ => write!(f, "'{self}' "),
+        }
+    }
+}

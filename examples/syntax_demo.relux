@@ -1,0 +1,123 @@
+# comment
+
+# imports resolve from the project root (defined by relux.toml)
+import lib/module1 {
+    # comments are allowed in import statements
+    function1, function2, function3 as f3, # aliasing is allowed
+    Effect1, Effect2, Effect3 as E3, # trailing commas are allowed
+}
+# wildcard import: all functions and effects from lib/module2
+import lib/module2
+
+# functions always return the last expression value
+# functions execute in the caller's shell context
+fn some_function(arg1, arg2) {
+    # > sends a line (with newline)
+    > echo "arg1: ${arg1}, arg2: ${arg2}"
+    # => sends without trailing newline
+    => partial output
+    # <= matches literal (with variable substitution)
+    <= match literal here
+    # <? matches regex, value is $0 (full match)
+    <? match regex here (\d+)
+    # capture groups are accessible as ${1}, ${2}, etc.
+    let some_variable = ${1}
+    # last expression is the return value
+    ${some_variable}
+}
+
+# a function that returns a captured value
+fn match_uuid() {
+    <? ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})
+    ${1}
+}
+
+# effects produce a running shell as their output
+# the exported shell is specified in the effect head with -> shell <name>
+effect StartSomething -> shell something {
+    need Effect1 as e1
+    need Effect2 as e2
+    # overlay provides explicit configuration to the effect
+    # effects do NOT inherit overlays from their parent
+    need E3 as e3 {
+        E3_VAR = "value"
+    }
+
+    # uninitialized variables default to the empty string
+    let some_important_var
+
+    # interact with a shell provided by a needed effect
+    shell e3 {
+        > some command into e3 shell
+        <? match regex here (\d+)
+        # reassign a previously declared variable
+        some_important_var = ${1}
+    }
+
+    # this shell is exported as the effect shell
+    shell something {
+        some_function("arg1", "arg2")
+    }
+
+    # cleanup runs when the effect is torn down, even on failure
+    cleanup {
+        # only send operators and let statements are allowed in cleanup blocks
+        let flags = "--graceful"
+        > shutdown ${flags}
+    }
+}
+
+test "Some test" {
+    """
+    The test description
+    """
+
+    # effects are instantiated before the test body runs
+    need StartSomething as something_shell
+    # same effect with different overlay = different instance
+    need StartSomething as another_something_shell {
+        E3_VAR = "another value"
+    }
+    # same effect with same overlay = same instance (deduplication)
+
+    # variables declared at test level are visible in all shell blocks
+    let global_test_var
+
+    shell myshell {
+        # set match timeout (humantime format)
+        ~10s
+        # set fail pattern: test fails immediately if this regex matches output
+        !? [Ee]rror|FATAL|panic
+
+        # shell-local variables
+        let variable = "always-string"
+        # shadowing is allowed
+        let global_test_var = "new value"
+
+        > echo ${variable}
+        <? always-string
+
+        # override timeout for a slow operation
+        ~120s
+        > ./long_running_command
+        <? completed
+
+        # override fail pattern (replaces, no stacking)
+        # literal fail pattern would replace the regex fail pattern and vice versa
+        != error
+    }
+
+    shell something_shell {
+        # calling a function — runs in this shell's context
+        let result = some_function("arg1", "arg2")
+        # function return value captured
+        let id = match_uuid()
+        > curl localhost:8080/resource/${id}
+        <? 200
+    }
+
+    # cleanup runs after the test finishes, regardless of pass/fail
+    cleanup {
+        > rm -f /tmp/test_artifacts
+    }
+}
