@@ -16,7 +16,7 @@ use crate::runtime::shell_log::ShellLogger;
 use crate::runtime::vars::{VariableStack, interpolate};
 use crate::runtime::bifs::VmContext;
 use crate::runtime::progress::{ProgressEvent, ProgressTx};
-use crate::runtime::{Callable, CodeServer, DEFAULT_SHELL_PROMPT};
+use crate::runtime::{Callable, CodeServer};
 
 fn regex_error_summary(e: &regex::Error) -> String {
     let full = e.to_string();
@@ -105,6 +105,7 @@ pub struct Vm {
     timeout: Duration,
     code_server: Arc<CodeServer>,
     shell_name: String,
+    shell_prompt: String,
     cursor: usize,
     progress_tx: Option<ProgressTx>,
     shell_log: Arc<Mutex<ShellLogger>>,
@@ -115,6 +116,7 @@ impl Vm {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         shell_name: String,
+        shell_prompt: String,
         vars: VariableStack,
         timeout: Duration,
         code_server: Arc<CodeServer>,
@@ -187,6 +189,7 @@ impl Vm {
             timeout,
             code_server,
             shell_name: shell_name.clone(),
+            shell_prompt,
             cursor: 0,
             progress_tx,
             shell_log,
@@ -205,18 +208,24 @@ impl Vm {
     async fn init_prompt(&mut self) -> Result<(), tokio::time::error::Elapsed> {
         let init_cmd = format!(
             "export PS1='{prompt}' PS2='' PROMPT_COMMAND=''\n",
-            prompt = DEFAULT_SHELL_PROMPT,
+            prompt = self.shell_prompt,
         );
         let _ = self.writer.write_all(init_cmd.as_bytes()).await;
 
+        let prompt_re = RegexBuilder::new(&format!("^{}", regex::escape(&self.shell_prompt)))
+            .multi_line(true)
+            .crlf(true)
+            .build()
+            .expect("prompt regex must be valid");
+
         tokio::time::timeout(self.timeout, async {
             loop {
-                if self
+                if let Some((_start, end, _captures)) = self
                     .output_buf
-                    .find_literal_from(self.cursor, DEFAULT_SHELL_PROMPT)
+                    .find_regex_from(self.cursor, &prompt_re)
                     .await
-                    .is_some()
                 {
+                    self.cursor = end;
                     break;
                 }
                 self.output_buf.notify.notified().await;
@@ -224,8 +233,6 @@ impl Vm {
         })
         .await?;
 
-        let snapshot = self.output_buf.snapshot().await;
-        self.cursor = snapshot.len();
         Ok(())
     }
 
@@ -543,8 +550,16 @@ impl VmContext for Vm {
         Ok(())
     }
 
+    async fn send_raw(&mut self, data: &[u8], span: &Span) -> Result<(), Failure> {
+        self.send_bytes(data, span.clone()).await?;
+        let display = data.iter().map(|b| format!("\\x{b:02x}")).collect::<String>();
+        self.emit_event(LogEventKind::Send { data: display }).await;
+        self.emit_progress(ProgressEvent::Send);
+        Ok(())
+    }
+
     fn shell_prompt(&self) -> &str {
-        DEFAULT_SHELL_PROMPT
+        &self.shell_prompt
     }
 }
 

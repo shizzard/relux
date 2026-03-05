@@ -9,6 +9,7 @@ pub trait VmContext: Send {
     fn emit_progress(&self, event: ProgressEvent);
     async fn match_literal(&mut self, pattern: &str, span: &Span) -> Result<String, Failure>;
     async fn send_line(&mut self, line: &str, span: &Span) -> Result<(), Failure>;
+    async fn send_raw(&mut self, data: &[u8], span: &Span) -> Result<(), Failure>;
     fn shell_prompt(&self) -> &str;
 }
 
@@ -36,6 +37,11 @@ pub fn lookup(name: &str, arity: usize) -> Option<Box<dyn Bif>> {
         ("match_prompt", 0) => Some(Box::new(MatchPrompt)),
         ("match_exit_code", 1) => Some(Box::new(MatchExitCode)),
         ("match_ok", 0) => Some(Box::new(MatchOk)),
+        ("ctrl_c", 0) => Some(Box::new(CtrlChar { name: "ctrl_c", byte: 0x03 })),
+        ("ctrl_d", 0) => Some(Box::new(CtrlChar { name: "ctrl_d", byte: 0x04 })),
+        ("ctrl_z", 0) => Some(Box::new(CtrlChar { name: "ctrl_z", byte: 0x1A })),
+        ("ctrl_l", 0) => Some(Box::new(CtrlChar { name: "ctrl_l", byte: 0x0C })),
+        ("ctrl_backslash", 0) => Some(Box::new(CtrlChar { name: "ctrl_backslash", byte: 0x1C })),
         _ => None,
     }
 }
@@ -308,6 +314,24 @@ impl Bif for MatchOk {
     }
 }
 
+// ─── CtrlChar ───────────────────────────────────────────────
+
+pub struct CtrlChar {
+    name: &'static str,
+    byte: u8,
+}
+
+#[async_trait]
+impl Bif for CtrlChar {
+    fn name(&self) -> &str { self.name }
+    fn arity(&self) -> usize { 0 }
+
+    async fn call(&self, vm: &mut dyn VmContext, _args: Vec<String>, span: &Span) -> Result<String, Failure> {
+        vm.send_raw(&[self.byte], span).await?;
+        Ok(String::new())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -323,6 +347,10 @@ mod tests {
         }
 
         async fn send_line(&mut self, _line: &str, _span: &Span) -> Result<(), Failure> {
+            Ok(())
+        }
+
+        async fn send_raw(&mut self, _data: &[u8], _span: &Span) -> Result<(), Failure> {
             Ok(())
         }
 
@@ -506,6 +534,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_ctrl_c() {
+        let mut vm = DummyVm;
+        let r = CtrlChar { name: "ctrl_c", byte: 0x03 }.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        assert_eq!(r, "");
+    }
+
+    #[tokio::test]
+    async fn test_ctrl_d() {
+        let mut vm = DummyVm;
+        let r = CtrlChar { name: "ctrl_d", byte: 0x04 }.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        assert_eq!(r, "");
+    }
+
+    #[tokio::test]
+    async fn test_ctrl_z() {
+        let mut vm = DummyVm;
+        let r = CtrlChar { name: "ctrl_z", byte: 0x1A }.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        assert_eq!(r, "");
+    }
+
+    #[tokio::test]
+    async fn test_ctrl_l() {
+        let mut vm = DummyVm;
+        let r = CtrlChar { name: "ctrl_l", byte: 0x0C }.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        assert_eq!(r, "");
+    }
+
+    #[tokio::test]
+    async fn test_ctrl_backslash() {
+        let mut vm = DummyVm;
+        let r = CtrlChar { name: "ctrl_backslash", byte: 0x1C }.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        assert_eq!(r, "");
+    }
+
+    #[tokio::test]
     async fn test_lookup() {
         assert!(lookup("trim", 1).is_some());
         assert!(lookup("upper", 1).is_some());
@@ -515,6 +578,11 @@ mod tests {
         assert!(lookup("match_prompt", 0).is_some());
         assert!(lookup("match_exit_code", 1).is_some());
         assert!(lookup("match_ok", 0).is_some());
+        assert!(lookup("ctrl_c", 0).is_some());
+        assert!(lookup("ctrl_d", 0).is_some());
+        assert!(lookup("ctrl_z", 0).is_some());
+        assert!(lookup("ctrl_l", 0).is_some());
+        assert!(lookup("ctrl_backslash", 0).is_some());
         assert!(lookup("nonexistent", 0).is_none());
         assert!(lookup("trim", 2).is_none());
     }

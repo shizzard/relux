@@ -2,7 +2,7 @@
 
 - Pure functions: functions that disallow send and match operators, can only call other pure functions, and can be called outside of a shell context
 - Unified binary: single `relux` binary combining all dump tools (token, AST, IR) and the test runner
-- Built-in functions: control character BIFs (ctrl-c, ctrl-d, ctrl-z, etc.), prompt matching, more string utilities
+- Built-in functions: more string utilities
 - Custom shell command: configurable executable for shell spawn, with a global default and per-shell override; introduces new syntax for shell block attributes
 - Timeout multiplier: CLI flag to scale all timeouts by a factor for slow CI environments
 - Suite and case timeouts: cap total wall-clock time for an entire run and per test case

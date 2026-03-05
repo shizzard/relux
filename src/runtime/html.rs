@@ -25,7 +25,7 @@ a:hover{text-decoration:underline}
 table.log{width:100%;border-collapse:collapse;border:none}
 table.log td{padding:1px 6px;vertical-align:top;white-space:pre-wrap;word-break:break-all}
 table.log td.ts{width:10ch;color:var(--ts-fg)}
-table.log td.ts a{color:var(--ts-fg);text-decoration:none}
+table.log td.ts a{color:var(--ts-fg);text-decoration:underline}
 table.log td.ts a:hover{text-decoration:underline}
 table.log td.sh{width:20ch;color:var(--muted)}
 table.log td.kind{width:10ch;font-weight:600}

@@ -310,6 +310,7 @@ impl Runtime {
                         );
                         match Vm::new(
                             scoped_name,
+                            DEFAULT_SHELL_PROMPT.to_string(),
                             vars,
                             self.default_timeout,
                             code_server.clone(),
@@ -409,6 +410,7 @@ impl Runtime {
                 let vars = VariableStack::new(test_scope.clone(), HashMap::new(), self.env.clone());
                 let vm = match Vm::new(
                     shell_name.clone(),
+                    DEFAULT_SHELL_PROMPT.to_string(),
                     vars,
                     self.default_timeout,
                     code_server.clone(),
@@ -452,6 +454,7 @@ impl Runtime {
             event_collector.push("", LogEventKind::Cleanup { shell: "__cleanup".to_string() }).await;
             if let Ok(mut vm) = Vm::new(
                 "__cleanup".to_string(),
+                DEFAULT_SHELL_PROMPT.to_string(),
                 vars,
                 self.default_timeout,
                 code_server,
@@ -504,6 +507,7 @@ impl Runtime {
                 let code_server = Arc::new(CodeServer::new(Vec::new()));
                 if let Ok(mut vm) = Vm::new(
                     cleanup_name,
+                    DEFAULT_SHELL_PROMPT.to_string(),
                     vars,
                     self.default_timeout,
                     code_server,
