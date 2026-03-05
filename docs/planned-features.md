@@ -8,7 +8,7 @@
 - Timeout multiplier: CLI flag to scale all timeouts by a factor for slow CI environments
 - Suite and case timeouts: cap total wall-clock time for an entire run and per test case
 - Conditional test skips: skip tests based on environment or platform checks, with relux-specific logic
-- Progress output levels: configurable verbosity for real-time test execution feedback
+- Progress output levels: configurable verbosity for real-time test execution feedback (basic progress implemented)
 - HTML annotated logs: hyperlinked event logs with source cross-references
 - TAP and JUnit output: machine-readable test result formats for CI integration (JUnit via `quick-junit`, TAP hand-rolled)
 - Run history: assemble timelines of test results across multiple runs with revision tracking

@@ -34,6 +34,7 @@ pub struct TestResult {
     pub outcome: Outcome,
     pub duration: Duration,
     pub shell_logs: HashMap<String, Vec<u8>>,
+    pub progress: String,
 }
 
 #[derive(Debug, Clone)]

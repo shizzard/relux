@@ -8,10 +8,12 @@ use daggy::petgraph::visit::{EdgeRef, IntoEdgesDirected};
 use tokio::sync::Mutex;
 
 use crate::dsl::resolver::ir::{self, EffectInstance, InstanceId, Plan, SourceMap, Spanned};
+use crate::runtime::progress::{ProgressEvent, ProgressTx};
 use crate::runtime::result::{Failure, Outcome, TestResult};
 use crate::runtime::vars::{Env, TestScope, VariableStack, interpolate_with_lookup};
 use crate::runtime::vm::Vm;
 
+pub mod progress;
 pub mod result;
 pub mod vars;
 pub mod vm;
@@ -91,8 +93,17 @@ impl Runtime {
         let code_server = Arc::new(CodeServer::new(plan.functions.clone()));
         let mut shell_logs = HashMap::new();
 
+        eprint!("test \"{test_name}\": ");
+        let (progress_tx, progress_rx) = progress::channel();
+        let printer_handle = progress::spawn_printer(progress_rx);
+
         let mut effect_exec = self
-            .execute_effects(&plan, code_server.clone(), &mut shell_logs)
+            .execute_effects(
+                &plan,
+                code_server.clone(),
+                &mut shell_logs,
+                progress_tx.clone(),
+            )
             .await;
 
         let outcome = match effect_exec.outcome.take() {
@@ -121,14 +132,19 @@ impl Runtime {
                     test_scope,
                     code_server,
                     &mut effect_exec.alias_shells,
+                    progress_tx.clone(),
                 )
                 .await
             }
         };
 
-        self.run_test_cleanup(&plan, &effect_exec.alias_shells)
+        self.run_test_cleanup(&plan, &effect_exec.alias_shells, progress_tx.clone())
             .await;
-        self.teardown_effects(&plan, &mut effect_exec).await;
+        self.teardown_effects(&plan, &mut effect_exec, progress_tx.clone())
+            .await;
+
+        drop(progress_tx);
+        let progress_string = printer_handle.await.unwrap_or_default();
 
         for (name, vm) in &effect_exec.alias_shells {
             let out = vm.lock().await.output_snapshot().await;
@@ -140,6 +156,7 @@ impl Runtime {
             outcome,
             duration: start.elapsed(),
             shell_logs,
+            progress: progress_string,
         }
     }
 
@@ -148,6 +165,7 @@ impl Runtime {
         plan: &Plan,
         code_server: Arc<CodeServer>,
         shell_logs: &mut HashMap<String, Vec<u8>>,
+        progress_tx: ProgressTx,
     ) -> EffectExecution {
         let mut effect_state = EffectExecution::default();
         let order = match toposort(&plan.effect_graph.dag, None) {
@@ -168,6 +186,7 @@ impl Runtime {
             };
             let overlay = self.interpolate_overlay(&instance.overlay);
             let effect = &plan.effects[instance.effect];
+            let _ = progress_tx.send(ProgressEvent::EffectSetup(effect.name.node.clone()));
             let effect_scope = Arc::new(Mutex::new(TestScope::new()));
             let mut shells: HashMap<String, SharedVm> = HashMap::new();
 
@@ -220,6 +239,7 @@ impl Runtime {
                             vars,
                             self.default_timeout,
                             code_server.clone(),
+                            Some(progress_tx.clone()),
                         )
                         .await
                         {
@@ -293,10 +313,12 @@ impl Runtime {
         test_scope: Arc<Mutex<TestScope>>,
         code_server: Arc<CodeServer>,
         aliases: &mut HashMap<String, SharedVm>,
+        progress_tx: ProgressTx,
     ) -> Outcome {
         let mut local_shells: HashMap<String, SharedVm> = HashMap::new();
         for block in &plan.test.shells {
             let shell_name = block.node.name.node.clone();
+            let _ = progress_tx.send(ProgressEvent::ShellSwitch(shell_name.clone()));
             let vm = if let Some(vm) = aliases.get(&shell_name).cloned() {
                 vm
             } else if let Some(vm) = local_shells.get(&shell_name).cloned() {
@@ -308,6 +330,7 @@ impl Runtime {
                     vars,
                     self.default_timeout,
                     code_server.clone(),
+                    Some(progress_tx.clone()),
                 )
                 .await
                 {
@@ -327,8 +350,14 @@ impl Runtime {
         Outcome::Pass
     }
 
-    async fn run_test_cleanup(&self, plan: &Plan, aliases: &HashMap<String, SharedVm>) {
+    async fn run_test_cleanup(
+        &self,
+        plan: &Plan,
+        aliases: &HashMap<String, SharedVm>,
+        progress_tx: ProgressTx,
+    ) {
         if let Some(cleanup) = &plan.test.cleanup {
+            let _ = progress_tx.send(ProgressEvent::Cleanup);
             let test_scope = Arc::new(Mutex::new(TestScope::new()));
             let vars = VariableStack::new(test_scope, HashMap::new(), self.env.clone());
             let code_server = Arc::new(CodeServer::new(plan.functions.clone()));
@@ -337,6 +366,7 @@ impl Runtime {
                 vars,
                 self.default_timeout,
                 code_server,
+                Some(progress_tx),
             )
             .await
             {
@@ -351,7 +381,12 @@ impl Runtime {
         }
     }
 
-    async fn teardown_effects(&self, plan: &Plan, state: &mut EffectExecution) {
+    async fn teardown_effects(
+        &self,
+        plan: &Plan,
+        state: &mut EffectExecution,
+        progress_tx: ProgressTx,
+    ) {
         let mut order = match toposort(&plan.effect_graph.dag, None) {
             Ok(v) => v,
             Err(_) => return,
@@ -364,6 +399,7 @@ impl Runtime {
             };
             let effect = &plan.effects[instance_state.info.effect];
             if let Some(cleanup) = &effect.cleanup {
+                let _ = progress_tx.send(ProgressEvent::Cleanup);
                 let test_scope = Arc::new(Mutex::new(TestScope::new()));
                 let overlay = self.interpolate_overlay(&instance_state.info.overlay);
                 let vars = VariableStack::new(test_scope, overlay, self.env.clone());
@@ -373,6 +409,7 @@ impl Runtime {
                     vars,
                     self.default_timeout,
                     code_server,
+                    Some(progress_tx.clone()),
                 )
                 .await
                 {

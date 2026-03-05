@@ -11,6 +11,7 @@ use tokio::sync::{Mutex, Notify, watch};
 use crate::dsl::resolver::ir::{self, Expr, ShellStmt, Span, Spanned};
 use crate::runtime::result::Failure;
 use crate::runtime::vars::{VariableStack, interpolate};
+use crate::runtime::progress::{ProgressEvent, ProgressTx};
 use crate::runtime::{CodeServer, DEFAULT_SHELL_PROMPT};
 
 fn regex_error_summary(e: &regex::Error) -> String {
@@ -101,6 +102,7 @@ pub struct Vm {
     code_server: Arc<CodeServer>,
     shell_name: String,
     cursor: usize,
+    progress_tx: Option<ProgressTx>,
 }
 
 impl Vm {
@@ -110,6 +112,7 @@ impl Vm {
         vars: VariableStack,
         timeout: Duration,
         code_server: Arc<CodeServer>,
+        progress_tx: Option<ProgressTx>,
     ) -> Result<Self, Failure> {
         let (pty, pts) = pty_process::open().map_err(|e| Failure::Runtime {
             message: format!("failed to allocate pty: {e}"),
@@ -163,6 +166,7 @@ impl Vm {
             code_server,
             shell_name: shell_name.clone(),
             cursor: 0,
+            progress_tx,
         };
 
         vm.init_prompt().await.map_err(|_| Failure::Runtime {
@@ -262,17 +266,21 @@ impl Vm {
                 let payload = interpolate(s, &self.vars).await;
                 self.send_bytes(format!("{payload}\n").as_bytes(), expr.span.clone())
                     .await?;
+                self.emit_progress(ProgressEvent::Send);
                 Ok(payload)
             }
             Expr::SendRaw(s) => {
                 let payload = interpolate(s, &self.vars).await;
                 self.send_bytes(payload.as_bytes(), expr.span.clone())
                     .await?;
+                self.emit_progress(ProgressEvent::Send);
                 Ok(payload)
             }
             Expr::MatchLiteral(s) => {
                 let pattern = interpolate(s, &self.vars).await;
+                self.emit_progress(ProgressEvent::MatchStart);
                 let (start, end) = self.wait_for_literal(&pattern, expr.span.clone()).await?;
+                self.emit_progress(ProgressEvent::MatchDone);
                 self.cursor = end.max(start);
                 Ok(pattern)
             }
@@ -283,9 +291,11 @@ impl Vm {
                     span: Some(s.span.clone()),
                     shell: Some(self.shell_name.clone()),
                 })?;
+                self.emit_progress(ProgressEvent::MatchStart);
                 let (_start, end, captures) = self
                     .wait_for_regex(&pattern, &re, expr.span.clone())
                     .await?;
+                self.emit_progress(ProgressEvent::MatchDone);
                 self.cursor = end;
                 let full = captures.get("0").cloned().unwrap_or_default();
                 self.vars.set_captures(captures);
@@ -325,6 +335,7 @@ impl Vm {
             evaluated_args.push(self.eval_expr(arg).await?);
         }
 
+        self.emit_progress(ProgressEvent::FnEnter(call.name.node.clone()));
         self.vars.push_frame();
         for (param, value) in params.iter().zip(evaluated_args.into_iter()) {
             self.vars.let_insert(param.node.clone(), value);
@@ -334,6 +345,7 @@ impl Vm {
             last = self.exec_stmt(stmt).await?;
         }
         self.vars.pop_frame();
+        self.emit_progress(ProgressEvent::FnExit);
         Ok(last)
     }
 
@@ -354,10 +366,13 @@ impl Vm {
 
         tokio::time::timeout(self.timeout, fut)
             .await
-            .map_err(|_| Failure::MatchTimeout {
-                pattern: pattern.to_string(),
-                span,
-                shell: self.shell_name.clone(),
+            .map_err(|_| {
+                self.emit_progress(ProgressEvent::Timeout);
+                Failure::MatchTimeout {
+                    pattern: pattern.to_string(),
+                    span,
+                    shell: self.shell_name.clone(),
+                }
             })?
     }
 
@@ -379,15 +394,19 @@ impl Vm {
 
         tokio::time::timeout(self.timeout, fut)
             .await
-            .map_err(|_| Failure::MatchTimeout {
-                pattern: pattern.to_string(),
-                span,
-                shell: self.shell_name.clone(),
+            .map_err(|_| {
+                self.emit_progress(ProgressEvent::Timeout);
+                Failure::MatchTimeout {
+                    pattern: pattern.to_string(),
+                    span,
+                    shell: self.shell_name.clone(),
+                }
             })?
     }
 
     async fn check_fail(&self, span: Span) -> Result<(), Failure> {
         if self.fail_triggered.load(Ordering::Relaxed) {
+            self.emit_progress(ProgressEvent::FailPattern);
             let detail = self.fail_detail.lock().await.clone().unwrap_or_default();
             return Err(Failure::FailPatternMatched {
                 pattern: detail.0,
@@ -412,6 +431,12 @@ impl Vm {
 
     pub async fn output_snapshot(&self) -> Vec<u8> {
         self.output_buf.snapshot().await
+    }
+
+    fn emit_progress(&self, event: ProgressEvent) {
+        if let Some(tx) = &self.progress_tx {
+            let _ = tx.send(event);
+        }
     }
 
     pub async fn reset_for_reuse(&mut self, timeout: Duration) {
