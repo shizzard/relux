@@ -1,0 +1,250 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Relux",
+  "scopeName": "source.relux",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#docstring" },
+    { "include": "#test-declaration" },
+    { "include": "#effect-declaration" },
+    { "include": "#fn-declaration" },
+    { "include": "#import-statement" },
+    { "include": "#shell-operators" },
+    { "include": "#timeout" },
+    { "include": "#fail-operators" },
+    { "include": "#arrow" },
+    { "include": "#keywords" },
+    { "include": "#string" },
+    { "include": "#interpolation" },
+    { "include": "#effect-identifier" },
+    { "include": "#module-path" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comment": {
+      "match": "#.*$",
+      "name": "comment.line.number-sign.relux"
+    },
+
+    "docstring": {
+      "begin": "\"\"\"",
+      "end": "\"\"\"",
+      "name": "string.quoted.other.docstring.relux"
+    },
+
+    "test-declaration": {
+      "match": "\\b(test)\\s+(\"[^\"]*\")",
+      "captures": {
+        "1": { "name": "keyword.control.test.relux" },
+        "2": { "name": "string.quoted.double.relux" }
+      }
+    },
+
+    "effect-declaration": {
+      "match": "\\b(effect)\\s+([A-Z][a-zA-Z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "keyword.control.effect.relux" },
+        "2": { "name": "entity.name.type.effect.relux" }
+      }
+    },
+
+    "fn-declaration": {
+      "match": "\\b(fn)\\s+([a-z_][a-zA-Z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "keyword.control.fn.relux" },
+        "2": { "name": "entity.name.function.relux" }
+      }
+    },
+
+    "import-statement": {
+      "match": "\\b(import)\\s+([a-zA-Z_][a-zA-Z0-9_]*(?:/[a-zA-Z_][a-zA-Z0-9_]*)*)\\b",
+      "captures": {
+        "1": { "name": "keyword.control.import.relux" },
+        "2": { "name": "entity.name.namespace.relux" }
+      }
+    },
+
+    "shell-operators": {
+      "patterns": [
+        { "include": "#op-send-raw" },
+        { "include": "#op-send" },
+        { "include": "#op-match-regex" },
+        { "include": "#op-match-literal" }
+      ]
+    },
+
+    "op-send-raw": {
+      "begin": "(=>)",
+      "end": "$",
+      "beginCaptures": {
+        "1": { "name": "keyword.operator.send-raw.relux" }
+      },
+      "contentName": "string.unquoted.payload.relux",
+      "patterns": [
+        { "include": "#payload-interpolation" }
+      ]
+    },
+
+    "op-send": {
+      "begin": "(?<![-=<!)>])(>)",
+      "end": "$",
+      "beginCaptures": {
+        "1": { "name": "keyword.operator.send.relux" }
+      },
+      "contentName": "string.unquoted.payload.relux",
+      "patterns": [
+        { "include": "#payload-interpolation" }
+      ]
+    },
+
+    "op-match-regex": {
+      "begin": "(\\<\\?)",
+      "end": "$",
+      "beginCaptures": {
+        "1": { "name": "keyword.operator.match-regex.relux" }
+      },
+      "contentName": "string.regexp.relux",
+      "patterns": [
+        { "include": "#payload-interpolation" }
+      ]
+    },
+
+    "op-match-literal": {
+      "begin": "(<=)",
+      "end": "$",
+      "beginCaptures": {
+        "1": { "name": "keyword.operator.match-literal.relux" }
+      },
+      "contentName": "string.unquoted.payload.relux",
+      "patterns": [
+        { "include": "#payload-interpolation" }
+      ]
+    },
+
+    "fail-operators": {
+      "patterns": [
+        { "include": "#op-fail-regex" },
+        { "include": "#op-fail-literal" }
+      ]
+    },
+
+    "op-fail-regex": {
+      "begin": "(\\!\\?)",
+      "end": "$",
+      "beginCaptures": {
+        "1": { "name": "keyword.operator.fail-regex.relux" }
+      },
+      "contentName": "string.regexp.relux",
+      "patterns": [
+        { "include": "#payload-interpolation" }
+      ]
+    },
+
+    "op-fail-literal": {
+      "begin": "(!=)",
+      "end": "$",
+      "beginCaptures": {
+        "1": { "name": "keyword.operator.fail-literal.relux" }
+      },
+      "contentName": "string.unquoted.payload.relux",
+      "patterns": [
+        { "include": "#payload-interpolation" }
+      ]
+    },
+
+    "payload-interpolation": {
+      "patterns": [
+        {
+          "match": "\\$\\{[a-zA-Z_0-9]+\\}",
+          "name": "variable.other.interpolation.relux"
+        },
+        {
+          "match": "\\$[0-9]+",
+          "name": "variable.other.interpolation.relux"
+        },
+        {
+          "match": "\\$\\$",
+          "name": "constant.character.escape.relux"
+        }
+      ]
+    },
+
+    "timeout": {
+      "match": "(~)(.+)$",
+      "captures": {
+        "1": { "name": "keyword.operator.timeout.relux" },
+        "2": { "name": "constant.other.duration.relux" }
+      }
+    },
+
+    "arrow": {
+      "match": "->",
+      "name": "keyword.operator.arrow.relux"
+    },
+
+    "keywords": {
+      "match": "\\b(shell|let|need|as|cleanup)\\b",
+      "name": "keyword.control.relux"
+    },
+
+    "string": {
+      "begin": "\"",
+      "end": "\"",
+      "name": "string.quoted.double.relux",
+      "patterns": [
+        {
+          "match": "\\\\.",
+          "name": "constant.character.escape.relux"
+        },
+        {
+          "match": "\\$\\{[a-zA-Z_0-9]+\\}",
+          "name": "variable.other.interpolation.relux"
+        }
+      ]
+    },
+
+    "interpolation": {
+      "patterns": [
+        {
+          "match": "\\$\\{[a-zA-Z_0-9]+\\}",
+          "name": "variable.other.relux"
+        },
+        {
+          "match": "\\$[0-9]+",
+          "name": "variable.other.relux"
+        }
+      ]
+    },
+
+    "effect-identifier": {
+      "match": "\\b[A-Z][a-zA-Z0-9_]*\\b",
+      "name": "entity.name.type.relux"
+    },
+
+    "module-path": {
+      "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(?:/[a-zA-Z_][a-zA-Z0-9_]*)+\\b",
+      "name": "entity.name.namespace.relux"
+    },
+
+    "punctuation": {
+      "patterns": [
+        {
+          "match": "[{}]",
+          "name": "punctuation.section.block.relux"
+        },
+        {
+          "match": "[()]",
+          "name": "punctuation.section.parens.relux"
+        },
+        {
+          "match": "(?<![<!>])=(?!>)",
+          "name": "keyword.operator.assignment.relux"
+        },
+        {
+          "match": ",",
+          "name": "punctuation.separator.comma.relux"
+        }
+      ]
+    }
+  }
+}

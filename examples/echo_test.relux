@@ -1,6 +1,6 @@
 test "echo and match" {
     shell s {
-        ~a5s
+        ~5s
         > echo hello-relux
         <= hello-relux
 

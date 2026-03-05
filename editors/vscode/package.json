@@ -1,0 +1,35 @@
+{
+  "name": "relux",
+  "displayName": "Relux",
+  "description": "Syntax highlighting for the Relux DSL",
+  "version": "0.1.0",
+  "publisher": "spawnlink",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spawnlink/relux"
+  },
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "relux",
+        "aliases": ["Relux", "relux"],
+        "extensions": [".relux"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "relux",
+        "scopeName": "source.relux",
+        "path": "./syntaxes/relux.tmLanguage.json"
+      }
+    ]
+  }
+}
