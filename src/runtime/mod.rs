@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -8,14 +8,18 @@ use daggy::petgraph::visit::{EdgeRef, IntoEdgesDirected};
 use tokio::sync::Mutex;
 
 use crate::dsl::resolver::ir::{self, EffectInstance, InstanceId, Plan, SourceMap, Spanned};
+use crate::runtime::event_log::{EventCollector, LogEventKind};
 use crate::runtime::progress::{ProgressEvent, ProgressTx};
 use crate::runtime::result::{Failure, Outcome, TestResult};
 use crate::runtime::vars::{Env, TestScope, VariableStack, interpolate_with_lookup};
 use crate::runtime::vm::Vm;
 
 pub mod bifs;
+pub mod event_log;
+pub mod html;
 pub mod progress;
 pub mod result;
+pub mod shell_log;
 pub mod vars;
 pub mod vm;
 
@@ -58,18 +62,22 @@ impl CodeServer {
 pub struct Runtime {
     env: Arc<Env>,
     source_map: SourceMap,
+    run_dir: PathBuf,
+    project_root: PathBuf,
     default_timeout: Duration,
 }
 
 pub struct RunContext {
     pub run_id: String,
+    pub run_dir: PathBuf,
     pub artifacts_dir: PathBuf,
+    pub project_root: PathBuf,
 }
 
 impl Runtime {
     pub fn new(source_map: SourceMap, run_context: RunContext) -> Self {
         let mut env = std::env::vars().collect::<HashMap<_, _>>();
-        env.insert("__RELUX_RUN_ID".to_string(), run_context.run_id);
+        env.insert("__RELUX_RUN_ID".to_string(), run_context.run_id.clone());
         env.insert(
             "__RELUX_RUN_ARTIFACTS".to_string(),
             run_context.artifacts_dir.display().to_string(),
@@ -81,12 +89,18 @@ impl Runtime {
         Self {
             env: Arc::new(env),
             source_map,
+            run_dir: run_context.run_dir,
+            project_root: run_context.project_root,
             default_timeout: Duration::from_secs(10),
         }
     }
 
     pub fn source_map(&self) -> &SourceMap {
         &self.source_map
+    }
+
+    pub fn run_dir(&self) -> &Path {
+        &self.run_dir
     }
 
     pub async fn run(&self, plans: Vec<Plan>) -> Vec<TestResult> {
@@ -98,10 +112,14 @@ impl Runtime {
     }
 
     async fn run_plan(&self, plan: Plan) -> TestResult {
-        let start = Instant::now();
+        let test_start = Instant::now();
         let test_name = plan.test.name.node.clone();
         let code_server = Arc::new(CodeServer::new(plan.functions.clone()));
         let mut shell_logs = HashMap::new();
+
+        let log_dir = self.compute_test_log_dir(&plan);
+        let _ = std::fs::create_dir_all(&log_dir);
+        let event_collector = EventCollector::new(test_start);
 
         eprint!("test \"{test_name}\": ");
         let (progress_tx, progress_rx) = progress::channel();
@@ -113,6 +131,9 @@ impl Runtime {
                 code_server.clone(),
                 &mut shell_logs,
                 progress_tx.clone(),
+                &log_dir,
+                test_start,
+                &event_collector,
             )
             .await;
 
@@ -143,15 +164,32 @@ impl Runtime {
                     code_server,
                     &mut effect_exec.alias_shells,
                     progress_tx.clone(),
+                    &log_dir,
+                    test_start,
+                    &event_collector,
                 )
                 .await
             }
         };
 
-        self.run_test_cleanup(&plan, &effect_exec.alias_shells, progress_tx.clone())
-            .await;
-        self.teardown_effects(&plan, &mut effect_exec, progress_tx.clone())
-            .await;
+        self.run_test_cleanup(
+            &plan,
+            &effect_exec.alias_shells,
+            progress_tx.clone(),
+            &log_dir,
+            test_start,
+            &event_collector,
+        )
+        .await;
+        self.teardown_effects(
+            &plan,
+            &mut effect_exec,
+            progress_tx.clone(),
+            &log_dir,
+            test_start,
+            &event_collector,
+        )
+        .await;
 
         drop(progress_tx);
         let progress_string = printer_handle.await.unwrap_or_default();
@@ -161,13 +199,28 @@ impl Runtime {
             shell_logs.insert(name.clone(), out);
         }
 
+        let events = event_collector.take().await;
+        crate::runtime::html::generate_html_logs(&log_dir, &test_name, &events, &self.run_dir);
+
         TestResult {
             test_name,
             outcome,
-            duration: start.elapsed(),
+            duration: test_start.elapsed(),
             shell_logs,
             progress: progress_string,
+            log_dir: Some(log_dir),
         }
+    }
+
+    fn compute_test_log_dir(&self, plan: &Plan) -> PathBuf {
+        let source_path = &self.source_map.files[plan.test.span.file].path;
+        let relative = source_path
+            .strip_prefix(&self.project_root)
+            .unwrap_or(source_path);
+        self.run_dir
+            .join("logs")
+            .join(relative.with_extension(""))
+            .join(slugify(&plan.test.name.node))
     }
 
     async fn execute_effects(
@@ -176,6 +229,9 @@ impl Runtime {
         code_server: Arc<CodeServer>,
         shell_logs: &mut HashMap<String, Vec<u8>>,
         progress_tx: ProgressTx,
+        log_dir: &Path,
+        test_start: Instant,
+        event_collector: &EventCollector,
     ) -> EffectExecution {
         let mut effect_state = EffectExecution::default();
         let order = match toposort(&plan.effect_graph.dag, None) {
@@ -190,6 +246,8 @@ impl Runtime {
             }
         };
 
+        let scope_prefixes = compute_scope_prefixes(plan);
+
         for instance_id in order {
             let Some(instance) = plan.effect_graph.dag.node_weight(instance_id).cloned() else {
                 continue;
@@ -197,8 +255,13 @@ impl Runtime {
             let overlay = self.interpolate_overlay(&instance.overlay);
             let effect = &plan.effects[instance.effect];
             let _ = progress_tx.send(ProgressEvent::EffectSetup(effect.name.node.clone()));
+            event_collector.push("", LogEventKind::EffectSetup { effect: effect.name.node.clone() }).await;
             let effect_scope = Arc::new(Mutex::new(TestScope::new()));
             let mut shells: HashMap<String, SharedVm> = HashMap::new();
+            let scope_prefix = scope_prefixes
+                .get(&instance_id)
+                .cloned()
+                .unwrap_or_else(|| effect.name.node.clone());
 
             for incoming in plan
                 .effect_graph
@@ -238,6 +301,7 @@ impl Runtime {
             if setup_failed.is_none() {
                 for block in &effect.shells {
                     let shell_name = block.node.name.node.clone();
+                    let scoped_name = format!("{scope_prefix}.{shell_name}");
                     if !shells.contains_key(&shell_name) {
                         let vars = VariableStack::new(
                             effect_scope.clone(),
@@ -245,11 +309,14 @@ impl Runtime {
                             self.env.clone(),
                         );
                         match Vm::new(
-                            shell_name.clone(),
+                            scoped_name,
                             vars,
                             self.default_timeout,
                             code_server.clone(),
                             Some(progress_tx.clone()),
+                            log_dir,
+                            test_start,
+                            Some(event_collector.clone()),
                         )
                         .await
                         {
@@ -300,6 +367,7 @@ impl Runtime {
                 instance_id,
                 EffectInstanceState {
                     info: instance,
+                    scope_prefix,
                     all_shells: shells,
                     exported_vm,
                 },
@@ -324,11 +392,15 @@ impl Runtime {
         code_server: Arc<CodeServer>,
         aliases: &mut HashMap<String, SharedVm>,
         progress_tx: ProgressTx,
+        log_dir: &Path,
+        test_start: Instant,
+        event_collector: &EventCollector,
     ) -> Outcome {
         let mut local_shells: HashMap<String, SharedVm> = HashMap::new();
         for block in &plan.test.shells {
             let shell_name = block.node.name.node.clone();
             let _ = progress_tx.send(ProgressEvent::ShellSwitch(shell_name.clone()));
+            event_collector.push("", LogEventKind::ShellSwitch { name: shell_name.clone() }).await;
             let vm = if let Some(vm) = aliases.get(&shell_name).cloned() {
                 vm
             } else if let Some(vm) = local_shells.get(&shell_name).cloned() {
@@ -341,6 +413,9 @@ impl Runtime {
                     self.default_timeout,
                     code_server.clone(),
                     Some(progress_tx.clone()),
+                    log_dir,
+                    test_start,
+                    Some(event_collector.clone()),
                 )
                 .await
                 {
@@ -365,18 +440,25 @@ impl Runtime {
         plan: &Plan,
         aliases: &HashMap<String, SharedVm>,
         progress_tx: ProgressTx,
+        log_dir: &Path,
+        test_start: Instant,
+        event_collector: &EventCollector,
     ) {
         if let Some(cleanup) = &plan.test.cleanup {
             let _ = progress_tx.send(ProgressEvent::Cleanup);
             let test_scope = Arc::new(Mutex::new(TestScope::new()));
             let vars = VariableStack::new(test_scope, HashMap::new(), self.env.clone());
             let code_server = Arc::new(CodeServer::new(plan.functions.clone()));
+            event_collector.push("", LogEventKind::Cleanup { shell: "__cleanup".to_string() }).await;
             if let Ok(mut vm) = Vm::new(
-                "__test_cleanup".to_string(),
+                "__cleanup".to_string(),
                 vars,
                 self.default_timeout,
                 code_server,
                 Some(progress_tx),
+                log_dir,
+                test_start,
+                Some(event_collector.clone()),
             )
             .await
             {
@@ -396,6 +478,9 @@ impl Runtime {
         plan: &Plan,
         state: &mut EffectExecution,
         progress_tx: ProgressTx,
+        log_dir: &Path,
+        test_start: Instant,
+        event_collector: &EventCollector,
     ) {
         let mut order = match toposort(&plan.effect_graph.dag, None) {
             Ok(v) => v,
@@ -410,16 +495,22 @@ impl Runtime {
             let effect = &plan.effects[instance_state.info.effect];
             if let Some(cleanup) = &effect.cleanup {
                 let _ = progress_tx.send(ProgressEvent::Cleanup);
+                let cleanup_name = format!("{}.__cleanup", instance_state.scope_prefix);
+                event_collector.push("", LogEventKind::EffectTeardown { effect: effect.name.node.clone() }).await;
+                event_collector.push("", LogEventKind::Cleanup { shell: cleanup_name.clone() }).await;
                 let test_scope = Arc::new(Mutex::new(TestScope::new()));
                 let overlay = self.interpolate_overlay(&instance_state.info.overlay);
                 let vars = VariableStack::new(test_scope, overlay, self.env.clone());
                 let code_server = Arc::new(CodeServer::new(Vec::new()));
                 if let Ok(mut vm) = Vm::new(
-                    "__effect_cleanup".to_string(),
+                    cleanup_name,
                     vars,
                     self.default_timeout,
                     code_server,
                     Some(progress_tx.clone()),
+                    log_dir,
+                    test_start,
+                    Some(event_collector.clone()),
                 )
                 .await
                 {
@@ -474,6 +565,7 @@ struct EffectExecution {
 
 struct EffectInstanceState {
     info: EffectInstance,
+    scope_prefix: String,
     all_shells: HashMap<String, SharedVm>,
     exported_vm: SharedVm,
 }
@@ -507,4 +599,64 @@ fn cleanup_to_shell_stmts(
             span.clone(),
         )))
         .collect()
+}
+
+fn slugify(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string()
+}
+
+/// Builds a map from InstanceId to a hierarchical scope prefix string.
+/// Top-level effects (referenced by test needs) get `{effect_name}.{alias}`.
+/// Nested dependencies get `{parent_prefix}.{effect_name}.{dep_alias}`.
+fn compute_scope_prefixes(plan: &Plan) -> HashMap<InstanceId, String> {
+    let mut prefixes: HashMap<InstanceId, String> = HashMap::new();
+
+    for need in &plan.test.needs {
+        let instance_id = need.node.instance;
+        if let Some(instance) = plan.effect_graph.dag.node_weight(instance_id) {
+            let effect = &plan.effects[instance.effect];
+            let prefix = format!("{}.{}", effect.name.node, need.node.alias.node);
+            prefixes.insert(instance_id, prefix);
+        }
+    }
+
+    if let Ok(order) = toposort(&plan.effect_graph.dag, None) {
+        let reversed: Vec<_> = order.into_iter().rev().collect();
+        for id in reversed {
+            if prefixes.contains_key(&id) {
+                continue;
+            }
+            if let Some(instance) = plan.effect_graph.dag.node_weight(id) {
+                let effect = &plan.effects[instance.effect];
+                let mut parent_prefix = None;
+                for edge in plan
+                    .effect_graph
+                    .dag
+                    .edges_directed(id, daggy::petgraph::Direction::Outgoing)
+                {
+                    let target = edge.target();
+                    if let Some(p) = prefixes.get(&target) {
+                        parent_prefix =
+                            Some(format!("{}.{}.{}", p, effect.name.node, edge.weight().alias.node));
+                        break;
+                    }
+                }
+                let prefix =
+                    parent_prefix.unwrap_or_else(|| format!("{}.{}", effect.name.node, id.index()));
+                prefixes.insert(id, prefix);
+            }
+        }
+    }
+
+    prefixes
 }

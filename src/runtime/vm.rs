@@ -1,7 +1,8 @@
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use regex::Regex;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -9,7 +10,9 @@ use tokio::process::Child;
 use tokio::sync::{Mutex, Notify, watch};
 
 use crate::dsl::resolver::ir::{self, Expr, ShellStmt, Span, Spanned};
+use crate::runtime::event_log::{EventCollector, LogEventKind};
 use crate::runtime::result::Failure;
+use crate::runtime::shell_log::ShellLogger;
 use crate::runtime::vars::{VariableStack, interpolate};
 use crate::runtime::bifs::VmContext;
 use crate::runtime::progress::{ProgressEvent, ProgressTx};
@@ -104,6 +107,8 @@ pub struct Vm {
     shell_name: String,
     cursor: usize,
     progress_tx: Option<ProgressTx>,
+    shell_log: Arc<Mutex<ShellLogger>>,
+    event_collector: Option<EventCollector>,
 }
 
 impl Vm {
@@ -114,7 +119,19 @@ impl Vm {
         timeout: Duration,
         code_server: Arc<CodeServer>,
         progress_tx: Option<ProgressTx>,
+        log_dir: &Path,
+        test_start: Instant,
+        event_collector: Option<EventCollector>,
     ) -> Result<Self, Failure> {
+        let shell_log = ShellLogger::create(log_dir, &shell_name, test_start).map_err(|e| {
+            Failure::Runtime {
+                message: format!("failed to create shell log: {e}"),
+                span: None,
+                shell: Some(shell_name.clone()),
+            }
+        })?;
+        let shell_log = Arc::new(Mutex::new(shell_log));
+
         let (pty, pts) = pty_process::open().map_err(|e| Failure::Runtime {
             message: format!("failed to allocate pty: {e}"),
             span: None,
@@ -132,13 +149,17 @@ impl Vm {
         let (reader, writer) = pty.into_split();
         let output_buf = OutputBuffer::new();
         let output_for_reader = output_buf.clone();
+        let shell_log_reader = shell_log.clone();
         let mut reader = tokio::io::BufReader::new(reader);
         let read_task = tokio::spawn(async move {
             let mut buf = vec![0u8; 4096];
             loop {
                 match reader.read(&mut buf).await {
                     Ok(0) => break,
-                    Ok(n) => output_for_reader.append(&buf[..n]).await,
+                    Ok(n) => {
+                        shell_log_reader.lock().await.log_stdout(&buf[..n]);
+                        output_for_reader.append(&buf[..n]).await;
+                    }
                     Err(_) => break,
                 }
             }
@@ -168,6 +189,8 @@ impl Vm {
             shell_name: shell_name.clone(),
             cursor: 0,
             progress_tx,
+            shell_log,
+            event_collector,
         };
 
         vm.init_prompt().await.map_err(|_| Failure::Runtime {
@@ -219,6 +242,7 @@ impl Vm {
         match &stmt.node {
             ShellStmt::FailRegex(expr) => {
                 let pat = interpolate(expr, &self.vars).await;
+                self.emit_event(LogEventKind::FailPatternSet { pattern: pat.clone() }).await;
                 let re = Regex::new(&pat).map_err(|e| Failure::Runtime {
                     message: format!("invalid fail regex: {}", regex_error_summary(&e)),
                     span: Some(expr.span.clone()),
@@ -229,6 +253,7 @@ impl Vm {
             }
             ShellStmt::FailLiteral(expr) => {
                 let pat = interpolate(expr, &self.vars).await;
+                self.emit_event(LogEventKind::FailPatternSet { pattern: pat.clone() }).await;
                 let _ = self.fail_watcher_tx.send(Some(FailPattern::Literal(pat)));
                 Ok(String::new())
             }
@@ -242,11 +267,19 @@ impl Vm {
                 } else {
                     String::new()
                 };
+                self.emit_event(LogEventKind::VarLet {
+                    name: decl.name.node.clone(),
+                    value: value.clone(),
+                }).await;
                 self.vars.let_insert(decl.name.node.clone(), value.clone());
                 Ok(value)
             }
             ShellStmt::Assign(assign) => {
                 let value = self.eval_expr(&assign.value).await?;
+                self.emit_event(LogEventKind::VarAssign {
+                    name: assign.name.node.clone(),
+                    value: value.clone(),
+                }).await;
                 let _ = self.vars.assign(&assign.name.node, value.clone()).await;
                 Ok(value)
             }
@@ -267,6 +300,7 @@ impl Vm {
                 let payload = interpolate(s, &self.vars).await;
                 self.send_bytes(format!("{payload}\n").as_bytes(), expr.span.clone())
                     .await?;
+                self.emit_event(LogEventKind::Send { data: payload.clone() }).await;
                 self.emit_progress(ProgressEvent::Send);
                 Ok(payload)
             }
@@ -274,13 +308,17 @@ impl Vm {
                 let payload = interpolate(s, &self.vars).await;
                 self.send_bytes(payload.as_bytes(), expr.span.clone())
                     .await?;
+                self.emit_event(LogEventKind::Send { data: payload.clone() }).await;
                 self.emit_progress(ProgressEvent::Send);
                 Ok(payload)
             }
             Expr::MatchLiteral(s) => {
                 let pattern = interpolate(s, &self.vars).await;
+                self.emit_event(LogEventKind::MatchStart { pattern: pattern.clone(), is_regex: false }).await;
                 self.emit_progress(ProgressEvent::MatchStart);
+                let match_start = Instant::now();
                 let (start, end) = self.wait_for_literal(&pattern, expr.span.clone()).await?;
+                self.emit_event(LogEventKind::MatchDone { matched: pattern.clone(), elapsed: match_start.elapsed() }).await;
                 self.emit_progress(ProgressEvent::MatchDone);
                 self.cursor = end.max(start);
                 Ok(pattern)
@@ -292,13 +330,16 @@ impl Vm {
                     span: Some(s.span.clone()),
                     shell: Some(self.shell_name.clone()),
                 })?;
+                self.emit_event(LogEventKind::MatchStart { pattern: pattern.clone(), is_regex: true }).await;
                 self.emit_progress(ProgressEvent::MatchStart);
+                let match_start = Instant::now();
                 let (_start, end, captures) = self
                     .wait_for_regex(&pattern, &re, expr.span.clone())
                     .await?;
+                let full = captures.get("0").cloned().unwrap_or_default();
+                self.emit_event(LogEventKind::MatchDone { matched: full.clone(), elapsed: match_start.elapsed() }).await;
                 self.emit_progress(ProgressEvent::MatchDone);
                 self.cursor = end;
-                let full = captures.get("0").cloned().unwrap_or_default();
                 self.vars.set_captures(captures);
                 Ok(full)
             }
@@ -339,6 +380,7 @@ impl Vm {
                     (func.params.clone(), func.body.clone())
                 };
 
+                self.emit_event(LogEventKind::FnEnter { name: call.name.node.clone() }).await;
                 self.emit_progress(ProgressEvent::FnEnter(call.name.node.clone()));
                 self.vars.push_frame();
                 for (param, value) in params.iter().zip(evaluated_args.into_iter()) {
@@ -349,6 +391,7 @@ impl Vm {
                     last = self.exec_stmt(stmt).await?;
                 }
                 self.vars.pop_frame();
+                self.emit_event(LogEventKind::FnExit).await;
                 self.emit_progress(ProgressEvent::FnExit);
                 Ok(last)
             }
@@ -373,16 +416,18 @@ impl Vm {
             }
         };
 
-        tokio::time::timeout(self.timeout, fut)
-            .await
-            .map_err(|_| {
+        match tokio::time::timeout(self.timeout, fut).await {
+            Ok(result) => result,
+            Err(_) => {
                 self.emit_progress(ProgressEvent::Timeout);
-                Failure::MatchTimeout {
+                self.emit_event(LogEventKind::Timeout { pattern: pattern.to_string() }).await;
+                Err(Failure::MatchTimeout {
                     pattern: pattern.to_string(),
                     span,
                     shell: self.shell_name.clone(),
-                }
-            })?
+                })
+            }
+        }
     }
 
     async fn wait_for_regex(
@@ -401,22 +446,28 @@ impl Vm {
             }
         };
 
-        tokio::time::timeout(self.timeout, fut)
-            .await
-            .map_err(|_| {
+        match tokio::time::timeout(self.timeout, fut).await {
+            Ok(result) => result,
+            Err(_) => {
                 self.emit_progress(ProgressEvent::Timeout);
-                Failure::MatchTimeout {
+                self.emit_event(LogEventKind::Timeout { pattern: pattern.to_string() }).await;
+                Err(Failure::MatchTimeout {
                     pattern: pattern.to_string(),
                     span,
                     shell: self.shell_name.clone(),
-                }
-            })?
+                })
+            }
+        }
     }
 
     async fn check_fail(&self, span: Span) -> Result<(), Failure> {
         if self.fail_triggered.load(Ordering::Relaxed) {
             self.emit_progress(ProgressEvent::FailPattern);
             let detail = self.fail_detail.lock().await.clone().unwrap_or_default();
+            self.emit_event(LogEventKind::FailPatternTriggered {
+                pattern: detail.0.clone(),
+                matched_line: detail.1.clone(),
+            }).await;
             return Err(Failure::FailPatternMatched {
                 pattern: detail.0,
                 matched_line: detail.1,
@@ -435,7 +486,9 @@ impl Vm {
                 shell: self.shell_name.clone(),
                 exit_code: e.raw_os_error(),
                 span,
-            })
+            })?;
+        self.shell_log.lock().await.log_stdin(data);
+        Ok(())
     }
 
     pub async fn output_snapshot(&self) -> Vec<u8> {
@@ -453,6 +506,14 @@ impl Vm {
     pub async fn shutdown(mut self) {
         let _ = self.child.kill().await;
         self.read_task.abort();
+    }
+}
+
+impl Vm {
+    async fn emit_event(&self, kind: LogEventKind) {
+        if let Some(ec) = &self.event_collector {
+            ec.push(&self.shell_name, kind).await;
+        }
     }
 }
 

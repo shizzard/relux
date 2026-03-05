@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::dsl::resolver::ir::{SourceMap, Span};
@@ -35,6 +36,7 @@ pub struct TestResult {
     pub duration: Duration,
     pub shell_logs: HashMap<String, Vec<u8>>,
     pub progress: String,
+    pub log_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]

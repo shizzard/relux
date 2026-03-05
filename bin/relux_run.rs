@@ -3,6 +3,7 @@ use std::{env, fs, path::PathBuf, process};
 use chrono::Utc;
 use relux::dsl::report::print_diagnostics;
 use relux::dsl::resolver::resolve;
+use relux::runtime::html::generate_run_summary;
 use relux::runtime::result::Reporter;
 use relux::runtime::{RunContext, Runtime};
 
@@ -21,7 +22,7 @@ async fn main() {
     });
     let roots: Vec<PathBuf> = args.iter().map(PathBuf::from).collect();
 
-    let run_context = create_run_context(&project_root).unwrap_or_else(|e| {
+    let run_context = create_run_context(&project_root, project_root.clone()).unwrap_or_else(|e| {
         eprintln!("error: cannot create relux run directories: {e}");
         process::exit(1);
     });
@@ -35,6 +36,7 @@ async fn main() {
     let runtime = Runtime::new(source_map, run_context);
     let results = runtime.run(plans).await;
     Reporter::print(&results, runtime.source_map());
+    generate_run_summary(runtime.run_dir(), &results);
 
     let failed = results
         .iter()
@@ -44,7 +46,10 @@ async fn main() {
     }
 }
 
-fn create_run_context(project_root: &std::path::Path) -> Result<RunContext, std::io::Error> {
+fn create_run_context(
+    project_root: &std::path::Path,
+    project_root_owned: PathBuf,
+) -> Result<RunContext, std::io::Error> {
     let out_root = project_root.join("relux-out");
     fs::create_dir_all(&out_root)?;
 
@@ -57,9 +62,19 @@ fn create_run_context(project_root: &std::path::Path) -> Result<RunContext, std:
         match fs::create_dir(&run_dir) {
             Ok(()) => {
                 fs::create_dir_all(&artifacts_dir)?;
+
+                let latest = out_root.join("latest");
+                let _ = fs::remove_file(&latest);
+                #[cfg(unix)]
+                {
+                    std::os::unix::fs::symlink(&run_dir, &latest)?;
+                }
+
                 return Ok(RunContext {
                     run_id,
+                    run_dir,
                     artifacts_dir,
+                    project_root: project_root_owned,
                 });
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
