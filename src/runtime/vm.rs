@@ -11,6 +11,7 @@ use tokio::sync::{Mutex, Notify, watch};
 use crate::dsl::resolver::ir::{self, Expr, ShellStmt, Span, Spanned};
 use crate::runtime::result::Failure;
 use crate::runtime::vars::{VariableStack, interpolate};
+use crate::runtime::bifs::VmContext;
 use crate::runtime::progress::{ProgressEvent, ProgressTx};
 use crate::runtime::{Callable, CodeServer, DEFAULT_SHELL_PROMPT};
 
@@ -441,12 +442,6 @@ impl Vm {
         self.output_buf.snapshot().await
     }
 
-    pub(crate) fn emit_progress(&self, event: ProgressEvent) {
-        if let Some(tx) = &self.progress_tx {
-            let _ = tx.send(event);
-        }
-    }
-
     pub async fn reset_for_reuse(&mut self, timeout: Duration) {
         self.timeout = timeout;
         self.cursor = 0;
@@ -458,6 +453,14 @@ impl Vm {
     pub async fn shutdown(mut self) {
         let _ = self.child.kill().await;
         self.read_task.abort();
+    }
+}
+
+impl VmContext for Vm {
+    fn emit_progress(&self, event: ProgressEvent) {
+        if let Some(tx) = &self.progress_tx {
+            let _ = tx.send(event);
+        }
     }
 }
 

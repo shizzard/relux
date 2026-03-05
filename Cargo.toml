@@ -26,11 +26,11 @@ daggy = { version = "~0.9" }
 humantime = { version = "~2.3" }
 tokio = { version = "1", features = ["full"] }
 pty-process = { version = "~0.5", features = ["async"] }
-regex = "1"
-async-recursion = "1"
-chrono = "0.4"
-rand = "0.9"
-bs58 = "0.5"
-ariadne = "~0.4"
-async-trait = "0.1"
-uuid = { version = "1", features = ["v4"] }
+regex = "~1"
+async-recursion = "~1"
+chrono = "~0.4"
+rand = "~0.10"
+bs58 = "~0.5"
+ariadne = "~0.6"
+async-trait = "~0.1"
+uuid = { version = "~1", features = ["v4"] }

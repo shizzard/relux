@@ -76,7 +76,7 @@ fn render_diagnostic(
             let err_span = error.span();
             let span = (path.clone(), err_span.start..err_span.end);
 
-            let mut builder = Report::build(ReportKind::Error, path, err_span.start)
+            let mut builder = Report::build(ReportKind::Error, span.clone())
                 .with_config(cfg)
                 .with_message("unexpected token")
                 .with_label(Label::new(span).with_message("this token is unexpected"));
@@ -94,8 +94,8 @@ fn render_diagnostic(
             referenced_from,
         } => {
             let (path, range) = aspan(referenced_from, source_map);
-            let span = (path.clone(), range.clone());
-            let _ = Report::build(ReportKind::Error, path, range.start)
+            let span = (path, range);
+            let _ = Report::build(ReportKind::Error, span.clone())
                 .with_config(cfg)
                 .with_message(format!("module not found: {mod_path}"))
                 .with_label(Label::new(span).with_message("imported here"))
@@ -114,8 +114,8 @@ fn render_diagnostic(
             available_arities,
         } => {
             let (path, range) = aspan(span, source_map);
-            let s = (path.clone(), range.clone());
-            let mut builder = Report::build(ReportKind::Error, path, range.start)
+            let s = (path, range);
+            let mut builder = Report::build(ReportKind::Error, s.clone())
                 .with_config(cfg)
                 .with_message(format!("undefined name `{name}`"))
                 .with_label(Label::new(s).with_message("not found"));
@@ -145,10 +145,10 @@ fn render_diagnostic(
             };
             let (path1, range1) = aspan(first, source_map);
             let (path2, range2) = aspan(second, source_map);
-            let first_span = (path1.clone(), range1.clone());
-            let second_span = (path2.clone(), range2.clone());
+            let first_span = (path1, range1);
+            let second_span = (path2, range2);
 
-            let _ = Report::build(ReportKind::Error, path2, range2.start)
+            let _ = Report::build(ReportKind::Error, second_span.clone())
                 .with_config(cfg)
                 .with_message(&label)
                 .with_label(Label::new(second_span).with_message("redefined here"))
@@ -159,8 +159,8 @@ fn render_diagnostic(
 
         Diagnostic::UndefinedVariable { name, span } => {
             let (path, range) = aspan(span, source_map);
-            let s = (path.clone(), range.clone());
-            let _ = Report::build(ReportKind::Error, path, range.start)
+            let s = (path, range);
+            let _ = Report::build(ReportKind::Error, s.clone())
                 .with_config(cfg)
                 .with_message(format!("undefined variable `{name}`"))
                 .with_label(Label::new(s).with_message("not found in scope"))
@@ -175,8 +175,8 @@ fn render_diagnostic(
 
         Diagnostic::InvalidTimeout { raw, span } => {
             let (path, range) = aspan(span, source_map);
-            let s = (path.clone(), range.clone());
-            let _ = Report::build(ReportKind::Error, path, range.start)
+            let s = (path, range);
+            let _ = Report::build(ReportKind::Error, s.clone())
                 .with_config(cfg)
                 .with_message(format!("invalid timeout `{raw}`"))
                 .with_label(Label::new(s).with_message("invalid duration"))
@@ -191,8 +191,8 @@ fn render_diagnostic(
             span,
         } => {
             let (path, range) = aspan(span, source_map);
-            let s = (path.clone(), range.clone());
-            let _ = Report::build(ReportKind::Error, path, range.start)
+            let s = (path, range);
+            let _ = Report::build(ReportKind::Error, s.clone())
                 .with_config(cfg)
                 .with_message(format!("`{name}` is not exported"))
                 .with_label(Label::new(s).with_message("not found in module"))
@@ -215,8 +215,8 @@ fn render_failure(failure: &Failure, source_map: &SourceMap, cache: &mut impl ar
             shell,
         } => {
             let (path, range) = aspan(span, source_map);
-            let s = (path.clone(), range.clone());
-            let _ = Report::build(ReportKind::Error, path, range.start)
+            let s = (path, range);
+            let _ = Report::build(ReportKind::Error, s.clone())
                 .with_config(cfg)
                 .with_message(format!("match timeout in shell `{shell}`"))
                 .with_label(
@@ -233,8 +233,8 @@ fn render_failure(failure: &Failure, source_map: &SourceMap, cache: &mut impl ar
             shell,
         } => {
             let (path, range) = aspan(span, source_map);
-            let s = (path.clone(), range.clone());
-            let _ = Report::build(ReportKind::Error, path, range.start)
+            let s = (path, range);
+            let _ = Report::build(ReportKind::Error, s.clone())
                 .with_config(cfg)
                 .with_message(format!("fail pattern matched in shell `{shell}`"))
                 .with_label(
@@ -251,12 +251,12 @@ fn render_failure(failure: &Failure, source_map: &SourceMap, cache: &mut impl ar
             span,
         } => {
             let (path, range) = aspan(span, source_map);
-            let s = (path.clone(), range.clone());
+            let s = (path, range);
             let code_msg = match exit_code {
                 Some(c) => format!("with exit code {c}"),
                 None => "without an exit code".to_string(),
             };
-            let _ = Report::build(ReportKind::Error, path, range.start)
+            let _ = Report::build(ReportKind::Error, s.clone())
                 .with_config(cfg)
                 .with_message(format!("shell `{shell}` exited unexpectedly"))
                 .with_label(Label::new(s).with_message(code_msg))
@@ -277,8 +277,8 @@ fn render_failure(failure: &Failure, source_map: &SourceMap, cache: &mut impl ar
             let has_detail = message.contains('\n');
             if let Some(span) = span {
                 let (path, range) = aspan(span, source_map);
-                let s = (path.clone(), range.clone());
-                let mut builder = Report::build(ReportKind::Error, path, range.start)
+                let s = (path, range);
+                let mut builder = Report::build(ReportKind::Error, s.clone())
                     .with_config(cfg)
                     .with_message(&msg)
                     .with_label(Label::new(s).with_message(first_line));

@@ -3,13 +3,16 @@ use async_trait::async_trait;
 use crate::dsl::resolver::ir::Span;
 use crate::runtime::progress::ProgressEvent;
 use crate::runtime::result::Failure;
-use crate::runtime::vm::Vm;
+
+pub trait VmContext: Send {
+    fn emit_progress(&self, event: ProgressEvent);
+}
 
 #[async_trait]
 pub trait Bif: Send + Sync {
     fn name(&self) -> &str;
     fn arity(&self) -> usize;
-    async fn call(&self, vm: &mut Vm, args: Vec<String>, span: &Span) -> Result<String, Failure>;
+    async fn call(&self, vm: &mut dyn VmContext, args: Vec<String>, span: &Span) -> Result<String, Failure>;
 }
 
 pub fn lookup(name: &str, arity: usize) -> Option<Box<dyn Bif>> {
@@ -47,7 +50,7 @@ impl Bif for Sleep {
     fn name(&self) -> &str { "sleep" }
     fn arity(&self) -> usize { 1 }
 
-    async fn call(&self, vm: &mut Vm, args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(&self, vm: &mut dyn VmContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
         let duration = humantime::parse_duration(args[0].trim())
             .map_err(|_| runtime_error(format!("invalid duration: `{}`", args[0]), span))?;
         vm.emit_progress(ProgressEvent::SleepStart);
@@ -66,7 +69,7 @@ impl Bif for Annotate {
     fn name(&self) -> &str { "annotate" }
     fn arity(&self) -> usize { 1 }
 
-    async fn call(&self, vm: &mut Vm, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(&self, vm: &mut dyn VmContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
         let text = args[0].clone();
         vm.emit_progress(ProgressEvent::Annotation(text.clone()));
         Ok(text)
@@ -82,8 +85,7 @@ impl Bif for Log {
     fn name(&self) -> &str { "log" }
     fn arity(&self) -> usize { 1 }
 
-    async fn call(&self, _vm: &mut Vm, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
-        // Placeholder: stores the message for future run-log integration.
+    async fn call(&self, _vm: &mut dyn VmContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
         Ok(args[0].clone())
     }
 }
@@ -97,7 +99,7 @@ impl Bif for Trim {
     fn name(&self) -> &str { "trim" }
     fn arity(&self) -> usize { 1 }
 
-    async fn call(&self, _vm: &mut Vm, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _vm: &mut dyn VmContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
         Ok(args[0].trim().to_string())
     }
 }
@@ -111,7 +113,7 @@ impl Bif for Upper {
     fn name(&self) -> &str { "upper" }
     fn arity(&self) -> usize { 1 }
 
-    async fn call(&self, _vm: &mut Vm, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _vm: &mut dyn VmContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
         Ok(args[0].to_uppercase())
     }
 }
@@ -125,7 +127,7 @@ impl Bif for Lower {
     fn name(&self) -> &str { "lower" }
     fn arity(&self) -> usize { 1 }
 
-    async fn call(&self, _vm: &mut Vm, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _vm: &mut dyn VmContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
         Ok(args[0].to_lowercase())
     }
 }
@@ -139,7 +141,7 @@ impl Bif for Replace {
     fn name(&self) -> &str { "replace" }
     fn arity(&self) -> usize { 3 }
 
-    async fn call(&self, _vm: &mut Vm, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _vm: &mut dyn VmContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
         Ok(args[0].replace(&args[1], &args[2]))
     }
 }
@@ -153,7 +155,7 @@ impl Bif for Split {
     fn name(&self) -> &str { "split" }
     fn arity(&self) -> usize { 3 }
 
-    async fn call(&self, _vm: &mut Vm, args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _vm: &mut dyn VmContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
         let index: usize = args[2].parse()
             .map_err(|_| runtime_error(format!("invalid index: `{}`", args[2]), span))?;
         let parts: Vec<&str> = args[0].split(&args[1]).collect();
@@ -170,7 +172,7 @@ impl Bif for Len {
     fn name(&self) -> &str { "len" }
     fn arity(&self) -> usize { 1 }
 
-    async fn call(&self, _vm: &mut Vm, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _vm: &mut dyn VmContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
         Ok(args[0].len().to_string())
     }
 }
@@ -184,7 +186,7 @@ impl Bif for Uuid {
     fn name(&self) -> &str { "uuid" }
     fn arity(&self) -> usize { 0 }
 
-    async fn call(&self, _vm: &mut Vm, _args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _vm: &mut dyn VmContext, _args: Vec<String>, _span: &Span) -> Result<String, Failure> {
         Ok(uuid::Uuid::new_v4().to_string())
     }
 }
@@ -198,7 +200,7 @@ impl Bif for Rand {
     fn name(&self) -> &str { "rand" }
     fn arity(&self) -> usize { 1 }
 
-    async fn call(&self, _vm: &mut Vm, args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _vm: &mut dyn VmContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
         let n = parse_length(&args[0], span)?;
         Ok(random_string(n, ALPHANUM))
     }
@@ -211,7 +213,7 @@ impl Bif for RandWithMode {
     fn name(&self) -> &str { "rand" }
     fn arity(&self) -> usize { 2 }
 
-    async fn call(&self, _vm: &mut Vm, args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _vm: &mut dyn VmContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
         let n = parse_length(&args[0], span)?;
         let charset = match args[1].as_str() {
             "alpha" => ALPHA,
@@ -242,9 +244,177 @@ fn parse_length(s: &str, span: &Span) -> Result<usize, Failure> {
 }
 
 fn random_string(len: usize, charset: &[u8]) -> String {
-    use rand::Rng;
+    use rand::RngExt;
     let mut rng = rand::rng();
     (0..len)
         .map(|_| charset[rng.random_range(0..charset.len())] as char)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct DummyVm;
+
+    impl VmContext for DummyVm {
+        fn emit_progress(&self, _event: ProgressEvent) {}
+    }
+
+    fn dummy_span() -> Span {
+        Span::new(0, 0..0)
+    }
+
+    #[tokio::test]
+    async fn test_trim() {
+        let mut vm = DummyVm;
+        let r = Trim.call(&mut vm, vec!["  hello  ".into()], &dummy_span()).await.unwrap();
+        assert_eq!(r, "hello");
+    }
+
+    #[tokio::test]
+    async fn test_upper() {
+        let mut vm = DummyVm;
+        let r = Upper.call(&mut vm, vec!["hello".into()], &dummy_span()).await.unwrap();
+        assert_eq!(r, "HELLO");
+    }
+
+    #[tokio::test]
+    async fn test_lower() {
+        let mut vm = DummyVm;
+        let r = Lower.call(&mut vm, vec!["HELLO".into()], &dummy_span()).await.unwrap();
+        assert_eq!(r, "hello");
+    }
+
+    #[tokio::test]
+    async fn test_replace() {
+        let mut vm = DummyVm;
+        let r = Replace
+            .call(&mut vm, vec!["hello world".into(), "world".into(), "relux".into()], &dummy_span())
+            .await
+            .unwrap();
+        assert_eq!(r, "hello relux");
+    }
+
+    #[tokio::test]
+    async fn test_split() {
+        let mut vm = DummyVm;
+        let r = Split
+            .call(&mut vm, vec!["a,b,c".into(), ",".into(), "1".into()], &dummy_span())
+            .await
+            .unwrap();
+        assert_eq!(r, "b");
+    }
+
+    #[tokio::test]
+    async fn test_split_out_of_bounds() {
+        let mut vm = DummyVm;
+        let r = Split
+            .call(&mut vm, vec!["a,b".into(), ",".into(), "5".into()], &dummy_span())
+            .await
+            .unwrap();
+        assert_eq!(r, "");
+    }
+
+    #[tokio::test]
+    async fn test_split_invalid_index() {
+        let mut vm = DummyVm;
+        let r = Split
+            .call(&mut vm, vec!["a,b".into(), ",".into(), "xyz".into()], &dummy_span())
+            .await;
+        assert!(r.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_len() {
+        let mut vm = DummyVm;
+        let r = Len.call(&mut vm, vec!["hello".into()], &dummy_span()).await.unwrap();
+        assert_eq!(r, "5");
+    }
+
+    #[tokio::test]
+    async fn test_uuid() {
+        let mut vm = DummyVm;
+        let r = Uuid.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        assert_eq!(r.len(), 36);
+        assert!(uuid::Uuid::parse_str(&r).is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_rand_default() {
+        let mut vm = DummyVm;
+        let r = Rand.call(&mut vm, vec!["8".into()], &dummy_span()).await.unwrap();
+        assert_eq!(r.len(), 8);
+        assert!(r.chars().all(|c| c.is_ascii_alphanumeric()));
+    }
+
+    #[tokio::test]
+    async fn test_rand_hex() {
+        let mut vm = DummyVm;
+        let r = RandWithMode
+            .call(&mut vm, vec!["6".into(), "hex".into()], &dummy_span())
+            .await
+            .unwrap();
+        assert_eq!(r.len(), 6);
+        assert!(r.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[tokio::test]
+    async fn test_rand_bin() {
+        let mut vm = DummyVm;
+        let r = RandWithMode
+            .call(&mut vm, vec!["8".into(), "bin".into()], &dummy_span())
+            .await
+            .unwrap();
+        assert_eq!(r.len(), 8);
+        assert!(r.chars().all(|c| c == '0' || c == '1'));
+    }
+
+    #[tokio::test]
+    async fn test_rand_invalid_mode() {
+        let mut vm = DummyVm;
+        let r = RandWithMode
+            .call(&mut vm, vec!["4".into(), "nope".into()], &dummy_span())
+            .await;
+        assert!(r.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_rand_invalid_length() {
+        let mut vm = DummyVm;
+        let r = Rand.call(&mut vm, vec!["abc".into()], &dummy_span()).await;
+        assert!(r.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_log() {
+        let mut vm = DummyVm;
+        let r = Log.call(&mut vm, vec!["a message".into()], &dummy_span()).await.unwrap();
+        assert_eq!(r, "a message");
+    }
+
+    #[tokio::test]
+    async fn test_annotate() {
+        let mut vm = DummyVm;
+        let r = Annotate.call(&mut vm, vec!["note".into()], &dummy_span()).await.unwrap();
+        assert_eq!(r, "note");
+    }
+
+    #[tokio::test]
+    async fn test_sleep_invalid_duration() {
+        let mut vm = DummyVm;
+        let r = Sleep.call(&mut vm, vec!["not-a-duration".into()], &dummy_span()).await;
+        assert!(r.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_lookup() {
+        assert!(lookup("trim", 1).is_some());
+        assert!(lookup("upper", 1).is_some());
+        assert!(lookup("rand", 1).is_some());
+        assert!(lookup("rand", 2).is_some());
+        assert!(lookup("uuid", 0).is_some());
+        assert!(lookup("nonexistent", 0).is_none());
+        assert!(lookup("trim", 2).is_none());
+    }
 }
