@@ -184,9 +184,14 @@ mod tests {
         lex(input).into_iter().map(|s| s.node).collect()
     }
 
+    fn spans(input: &str) -> Vec<std::ops::Range<usize>> {
+        lex(input).into_iter().map(|s| s.span).collect()
+    }
+
     #[test]
     fn test_import_selective() {
-        let toks = tokens("import lib/module1 { foo, bar as b, StartDb as Db }\n");
+        let input = "import lib/module1 { foo, bar as b, StartDb as Db }\n";
+        let toks = tokens(input);
         assert_eq!(
             toks,
             vec![
@@ -206,47 +211,30 @@ mod tests {
                 Token::Newline,
             ]
         );
-    }
-
-    #[test]
-    fn test_import_selective_multiline() {
-        let toks = tokens("import lib/module1 {\n foo,\n bar as b\n}\n");
-        assert_eq!(
-            toks,
-            vec![
-                Token::Import,
-                Token::ModulePath("lib/module1"),
-                Token::BraceOpen,
-                Token::Newline,
-                Token::Ident("foo"),
-                Token::Comma,
-                Token::Newline,
-                Token::Ident("bar"),
-                Token::As,
-                Token::Ident("b"),
-                Token::Newline,
-                Token::BraceClose,
-                Token::Newline,
-            ]
-        );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..6);   // import
+        assert_eq!(sp[1], 7..18);  // lib/module1
+        assert_eq!(sp[2], 19..20); // {
+        assert_eq!(sp[3], 21..24); // foo
+        assert_eq!(sp[12], 50..51); // }
+        assert_eq!(sp[13], 51..52); // \n
     }
 
     #[test]
     fn test_import_wildcard() {
-        let toks = tokens("import lib/module2\n");
-        assert_eq!(
-            toks,
-            vec![
-                Token::Import,
-                Token::ModulePath("lib/module2"),
-                Token::Newline
-            ]
-        );
+        let input = "import lib/module2\n";
+        let toks = tokens(input);
+        assert_eq!(toks, vec![Token::Import, Token::ModulePath("lib/module2"), Token::Newline]);
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..6);   // import
+        assert_eq!(sp[1], 7..18);  // lib/module2
+        assert_eq!(sp[2], 18..19); // \n
     }
 
     #[test]
     fn test_send_with_interp() {
-        let toks = tokens("> echo ${name}\n");
+        let input = "> echo ${name}\n";
+        let toks = tokens(input);
         assert_eq!(
             toks,
             vec![Token::Send(vec![
@@ -254,60 +242,116 @@ mod tests {
                 PayloadFragment::Interpolation("name"),
             ])]
         );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..input.len());
     }
 
     #[test]
     fn test_send_strict_space() {
-        let toks = tokens("> hello\n");
-        assert_eq!(
-            toks,
-            vec![Token::Send(vec![PayloadFragment::Text(" hello")])]
-        );
+        let input = "> hello\n";
+        let toks = tokens(input);
+        assert_eq!(toks, vec![Token::Send(vec![PayloadFragment::Text(" hello")])]);
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..input.len());
     }
 
     #[test]
     fn test_match_regex() {
-        let toks = tokens("<? listening on port (\\d+)\n");
+        let input = "<? listening on port (\\d+)\n";
+        let toks = tokens(input);
         assert_eq!(
             toks,
             vec![Token::MatchRegex(vec![PayloadFragment::Text(
                 " listening on port (\\d+)"
-            ),])]
+            )])]
         );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..input.len());
     }
 
     #[test]
-    fn test_match_regex_span() {
-        let input = "<? listening on port (\\d+)\n";
-        let spanned = lex(input);
-        assert_eq!(spanned.len(), 1);
-        assert_eq!(spanned[0].span, 0..input.len()); // callback consumes trailing \n
+    fn test_match_literal() {
+        let input = "<= hello world\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![Token::MatchLiteral(vec![PayloadFragment::Text(" hello world")])]
+        );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..input.len());
+    }
+
+    #[test]
+    fn test_send_raw() {
+        let input = "=> partial\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![Token::SendRaw(vec![PayloadFragment::Text(" partial")])]
+        );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..input.len());
+    }
+
+    #[test]
+    fn test_fail_regex() {
+        let input = "!? [Ee]rror|FATAL\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![Token::FailRegex(vec![PayloadFragment::Text(" [Ee]rror|FATAL")])]
+        );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..input.len());
+    }
+
+    #[test]
+    fn test_fail_literal() {
+        let input = "!= error\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![Token::FailLiteral(vec![PayloadFragment::Text(" error")])]
+        );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..input.len());
     }
 
     #[test]
     fn test_timeout() {
-        let toks = tokens("~10s\n");
+        let input = "~10s\n";
+        let toks = tokens(input);
         assert_eq!(toks, vec![Token::Timeout("10s"), Token::Newline]);
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..4);  // ~10s
+        assert_eq!(sp[1], 4..5); // \n
     }
 
     #[test]
     fn test_timeout_compound() {
-        let toks = tokens("~2h 30m 12s\n");
+        let input = "~2h 30m 12s\n";
+        let toks = tokens(input);
         assert_eq!(toks, vec![Token::Timeout("2h 30m 12s"), Token::Newline]);
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..11);  // ~2h 30m 12s
+        assert_eq!(sp[1], 11..12); // \n
     }
 
     #[test]
     fn test_docstring() {
-        let toks = tokens("\"\"\"\nhello world\n\"\"\"\n");
-        assert_eq!(
-            toks,
-            vec![Token::DocString(vec!["\nhello world\n"]), Token::Newline]
-        );
+        let input = "\"\"\"\nhello world\n\"\"\"\n";
+        assert_eq!(input.len(), 20);
+        let toks = tokens(input);
+        assert_eq!(toks, vec![Token::DocString(vec!["\nhello world\n"]), Token::Newline]);
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..19);  // """..."""
+        assert_eq!(sp[1], 19..20); // \n
     }
 
     #[test]
     fn test_fn_decl() {
-        let toks = tokens("fn foo(a, b) {\n");
+        let input = "fn foo(a, b) {\n";
+        let toks = tokens(input);
         assert_eq!(
             toks,
             vec![
@@ -322,11 +366,22 @@ mod tests {
                 Token::Newline,
             ]
         );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..2);   // fn
+        assert_eq!(sp[1], 3..6);   // foo
+        assert_eq!(sp[2], 6..7);   // (
+        assert_eq!(sp[3], 7..8);   // a
+        assert_eq!(sp[4], 8..9);   // ,
+        assert_eq!(sp[5], 10..11); // b
+        assert_eq!(sp[6], 11..12); // )
+        assert_eq!(sp[7], 13..14); // {
+        assert_eq!(sp[8], 14..15); // \n
     }
 
     #[test]
     fn test_effect_head() {
-        let toks = tokens("effect StartDb -> shell db {\n");
+        let input = "effect StartDb -> shell db {\n";
+        let toks = tokens(input);
         assert_eq!(
             toks,
             vec![
@@ -339,36 +394,35 @@ mod tests {
                 Token::Newline,
             ]
         );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..6);   // effect
+        assert_eq!(sp[1], 7..14);  // StartDb
+        assert_eq!(sp[2], 15..17); // ->
+        assert_eq!(sp[3], 18..23); // shell
+        assert_eq!(sp[4], 24..26); // db
+        assert_eq!(sp[5], 27..28); // {
+        assert_eq!(sp[6], 28..29); // \n
     }
 
     #[test]
     fn test_need_with_overlay() {
-        let toks = tokens("need E3 {\n");
+        let input = "need E3 {\n";
+        let toks = tokens(input);
         assert_eq!(
             toks,
-            vec![
-                Token::Need,
-                Token::EffectIdent("E3"),
-                Token::BraceOpen,
-                Token::Newline,
-            ]
+            vec![Token::Need, Token::EffectIdent("E3"), Token::BraceOpen, Token::Newline]
         );
-    }
-
-    #[test]
-    fn test_fail_pattern() {
-        let toks = tokens("!? [Ee]rror|FATAL\n");
-        assert_eq!(
-            toks,
-            vec![Token::FailRegex(vec![PayloadFragment::Text(
-                " [Ee]rror|FATAL"
-            ),])]
-        );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..4);  // need
+        assert_eq!(sp[1], 5..7);  // E3
+        assert_eq!(sp[2], 8..9);  // {
+        assert_eq!(sp[3], 9..10); // \n
     }
 
     #[test]
     fn test_comment_preserved() {
-        let toks = tokens("# this is a comment\nlet x\n");
+        let input = "# this is a comment\nlet x\n";
+        let toks = tokens(input);
         assert_eq!(
             toks,
             vec![
@@ -379,26 +433,38 @@ mod tests {
                 Token::Newline,
             ]
         );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..19);  // # this is a comment
+        assert_eq!(sp[1], 19..20); // \n
+        assert_eq!(sp[2], 20..23); // let
+        assert_eq!(sp[3], 24..25); // x
+        assert_eq!(sp[4], 25..26); // \n
     }
 
     #[test]
     fn test_comment_no_space() {
-        let toks = tokens("#compact comment\n");
-        assert_eq!(
-            toks,
-            vec![Token::Comment("compact comment"), Token::Newline]
-        );
+        let input = "#compact comment\n";
+        let toks = tokens(input);
+        assert_eq!(toks, vec![Token::Comment("compact comment"), Token::Newline]);
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..16);  // #compact comment
+        assert_eq!(sp[1], 16..17); // \n
     }
 
     #[test]
     fn test_comment_empty() {
-        let toks = tokens("#\n");
+        let input = "#\n";
+        let toks = tokens(input);
         assert_eq!(toks, vec![Token::Comment(""), Token::Newline]);
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..1); // #
+        assert_eq!(sp[1], 1..2); // \n
     }
 
     #[test]
     fn test_comment_inline_after_code() {
-        let toks = tokens("let x # trailing comment\n");
+        let input = "let x # trailing comment\n";
+        let toks = tokens(input);
         assert_eq!(
             toks,
             vec![
@@ -408,20 +474,27 @@ mod tests {
                 Token::Newline,
             ]
         );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..3);   // let
+        assert_eq!(sp[1], 4..5);   // x
+        assert_eq!(sp[2], 6..24);  // # trailing comment
+        assert_eq!(sp[3], 24..25); // \n
     }
 
     #[test]
     fn test_comment_with_symbols() {
-        let toks = tokens("# > this is not a send\n");
-        assert_eq!(
-            toks,
-            vec![Token::Comment(" > this is not a send"), Token::Newline]
-        );
+        let input = "# > this is not a send\n";
+        let toks = tokens(input);
+        assert_eq!(toks, vec![Token::Comment(" > this is not a send"), Token::Newline]);
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..22);  // # > this is not a send
+        assert_eq!(sp[1], 22..23); // \n
     }
 
     #[test]
     fn test_escaped_dollar_in_payload() {
-        let toks = tokens("> echo $$HOME\n");
+        let input = "> echo $$HOME\n";
+        let toks = tokens(input);
         assert_eq!(
             toks,
             vec![Token::Send(vec![
@@ -430,11 +503,14 @@ mod tests {
                 PayloadFragment::Text("HOME"),
             ])]
         );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..input.len());
     }
 
     #[test]
     fn test_let_with_string() {
-        let toks = tokens("let x = \"foo\"\n");
+        let input = "let x = \"foo\"\n";
+        let toks = tokens(input);
         assert_eq!(
             toks,
             vec![
@@ -445,11 +521,18 @@ mod tests {
                 Token::Newline,
             ]
         );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..3);   // let
+        assert_eq!(sp[1], 4..5);   // x
+        assert_eq!(sp[2], 6..7);   // =
+        assert_eq!(sp[3], 8..13);  // "foo"
+        assert_eq!(sp[4], 13..14); // \n
     }
 
     #[test]
     fn test_let_with_interp_string() {
-        let toks = tokens("let x = \"hello ${name}\"\n");
+        let input = "let x = \"hello ${name}\"\n";
+        let toks = tokens(input);
         assert_eq!(
             toks,
             vec![
@@ -463,11 +546,15 @@ mod tests {
                 Token::Newline,
             ]
         );
+        let sp = spans(input);
+        assert_eq!(sp[3], 8..23);  // "hello ${name}"
+        assert_eq!(sp[4], 23..24); // \n
     }
 
     #[test]
     fn test_braced_numeric_interp() {
-        let toks = tokens("let x = ${1}\n");
+        let input = "let x = ${1}\n";
+        let toks = tokens(input);
         assert_eq!(
             toks,
             vec![
@@ -478,11 +565,15 @@ mod tests {
                 Token::Newline,
             ]
         );
+        let sp = spans(input);
+        assert_eq!(sp[3], 8..12);  // ${1}
+        assert_eq!(sp[4], 12..13); // \n
     }
 
     #[test]
     fn test_bare_interp_in_payload() {
-        let toks = tokens("> echo $1\n");
+        let input = "> echo $1\n";
+        let toks = tokens(input);
         assert_eq!(
             toks,
             vec![Token::Send(vec![
@@ -490,11 +581,14 @@ mod tests {
                 PayloadFragment::Interpolation("1"),
             ])]
         );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..input.len());
     }
 
     #[test]
     fn test_bare_interp_in_string() {
-        let toks = tokens("let x = \"val=$1\"\n");
+        let input = "let x = \"val=$1\"\n";
+        let toks = tokens(input);
         assert_eq!(
             toks,
             vec![
@@ -508,12 +602,20 @@ mod tests {
                 Token::Newline,
             ]
         );
+        let sp = spans(input);
+        assert_eq!(sp[3], 8..16);  // "val=$1"
+        assert_eq!(sp[4], 16..17); // \n
     }
 
     #[test]
     fn test_let_uninitialized() {
-        let toks = tokens("let x\n");
+        let input = "let x\n";
+        let toks = tokens(input);
         assert_eq!(toks, vec![Token::Let, Token::Ident("x"), Token::Newline]);
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..3); // let
+        assert_eq!(sp[1], 4..5); // x
+        assert_eq!(sp[2], 5..6); // \n
     }
 
     #[test]
@@ -521,9 +623,11 @@ mod tests {
         let toks = lex("import !!!\n");
         assert_eq!(toks.len(), 3);
         assert_eq!(toks[0].node, Token::Import);
+        assert_eq!(toks[0].span, 0..6);
         assert_eq!(toks[1].node, Token::Unrecognized("!!!"));
         assert_eq!(toks[1].span, 7..10);
         assert_eq!(toks[2].node, Token::Newline);
+        assert_eq!(toks[2].span, 10..11);
     }
 
     #[test]
@@ -532,13 +636,17 @@ mod tests {
         assert_eq!(toks[0].node, Token::Unrecognized("!"));
         assert_eq!(toks[0].span, 0..1);
         assert_eq!(toks[1].node, Token::Import);
+        assert_eq!(toks[1].span, 2..8);
         assert_eq!(toks[2].node, Token::Unrecognized("!"));
         assert_eq!(toks[2].span, 9..10);
+        assert_eq!(toks[3].node, Token::Newline);
+        assert_eq!(toks[3].span, 10..11);
     }
 
     #[test]
     fn test_ident_vs_effect_ident() {
-        let toks = tokens("foo Bar _baz Qux\n");
+        let input = "foo Bar _baz Qux\n";
+        let toks = tokens(input);
         assert_eq!(
             toks,
             vec![
@@ -549,5 +657,20 @@ mod tests {
                 Token::Newline,
             ]
         );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..3);   // foo
+        assert_eq!(sp[1], 4..7);   // Bar
+        assert_eq!(sp[2], 8..12);  // _baz
+        assert_eq!(sp[3], 13..16); // Qux
+        assert_eq!(sp[4], 16..17); // \n
+    }
+
+    #[test]
+    fn test_payload_spans_in_sequence() {
+        let input = "> cmd1\n<? regex\n<= literal\n";
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..7);   // > cmd1\n   (7 bytes)
+        assert_eq!(sp[1], 7..16);  // <? regex\n (9 bytes)
+        assert_eq!(sp[2], 16..27); // <= literal\n (11 bytes)
     }
 }

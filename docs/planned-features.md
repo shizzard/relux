@@ -2,7 +2,6 @@
 
 - Pure functions: functions that disallow send and match operators, can only call other pure functions, and can be called outside of a shell context
 - Run logs: per-shell stdin/stdout/stderr logs, test log, match logs, written to the run output directory
-- Error reporting: annotated source snippets for both parser diagnostics and runtime failures
 - Unified binary: single `relux` binary combining all dump tools (token, AST, IR) and the test runner
 - Built-in functions: runtime-provided functions available without import, covering string manipulation, prompt matching, sleep, progress annotations, and other common utilities
 - Custom shell command: configurable executable for shell spawn, with a global default and per-shell override; introduces new syntax for shell block attributes
