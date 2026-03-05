@@ -8,6 +8,8 @@ pub enum ProgressEvent {
     Send,
     MatchStart,
     MatchDone,
+    SleepStart,
+    SleepDone,
     ShellSwitch(String),
     FnEnter(String),
     FnExit,
@@ -18,12 +20,18 @@ pub enum ProgressEvent {
     Failure,
     Error(String),
     Warning(String),
+    Annotation(String),
 }
 
 pub type ProgressTx = mpsc::UnboundedSender<ProgressEvent>;
 
 pub fn channel() -> (ProgressTx, mpsc::UnboundedReceiver<ProgressEvent>) {
     mpsc::unbounded_channel()
+}
+
+enum TimedWait {
+    Match,
+    Sleep,
 }
 
 /// Spawns the progress printer task. Returns a JoinHandle that resolves
@@ -33,22 +41,24 @@ pub fn spawn_printer(
 ) -> tokio::task::JoinHandle<String> {
     tokio::spawn(async move {
         let mut collected = String::new();
-        let mut match_start: Option<Instant> = None;
-        let mut last_tilde_count: usize = 0;
+        let mut timed: Option<(TimedWait, Instant)> = None;
+        let mut timed_tick_count: usize = 0;
 
         loop {
-            let event = if match_start.is_some() {
-                // While awaiting a match, use a 1-second timeout to emit tildes
+            let event = if timed.is_some() {
                 match tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv()).await {
                     Ok(Some(ev)) => Some(ev),
-                    Ok(None) => None, // channel closed
+                    Ok(None) => None,
                     Err(_) => {
-                        // Timeout elapsed -- emit a tilde for the waiting match
-                        if let Some(started) = match_start {
+                        if let Some((kind, started)) = &timed {
+                            let ch = match kind {
+                                TimedWait::Match => '~',
+                                TimedWait::Sleep => 'z',
+                            };
                             let elapsed_secs = started.elapsed().as_secs() as usize;
-                            while last_tilde_count < elapsed_secs {
-                                emit(&mut collected, '~');
-                                last_tilde_count += 1;
+                            while timed_tick_count < elapsed_secs {
+                                emit(&mut collected, ch);
+                                timed_tick_count += 1;
                             }
                         }
                         continue;
@@ -59,7 +69,7 @@ pub fn spawn_printer(
             };
 
             let Some(event) = event else {
-                break; // channel closed
+                break;
             };
 
             match event {
@@ -67,12 +77,19 @@ pub fn spawn_printer(
                     emit(&mut collected, '.');
                 }
                 ProgressEvent::MatchStart => {
-                    match_start = Some(Instant::now());
-                    last_tilde_count = 0;
+                    timed = Some((TimedWait::Match, Instant::now()));
+                    timed_tick_count = 0;
                 }
                 ProgressEvent::MatchDone => {
-                    match_start = None;
+                    timed = None;
                     emit(&mut collected, '.');
+                }
+                ProgressEvent::SleepStart => {
+                    timed = Some((TimedWait::Sleep, Instant::now()));
+                    timed_tick_count = 0;
+                }
+                ProgressEvent::SleepDone => {
+                    timed = None;
                 }
                 ProgressEvent::ShellSwitch(_) => {
                     emit(&mut collected, '|');
@@ -90,23 +107,29 @@ pub fn spawn_printer(
                     emit(&mut collected, 'c');
                 }
                 ProgressEvent::FailPattern => {
-                    match_start = None;
+                    timed = None;
                     emit(&mut collected, '!');
                 }
                 ProgressEvent::Timeout => {
-                    match_start = None;
+                    timed = None;
                     emit(&mut collected, 'T');
                 }
                 ProgressEvent::Failure => {
-                    match_start = None;
+                    timed = None;
                     emit(&mut collected, 'F');
                 }
                 ProgressEvent::Error(_) => {
-                    match_start = None;
+                    timed = None;
                     emit(&mut collected, 'E');
                 }
                 ProgressEvent::Warning(_) => {
                     emit(&mut collected, 'W');
+                }
+                ProgressEvent::Annotation(text) => {
+                    let s = format!("({text})");
+                    collected.push_str(&s);
+                    eprint!("{s}");
+                    let _ = std::io::stderr().flush();
                 }
             }
         }

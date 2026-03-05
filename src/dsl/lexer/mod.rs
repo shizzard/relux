@@ -673,4 +673,58 @@ mod tests {
         assert_eq!(sp[1], 7..16);  // <? regex\n (9 bytes)
         assert_eq!(sp[2], 16..27); // <= literal\n (11 bytes)
     }
+
+    #[test]
+    fn test_number_token() {
+        let input = "42\n";
+        let toks = tokens(input);
+        assert_eq!(toks, vec![Token::Number("42"), Token::Newline]);
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..2); // 42
+        assert_eq!(sp[1], 2..3); // \n
+    }
+
+    #[test]
+    fn test_number_with_idents() {
+        let input = "let x = 8\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![
+                Token::Let,
+                Token::Ident("x"),
+                Token::Eq,
+                Token::Number("8"),
+                Token::Newline,
+            ]
+        );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..3); // let
+        assert_eq!(sp[1], 4..5); // x
+        assert_eq!(sp[2], 6..7); // =
+        assert_eq!(sp[3], 8..9); // 8
+        assert_eq!(sp[4], 9..10); // \n
+    }
+
+    #[test]
+    fn test_number_in_call() {
+        let input = "rand(8)\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![
+                Token::Ident("rand"),
+                Token::ParenOpen,
+                Token::Number("8"),
+                Token::ParenClose,
+                Token::Newline,
+            ]
+        );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..4); // rand
+        assert_eq!(sp[1], 4..5); // (
+        assert_eq!(sp[2], 5..6); // 8
+        assert_eq!(sp[3], 6..7); // )
+        assert_eq!(sp[4], 7..8); // \n
+    }
 }

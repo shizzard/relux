@@ -12,7 +12,7 @@ use crate::dsl::resolver::ir::{self, Expr, ShellStmt, Span, Spanned};
 use crate::runtime::result::Failure;
 use crate::runtime::vars::{VariableStack, interpolate};
 use crate::runtime::progress::{ProgressEvent, ProgressTx};
-use crate::runtime::{CodeServer, DEFAULT_SHELL_PROMPT};
+use crate::runtime::{Callable, CodeServer, DEFAULT_SHELL_PROMPT};
 
 fn regex_error_summary(e: &regex::Error) -> String {
     let full = e.to_string();
@@ -306,7 +306,7 @@ impl Vm {
     }
 
     async fn eval_call(&mut self, call: &ir::FnCall, span: &Span) -> Result<String, Failure> {
-        let fn_id = self
+        let callable = self
             .code_server
             .lookup(&call.name.node, call.args.len())
             .ok_or_else(|| Failure::Runtime {
@@ -318,35 +318,43 @@ impl Vm {
                 span: Some(span.clone()),
                 shell: Some(self.shell_name.clone()),
             })?;
-        let (params, body) = {
-            let func = self
-                .code_server
-                .get(fn_id)
-                .ok_or_else(|| Failure::Runtime {
-                    message: format!("invalid function id {fn_id}"),
-                    span: Some(span.clone()),
-                    shell: Some(self.shell_name.clone()),
-                })?;
-            (func.params.clone(), func.body.clone())
-        };
 
         let mut evaluated_args = Vec::with_capacity(call.args.len());
         for arg in &call.args {
             evaluated_args.push(self.eval_expr(arg).await?);
         }
 
-        self.emit_progress(ProgressEvent::FnEnter(call.name.node.clone()));
-        self.vars.push_frame();
-        for (param, value) in params.iter().zip(evaluated_args.into_iter()) {
-            self.vars.let_insert(param.node.clone(), value);
+        match callable {
+            Callable::UserDefined(fn_id) => {
+                let (params, body) = {
+                    let func = self
+                        .code_server
+                        .get(fn_id)
+                        .ok_or_else(|| Failure::Runtime {
+                            message: format!("invalid function id {fn_id}"),
+                            span: Some(span.clone()),
+                            shell: Some(self.shell_name.clone()),
+                        })?;
+                    (func.params.clone(), func.body.clone())
+                };
+
+                self.emit_progress(ProgressEvent::FnEnter(call.name.node.clone()));
+                self.vars.push_frame();
+                for (param, value) in params.iter().zip(evaluated_args.into_iter()) {
+                    self.vars.let_insert(param.node.clone(), value);
+                }
+                let mut last = String::new();
+                for stmt in &body {
+                    last = self.exec_stmt(stmt).await?;
+                }
+                self.vars.pop_frame();
+                self.emit_progress(ProgressEvent::FnExit);
+                Ok(last)
+            }
+            Callable::Builtin(bif) => {
+                bif.call(self, evaluated_args, span).await
+            }
         }
-        let mut last = String::new();
-        for stmt in &body {
-            last = self.exec_stmt(stmt).await?;
-        }
-        self.vars.pop_frame();
-        self.emit_progress(ProgressEvent::FnExit);
-        Ok(last)
     }
 
     async fn wait_for_literal(&self, pattern: &str, span: Span) -> Result<(usize, usize), Failure> {
@@ -433,7 +441,7 @@ impl Vm {
         self.output_buf.snapshot().await
     }
 
-    fn emit_progress(&self, event: ProgressEvent) {
+    pub(crate) fn emit_progress(&self, event: ProgressEvent) {
         if let Some(tx) = &self.progress_tx {
             let _ = tx.send(event);
         }

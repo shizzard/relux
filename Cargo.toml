@@ -32,3 +32,5 @@ chrono = "0.4"
 rand = "0.9"
 bs58 = "0.5"
 ariadne = "~0.4"
+async-trait = "0.1"
+uuid = { version = "1", features = ["v4"] }

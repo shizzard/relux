@@ -92,6 +92,9 @@ pub enum Token<'a> {
     #[regex(r"[A-Z][a-zA-Z0-9_]*")]
     EffectIdent(&'a str),
 
+    #[regex(r"[0-9]+")]
+    Number(&'a str),
+
     #[token("\n")]
     Newline,
 
@@ -133,6 +136,7 @@ impl fmt::Display for Token<'_> {
             Token::ModulePath(s) => write!(f, "{s}"),
             Token::Ident(s) => write!(f, "{s}"),
             Token::EffectIdent(s) => write!(f, "{s}"),
+            Token::Number(n) => write!(f, "{n}"),
             Token::Newline => write!(f, "\\n"),
             Token::Unrecognized(s) => write!(f, "<unrecognized: {s}>"),
         }

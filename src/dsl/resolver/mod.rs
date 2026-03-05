@@ -558,7 +558,9 @@ fn lower_expr(
         parser::AstExpr::Call(call) => {
             let arity = call.args.len();
             let fn_key = (call.name.node.clone(), arity);
-            if !scope.functions.contains_key(&fn_key) {
+            if !scope.functions.contains_key(&fn_key)
+                && crate::runtime::bifs::lookup(&call.name.node, arity).is_none()
+            {
                 let available: Vec<usize> = scope
                     .functions
                     .keys()

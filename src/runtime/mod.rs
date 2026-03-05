@@ -13,6 +13,7 @@ use crate::runtime::result::{Failure, Outcome, TestResult};
 use crate::runtime::vars::{Env, TestScope, VariableStack, interpolate_with_lookup};
 use crate::runtime::vm::Vm;
 
+pub mod bifs;
 pub mod progress;
 pub mod result;
 pub mod vars;
@@ -21,6 +22,11 @@ pub mod vm;
 pub const DEFAULT_SHELL_PROMPT: &str = "relux> ";
 
 pub type SharedVm = Arc<Mutex<Vm>>;
+
+pub enum Callable {
+    UserDefined(usize),
+    Builtin(Box<dyn bifs::Bif>),
+}
 
 pub struct CodeServer {
     functions: Vec<ir::Function>,
@@ -36,8 +42,12 @@ impl CodeServer {
         Self { functions, index }
     }
 
-    pub fn lookup(&self, name: &str, arity: usize) -> Option<usize> {
-        self.index.get(&(name.to_string(), arity)).copied()
+    pub fn lookup(&self, name: &str, arity: usize) -> Option<Callable> {
+        if let Some(&id) = self.index.get(&(name.to_string(), arity)) {
+            Some(Callable::UserDefined(id))
+        } else {
+            bifs::lookup(name, arity).map(Callable::Builtin)
+        }
     }
 
     pub fn get(&self, fn_id: usize) -> Option<&ir::Function> {

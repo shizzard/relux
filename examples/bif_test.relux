@@ -1,0 +1,68 @@
+test "built-in functions" {
+    shell s {
+        ~5s
+
+        # ── String manipulation ──────────────────────────
+
+        let raw = "  hello world  "
+        let trimmed = trim(raw)
+        annotate(trimmed)
+
+        let up = upper(trimmed)
+        annotate(up)
+
+        let lo = lower(up)
+        annotate(lo)
+
+        let swapped = replace(trimmed, "world", "relux")
+        annotate(swapped)
+
+        let size = len(trimmed)
+        annotate(size)
+
+        # ── Split ────────────────────────────────────────
+
+        let csv = "one,two,three"
+        let first = split(csv, ",", 0)
+        annotate(first)
+
+        let second = split(csv, ",", 1)
+        annotate(second)
+
+        let third = split(csv, ",", 2)
+        annotate(third)
+
+        # ── Generators ──────────────────────────────────
+
+        let id = uuid()
+        annotate(id)
+
+        let r_default = rand(8)
+        annotate(r_default)
+
+        let r_alpha = rand(8, "alpha")
+        annotate(r_alpha)
+
+        let r_num = rand(8, "num")
+        annotate(r_num)
+
+        let r_hex = rand(8, "hex")
+        annotate(r_hex)
+
+        let r_oct = rand(8, "oct")
+        annotate(r_oct)
+
+        let r_bin = rand(8, "bin")
+        annotate(r_bin)
+
+        # ── Sleep ────────────────────────────────────────
+
+        annotate("sleeping 5s")
+        sleep("5s")
+        annotate("awake")
+
+        # ── Log (placeholder) ───────────────────────────
+
+        log("test completed")
+    }
+}

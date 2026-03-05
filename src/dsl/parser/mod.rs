@@ -123,7 +123,20 @@ where
             })
             .labelled("function call");
 
-        choice((string_lit, var, call))
+        let number_lit = select! {
+            Token::Number(n) => AstExpr::String(AstStringExpr {
+                parts: vec![AstStringPart::Literal(n.to_string())],
+            }),
+        }
+        .map_with(|e, x| Spanned::new(e, sp(x.span())))
+        .labelled("number");
+
+        let ident_var = ident
+            .clone()
+            .map(|name| Spanned::new(AstExpr::Var(name.node), name.span))
+            .labelled("variable");
+
+        choice((string_lit, var, call, number_lit, ident_var))
     })
     .labelled("argument expression");
 
