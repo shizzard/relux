@@ -316,29 +316,31 @@ impl Vm {
                 self.emit_progress(ProgressEvent::Send);
                 Ok(payload)
             }
-            Expr::MatchLiteral(s) => {
-                let pattern = interpolate(s, &self.scope).await;
+            Expr::MatchLiteral(m) => {
+                let timeout = m.timeout_override.unwrap_or_else(|| self.scope.timeout());
+                let pattern = interpolate(&m.pattern, &self.scope).await;
                 self.emit_event(LogEventKind::MatchStart { pattern: pattern.clone(), is_regex: false }).await;
                 self.emit_progress(ProgressEvent::MatchStart);
                 let match_start = Instant::now();
-                let (start, end) = self.wait_for_literal(&pattern, expr.span.clone()).await?;
+                let (start, end) = self.wait_for_literal(&pattern, timeout, expr.span.clone()).await?;
                 self.emit_event(LogEventKind::MatchDone { matched: pattern.clone(), elapsed: match_start.elapsed() }).await;
                 self.emit_progress(ProgressEvent::MatchDone);
                 self.cursor = end.max(start);
                 Ok(pattern)
             }
-            Expr::MatchRegex(s) => {
-                let pattern = interpolate(s, &self.scope).await;
+            Expr::MatchRegex(m) => {
+                let timeout = m.timeout_override.unwrap_or_else(|| self.scope.timeout());
+                let pattern = interpolate(&m.pattern, &self.scope).await;
                 let re = RegexBuilder::new(&pattern).multi_line(true).crlf(true).build().map_err(|e| Failure::Runtime {
                     message: format!("invalid regex: {}", regex_error_summary(&e)),
-                    span: Some(s.span.clone()),
+                    span: Some(m.pattern.span.clone()),
                     shell: Some(self.shell_name.clone()),
                 })?;
                 self.emit_event(LogEventKind::MatchStart { pattern: pattern.clone(), is_regex: true }).await;
                 self.emit_progress(ProgressEvent::MatchStart);
                 let match_start = Instant::now();
                 let (_start, end, captures) = self
-                    .wait_for_regex(&pattern, &re, expr.span.clone())
+                    .wait_for_regex(&pattern, &re, timeout, expr.span.clone())
                     .await?;
                 let full = captures.get("0").cloned().unwrap_or_default();
                 self.emit_event(LogEventKind::MatchDone { matched: full.clone(), elapsed: match_start.elapsed() }).await;
@@ -346,6 +348,33 @@ impl Vm {
                 self.cursor = end;
                 self.scope.set_captures(captures);
                 Ok(full)
+            }
+            Expr::NegMatchLiteral(m) => {
+                let timeout = m.timeout_override.unwrap_or_else(|| self.scope.timeout());
+                let pattern = interpolate(&m.pattern, &self.scope).await;
+                self.emit_event(LogEventKind::NegMatchStart { pattern: pattern.clone(), is_regex: false }).await;
+                self.emit_progress(ProgressEvent::MatchStart);
+                let match_start = Instant::now();
+                self.wait_for_absent_literal(&pattern, timeout, expr.span.clone()).await?;
+                self.emit_event(LogEventKind::NegMatchPass { pattern: pattern.clone(), elapsed: match_start.elapsed() }).await;
+                self.emit_progress(ProgressEvent::MatchDone);
+                Ok(String::new())
+            }
+            Expr::NegMatchRegex(m) => {
+                let timeout = m.timeout_override.unwrap_or_else(|| self.scope.timeout());
+                let pattern = interpolate(&m.pattern, &self.scope).await;
+                let re = RegexBuilder::new(&pattern).multi_line(true).crlf(true).build().map_err(|e| Failure::Runtime {
+                    message: format!("invalid regex: {}", regex_error_summary(&e)),
+                    span: Some(m.pattern.span.clone()),
+                    shell: Some(self.shell_name.clone()),
+                })?;
+                self.emit_event(LogEventKind::NegMatchStart { pattern: pattern.clone(), is_regex: true }).await;
+                self.emit_progress(ProgressEvent::MatchStart);
+                let match_start = Instant::now();
+                self.wait_for_absent_regex(&pattern, &re, timeout, expr.span.clone()).await?;
+                self.emit_event(LogEventKind::NegMatchPass { pattern: pattern.clone(), elapsed: match_start.elapsed() }).await;
+                self.emit_progress(ProgressEvent::MatchDone);
+                Ok(String::new())
             }
             Expr::Call(call) => self.eval_call(call, &expr.span).await,
         }
@@ -405,7 +434,12 @@ impl Vm {
         }
     }
 
-    async fn wait_for_literal(&self, pattern: &str, span: Span) -> Result<(usize, usize), Failure> {
+    async fn wait_for_literal(
+        &self,
+        pattern: &str,
+        timeout: Duration,
+        span: Span,
+    ) -> Result<(usize, usize), Failure> {
         let fut = async {
             loop {
                 self.check_fail(span.clone()).await?;
@@ -420,7 +454,7 @@ impl Vm {
             }
         };
 
-        match tokio::time::timeout(self.scope.timeout(), fut).await {
+        match tokio::time::timeout(timeout, fut).await {
             Ok(result) => result,
             Err(_) => {
                 self.emit_progress(ProgressEvent::Timeout);
@@ -438,6 +472,7 @@ impl Vm {
         &self,
         pattern: &str,
         re: &Regex,
+        timeout: Duration,
         span: Span,
     ) -> Result<(usize, usize, HashMap<String, String>), Failure> {
         let fut = async {
@@ -450,7 +485,7 @@ impl Vm {
             }
         };
 
-        match tokio::time::timeout(self.scope.timeout(), fut).await {
+        match tokio::time::timeout(timeout, fut).await {
             Ok(result) => result,
             Err(_) => {
                 self.emit_progress(ProgressEvent::Timeout);
@@ -461,6 +496,77 @@ impl Vm {
                     shell: self.shell_name.clone(),
                 })
             }
+        }
+    }
+
+    async fn wait_for_absent_literal(
+        &self,
+        pattern: &str,
+        timeout: Duration,
+        span: Span,
+    ) -> Result<(), Failure> {
+        let fut = async {
+            loop {
+                self.check_fail(span.clone()).await?;
+                if self
+                    .output_buf
+                    .find_literal_from(self.cursor, pattern)
+                    .await
+                    .is_some()
+                {
+                    self.emit_event(LogEventKind::NegMatchFail {
+                        pattern: pattern.to_string(),
+                        matched_text: pattern.to_string(),
+                    }).await;
+                    return Err(Failure::NegativeMatchFailed {
+                        pattern: pattern.to_string(),
+                        matched_text: pattern.to_string(),
+                        span,
+                        shell: self.shell_name.clone(),
+                    });
+                }
+                self.output_buf.notify.notified().await;
+            }
+        };
+
+        match tokio::time::timeout(timeout, fut).await {
+            Ok(result) => result,
+            Err(_) => Ok(()),
+        }
+    }
+
+    async fn wait_for_absent_regex(
+        &self,
+        pattern: &str,
+        re: &Regex,
+        timeout: Duration,
+        span: Span,
+    ) -> Result<(), Failure> {
+        let fut = async {
+            loop {
+                self.check_fail(span.clone()).await?;
+                if let Some((_, _, captures)) =
+                    self.output_buf.find_regex_from(self.cursor, re).await
+                {
+                    let matched_text = captures.get("0").cloned().unwrap_or_default();
+                    self.emit_event(LogEventKind::NegMatchFail {
+                        pattern: pattern.to_string(),
+                        matched_text: matched_text.clone(),
+                    }).await;
+                    return Err(Failure::NegativeMatchFailed {
+                        pattern: pattern.to_string(),
+                        matched_text,
+                        span,
+                        shell: self.shell_name.clone(),
+                    });
+                }
+                self.output_buf.notify.notified().await;
+            }
+        };
+
+        match tokio::time::timeout(timeout, fut).await {
+            Ok(result) => result,
+            Err(_) => Ok(()),
         }
     }
 
@@ -533,7 +639,8 @@ impl VmContext for Vm {
         self.emit_event(LogEventKind::MatchStart { pattern: pattern.to_string(), is_regex: false }).await;
         self.emit_progress(ProgressEvent::MatchStart);
         let match_start = Instant::now();
-        let (start, end) = self.wait_for_literal(pattern, span.clone()).await?;
+        let timeout = self.scope.timeout();
+        let (start, end) = self.wait_for_literal(pattern, timeout, span.clone()).await?;
         self.emit_event(LogEventKind::MatchDone { matched: pattern.to_string(), elapsed: match_start.elapsed() }).await;
         self.emit_progress(ProgressEvent::MatchDone);
         self.cursor = end.max(start);

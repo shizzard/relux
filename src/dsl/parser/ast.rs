@@ -132,6 +132,12 @@ pub enum AstExpr {
     SendRaw(AstStringExpr),
     MatchRegex(AstStringExpr),
     MatchLiteral(AstStringExpr),
+    NegMatchRegex(AstStringExpr),
+    NegMatchLiteral(AstStringExpr),
+    TimedMatchRegex(String, AstStringExpr),
+    TimedMatchLiteral(String, AstStringExpr),
+    TimedNegMatchRegex(String, AstStringExpr),
+    TimedNegMatchLiteral(String, AstStringExpr),
 }
 
 #[derive(Debug, Clone, PartialEq)]

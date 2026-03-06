@@ -596,10 +596,52 @@ fn lower_expr(
             ir::Expr::SendRaw(lower_string_expr(file_id, s, expr_span, 2))
         }
         parser::AstExpr::MatchRegex(s) => {
-            ir::Expr::MatchRegex(lower_string_expr(file_id, s, expr_span, 2))
+            ir::Expr::MatchRegex(ir::MatchExpr {
+                pattern: lower_string_expr(file_id, s, expr_span, 2),
+                timeout_override: None,
+            })
         }
         parser::AstExpr::MatchLiteral(s) => {
-            ir::Expr::MatchLiteral(lower_string_expr(file_id, s, expr_span, 2))
+            ir::Expr::MatchLiteral(ir::MatchExpr {
+                pattern: lower_string_expr(file_id, s, expr_span, 2),
+                timeout_override: None,
+            })
+        }
+        parser::AstExpr::NegMatchRegex(s) => {
+            ir::Expr::NegMatchRegex(ir::MatchExpr {
+                pattern: lower_string_expr(file_id, s, expr_span, 2),
+                timeout_override: None,
+            })
+        }
+        parser::AstExpr::NegMatchLiteral(s) => {
+            ir::Expr::NegMatchLiteral(ir::MatchExpr {
+                pattern: lower_string_expr(file_id, s, expr_span, 2),
+                timeout_override: None,
+            })
+        }
+        parser::AstExpr::TimedMatchRegex(dur, s) => {
+            ir::Expr::MatchRegex(ir::MatchExpr {
+                pattern: lower_string_expr(file_id, s, expr_span, 2),
+                timeout_override: Some(parse_timeout(dur, file_id, expr_span, diagnostics)),
+            })
+        }
+        parser::AstExpr::TimedMatchLiteral(dur, s) => {
+            ir::Expr::MatchLiteral(ir::MatchExpr {
+                pattern: lower_string_expr(file_id, s, expr_span, 2),
+                timeout_override: Some(parse_timeout(dur, file_id, expr_span, diagnostics)),
+            })
+        }
+        parser::AstExpr::TimedNegMatchRegex(dur, s) => {
+            ir::Expr::NegMatchRegex(ir::MatchExpr {
+                pattern: lower_string_expr(file_id, s, expr_span, 2),
+                timeout_override: Some(parse_timeout(dur, file_id, expr_span, diagnostics)),
+            })
+        }
+        parser::AstExpr::TimedNegMatchLiteral(dur, s) => {
+            ir::Expr::NegMatchLiteral(ir::MatchExpr {
+                pattern: lower_string_expr(file_id, s, expr_span, 2),
+                timeout_override: Some(parse_timeout(dur, file_id, expr_span, diagnostics)),
+            })
         }
     }
 }
@@ -1485,5 +1527,88 @@ mod tests {
             !plan.functions.is_empty(),
             "some_function and match_uuid should be reachable"
         );
+    }
+
+    #[test]
+    fn test_neg_match_lowering() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "main",
+            "test \"t\" {\n  shell s {\n    <!? error\n    <!= bad stuff\n  }\n}\n",
+        );
+        let (plans, _, diags) = loader.resolve_one("main");
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        let stmts = &plans[0].test.shells[0].node.stmts;
+        match &stmts[0].node {
+            ir::ShellStmt::Expr(ir::Expr::NegMatchRegex(m)) => {
+                assert!(m.timeout_override.is_none());
+            }
+            other => panic!("expected NegMatchRegex, got {other:?}"),
+        }
+        match &stmts[1].node {
+            ir::ShellStmt::Expr(ir::Expr::NegMatchLiteral(m)) => {
+                assert!(m.timeout_override.is_none());
+            }
+            other => panic!("expected NegMatchLiteral, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_timed_match_lowering() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "main",
+            "test \"t\" {\n  shell s {\n    <~2s? regex\n    <~500ms= literal\n  }\n}\n",
+        );
+        let (plans, _, diags) = loader.resolve_one("main");
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        let stmts = &plans[0].test.shells[0].node.stmts;
+        match &stmts[0].node {
+            ir::ShellStmt::Expr(ir::Expr::MatchRegex(m)) => {
+                assert_eq!(m.timeout_override, Some(Duration::from_secs(2)));
+            }
+            other => panic!("expected MatchRegex with timeout, got {other:?}"),
+        }
+        match &stmts[1].node {
+            ir::ShellStmt::Expr(ir::Expr::MatchLiteral(m)) => {
+                assert_eq!(m.timeout_override, Some(Duration::from_millis(500)));
+            }
+            other => panic!("expected MatchLiteral with timeout, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_timed_neg_match_lowering() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "main",
+            "test \"t\" {\n  shell s {\n    <~3s!? error\n    <~1s!= bad\n  }\n}\n",
+        );
+        let (plans, _, diags) = loader.resolve_one("main");
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        let stmts = &plans[0].test.shells[0].node.stmts;
+        match &stmts[0].node {
+            ir::ShellStmt::Expr(ir::Expr::NegMatchRegex(m)) => {
+                assert_eq!(m.timeout_override, Some(Duration::from_secs(3)));
+            }
+            other => panic!("expected NegMatchRegex with timeout, got {other:?}"),
+        }
+        match &stmts[1].node {
+            ir::ShellStmt::Expr(ir::Expr::NegMatchLiteral(m)) => {
+                assert_eq!(m.timeout_override, Some(Duration::from_secs(1)));
+            }
+            other => panic!("expected NegMatchLiteral with timeout, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_timed_match_invalid_duration() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "main",
+            "test \"t\" {\n  shell s {\n    <~0xyz? regex\n  }\n}\n",
+        );
+        let (_, _, diags) = loader.resolve_one("main");
+        assert!(diag_names(&diags).contains(&"InvalidTimeout"));
     }
 }

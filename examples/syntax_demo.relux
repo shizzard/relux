@@ -105,6 +105,19 @@ test "Some test" {
         # override fail pattern (replaces, no stacking)
         # literal fail pattern would replace the regex fail pattern and vice versa
         != error
+
+        # negative match: assert a pattern does NOT appear
+        # runs for the full timeout, succeeds if pattern is absent
+        <!? FATAL|panic
+        <!= segfault
+
+        # inline timeout override: one-shot timeout for a single match
+        <~2s? quick response
+        <~30s= slow response
+
+        # negative match with inline timeout
+        <~5s!? memory leak
+        <~10s!= deadlock detected
     }
 
     shell something_shell {

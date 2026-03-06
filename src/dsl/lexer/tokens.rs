@@ -68,7 +68,21 @@ pub enum Token<'a> {
     #[token("!=", super::lex_payload)]
     FailLiteral(Vec<PayloadFragment<'a>>),
 
-    #[regex(r"~[^\n]+", |lex| &lex.slice()[1..], allow_greedy = true)]
+    #[token("<!?", super::lex_payload)]
+    NegMatchRegex(Vec<PayloadFragment<'a>>),
+    #[token("<!=", super::lex_payload)]
+    NegMatchLiteral(Vec<PayloadFragment<'a>>),
+
+    #[regex(r"<~[0-9][0-9a-zA-Z]*\?", super::lex_timed_match_regex)]
+    TimedMatchRegex((&'a str, Vec<PayloadFragment<'a>>)),
+    #[regex(r"<~[0-9][0-9a-zA-Z]*=", super::lex_timed_match_literal)]
+    TimedMatchLiteral((&'a str, Vec<PayloadFragment<'a>>)),
+    #[regex(r"<~[0-9][0-9a-zA-Z]*!\?", super::lex_timed_neg_match_regex)]
+    TimedNegMatchRegex((&'a str, Vec<PayloadFragment<'a>>)),
+    #[regex(r"<~[0-9][0-9a-zA-Z]*!=", super::lex_timed_neg_match_literal)]
+    TimedNegMatchLiteral((&'a str, Vec<PayloadFragment<'a>>)),
+
+    #[regex(r"~[0-9][0-9a-zA-Z]*", |lex| &lex.slice()[1..], allow_greedy = true)]
     Timeout(&'a str),
 
     #[token("\"\"\"", super::lex_docstring)]
@@ -129,6 +143,12 @@ impl fmt::Display for Token<'_> {
             Token::MatchLiteral(_) => write!(f, "<="),
             Token::FailRegex(_) => write!(f, "!?"),
             Token::FailLiteral(_) => write!(f, "!="),
+            Token::NegMatchRegex(_) => write!(f, "<!?"),
+            Token::NegMatchLiteral(_) => write!(f, "<!="),
+            Token::TimedMatchRegex((d, _)) => write!(f, "<~{d}?"),
+            Token::TimedMatchLiteral((d, _)) => write!(f, "<~{d}="),
+            Token::TimedNegMatchRegex((d, _)) => write!(f, "<~{d}!?"),
+            Token::TimedNegMatchLiteral((d, _)) => write!(f, "<~{d}!="),
             Token::Timeout(s) => write!(f, "~{s}"),
             Token::DocString(_) => write!(f, "\"\"\"...\"\"\""),
             Token::String(_) => write!(f, "\"...\""),

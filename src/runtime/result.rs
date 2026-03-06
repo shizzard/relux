@@ -17,6 +17,12 @@ pub enum Failure {
         span: Span,
         shell: String,
     },
+    NegativeMatchFailed {
+        pattern: String,
+        matched_text: String,
+        span: Span,
+        shell: String,
+    },
     ShellExited {
         shell: String,
         exit_code: Option<i32>,

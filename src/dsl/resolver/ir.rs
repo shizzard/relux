@@ -232,10 +232,23 @@ pub enum Expr {
     SendRaw(StringExpr),
     /// Match regex against shell output. Value: full match ($0).
     /// Blocks until match or timeout. Sets capture groups.
-    MatchRegex(StringExpr),
+    MatchRegex(MatchExpr),
     /// Match literal against shell output. Value: matched text.
     /// Blocks until match or timeout.
-    MatchLiteral(StringExpr),
+    MatchLiteral(MatchExpr),
+    /// Assert regex does NOT appear in output within timeout.
+    /// Succeeds if timeout expires without match. Value: empty string.
+    NegMatchRegex(MatchExpr),
+    /// Assert literal does NOT appear in output within timeout.
+    /// Succeeds if timeout expires without match. Value: empty string.
+    NegMatchLiteral(MatchExpr),
+}
+
+/// Unified match expression carrying a pattern and optional one-shot timeout.
+#[derive(Debug, Clone)]
+pub struct MatchExpr {
+    pub pattern: StringExpr,
+    pub timeout_override: Option<Duration>,
 }
 
 // ─── String Expression ──────────────────────────────────────

@@ -48,6 +48,17 @@
 - Match operators (`<?`, `<=`) assert against the shell's accumulated output
 - Match operations block until a match is found or the timeout expires
 - A timeout expiry is a test failure
+- Negative match operators (`<!?`, `<!=`) assert a pattern does NOT appear within the timeout:
+  - The operation runs for the full timeout duration, scanning output from the current cursor
+  - If the pattern appears: the test fails immediately with a `NegativeMatchFailed` error
+  - If the timeout expires without finding the pattern: the operation succeeds
+  - The output cursor does NOT advance on success
+  - The return value is always an empty string
+  - Fail patterns are still checked during the wait
+- Any match operator can include an inline timeout override (`<~dur`):
+  - Applies only to that single operation (one-shot)
+  - Does not affect the shell's scoped timeout
+  - Duration uses compact humantime format (no spaces): `2s`, `500ms`, `1m30s`
 - Each shell has one active fail pattern slot — if shell output matches the fail pattern at any point, the test fails immediately
 - Each shell has one active timeout value, initially set to a framework default
 - Multiple `shell <name>` blocks with the same name in a test/effect refer to the same shell (switching the active shell, like lux's `[shell name]`)

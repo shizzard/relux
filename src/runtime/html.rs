@@ -58,6 +58,8 @@ fn event_type_class(kind: &LogEventKind) -> (&str, &str) {
         LogEventKind::Send { .. } => ("send", "send"),
         LogEventKind::Recv { .. } => ("recv", "recv"),
         LogEventKind::MatchStart { .. } | LogEventKind::MatchDone { .. } => ("match", "match-ev"),
+        LogEventKind::NegMatchStart { .. } | LogEventKind::NegMatchPass { .. } => ("neg-match", "match-ev"),
+        LogEventKind::NegMatchFail { .. } => ("neg-match", "err"),
         LogEventKind::Timeout { .. } => ("timeout", "err"),
         LogEventKind::FailPatternSet { .. } => ("fail-pat", "err"),
         LogEventKind::FailPatternTriggered { .. } => ("FAIL", "err"),
@@ -84,6 +86,16 @@ fn event_data(kind: &LogEventKind) -> String {
         }
         LogEventKind::MatchDone { matched, elapsed } => {
             format!("{} ({})", html_escape(matched), fmt_duration(elapsed))
+        }
+        LogEventKind::NegMatchStart { pattern, is_regex } => {
+            let prefix = if *is_regex { "regex " } else { "" };
+            format!("!{prefix}{}", html_escape(pattern))
+        }
+        LogEventKind::NegMatchPass { pattern, elapsed } => {
+            format!("!{} (pass, {})", html_escape(pattern), fmt_duration(elapsed))
+        }
+        LogEventKind::NegMatchFail { pattern, matched_text } => {
+            format!("!{} found: {}", html_escape(pattern), html_escape(matched_text))
         }
         LogEventKind::Timeout { pattern } => html_escape(pattern),
         LogEventKind::FailPatternSet { pattern } => html_escape(pattern),

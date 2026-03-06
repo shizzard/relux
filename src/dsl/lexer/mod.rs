@@ -124,6 +124,42 @@ fn lex_string<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option<Vec<StringFra
     Some(fragments)
 }
 
+fn lex_timed_match_regex<'s>(
+    lex: &mut logos::Lexer<'s, Token<'s>>,
+) -> Option<(&'s str, Vec<PayloadFragment<'s>>)> {
+    let matched = lex.slice();
+    let dur = &matched[2..matched.len() - 1];
+    let payload = lex_payload(lex)?;
+    Some((dur, payload))
+}
+
+fn lex_timed_match_literal<'s>(
+    lex: &mut logos::Lexer<'s, Token<'s>>,
+) -> Option<(&'s str, Vec<PayloadFragment<'s>>)> {
+    let matched = lex.slice();
+    let dur = &matched[2..matched.len() - 1];
+    let payload = lex_payload(lex)?;
+    Some((dur, payload))
+}
+
+fn lex_timed_neg_match_regex<'s>(
+    lex: &mut logos::Lexer<'s, Token<'s>>,
+) -> Option<(&'s str, Vec<PayloadFragment<'s>>)> {
+    let matched = lex.slice();
+    let dur = &matched[2..matched.len() - 2];
+    let payload = lex_payload(lex)?;
+    Some((dur, payload))
+}
+
+fn lex_timed_neg_match_literal<'s>(
+    lex: &mut logos::Lexer<'s, Token<'s>>,
+) -> Option<(&'s str, Vec<PayloadFragment<'s>>)> {
+    let matched = lex.slice();
+    let dur = &matched[2..matched.len() - 2];
+    let payload = lex_payload(lex)?;
+    Some((dur, payload))
+}
+
 fn lex_docstring<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option<Vec<&'s str>> {
     let mut sub = lex.clone().morph::<DocStringMode<'s>>();
     let mut parts = Vec::new();
@@ -328,13 +364,13 @@ mod tests {
     }
 
     #[test]
-    fn test_timeout_compound() {
-        let input = "~2h 30m 12s\n";
+    fn test_timeout_compact() {
+        let input = "~2h30m12s\n";
         let toks = tokens(input);
-        assert_eq!(toks, vec![Token::Timeout("2h 30m 12s"), Token::Newline]);
+        assert_eq!(toks, vec![Token::Timeout("2h30m12s"), Token::Newline]);
         let sp = spans(input);
-        assert_eq!(sp[0], 0..11);  // ~2h 30m 12s
-        assert_eq!(sp[1], 11..12); // \n
+        assert_eq!(sp[0], 0..9);   // ~2h30m12s
+        assert_eq!(sp[1], 9..10);  // \n
     }
 
     #[test]
@@ -726,5 +762,90 @@ mod tests {
         assert_eq!(sp[2], 5..6); // 8
         assert_eq!(sp[3], 6..7); // )
         assert_eq!(sp[4], 7..8); // \n
+    }
+
+    #[test]
+    fn test_neg_match_regex() {
+        let input = "<!? error pattern\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![Token::NegMatchRegex(vec![PayloadFragment::Text(" error pattern")])]
+        );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..input.len());
+    }
+
+    #[test]
+    fn test_neg_match_literal() {
+        let input = "<!= some literal\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![Token::NegMatchLiteral(vec![PayloadFragment::Text(" some literal")])]
+        );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..input.len());
+    }
+
+    #[test]
+    fn test_timed_match_regex() {
+        let input = "<~2s? regex pattern\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![Token::TimedMatchRegex(("2s", vec![PayloadFragment::Text(" regex pattern")]))]
+        );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..input.len());
+    }
+
+    #[test]
+    fn test_timed_match_literal() {
+        let input = "<~500ms= literal text\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![Token::TimedMatchLiteral(("500ms", vec![PayloadFragment::Text(" literal text")]))]
+        );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..input.len());
+    }
+
+    #[test]
+    fn test_timed_neg_match_regex() {
+        let input = "<~1m30s!? error regex\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![Token::TimedNegMatchRegex(("1m30s", vec![PayloadFragment::Text(" error regex")]))]
+        );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..input.len());
+    }
+
+    #[test]
+    fn test_timed_neg_match_literal() {
+        let input = "<~30s!= error literal\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![Token::TimedNegMatchLiteral(("30s", vec![PayloadFragment::Text(" error literal")]))]
+        );
+        let sp = spans(input);
+        assert_eq!(sp[0], 0..input.len());
+    }
+
+    #[test]
+    fn test_timed_match_with_interp() {
+        let input = "<~5s? listening on ${port}\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![Token::TimedMatchRegex(("5s", vec![
+                PayloadFragment::Text(" listening on "),
+                PayloadFragment::Interpolation("port"),
+            ]))]
+        );
     }
 }
