@@ -1,7 +1,7 @@
 pub mod tokens;
 
 use logos::Logos;
-pub use tokens::{PayloadFragment, Spanned, StringFragment, Token};
+pub use tokens::{MarkerData, PayloadFragment, Spanned, StringFragment, Token};
 
 // ─── Internal Lexer Modes ───────────────────────────────────
 
@@ -174,6 +174,63 @@ fn lex_docstring<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option<Vec<&'s st
     }
     *lex = sub.morph();
     Some(parts)
+}
+
+fn lex_marker<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option<MarkerData<'s>> {
+    let matched = lex.slice();
+    let inner = matched[1..matched.len() - 1].trim();
+
+    let space1 = inner.find(|c: char| c.is_whitespace())?;
+    let kind = &inner[..space1];
+    match kind {
+        "skip" | "run" | "flaky" => {}
+        _ => return None,
+    }
+    let rest = inner[space1..].trim_start();
+
+    let space2 = rest.find(|c: char| c.is_whitespace())?;
+    let modifier = &rest[..space2];
+    match modifier {
+        "if" | "unless" => {}
+        _ => return None,
+    }
+    let rest = rest[space2..].trim_start();
+
+    if rest.is_empty() {
+        return None;
+    }
+
+    let var_end = rest
+        .find(|c: char| c.is_whitespace() || c == '=' || c == '?')
+        .unwrap_or(rest.len());
+    if var_end == 0 {
+        return None;
+    }
+    let var = &rest[..var_end];
+    let rest = rest[var_end..].trim_start();
+
+    if rest.is_empty() {
+        return Some(MarkerData {
+            kind,
+            modifier,
+            var,
+            op: None,
+            value: None,
+        });
+    }
+
+    let op_char = rest.as_bytes()[0] as char;
+    if op_char != '=' && op_char != '?' {
+        return None;
+    }
+    let val = rest[1..].trim();
+    Some(MarkerData {
+        kind,
+        modifier,
+        var,
+        op: Some(op_char),
+        value: Some(val),
+    })
 }
 
 // ─── Public API ─────────────────────────────────────────────
@@ -846,6 +903,134 @@ mod tests {
                 PayloadFragment::Text(" listening on "),
                 PayloadFragment::Interpolation("port"),
             ]))]
+        );
+    }
+
+    #[test]
+    fn test_marker_bare_var() {
+        let input = "[skip unless FOO]\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![
+                Token::Marker(MarkerData {
+                    kind: "skip",
+                    modifier: "unless",
+                    var: "FOO",
+                    op: None,
+                    value: None,
+                }),
+                Token::Newline,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_marker_literal_eq() {
+        let input = "[run if BAR = linux]\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![
+                Token::Marker(MarkerData {
+                    kind: "run",
+                    modifier: "if",
+                    var: "BAR",
+                    op: Some('='),
+                    value: Some("linux"),
+                }),
+                Token::Newline,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_marker_regex() {
+        let input = "[skip unless ARCH ? ^(x86_64|aarch64)$]\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![
+                Token::Marker(MarkerData {
+                    kind: "skip",
+                    modifier: "unless",
+                    var: "ARCH",
+                    op: Some('?'),
+                    value: Some("^(x86_64|aarch64)$"),
+                }),
+                Token::Newline,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_marker_regex_with_bracket() {
+        let input = "[skip unless FOO ? ^[a-z]+$]\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![
+                Token::Marker(MarkerData {
+                    kind: "skip",
+                    modifier: "unless",
+                    var: "FOO",
+                    op: Some('?'),
+                    value: Some("^[a-z]+$"),
+                }),
+                Token::Newline,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_marker_flaky() {
+        let input = "[flaky if CI]\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![
+                Token::Marker(MarkerData {
+                    kind: "flaky",
+                    modifier: "if",
+                    var: "CI",
+                    op: None,
+                    value: None,
+                }),
+                Token::Newline,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_marker_invalid_kind() {
+        let input = "[nope if FOO]\n";
+        let toks = tokens(input);
+        assert!(matches!(toks[0], Token::Unrecognized(_)));
+    }
+
+    #[test]
+    fn test_marker_missing_modifier() {
+        let input = "[skip FOO]\n";
+        let toks = tokens(input);
+        assert!(matches!(toks[0], Token::Unrecognized(_)));
+    }
+
+    #[test]
+    fn test_marker_value_with_spaces() {
+        let input = "[run if OS = hello world]\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![
+                Token::Marker(MarkerData {
+                    kind: "run",
+                    modifier: "if",
+                    var: "OS",
+                    op: Some('='),
+                    value: Some("hello world"),
+                }),
+                Token::Newline,
+            ]
         );
     }
 }

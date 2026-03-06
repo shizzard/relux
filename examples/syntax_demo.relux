@@ -67,6 +67,13 @@ effect StartSomething -> shell something {
     }
 }
 
+# condition markers: skip/run/flaky based on environment variables
+# bare var: truthy = non-empty, falsy = empty or unset
+[skip unless CI]
+# literal equality check
+[run if TARGET_OS = linux]
+# regex check
+[skip unless ARCH ? ^(x86_64|aarch64)$]
 test "Some test" {
     """
     The test description

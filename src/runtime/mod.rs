@@ -59,6 +59,74 @@ impl CodeServer {
     }
 }
 
+fn evaluate_conditions(
+    conditions: &[Spanned<ir::Condition>],
+    env: &Env,
+) -> Option<String> {
+    for cond in conditions {
+        let raw = env.get(&cond.node.var).cloned().unwrap_or_default();
+
+        let result_value = match &cond.node.test {
+            None => raw.clone(),
+            Some(ir::CondTest::Eq(expected)) => {
+                if raw == *expected {
+                    raw.clone()
+                } else {
+                    String::new()
+                }
+            }
+            Some(ir::CondTest::Regex(pat)) => match regex::Regex::new(pat) {
+                Ok(re) => re
+                    .find(&raw)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default(),
+                Err(_) => String::new(),
+            },
+        };
+
+        let truthy = !result_value.is_empty();
+
+        let should_act = match cond.node.modifier {
+            ir::CondModifier::If => truthy,
+            ir::CondModifier::Unless => !truthy,
+        };
+
+        match cond.node.kind {
+            ir::CondKind::Skip => {
+                if should_act {
+                    let reason = if raw.is_empty() {
+                        format!("skip: {} is not set", cond.node.var)
+                    } else {
+                        format!("skip: {} = {:?}", cond.node.var, raw)
+                    };
+                    return Some(reason);
+                }
+            }
+            ir::CondKind::Run => {
+                if !should_act {
+                    let reason = if raw.is_empty() {
+                        format!("run condition not met: {} is not set", cond.node.var)
+                    } else {
+                        format!("run condition not met: {} = {:?}", cond.node.var, raw)
+                    };
+                    return Some(reason);
+                }
+            }
+            ir::CondKind::Flaky => {
+                if should_act {
+                    let reason = if raw.is_empty() {
+                        format!("flaky: {} is not set", cond.node.var)
+                    } else {
+                        format!("flaky: {} = {:?}", cond.node.var, raw)
+                    };
+                    return Some(reason);
+                }
+            }
+        }
+    }
+    None
+}
+
 pub struct Runtime {
     env: Arc<Env>,
     source_map: SourceMap,
@@ -124,6 +192,28 @@ impl Runtime {
         eprint!("test \"{test_name}\": ");
         let (progress_tx, progress_rx) = progress::channel();
         let printer_handle = progress::spawn_printer(progress_rx);
+
+        if let Some(reason) =
+            evaluate_conditions(&plan.test.conditions, &self.env)
+        {
+            drop(progress_tx);
+            let progress_string = printer_handle.await.unwrap_or_default();
+            let events = event_collector.take().await;
+            crate::runtime::html::generate_html_logs(
+                &log_dir,
+                &test_name,
+                &events,
+                &self.run_dir,
+            );
+            return TestResult {
+                test_name,
+                outcome: Outcome::Skipped(reason),
+                duration: test_start.elapsed(),
+                shell_logs,
+                progress: progress_string,
+                log_dir: Some(log_dir),
+            };
+        }
 
         let mut effect_exec = self
             .execute_effects(
@@ -257,6 +347,15 @@ impl Runtime {
             let effect = &plan.effects[instance.effect];
             let _ = progress_tx.send(ProgressEvent::EffectSetup(effect.name.node.clone()));
             event_collector.push("", LogEventKind::EffectSetup { effect: effect.name.node.clone() }).await;
+
+            if let Some(reason) =
+                evaluate_conditions(&effect.conditions, &self.env)
+            {
+                let reason = format!("effect {} skipped: {reason}", effect.name.node);
+                effect_state.outcome = Some(Outcome::Skipped(reason));
+                return effect_state;
+            }
+
             let effect_scope = Arc::new(Mutex::new(TestScope::new()));
             let mut shells: HashMap<String, SharedVm> = HashMap::new();
             let scope_prefix = scope_prefixes
@@ -661,4 +760,181 @@ fn compute_scope_prefixes(plan: &Plan) -> HashMap<InstanceId, String> {
     }
 
     prefixes
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dsl::resolver::ir::{self, Span};
+
+    fn make_cond(
+        kind: ir::CondKind,
+        modifier: ir::CondModifier,
+        var: &str,
+        test: Option<ir::CondTest>,
+    ) -> Spanned<ir::Condition> {
+        Spanned::new(
+            ir::Condition {
+                kind,
+                modifier,
+                var: var.to_string(),
+                test,
+            },
+            Span::new(0, 0..0),
+        )
+    }
+
+    #[test]
+    fn skip_unless_unset_var() {
+        let conds = vec![make_cond(
+            ir::CondKind::Skip,
+            ir::CondModifier::Unless,
+            "MISSING",
+            None,
+        )];
+        let env = Env::new();
+        let result = evaluate_conditions(&conds, &env);
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("skip"));
+    }
+
+    #[test]
+    fn skip_unless_set_var() {
+        let conds = vec![make_cond(
+            ir::CondKind::Skip,
+            ir::CondModifier::Unless,
+            "CI",
+            None,
+        )];
+        let mut env = Env::new();
+        env.insert("CI".into(), "true".into());
+        assert!(evaluate_conditions(&conds, &env).is_none());
+    }
+
+    #[test]
+    fn skip_if_set_var() {
+        let conds = vec![make_cond(
+            ir::CondKind::Skip,
+            ir::CondModifier::If,
+            "CI",
+            None,
+        )];
+        let mut env = Env::new();
+        env.insert("CI".into(), "1".into());
+        let result = evaluate_conditions(&conds, &env);
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("skip"));
+    }
+
+    #[test]
+    fn run_if_matching_literal() {
+        let conds = vec![make_cond(
+            ir::CondKind::Run,
+            ir::CondModifier::If,
+            "OS",
+            Some(ir::CondTest::Eq("linux".into())),
+        )];
+        let mut env = Env::new();
+        env.insert("OS".into(), "linux".into());
+        assert!(evaluate_conditions(&conds, &env).is_none());
+    }
+
+    #[test]
+    fn run_if_not_matching_literal() {
+        let conds = vec![make_cond(
+            ir::CondKind::Run,
+            ir::CondModifier::If,
+            "OS",
+            Some(ir::CondTest::Eq("linux".into())),
+        )];
+        let mut env = Env::new();
+        env.insert("OS".into(), "macos".into());
+        let result = evaluate_conditions(&conds, &env);
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("run condition not met"));
+    }
+
+    #[test]
+    fn skip_unless_regex_match() {
+        let conds = vec![make_cond(
+            ir::CondKind::Skip,
+            ir::CondModifier::Unless,
+            "ARCH",
+            Some(ir::CondTest::Regex("^(x86_64|aarch64)$".into())),
+        )];
+        let mut env = Env::new();
+        env.insert("ARCH".into(), "x86_64".into());
+        assert!(evaluate_conditions(&conds, &env).is_none());
+    }
+
+    #[test]
+    fn skip_unless_regex_no_match() {
+        let conds = vec![make_cond(
+            ir::CondKind::Skip,
+            ir::CondModifier::Unless,
+            "ARCH",
+            Some(ir::CondTest::Regex("^(x86_64|aarch64)$".into())),
+        )];
+        let mut env = Env::new();
+        env.insert("ARCH".into(), "riscv".into());
+        let result = evaluate_conditions(&conds, &env);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn multiple_conditions_all_pass() {
+        let conds = vec![
+            make_cond(ir::CondKind::Skip, ir::CondModifier::Unless, "CI", None),
+            make_cond(
+                ir::CondKind::Run,
+                ir::CondModifier::If,
+                "OS",
+                Some(ir::CondTest::Eq("linux".into())),
+            ),
+        ];
+        let mut env = Env::new();
+        env.insert("CI".into(), "1".into());
+        env.insert("OS".into(), "linux".into());
+        assert!(evaluate_conditions(&conds, &env).is_none());
+    }
+
+    #[test]
+    fn multiple_conditions_second_fails() {
+        let conds = vec![
+            make_cond(ir::CondKind::Skip, ir::CondModifier::Unless, "CI", None),
+            make_cond(
+                ir::CondKind::Run,
+                ir::CondModifier::If,
+                "OS",
+                Some(ir::CondTest::Eq("linux".into())),
+            ),
+        ];
+        let mut env = Env::new();
+        env.insert("CI".into(), "1".into());
+        env.insert("OS".into(), "macos".into());
+        let result = evaluate_conditions(&conds, &env);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn flaky_if_set() {
+        let conds = vec![make_cond(
+            ir::CondKind::Flaky,
+            ir::CondModifier::If,
+            "CI",
+            None,
+        )];
+        let mut env = Env::new();
+        env.insert("CI".into(), "1".into());
+        let result = evaluate_conditions(&conds, &env);
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("flaky"));
+    }
+
+    #[test]
+    fn empty_conditions_pass() {
+        let conds: Vec<Spanned<ir::Condition>> = vec![];
+        let env = Env::new();
+        assert!(evaluate_conditions(&conds, &env).is_none());
+    }
 }

@@ -1,7 +1,7 @@
 pub mod ast;
 
 use crate::Spanned;
-use crate::dsl::lexer::{PayloadFragment, StringFragment, Token, lex};
+use crate::dsl::lexer::{MarkerData, PayloadFragment, StringFragment, Token, lex};
 use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 
@@ -9,6 +9,31 @@ pub use ast::*;
 
 fn sp(s: SimpleSpan) -> Span {
     s.start..s.end
+}
+
+fn marker_data_to_decl(m: MarkerData<'_>) -> MarkerDecl {
+    let kind = match m.kind {
+        "skip" => MarkerKind::Skip,
+        "run" => MarkerKind::Run,
+        "flaky" => MarkerKind::Flaky,
+        _ => unreachable!(),
+    };
+    let modifier = match m.modifier {
+        "if" => CondModifier::If,
+        "unless" => CondModifier::Unless,
+        _ => unreachable!(),
+    };
+    let condition = match (m.op, m.value) {
+        (Some('='), Some(v)) => Some(MarkerCondition::Eq(v.to_string())),
+        (Some('?'), Some(v)) => Some(MarkerCondition::Regex(v.to_string())),
+        _ => None,
+    };
+    MarkerDecl {
+        kind,
+        modifier,
+        var: m.var.to_string(),
+        condition,
+    }
 }
 
 // ─── Fragment Conversion ─────────────────────────────────────
@@ -478,6 +503,7 @@ where
                 Item::Effect(EffectDef {
                     name,
                     exported_shell,
+                    markers: Vec::new(),
                     body,
                 }),
                 sp(e.span()),
@@ -538,7 +564,7 @@ where
                 .then_ignore(newlines.clone())
                 .then_ignore(just(Token::BraceClose)),
         )
-        .map_with(|(name, body), e| Spanned::new(Item::Test(TestDef { name, body }), sp(e.span())))
+        .map_with(|(name, body), e| Spanned::new(Item::Test(TestDef { name, markers: Vec::new(), body }), sp(e.span())))
         .labelled("test definition");
 
     // ── top-level items ──
@@ -547,7 +573,13 @@ where
         .map_with(|item, e| Spanned::new(item, sp(e.span())))
         .labelled("comment");
 
-    let item = choice((import, fn_def, effect_def, test_def, comment)).labelled("module item");
+    let marker = select! {
+        Token::Marker(m) => Item::Marker(marker_data_to_decl(m)),
+    }
+    .map_with(|item, e| Spanned::new(item, sp(e.span())))
+    .labelled("condition marker");
+
+    let item = choice((import, fn_def, effect_def, test_def, marker, comment)).labelled("module item");
 
     // ── module ──
 
@@ -564,6 +596,39 @@ where
 // ─── Public API ──────────────────────────────────────────────
 
 pub type ParseError = chumsky::error::Rich<'static, String, SimpleSpan>;
+
+fn fold_markers(mut module: Module) -> Module {
+    let mut pending_markers: Vec<Spanned<MarkerDecl>> = Vec::new();
+    let mut folded = Vec::with_capacity(module.items.len());
+
+    for item in module.items.drain(..) {
+        match &item.node {
+            Item::Marker(_) => {
+                let Item::Marker(decl) = item.node else { unreachable!() };
+                pending_markers.push(Spanned::new(decl, item.span));
+            }
+            Item::Test(_) => {
+                let Item::Test(mut test_def) = item.node else { unreachable!() };
+                test_def.markers = pending_markers.drain(..).collect();
+                folded.push(Spanned::new(Item::Test(test_def), item.span));
+            }
+            Item::Effect(_) => {
+                let Item::Effect(mut effect_def) = item.node else { unreachable!() };
+                effect_def.markers = pending_markers.drain(..).collect();
+                folded.push(Spanned::new(Item::Effect(effect_def), item.span));
+            }
+            Item::Comment(_) if !pending_markers.is_empty() => {
+                folded.push(item);
+            }
+            _ => {
+                pending_markers.clear();
+                folded.push(item);
+            }
+        }
+    }
+
+    Module { items: folded }
+}
 
 pub fn parse(source: &str) -> (Option<Module>, Vec<ParseError>) {
     let tokens = lex(source);
@@ -582,7 +647,7 @@ pub fn parse(source: &str) -> (Option<Module>, Vec<ParseError>) {
         .map(|e| e.map_token(|t| t.to_string()).into_owned())
         .collect();
 
-    (output, owned_errors)
+    (output.map(fold_markers), owned_errors)
 }
 
 // ─── Tests ───────────────────────────────────────────────────
@@ -1268,6 +1333,8 @@ mod tests {
                     .collect();
                 assert_eq!(docstrings.len(), 1);
 
+                assert_eq!(t.markers.len(), 3, "test has 3 condition markers");
+
                 let needs: Vec<_> = t
                     .body
                     .iter()
@@ -1734,6 +1801,77 @@ mod tests {
                 other => panic!("expected TimedNegMatchLiteral, got {other:?}"),
             },
             other => panic!("expected Fn, got {other:?}"),
+        }
+    }
+
+    // ── Condition markers ──
+
+    #[test]
+    fn test_marker_before_test() {
+        let src = "[skip unless CI]\ntest \"t\" {\n  shell s {\n    > hi\n  }\n}\n";
+        let m = parse_ok(src);
+        match &m.items[0].node {
+            Item::Test(t) => {
+                assert_eq!(t.markers.len(), 1);
+                let decl = &t.markers[0].node;
+                assert_eq!(decl.kind, MarkerKind::Skip);
+                assert_eq!(decl.modifier, CondModifier::Unless);
+                assert_eq!(decl.var, "CI");
+                assert!(decl.condition.is_none());
+            }
+            other => panic!("expected Test, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_marker_before_effect() {
+        let src = "[run if PLATFORM = linux]\neffect E -> shell s {\n  shell s {\n    > start\n  }\n}\n";
+        let m = parse_ok(src);
+        match &m.items[0].node {
+            Item::Effect(e) => {
+                assert_eq!(e.markers.len(), 1);
+                let decl = &e.markers[0].node;
+                assert_eq!(decl.kind, MarkerKind::Run);
+                assert_eq!(decl.modifier, CondModifier::If);
+                assert_eq!(decl.var, "PLATFORM");
+                assert_eq!(
+                    decl.condition,
+                    Some(MarkerCondition::Eq("linux".into()))
+                );
+            }
+            other => panic!("expected Effect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_marker_with_regex() {
+        let src = "[skip unless ARCH ? ^(x86|arm)]\ntest \"t\" {\n  shell s {\n    > hi\n  }\n}\n";
+        let m = parse_ok(src);
+        match &m.items[0].node {
+            Item::Test(t) => {
+                assert_eq!(t.markers.len(), 1);
+                let decl = &t.markers[0].node;
+                assert_eq!(decl.kind, MarkerKind::Skip);
+                assert_eq!(decl.modifier, CondModifier::Unless);
+                assert_eq!(decl.var, "ARCH");
+                assert_eq!(
+                    decl.condition,
+                    Some(MarkerCondition::Regex("^(x86|arm)".into()))
+                );
+            }
+            other => panic!("expected Test, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_multiple_markers() {
+        let src = "[skip unless CI]\n[run if OS = linux]\ntest \"t\" {\n  shell s {\n    > hi\n  }\n}\n";
+        let m = parse_ok(src);
+        match &m.items[0].node {
+            Item::Test(t) => {
+                assert_eq!(t.markers.len(), 2);
+            }
+            other => panic!("expected Test, got {other:?}"),
         }
     }
 }

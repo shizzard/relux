@@ -14,6 +14,7 @@ pub enum Item {
     Fn(FnDef),
     Effect(EffectDef),
     Test(TestDef),
+    Marker(MarkerDecl),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -39,6 +40,7 @@ pub struct FnDef {
 pub struct EffectDef {
     pub name: Spanned<String>,
     pub exported_shell: Spanned<String>,
+    pub markers: Vec<Spanned<MarkerDecl>>,
     pub body: Vec<Spanned<EffectItem>>,
 }
 
@@ -54,6 +56,7 @@ pub enum EffectItem {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TestDef {
     pub name: Spanned<String>,
+    pub markers: Vec<Spanned<MarkerDecl>>,
     pub body: Vec<Spanned<TestItem>>,
 }
 
@@ -65,6 +68,33 @@ pub enum TestItem {
     Let(LetStmt),
     Shell(ShellBlock),
     Cleanup(CleanupBlock),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MarkerDecl {
+    pub kind: MarkerKind,
+    pub modifier: CondModifier,
+    pub var: String,
+    pub condition: Option<MarkerCondition>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum MarkerKind {
+    Skip,
+    Run,
+    Flaky,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CondModifier {
+    If,
+    Unless,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum MarkerCondition {
+    Eq(String),
+    Regex(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]

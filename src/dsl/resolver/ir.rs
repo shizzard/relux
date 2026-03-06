@@ -121,6 +121,35 @@ pub struct Function {
     pub span: Span,
 }
 
+// ─── Condition Markers ──────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub enum CondKind {
+    Skip,
+    Run,
+    Flaky,
+}
+
+#[derive(Debug, Clone)]
+pub enum CondModifier {
+    If,
+    Unless,
+}
+
+#[derive(Debug, Clone)]
+pub enum CondTest {
+    Eq(String),
+    Regex(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct Condition {
+    pub kind: CondKind,
+    pub modifier: CondModifier,
+    pub var: String,
+    pub test: Option<CondTest>,
+}
+
 // ─── Effect Definition ──────────────────────────────────────
 // Template for effect instances. Contains the body and cleanup
 // but NOT the dependency list — dependencies are captured by
@@ -130,6 +159,7 @@ pub struct Function {
 pub struct Effect {
     pub name: Spanned<String>,
     pub exported_shell: Spanned<String>,
+    pub conditions: Vec<Spanned<Condition>>,
     pub vars: Vec<Spanned<VarDecl>>,
     pub shells: Vec<Spanned<ShellBlock>>,
     pub cleanup: Option<Spanned<CleanupBlock>>,
@@ -142,6 +172,7 @@ pub struct Effect {
 pub struct Test {
     pub name: Spanned<String>,
     pub doc: Option<Spanned<String>>,
+    pub conditions: Vec<Spanned<Condition>>,
     /// Resolved references to effect instances in the DAG.
     pub needs: Vec<Spanned<TestNeed>>,
     pub vars: Vec<Spanned<VarDecl>>,

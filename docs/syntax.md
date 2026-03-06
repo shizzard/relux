@@ -70,6 +70,42 @@ test "<name>" {
 }
 ```
 
+## Condition Markers
+
+```
+[skip unless VAR]
+[skip if VAR]
+[run if VAR = value]
+[run unless VAR ? regex]
+[flaky if VAR]
+```
+
+- **Marker kinds**: `skip`, `run`, `flaky`
+- **Modifiers**: `if`, `unless`
+- **Variable**: bare environment variable name (no `${}` wrapping)
+- **Operator** (optional): `=` (literal equality) or `?` (regex match)
+- **Value/pattern** (optional): everything after the operator until the closing `]`, trimmed
+- One marker per line
+- Multiple markers stack with AND semantics (all must pass or test is skipped)
+- Placed immediately before `test` or `effect` declarations (not inside the body)
+- Comments between markers and the declaration are allowed
+
+| Marker | Modifier | Condition | Meaning |
+|--------|----------|-----------|---------|
+| `skip` | `if`     | truthy    | skip when condition is true |
+| `skip` | `unless` | falsy     | skip when condition is false |
+| `run`  | `if`     | falsy     | skip when condition is false |
+| `run`  | `unless` | truthy    | skip when condition is true |
+| `flaky`| `if`     | truthy    | mark as flaky when condition is true |
+| `flaky`| `unless` | falsy     | mark as flaky when condition is false |
+
+### Truthiness
+
+- Empty string or unset variable = false
+- Any non-empty string = true
+- `=` returns the value if equal, empty string otherwise
+- `?` returns the regex match if matched, empty string otherwise
+
 ## Shell Blocks
 
 ```

@@ -74,6 +74,11 @@ pub enum Diagnostic {
         module_path: String,
         span: Span,
     },
+    InvalidRegex {
+        pattern: String,
+        message: String,
+        span: Span,
+    },
 }
 
 // ─── Name Resolution Types ──────────────────────────────────
@@ -794,12 +799,59 @@ fn lower_overlay(
         .collect()
 }
 
+fn lower_marker(
+    file_id: FileId,
+    m: &parser::MarkerDecl,
+    marker_span: &parser::Span,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> ir::Condition {
+    let kind = match m.kind {
+        parser::MarkerKind::Skip => ir::CondKind::Skip,
+        parser::MarkerKind::Run => ir::CondKind::Run,
+        parser::MarkerKind::Flaky => ir::CondKind::Flaky,
+    };
+    let modifier = match m.modifier {
+        parser::CondModifier::If => ir::CondModifier::If,
+        parser::CondModifier::Unless => ir::CondModifier::Unless,
+    };
+    let test = match &m.condition {
+        Some(parser::MarkerCondition::Eq(s)) => Some(ir::CondTest::Eq(s.clone())),
+        Some(parser::MarkerCondition::Regex(pat)) => {
+            if let Err(e) = regex::Regex::new(pat) {
+                diagnostics.push(Diagnostic::InvalidRegex {
+                    pattern: pat.clone(),
+                    message: format!("{e}"),
+                    span: sp(file_id, marker_span),
+                });
+            }
+            Some(ir::CondTest::Regex(pat.clone()))
+        }
+        None => None,
+    };
+    ir::Condition {
+        kind,
+        modifier,
+        var: m.var.clone(),
+        test,
+    }
+}
+
 fn lower_effect_def(
     file_id: FileId,
     def: &parser::EffectDef,
     scope: &ModuleScope,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ir::Effect {
+    let conditions = def
+        .markers
+        .iter()
+        .map(|m| {
+            ir::Spanned::new(
+                lower_marker(file_id, &m.node, &m.span, diagnostics),
+                sp(file_id, &m.span),
+            )
+        })
+        .collect();
     let mut vars = Vec::new();
     let mut shells = Vec::new();
     let mut cleanup = None;
@@ -846,6 +898,7 @@ fn lower_effect_def(
             def.exported_shell.node.clone(),
             &def.exported_shell.span,
         ),
+        conditions,
         vars,
         shells,
         cleanup,
@@ -862,6 +915,16 @@ fn lower_test_def(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ir::Test {
     let mut doc = None;
+    let conditions = def
+        .markers
+        .iter()
+        .map(|m| {
+            ir::Spanned::new(
+                lower_marker(file_id, &m.node, &m.span, diagnostics),
+                sp(file_id, &m.span),
+            )
+        })
+        .collect();
     let mut vars = Vec::new();
     let mut shells = Vec::new();
     let mut cleanup = None;
@@ -907,6 +970,7 @@ fn lower_test_def(
     ir::Test {
         name: lower_spanned(file_id, def.name.node.clone(), &def.name.span),
         doc,
+        conditions,
         needs,
         vars,
         shells,
@@ -1209,6 +1273,7 @@ mod tests {
                 Diagnostic::CircularEffectDependency { .. } => "CircularEffectDependency",
                 Diagnostic::InvalidTimeout { .. } => "InvalidTimeout",
                 Diagnostic::ImportNotExported { .. } => "ImportNotExported",
+                Diagnostic::InvalidRegex { .. } => "InvalidRegex",
             })
             .collect()
     }
@@ -1610,5 +1675,61 @@ mod tests {
         );
         let (_, _, diags) = loader.resolve_one("main");
         assert!(diag_names(&diags).contains(&"InvalidTimeout"));
+    }
+
+    // ── Condition markers ──
+
+    #[test]
+    fn test_marker_lowering_test() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "main",
+            "[skip unless CI]\n[run if OS = linux]\ntest \"t\" {\n  shell s {\n    > hi\n  }\n}\n",
+        );
+        let (plans, _, diags) = loader.resolve_one("main");
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        let plan = &plans[0];
+        assert_eq!(plan.test.conditions.len(), 2);
+        assert!(matches!(plan.test.conditions[0].node.kind, ir::CondKind::Skip));
+        assert!(matches!(plan.test.conditions[0].node.modifier, ir::CondModifier::Unless));
+        assert_eq!(plan.test.conditions[0].node.var, "CI");
+        assert!(plan.test.conditions[0].node.test.is_none());
+        assert!(matches!(plan.test.conditions[1].node.kind, ir::CondKind::Run));
+        assert!(matches!(plan.test.conditions[1].node.modifier, ir::CondModifier::If));
+        assert_eq!(plan.test.conditions[1].node.var, "OS");
+        assert!(matches!(plan.test.conditions[1].node.test, Some(ir::CondTest::Eq(ref s)) if s == "linux"));
+    }
+
+    #[test]
+    fn test_marker_lowering_effect() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "main",
+            concat!(
+                "[skip unless PLATFORM ? ^linux]\n",
+                "effect E -> shell s {\n",
+                "  shell s {\n    > start\n  }\n",
+                "}\n",
+                "test \"t\" {\n  need E as e\n  shell e {\n    > hi\n  }\n}\n",
+            ),
+        );
+        let (plans, _, diags) = loader.resolve_one("main");
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        let plan = &plans[0];
+        let effect = &plan.effects[0];
+        assert_eq!(effect.conditions.len(), 1);
+        assert!(matches!(effect.conditions[0].node.kind, ir::CondKind::Skip));
+        assert!(matches!(effect.conditions[0].node.test, Some(ir::CondTest::Regex(ref s)) if s == "^linux"));
+    }
+
+    #[test]
+    fn test_marker_invalid_regex() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "main",
+            "[skip unless FOO ? *invalid]\ntest \"t\" {\n  shell s {\n    > hi\n  }\n}\n",
+        );
+        let (_, _, diags) = loader.resolve_one("main");
+        assert!(diag_names(&diags).contains(&"InvalidRegex"));
     }
 }

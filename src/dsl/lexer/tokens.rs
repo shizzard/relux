@@ -15,6 +15,15 @@ pub enum StringFragment<'a> {
     Escape(&'a str),
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct MarkerData<'a> {
+    pub kind: &'a str,
+    pub modifier: &'a str,
+    pub var: &'a str,
+    pub op: Option<char>,
+    pub value: Option<&'a str>,
+}
+
 #[derive(Logos, PartialEq, Clone)]
 #[logos(skip r" +")]
 pub enum Token<'a> {
@@ -39,6 +48,9 @@ pub enum Token<'a> {
     Need,
     #[token("cleanup")]
     Cleanup,
+
+    #[regex(r"\[[^\n]*\]", super::lex_marker, allow_greedy = true)]
+    Marker(MarkerData<'a>),
 
     #[token("{")]
     BraceOpen,
@@ -130,6 +142,18 @@ impl fmt::Display for Token<'_> {
             Token::Let => write!(f, "let"),
             Token::Need => write!(f, "need"),
             Token::Cleanup => write!(f, "cleanup"),
+            Token::Marker(m) => {
+                write!(f, "[{} {} {}", m.kind, m.modifier, m.var)?;
+                if let Some(op) = m.op {
+                    write!(f, " {op}")?;
+                    if let Some(val) = m.value {
+                        if !val.is_empty() {
+                            write!(f, " {val}")?;
+                        }
+                    }
+                }
+                write!(f, "]")
+            }
             Token::BraceOpen => write!(f, "{{"),
             Token::BraceClose => write!(f, "}}"),
             Token::ParenOpen => write!(f, "("),

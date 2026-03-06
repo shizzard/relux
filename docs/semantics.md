@@ -79,10 +79,32 @@
 - If an effect fails (a match times out during setup), all tests depending on it are failed
 - Each effect has an optional `cleanup` block that runs when the effect is torn down
 
+## Condition Markers
+
+- Condition markers are placed immediately before `test` or `effect` declarations
+- Condition markers evaluate **before** any shells are spawned
+  - Test-level markers are checked before `execute_effects`
+  - Effect-level markers are checked before the effect's shells are created
+- Variable lookup is ENV-only (`Arc<Env>`) — no frame variables or test-scope variables exist at evaluation time
+- Truthiness: empty string or unset variable is false, any non-empty string is true
+- `=` operator: returns the value if it equals the expected string, empty string otherwise
+- `?` operator: compiles the pattern as a regex and returns the match if found, empty string otherwise
+- Modifier semantics:
+  - `if` acts when the result is truthy
+  - `unless` acts when the result is falsy
+- Kind semantics:
+  - `skip`: skips the test/effect when the condition is met
+  - `run`: skips the test/effect when the condition is NOT met (inverse of `skip`)
+  - `flaky`: marks the test as flaky (skip semantics for now; retry is a future feature)
+- Multiple markers stack with AND semantics: all conditions must pass or the test is skipped
+- Skip reason includes the marker text for diagnostics (e.g. `"skip: FOO is not set"`)
+- When an effect is skipped, all tests depending on it are also skipped
+
 ## Tests
 
 - A test is the top-level unit of execution
 - Tests are independent — no test depends on another test's execution or side effects
+- Condition markers (`[skip/run/flaky ...]`) are placed immediately before the `test` declaration
 - Test structure (in order):
   1. Doc string (optional `"""..."""`)
   2. `need` declarations (effect dependencies)

@@ -9,6 +9,7 @@
     { "include": "#effect-declaration" },
     { "include": "#fn-declaration" },
     { "include": "#import-statement" },
+    { "include": "#condition-marker" },
     { "include": "#shell-operators" },
     { "include": "#timeout" },
     { "include": "#fail-operators" },
@@ -62,6 +63,33 @@
         "1": { "name": "keyword.control.import.relux" },
         "2": { "name": "entity.name.namespace.relux" }
       }
+    },
+
+    "condition-marker": {
+      "begin": "(\\[)(skip|run|flaky)\\s+(if|unless)\\s+",
+      "end": "(\\])",
+      "beginCaptures": {
+        "1": { "name": "punctuation.section.bracket.relux" },
+        "2": { "name": "keyword.control.marker.relux" },
+        "3": { "name": "keyword.control.modifier.relux" }
+      },
+      "endCaptures": {
+        "1": { "name": "punctuation.section.bracket.relux" }
+      },
+      "patterns": [
+        {
+          "match": "(\\S+)\\s+([=?])\\s*(.*?)(?=\\])",
+          "captures": {
+            "1": { "name": "variable.other.env.relux" },
+            "2": { "name": "keyword.operator.condition.relux" },
+            "3": { "name": "string.unquoted.condition-value.relux" }
+          }
+        },
+        {
+          "match": "\\S+",
+          "name": "variable.other.env.relux"
+        }
+      ]
     },
 
     "shell-operators": {
