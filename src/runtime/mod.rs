@@ -11,7 +11,7 @@ use crate::dsl::resolver::ir::{self, EffectInstance, InstanceId, Plan, SourceMap
 use crate::runtime::event_log::{EventCollector, LogEventKind};
 use crate::runtime::progress::{ProgressEvent, ProgressTx};
 use crate::runtime::result::{Failure, Outcome, TestResult};
-use crate::runtime::vars::{Env, TestScope, VariableStack, interpolate_with_lookup};
+use crate::runtime::vars::{Env, ScopeStack, TestScope, interpolate_with_lookup};
 use crate::runtime::vm::Vm;
 
 pub mod bifs;
@@ -143,10 +143,11 @@ impl Runtime {
                 let test_scope = Arc::new(Mutex::new(TestScope::new()));
                 for decl in &plan.test.vars {
                     let value = if let Some(expr) = &decl.node.value {
-                        let vars = VariableStack::new(
+                        let vars = ScopeStack::new(
                             test_scope.clone(),
                             HashMap::new(),
                             self.env.clone(),
+                            self.default_timeout,
                         );
                         self.eval_static_expr(expr, &vars).await.unwrap_or_default()
                     } else {
@@ -281,7 +282,7 @@ impl Runtime {
             for var in &effect.vars {
                 let value = if let Some(expr) = &var.node.value {
                     let vars =
-                        VariableStack::new(effect_scope.clone(), overlay.clone(), self.env.clone());
+                        ScopeStack::new(effect_scope.clone(), overlay.clone(), self.env.clone(), self.default_timeout);
                     match self.eval_static_expr(expr, &vars).await {
                         Ok(v) => v,
                         Err(f) => {
@@ -303,16 +304,16 @@ impl Runtime {
                     let shell_name = block.node.name.node.clone();
                     let scoped_name = format!("{scope_prefix}.{shell_name}");
                     if !shells.contains_key(&shell_name) {
-                        let vars = VariableStack::new(
+                        let scope = ScopeStack::new(
                             effect_scope.clone(),
                             overlay.clone(),
                             self.env.clone(),
+                            self.default_timeout,
                         );
                         match Vm::new(
                             scoped_name,
                             DEFAULT_SHELL_PROMPT.to_string(),
-                            vars,
-                            self.default_timeout,
+                            scope,
                             code_server.clone(),
                             Some(progress_tx.clone()),
                             log_dir,
@@ -407,12 +408,11 @@ impl Runtime {
             } else if let Some(vm) = local_shells.get(&shell_name).cloned() {
                 vm
             } else {
-                let vars = VariableStack::new(test_scope.clone(), HashMap::new(), self.env.clone());
+                let scope = ScopeStack::new(test_scope.clone(), HashMap::new(), self.env.clone(), self.default_timeout);
                 let vm = match Vm::new(
                     shell_name.clone(),
                     DEFAULT_SHELL_PROMPT.to_string(),
-                    vars,
-                    self.default_timeout,
+                    scope,
                     code_server.clone(),
                     Some(progress_tx.clone()),
                     log_dir,
@@ -449,14 +449,13 @@ impl Runtime {
         if let Some(cleanup) = &plan.test.cleanup {
             let _ = progress_tx.send(ProgressEvent::Cleanup);
             let test_scope = Arc::new(Mutex::new(TestScope::new()));
-            let vars = VariableStack::new(test_scope, HashMap::new(), self.env.clone());
+            let scope = ScopeStack::new(test_scope, HashMap::new(), self.env.clone(), self.default_timeout);
             let code_server = Arc::new(CodeServer::new(plan.functions.clone()));
             event_collector.push("", LogEventKind::Cleanup { shell: "__cleanup".to_string() }).await;
             if let Ok(mut vm) = Vm::new(
                 "__cleanup".to_string(),
                 DEFAULT_SHELL_PROMPT.to_string(),
-                vars,
-                self.default_timeout,
+                scope,
                 code_server,
                 Some(progress_tx),
                 log_dir,
@@ -503,13 +502,12 @@ impl Runtime {
                 event_collector.push("", LogEventKind::Cleanup { shell: cleanup_name.clone() }).await;
                 let test_scope = Arc::new(Mutex::new(TestScope::new()));
                 let overlay = self.interpolate_overlay(&instance_state.info.overlay);
-                let vars = VariableStack::new(test_scope, overlay, self.env.clone());
+                let scope = ScopeStack::new(test_scope, overlay, self.env.clone(), self.default_timeout);
                 let code_server = Arc::new(CodeServer::new(Vec::new()));
                 if let Ok(mut vm) = Vm::new(
                     cleanup_name,
                     DEFAULT_SHELL_PROMPT.to_string(),
-                    vars,
-                    self.default_timeout,
+                    scope,
                     code_server,
                     Some(progress_tx.clone()),
                     log_dir,
@@ -545,11 +543,11 @@ impl Runtime {
     async fn eval_static_expr(
         &self,
         expr: &Spanned<ir::Expr>,
-        vars: &VariableStack,
+        scope: &ScopeStack,
     ) -> Result<String, Failure> {
         match &expr.node {
-            ir::Expr::String(s) => Ok(crate::runtime::vars::interpolate(s, vars).await),
-            ir::Expr::Var(name) => Ok(vars.lookup(name).await.unwrap_or_default()),
+            ir::Expr::String(s) => Ok(crate::runtime::vars::interpolate(s, scope).await),
+            ir::Expr::Var(name) => Ok(scope.lookup(name).await.unwrap_or_default()),
             _ => Err(Failure::Runtime {
                 message: "unsupported expression in static context".to_string(),
                 span: Some(expr.span.clone()),

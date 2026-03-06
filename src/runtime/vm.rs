@@ -13,7 +13,7 @@ use crate::dsl::resolver::ir::{self, Expr, ShellStmt, Span, Spanned};
 use crate::runtime::event_log::{EventCollector, LogEventKind};
 use crate::runtime::result::Failure;
 use crate::runtime::shell_log::ShellLogger;
-use crate::runtime::vars::{VariableStack, interpolate};
+use crate::runtime::vars::{ScopeStack, interpolate};
 use crate::runtime::bifs::VmContext;
 use crate::runtime::progress::{ProgressEvent, ProgressTx};
 use crate::runtime::{Callable, CodeServer};
@@ -101,8 +101,7 @@ pub struct Vm {
     fail_watcher_tx: watch::Sender<Option<FailPattern>>,
     fail_triggered: Arc<AtomicBool>,
     fail_detail: Arc<Mutex<Option<(String, String)>>>,
-    vars: VariableStack,
-    timeout: Duration,
+    scope: ScopeStack,
     code_server: Arc<CodeServer>,
     shell_name: String,
     shell_prompt: String,
@@ -117,8 +116,7 @@ impl Vm {
     pub async fn new(
         shell_name: String,
         shell_prompt: String,
-        vars: VariableStack,
-        timeout: Duration,
+        scope: ScopeStack,
         code_server: Arc<CodeServer>,
         progress_tx: Option<ProgressTx>,
         log_dir: &Path,
@@ -141,7 +139,7 @@ impl Vm {
         })?;
 
         let mut cmd = pty_process::Command::new("/bin/sh").kill_on_drop(true);
-        cmd = cmd.envs(vars.process_env());
+        cmd = cmd.envs(scope.process_env());
         let child = cmd.spawn(pts).map_err(|e| Failure::Runtime {
             message: format!("failed to spawn shell: {e}"),
             span: None,
@@ -185,8 +183,7 @@ impl Vm {
             fail_watcher_tx,
             fail_triggered,
             fail_detail,
-            vars,
-            timeout,
+            scope,
             code_server,
             shell_name: shell_name.clone(),
             shell_prompt,
@@ -218,7 +215,7 @@ impl Vm {
             .build()
             .expect("prompt regex must be valid");
 
-        tokio::time::timeout(self.timeout, async {
+        tokio::time::timeout(self.scope.timeout(), async {
             loop {
                 if let Some((_start, end, _captures)) = self
                     .output_buf
@@ -248,7 +245,7 @@ impl Vm {
         self.check_fail(stmt.span.clone()).await?;
         match &stmt.node {
             ShellStmt::FailRegex(expr) => {
-                let pat = interpolate(expr, &self.vars).await;
+                let pat = interpolate(expr, &self.scope).await;
                 self.emit_event(LogEventKind::FailPatternSet { pattern: pat.clone() }).await;
                 let re = RegexBuilder::new(&pat).multi_line(true).crlf(true).build().map_err(|e| Failure::Runtime {
                     message: format!("invalid fail regex: {}", regex_error_summary(&e)),
@@ -259,13 +256,13 @@ impl Vm {
                 Ok(String::new())
             }
             ShellStmt::FailLiteral(expr) => {
-                let pat = interpolate(expr, &self.vars).await;
+                let pat = interpolate(expr, &self.scope).await;
                 self.emit_event(LogEventKind::FailPatternSet { pattern: pat.clone() }).await;
                 let _ = self.fail_watcher_tx.send(Some(FailPattern::Literal(pat)));
                 Ok(String::new())
             }
             ShellStmt::Timeout(d) => {
-                self.timeout = *d;
+                self.scope.set_timeout(*d);
                 Ok(String::new())
             }
             ShellStmt::Let(decl) => {
@@ -278,7 +275,7 @@ impl Vm {
                     name: decl.name.node.clone(),
                     value: value.clone(),
                 }).await;
-                self.vars.let_insert(decl.name.node.clone(), value.clone());
+                self.scope.let_insert(decl.name.node.clone(), value.clone());
                 Ok(value)
             }
             ShellStmt::Assign(assign) => {
@@ -287,7 +284,7 @@ impl Vm {
                     name: assign.name.node.clone(),
                     value: value.clone(),
                 }).await;
-                let _ = self.vars.assign(&assign.name.node, value.clone()).await;
+                let _ = self.scope.assign(&assign.name.node, value.clone()).await;
                 Ok(value)
             }
             ShellStmt::Expr(expr) => {
@@ -301,10 +298,10 @@ impl Vm {
     async fn eval_expr(&mut self, expr: &Spanned<Expr>) -> Result<String, Failure> {
         self.check_fail(expr.span.clone()).await?;
         match &expr.node {
-            Expr::String(s) => Ok(interpolate(s, &self.vars).await),
-            Expr::Var(name) => Ok(self.vars.lookup(name).await.unwrap_or_default()),
+            Expr::String(s) => Ok(interpolate(s, &self.scope).await),
+            Expr::Var(name) => Ok(self.scope.lookup(name).await.unwrap_or_default()),
             Expr::Send(s) => {
-                let payload = interpolate(s, &self.vars).await;
+                let payload = interpolate(s, &self.scope).await;
                 self.send_bytes(format!("{payload}\n").as_bytes(), expr.span.clone())
                     .await?;
                 self.emit_event(LogEventKind::Send { data: payload.clone() }).await;
@@ -312,7 +309,7 @@ impl Vm {
                 Ok(payload)
             }
             Expr::SendRaw(s) => {
-                let payload = interpolate(s, &self.vars).await;
+                let payload = interpolate(s, &self.scope).await;
                 self.send_bytes(payload.as_bytes(), expr.span.clone())
                     .await?;
                 self.emit_event(LogEventKind::Send { data: payload.clone() }).await;
@@ -320,7 +317,7 @@ impl Vm {
                 Ok(payload)
             }
             Expr::MatchLiteral(s) => {
-                let pattern = interpolate(s, &self.vars).await;
+                let pattern = interpolate(s, &self.scope).await;
                 self.emit_event(LogEventKind::MatchStart { pattern: pattern.clone(), is_regex: false }).await;
                 self.emit_progress(ProgressEvent::MatchStart);
                 let match_start = Instant::now();
@@ -331,7 +328,7 @@ impl Vm {
                 Ok(pattern)
             }
             Expr::MatchRegex(s) => {
-                let pattern = interpolate(s, &self.vars).await;
+                let pattern = interpolate(s, &self.scope).await;
                 let re = RegexBuilder::new(&pattern).multi_line(true).crlf(true).build().map_err(|e| Failure::Runtime {
                     message: format!("invalid regex: {}", regex_error_summary(&e)),
                     span: Some(s.span.clone()),
@@ -347,7 +344,7 @@ impl Vm {
                 self.emit_event(LogEventKind::MatchDone { matched: full.clone(), elapsed: match_start.elapsed() }).await;
                 self.emit_progress(ProgressEvent::MatchDone);
                 self.cursor = end;
-                self.vars.set_captures(captures);
+                self.scope.set_captures(captures);
                 Ok(full)
             }
             Expr::Call(call) => self.eval_call(call, &expr.span).await,
@@ -389,15 +386,15 @@ impl Vm {
 
                 self.emit_event(LogEventKind::FnEnter { name: call.name.node.clone() }).await;
                 self.emit_progress(ProgressEvent::FnEnter(call.name.node.clone()));
-                self.vars.push_frame();
+                self.scope.push_frame();
                 for (param, value) in params.iter().zip(evaluated_args.into_iter()) {
-                    self.vars.let_insert(param.node.clone(), value);
+                    self.scope.let_insert(param.node.clone(), value);
                 }
                 let mut last = String::new();
                 for stmt in &body {
                     last = self.exec_stmt(stmt).await?;
                 }
-                self.vars.pop_frame();
+                self.scope.pop_frame();
                 self.emit_event(LogEventKind::FnExit).await;
                 self.emit_progress(ProgressEvent::FnExit);
                 Ok(last)
@@ -423,7 +420,7 @@ impl Vm {
             }
         };
 
-        match tokio::time::timeout(self.timeout, fut).await {
+        match tokio::time::timeout(self.scope.timeout(), fut).await {
             Ok(result) => result,
             Err(_) => {
                 self.emit_progress(ProgressEvent::Timeout);
@@ -453,7 +450,7 @@ impl Vm {
             }
         };
 
-        match tokio::time::timeout(self.timeout, fut).await {
+        match tokio::time::timeout(self.scope.timeout(), fut).await {
             Ok(result) => result,
             Err(_) => {
                 self.emit_progress(ProgressEvent::Timeout);
@@ -503,7 +500,7 @@ impl Vm {
     }
 
     pub async fn reset_for_reuse(&mut self, timeout: Duration) {
-        self.timeout = timeout;
+        self.scope.set_timeout(timeout);
         self.cursor = 0;
         self.fail_triggered.store(false, Ordering::Relaxed);
         *self.fail_detail.lock().await = None;

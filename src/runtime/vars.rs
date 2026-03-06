@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::Mutex;
 
@@ -36,22 +37,32 @@ impl TestScope {
 }
 
 #[derive(Debug)]
-pub struct VariableStack {
-    frames: Vec<HashMap<String, String>>,
+struct Frame {
+    vars: HashMap<String, String>,
+    timeout: Duration,
+}
+
+#[derive(Debug)]
+pub struct ScopeStack {
+    frames: Vec<Frame>,
     pub captures: HashMap<String, String>,
     test_scope: Arc<Mutex<TestScope>>,
     overlay: HashMap<String, String>,
     env: Arc<Env>,
 }
 
-impl VariableStack {
+impl ScopeStack {
     pub fn new(
         test_scope: Arc<Mutex<TestScope>>,
         overlay: HashMap<String, String>,
         env: Arc<Env>,
+        default_timeout: Duration,
     ) -> Self {
         Self {
-            frames: vec![HashMap::new()],
+            frames: vec![Frame {
+                vars: HashMap::new(),
+                timeout: default_timeout,
+            }],
             captures: HashMap::new(),
             test_scope,
             overlay,
@@ -60,7 +71,11 @@ impl VariableStack {
     }
 
     pub fn push_frame(&mut self) {
-        self.frames.push(HashMap::new());
+        let timeout = self.timeout();
+        self.frames.push(Frame {
+            vars: HashMap::new(),
+            timeout,
+        });
     }
 
     pub fn pop_frame(&mut self) {
@@ -69,13 +84,21 @@ impl VariableStack {
         }
     }
 
+    pub fn timeout(&self) -> Duration {
+        self.frames.last().unwrap().timeout
+    }
+
+    pub fn set_timeout(&mut self, d: Duration) {
+        self.frames.last_mut().unwrap().timeout = d;
+    }
+
     pub async fn lookup(&self, key: &str) -> Option<String> {
         if let Some(v) = self.captures.get(key) {
             return Some(v.clone());
         }
 
         for frame in self.frames.iter().rev() {
-            if let Some(v) = frame.get(key) {
+            if let Some(v) = frame.vars.get(key) {
                 return Some(v.clone());
             }
         }
@@ -93,13 +116,13 @@ impl VariableStack {
 
     pub fn let_insert(&mut self, key: String, value: String) {
         if let Some(frame) = self.frames.last_mut() {
-            frame.insert(key, value);
+            frame.vars.insert(key, value);
         }
     }
 
     pub async fn assign(&mut self, key: &str, value: String) -> bool {
         for frame in self.frames.iter_mut().rev() {
-            if let Some(slot) = frame.get_mut(key) {
+            if let Some(slot) = frame.vars.get_mut(key) {
                 *slot = value;
                 return true;
             }
@@ -141,7 +164,7 @@ impl VariableStack {
     }
 }
 
-pub async fn interpolate(expr: &StringExpr, vars: &VariableStack) -> String {
+pub async fn interpolate(expr: &StringExpr, vars: &ScopeStack) -> String {
     let mut out = String::new();
     for part in &expr.parts {
         match &part.node {
@@ -174,4 +197,91 @@ pub fn interpolate_with_lookup(
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_scope(timeout: Duration) -> ScopeStack {
+        ScopeStack::new(
+            Arc::new(Mutex::new(TestScope::new())),
+            HashMap::new(),
+            Arc::new(HashMap::new()),
+            timeout,
+        )
+    }
+
+    #[test]
+    fn default_timeout() {
+        let scope = make_scope(Duration::from_secs(10));
+        assert_eq!(scope.timeout(), Duration::from_secs(10));
+    }
+
+    #[test]
+    fn set_timeout_changes_current_frame() {
+        let mut scope = make_scope(Duration::from_secs(10));
+        scope.set_timeout(Duration::from_secs(30));
+        assert_eq!(scope.timeout(), Duration::from_secs(30));
+    }
+
+    #[test]
+    fn push_frame_inherits_timeout() {
+        let mut scope = make_scope(Duration::from_secs(10));
+        scope.set_timeout(Duration::from_secs(5));
+        scope.push_frame();
+        assert_eq!(scope.timeout(), Duration::from_secs(5));
+    }
+
+    #[test]
+    fn pop_frame_restores_timeout() {
+        let mut scope = make_scope(Duration::from_secs(10));
+        scope.push_frame();
+        scope.set_timeout(Duration::from_secs(99));
+        assert_eq!(scope.timeout(), Duration::from_secs(99));
+        scope.pop_frame();
+        assert_eq!(scope.timeout(), Duration::from_secs(10));
+    }
+
+    #[test]
+    fn nested_frames_restore_correctly() {
+        let mut scope = make_scope(Duration::from_secs(10));
+
+        scope.push_frame();
+        scope.set_timeout(Duration::from_secs(20));
+
+        scope.push_frame();
+        scope.set_timeout(Duration::from_secs(30));
+        assert_eq!(scope.timeout(), Duration::from_secs(30));
+
+        scope.pop_frame();
+        assert_eq!(scope.timeout(), Duration::from_secs(20));
+
+        scope.pop_frame();
+        assert_eq!(scope.timeout(), Duration::from_secs(10));
+    }
+
+    #[test]
+    fn pop_frame_on_root_is_noop() {
+        let mut scope = make_scope(Duration::from_secs(10));
+        scope.set_timeout(Duration::from_secs(5));
+        scope.pop_frame();
+        assert_eq!(scope.timeout(), Duration::from_secs(5));
+    }
+
+    #[tokio::test]
+    async fn vars_scoped_independently_from_timeout() {
+        let mut scope = make_scope(Duration::from_secs(10));
+        scope.let_insert("x".into(), "outer".into());
+
+        scope.push_frame();
+        scope.set_timeout(Duration::from_secs(99));
+        scope.let_insert("x".into(), "inner".into());
+        assert_eq!(scope.lookup("x").await.unwrap(), "inner");
+        assert_eq!(scope.timeout(), Duration::from_secs(99));
+
+        scope.pop_frame();
+        assert_eq!(scope.lookup("x").await.unwrap(), "outer");
+        assert_eq!(scope.timeout(), Duration::from_secs(10));
+    }
 }
