@@ -1,0 +1,67 @@
+<idea-plugin>
+    <id>eu.spawnlink.relux</id>
+    <name>Relux</name>
+    <version>0.1.0</version>
+    <vendor email="contact@spawnlink.eu" url="https://github.com/spawnlink/relux">Spawnlink</vendor>
+
+    <description><![CDATA[
+        <p>Syntax highlighting and editor support for the Relux DSL (.relux files).</p>
+        <p>Relux is a Rust-based integration test framework for controlling interactive shell programs.</p>
+        <h3>Features:</h3>
+        <ul>
+            <li>Syntax highlighting for keywords, operators, and special constructs</li>
+            <li>Bracket, brace, and parenthesis matching</li>
+            <li>Line comment support (# ...)</li>
+            <li>Code folding for test, effect, fn, shell, and cleanup blocks</li>
+            <li>Customizable color scheme</li>
+        </ul>
+    ]]></description>
+
+    <change-notes><![CDATA[
+        <h3>0.1.0</h3>
+        <ul>
+            <li>Initial release</li>
+            <li>Full syntax highlighting support</li>
+            <li>Editor features: brace matching, commenting, folding</li>
+        </ul>
+    ]]></change-notes>
+
+    <!-- Requires IntelliJ IDEA 2024.3 or later -->
+    <idea-version since-build="243.0"/>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- File Type -->
+        <fileType
+                name="Relux"
+                implementationClass="eu.spawnlink.relux.ReluxFileType"
+                fieldName="INSTANCE"
+                language="Relux"
+                extensions="relux"/>
+
+        <!-- Language -->
+        <lang.syntaxHighlighterFactory
+                language="Relux"
+                implementationClass="eu.spawnlink.relux.ReluxSyntaxHighlighterFactory"/>
+
+        <!-- Brace Matcher -->
+        <lang.braceMatcher
+                language="Relux"
+                implementationClass="eu.spawnlink.relux.ReluxBraceMatcher"/>
+
+        <!-- Commenter -->
+        <lang.commenter
+                language="Relux"
+                implementationClass="eu.spawnlink.relux.ReluxCommenter"/>
+
+        <!-- Folding Builder -->
+        <lang.foldingBuilder
+                language="Relux"
+                implementationClass="eu.spawnlink.relux.ReluxFoldingBuilder"/>
+
+        <!-- Color Settings Page -->
+        <colorSettingsPage
+                implementation="eu.spawnlink.relux.ReluxColorSettingsPage"/>
+    </extensions>
+</idea-plugin>

@@ -26,6 +26,10 @@ e2e *ARGS:
     cd tests && cargo run --manifest-path ../Cargo.toml -- check {{ARGS}}
     cd tests && cargo run --manifest-path ../Cargo.toml -- run {{ARGS}}
 
+# Build the IntelliJ plugin
+intellij:
+    cd editors/intellij && gradle buildPlugin --info
+
 # Remove build artifacts
 clean:
     cargo clean

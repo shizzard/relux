@@ -25,6 +25,8 @@
             buildInputs = [
               rust
               pkgs.just
+              pkgs.jdk17
+              pkgs.gradle
             ];
           };
         });
