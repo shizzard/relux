@@ -78,7 +78,7 @@
       },
       "patterns": [
         {
-          "match": "(\\S+)\\s+([=?])\\s*(.*?)(?=\\])",
+          "match": "([^\\]\\s]+)\\s+([=?])\\s*(.*?)(?=\\])",
           "captures": {
             "1": { "name": "variable.other.env.relux" },
             "2": { "name": "keyword.operator.condition.relux" },
@@ -86,7 +86,7 @@
           }
         },
         {
-          "match": "\\S+",
+          "match": "[^\\]\\s]+",
           "name": "variable.other.env.relux"
         }
       ]
