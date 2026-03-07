@@ -1,0 +1,64 @@
+test "basic regex match" {
+    shell s {
+        > echo hello-relux
+        <? ^hello-relux$
+    }
+}
+
+test "regex with capture groups" {
+    shell s {
+        > echo "value=42"
+        <? ^value=(\d+)$
+        > echo "captured ${1}"
+        <? captured 42
+    }
+}
+
+test "regex with multiple captures" {
+    shell s {
+        > echo "key=name val=bob"
+        <? key=(\w+) val=(\w+)
+        > echo "${1} is ${2}"
+        <? name is bob
+    }
+}
+
+test "regex match advances cursor" {
+    shell s {
+        > echo first
+        > echo second
+        > echo third
+        <? first
+        <? second
+        <? third
+    }
+}
+
+test "regex dot matches within line" {
+    shell s {
+        > echo abcdef
+        <? a.*f
+    }
+}
+
+test "captures overwritten by next match" {
+    shell s {
+        > echo "aaa=111"
+        <? ^aaa=(\d+)$
+        > echo "captured ${1}"
+        <? ^captured 111$
+        > echo "bbb=222"
+        <? ^bbb=(\d+)$
+        > echo "captured ${1}"
+        <? ^captured 222$
+    }
+}
+
+test "regex match is case sensitive" {
+    shell s {
+        > echo HELLO
+        <? ^HELLO$
+        > echo hello
+        <? ^hello$
+    }
+}

@@ -1,0 +1,40 @@
+test "basic literal match" {
+    shell s {
+        > echo hello-relux
+        <= echo hello-relux
+        <= hello-relux
+    }
+}
+
+test "literal match is substring" {
+    shell s {
+        > echo "the quick brown fox"
+        <= quick brown
+    }
+}
+
+test "literal match with special regex chars" {
+    shell s {
+        > echo "price is $10.00 (USD)"
+        <= $10.00 (USD)
+    }
+}
+
+test "literal match with variable interpolation" {
+    shell s {
+        let expected = "hello"
+        > echo hello
+        <= ${expected}
+    }
+}
+
+test "literal match advances cursor" {
+    shell s {
+        > echo first
+        > echo second
+        > echo third
+        <= first
+        <= second
+        <= third
+    }
+}

@@ -1,0 +1,55 @@
+test "send with newline" {
+    shell s {
+        > echo hello
+        <? hello
+    }
+}
+
+test "send raw without newline" {
+    shell s {
+        => echo relux
+        > -raw-test
+        <? ^relux-raw-test$
+    }
+}
+
+test "send with variable interpolation" {
+    shell s {
+        let msg = "world"
+        > echo "hello ${msg}"
+        <? hello world
+    }
+}
+
+test "send preserves whitespace" {
+    shell s {
+        > echo "  spaced  "
+        <?   spaced
+    }
+}
+
+test "send empty line" {
+    shell s {
+        > echo before
+        >
+        > echo after
+        <? ^before$
+        <? ^after$
+    }
+}
+
+test "send with dollar escape" {
+    shell s {
+        > echo '$$HOME'
+        <? ^\$$HOME$
+    }
+}
+
+test "multiple raw sends" {
+    shell s {
+        => echo one
+        => -two
+        > -three
+        <? ^one-two-three$
+    }
+}
