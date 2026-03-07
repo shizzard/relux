@@ -11,6 +11,7 @@ pub trait VmContext: Send {
     async fn send_line(&mut self, line: &str, span: &Span) -> Result<(), Failure>;
     async fn send_raw(&mut self, data: &[u8], span: &Span) -> Result<(), Failure>;
     fn shell_prompt(&self) -> &str;
+    async fn emit_log(&mut self, message: String);
 }
 
 #[async_trait]
@@ -98,8 +99,10 @@ impl Bif for Log {
     fn name(&self) -> &str { "log" }
     fn arity(&self) -> usize { 1 }
 
-    async fn call(&self, _vm: &mut dyn VmContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
-        Ok(args[0].clone())
+    async fn call(&self, vm: &mut dyn VmContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+        let message = args[0].clone();
+        vm.emit_log(message.clone()).await;
+        Ok(message)
     }
 }
 
@@ -357,6 +360,8 @@ mod tests {
         fn shell_prompt(&self) -> &str {
             "test> "
         }
+
+        async fn emit_log(&mut self, _message: String) {}
     }
 
     fn dummy_span() -> Span {

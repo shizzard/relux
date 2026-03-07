@@ -27,6 +27,7 @@ pub enum LogEventKind {
     EffectTeardown { effect: String },
     Sleep { duration: Duration },
     Annotate { text: String },
+    Log { message: String },
     VarLet { name: String, value: String },
     VarAssign { name: String, value: String },
     FnEnter { name: String },

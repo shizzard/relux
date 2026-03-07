@@ -1,7 +1,7 @@
 # Planned Features
 
 - Pure functions: functions that disallow send and match operators, can only call other pure functions, and can be called outside of a shell context
-- Built-in functions: more string utilities, `log()` should emit to rich HTML logs (currently a no-op)
+- Built-in functions: more string utilities
 - Per-shell command override: per-shell executable override via shell block attributes (global shell command now configurable in `Relux.toml`)
 - TAP and JUnit output: machine-readable test result formats for CI integration (flags registered, generation not yet implemented)
 - Run history: assemble timelines of test results across multiple runs with revision tracking

@@ -666,6 +666,10 @@ impl VmContext for Vm {
     fn shell_prompt(&self) -> &str {
         &self.shell_prompt
     }
+
+    async fn emit_log(&mut self, message: String) {
+        self.emit_event(LogEventKind::Log { message }).await;
+    }
 }
 
 fn spawn_fail_watcher(

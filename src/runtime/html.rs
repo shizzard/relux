@@ -67,6 +67,7 @@ fn event_type_class(kind: &LogEventKind) -> (&str, &str) {
         LogEventKind::EffectTeardown { .. } => ("effect-", ""),
         LogEventKind::Sleep { .. } => ("sleep", ""),
         LogEventKind::Annotate { .. } => ("note", ""),
+        LogEventKind::Log { .. } => ("log", ""),
         LogEventKind::VarLet { .. } => ("let", ""),
         LogEventKind::VarAssign { .. } => ("assign", ""),
         LogEventKind::FnEnter { .. } => ("fn {", ""),
@@ -106,6 +107,7 @@ fn event_data(kind: &LogEventKind) -> String {
         LogEventKind::EffectTeardown { effect } => html_escape(effect),
         LogEventKind::Sleep { duration } => format!("{duration:?}"),
         LogEventKind::Annotate { text } => html_escape(text),
+        LogEventKind::Log { message } => html_escape(message),
         LogEventKind::VarLet { name, value } => {
             format!("{} = {}", html_escape(name), html_escape(value))
         }

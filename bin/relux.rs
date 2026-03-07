@@ -239,7 +239,10 @@ fn validate_module_path(raw: &str) -> Result<String, String> {
                 "segment `{segment}` must start with a lowercase letter or underscore"
             ));
         }
-        if !segment.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
+        if !segment
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        {
             return Err(format!(
                 "segment `{segment}` must contain only lowercase letters, digits, and underscores"
             ));
@@ -282,7 +285,27 @@ fn cmd_new_module(raw_path: &str, kind: ModuleKind) {
     let content = match kind {
         ModuleKind::Test => format!(
             r#"test "{name}" {{
-    shell s {{
+    shell literal {{
+        log("sending echo on shell literal")
+        > echo hello-relux
+    }}
+
+    shell regex {{
+        log("sending echo on shell regex")
+        > echo "value=42"
+    }}
+
+    shell literal {{
+        log("matching literal on shell literal")
+        <~100ms? ^hello-relux$
+        match_ok()
+    }}
+
+    shell regex {{
+        log("matching regex on shell regex")
+        <~100ms? ^value=(\d+)$
+        annotate("matched ${{1}}")
+        match_ok()
     }}
 }}
 "#,
@@ -303,9 +326,7 @@ fn cmd_new_module(raw_path: &str, kind: ModuleKind) {
         process::exit(1);
     });
 
-    let relative = file_path
-        .strip_prefix(&project_root)
-        .unwrap_or(&file_path);
+    let relative = file_path.strip_prefix(&project_root).unwrap_or(&file_path);
     eprintln!("Created {}", relative.display());
 }
 
@@ -492,9 +513,7 @@ fn create_run_context(
         process::exit(1);
     });
 
-    let timestamp = chrono::Utc::now()
-        .format("%Y-%m-%d-%H-%M-%S")
-        .to_string();
+    let timestamp = chrono::Utc::now().format("%Y-%m-%d-%H-%M-%S").to_string();
 
     for _ in 0..32 {
         let run_id = generate_run_id();
