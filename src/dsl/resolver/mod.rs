@@ -15,20 +15,26 @@ pub trait SourceLoader {
 }
 
 pub struct FsSourceLoader {
-    project_root: PathBuf,
+    search_paths: Vec<PathBuf>,
 }
 
 impl FsSourceLoader {
-    pub fn new(project_root: PathBuf) -> Self {
-        Self { project_root }
+    pub fn new(project_root: PathBuf, extra_search_paths: Vec<PathBuf>) -> Self {
+        let mut search_paths = vec![project_root];
+        search_paths.extend(extra_search_paths);
+        Self { search_paths }
     }
 }
 
 impl SourceLoader for FsSourceLoader {
     fn load(&self, mod_path: &str) -> Option<(PathBuf, String)> {
-        let file_path = self.project_root.join(mod_path).with_extension("relux");
-        let source = std::fs::read_to_string(&file_path).ok()?;
-        Some((file_path, source))
+        for base in &self.search_paths {
+            let file_path = base.join(mod_path).with_extension("relux");
+            if let Ok(source) = std::fs::read_to_string(&file_path) {
+                return Some((file_path, source));
+            }
+        }
+        None
     }
 }
 
@@ -1148,8 +1154,9 @@ fn collect_calls_from_expr(expr: &parser::AstExpr, keys: &mut Vec<FnKey>) {
 pub fn resolve(
     roots: &[PathBuf],
     project_root: &Path,
+    lib_dir: &Path,
 ) -> (Vec<ir::Plan>, SourceMap, Vec<Diagnostic>) {
-    let loader = FsSourceLoader::new(project_root.to_path_buf());
+    let loader = FsSourceLoader::new(project_root.to_path_buf(), vec![lib_dir.to_path_buf()]);
     let mod_paths: Vec<String> = roots
         .iter()
         .map(|root_path| {

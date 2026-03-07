@@ -375,13 +375,14 @@ async fn cmd_run(matches: &clap::ArgMatches) {
     let mut all_roots: Vec<PathBuf> = lib_files.clone();
     all_roots.extend(test_files.clone());
 
-    let (plans, source_map, diagnostics) = resolve(&all_roots, &project_root);
+    let lib_dir = config::lib_dir(&project_root);
+    let (plans, source_map, diagnostics) = resolve(&all_roots, &project_root, &lib_dir);
     if !diagnostics.is_empty() {
         print_diagnostics(&diagnostics, &source_map);
         process::exit(1);
     }
 
-    let lib_prefix = config::lib_dir(&project_root);
+    let lib_prefix = lib_dir;
     let plans: Vec<_> = plans
         .into_iter()
         .filter(|plan| {
@@ -416,7 +417,8 @@ fn cmd_check(matches: &clap::ArgMatches) {
     });
 
     let test_files = resolve_test_files(matches, &project_root);
-    let lib_files = config::discover_relux_files(&config::lib_dir(&project_root));
+    let lib_dir = config::lib_dir(&project_root);
+    let lib_files = config::discover_relux_files(&lib_dir);
     let mut all_roots: Vec<PathBuf> = lib_files;
     all_roots.extend(test_files);
 
@@ -425,7 +427,7 @@ fn cmd_check(matches: &clap::ArgMatches) {
         process::exit(1);
     }
 
-    let (_plans, source_map, diagnostics) = resolve(&all_roots, &project_root);
+    let (_plans, source_map, diagnostics) = resolve(&all_roots, &project_root, &lib_dir);
     if !diagnostics.is_empty() {
         print_diagnostics(&diagnostics, &source_map);
         process::exit(1);
@@ -473,7 +475,8 @@ fn cmd_dump_ir(matches: &clap::ArgMatches) {
         .cloned()
         .collect();
 
-    let (plans, source_map, diagnostics) = resolve(&files, &project_root);
+    let lib_dir = config::lib_dir(&project_root);
+    let (plans, source_map, diagnostics) = resolve(&files, &project_root, &lib_dir);
 
     for (i, plan) in plans.iter().enumerate() {
         if i > 0 {
