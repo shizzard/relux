@@ -1,0 +1,79 @@
+# These test need to be rewritten when tests would allow for custom case timeout
+
+test "negative regex match succeeds when pattern absent" {
+    """
+    Verify negative regex match passes when the pattern never appears.
+    """
+    shell s {
+        ~500ms
+        > echo hello
+        <? ^hello$
+        <!? never_appears
+    }
+}
+
+test "negative literal match succeeds when text absent" {
+    """
+    Verify negative literal match passes when the text never appears.
+    """
+    shell s {
+        ~500ms
+        > echo hello
+        <? ^hello$
+        <!= never_appears
+    }
+}
+
+test "negative match does not advance cursor" {
+    """
+    Verify a successful negative match leaves the cursor in place,
+    allowing subsequent positive matches to find later output.
+    """
+    shell s {
+        ~500ms
+        > echo first
+        > echo second
+        <? ^first$
+        <!? no_such_thing
+        <? ^second$
+    }
+}
+
+test "negative regex match with variable interpolation" {
+    """
+    Verify variables are interpolated in negative regex payloads.
+    """
+    shell s {
+        ~500ms
+        let bad = "error_pattern"
+        > echo "all good"
+        <? ^all good$
+        <!? ${bad}
+    }
+}
+
+test "negative literal match with special chars" {
+    """
+    Verify negative literal match treats regex metacharacters as plain text.
+    """
+    shell s {
+        ~500ms
+        > echo "price is 10"
+        <? ^price is 10$
+        <!= $10.00 (USD)
+    }
+}
+
+test "negative match returns empty string" {
+    """
+    Verify capturing a negative match result yields an empty string.
+    """
+    shell s {
+        ~500ms
+        > echo hello
+        <? ^hello$
+        let result = <!? absent_pattern
+        > echo "got '${result}'"
+        <? ^got ''$
+    }
+}

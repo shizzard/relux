@@ -21,6 +21,7 @@ Core interaction primitives: sending input and matching output.
 - `match_literal.relux` — `<=` literal matching, substring, special chars
 - `neg_match.relux` — `<!?` and `<!=` negative match assertions
 - `timed_match.relux` — `<~dur?` and `<~dur=` inline timeout overrides
+- `timed_neg_match.relux` — `<~dur!?` and `<~dur!=` inline timeout on negative matches
 - `fail_pattern.relux` — `!?` and `!=` fail pattern operators
 - `timeout.relux` — `~dur` scoped timeout
 

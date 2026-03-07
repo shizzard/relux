@@ -1,0 +1,63 @@
+test "inline timeout overrides scoped timeout for regex" {
+    """
+    Verify an inline timeout regex match succeeds even when the scoped
+    timeout would be too short for delayed output.
+    """
+    shell s {
+        ~200ms
+        > sh -c 'sleep 0.5 && echo delayed_regex'
+        <~3s? ^delayed_regex$
+    }
+}
+
+test "inline timeout overrides scoped timeout for literal" {
+    """
+    Verify an inline timeout literal match succeeds even when the scoped
+    timeout would be too short for delayed output.
+    """
+    shell s {
+        ~200ms
+        > sh -c 'sleep 0.5 && echo delayed_literal'
+        # advance cursor past the command echo so the timed
+        # literal match below hits the actual output line
+        <= delayed_literal
+        <~3s= delayed_literal
+    }
+}
+
+test "inline timeout is one-shot" {
+    """
+    Verify the inline timeout does not persist — the next match
+    reverts to the scoped timeout.
+    """
+    shell s {
+        ~200ms
+        > sh -c 'sleep 0.5 && echo delayed'
+        <~3s? ^delayed$
+        > echo immediate
+        <? ^immediate$
+    }
+}
+
+test "inline timeout with milliseconds" {
+    """
+    Verify inline timeout accepts millisecond duration units.
+    """
+    shell s {
+        ~200ms
+        > sh -c 'sleep 0.5 && echo ms_test'
+        <~2000ms? ^ms_test$
+    }
+}
+
+test "inline timeout with variable interpolation" {
+    """
+    Verify variables are interpolated in inline timeout match payloads.
+    """
+    shell s {
+        ~200ms
+        let word = "interp_val"
+        > sh -c 'sleep 0.5 && echo interp_val'
+        <~3s? ^${word}$
+    }
+}

@@ -1,11 +1,17 @@
 test "send with newline" {
+    """
+    Verify send operator appends a newline and the shell executes the command.
+    """
     shell s {
         > echo hello
-        <? hello
+        <? ^hello$
     }
 }
 
 test "send raw without newline" {
+    """
+    Verify raw send does not append a newline, allowing command concatenation.
+    """
     shell s {
         => echo relux
         > -raw-test
@@ -14,21 +20,30 @@ test "send raw without newline" {
 }
 
 test "send with variable interpolation" {
+    """
+    Verify Relux interpolates variables in send payloads before transmission.
+    """
     shell s {
         let msg = "world"
         > echo "hello ${msg}"
-        <? hello world
+        <? ^hello world$
     }
 }
 
 test "send preserves whitespace" {
+    """
+    Verify leading and trailing whitespace in send payloads is preserved.
+    """
     shell s {
         > echo "  spaced  "
-        <?   spaced
+        <? ^  spaced  $
     }
 }
 
 test "send empty line" {
+    """
+    Verify sending an empty line does not disrupt subsequent commands.
+    """
     shell s {
         > echo before
         >
@@ -39,6 +54,9 @@ test "send empty line" {
 }
 
 test "send with dollar escape" {
+    """
+    Verify double-dollar escapes pass a literal dollar sign to the shell.
+    """
     shell s {
         > echo '$$HOME'
         <? ^\$$HOME$
@@ -46,6 +64,9 @@ test "send with dollar escape" {
 }
 
 test "multiple raw sends" {
+    """
+    Verify multiple raw sends concatenate without newlines into a single command.
+    """
     shell s {
         => echo one
         => -two

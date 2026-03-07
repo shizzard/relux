@@ -1,0 +1,70 @@
+test "regex fail pattern does not trigger on clean output" {
+    """
+    Verify a regex fail pattern allows output that doesn't match it.
+    """
+    shell s {
+        !? ERROR
+        > echo "all good"
+        <? ^all good$
+    }
+}
+
+test "literal fail pattern does not trigger on clean output" {
+    """
+    Verify a literal fail pattern allows output that doesn't match it.
+    """
+    shell s {
+        != FATAL ERROR
+        > echo "all good"
+        <? ^all good$
+    }
+}
+
+test "setting new regex fail pattern replaces previous" {
+    """
+    Verify a new regex fail pattern replaces the old one, so the
+    old pattern no longer triggers a failure.
+    """
+    shell s {
+        !? first_pattern
+        !? second_pattern
+        > echo "first_pattern is fine now"
+        <? ^first_pattern is fine now$
+    }
+}
+
+test "literal fail pattern replaces regex fail pattern" {
+    """
+    Verify a literal fail pattern replaces a previously set regex one.
+    """
+    shell s {
+        !? first_pattern
+        != second_pattern
+        > echo "first_pattern is fine now"
+        <? ^first_pattern is fine now$
+    }
+}
+
+test "regex fail pattern replaces literal fail pattern" {
+    """
+    Verify a regex fail pattern replaces a previously set literal one.
+    """
+    shell s {
+        != first_pattern
+        !? second_pattern
+        > echo "first_pattern is fine now"
+        <? ^first_pattern is fine now$
+    }
+}
+
+test "fail pattern with variable interpolation" {
+    """
+    Verify variables are interpolated in fail pattern payloads.
+    """
+    shell s {
+        let bad = "PANIC"
+        !? ${bad}
+        > echo "no panic here"
+        <? ^no panic here$
+    }
+}

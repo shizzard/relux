@@ -1,4 +1,10 @@
 test "basic literal match" {
+    """
+    Verify literal match finds exact substring in output buffer.
+
+    The first match hits the echoed command, the second hits the output.
+    This demonstrates that literal match is a substring search from cursor.
+    """
     shell s {
         > echo hello-relux
         <= echo hello-relux
@@ -7,6 +13,9 @@ test "basic literal match" {
 }
 
 test "literal match is substring" {
+    """
+    Verify literal match succeeds on a substring of the output.
+    """
     shell s {
         > echo "the quick brown fox"
         <= quick brown
@@ -14,6 +23,9 @@ test "literal match is substring" {
 }
 
 test "literal match with special regex chars" {
+    """
+    Verify literal match treats regex metacharacters as plain text.
+    """
     shell s {
         > echo "price is $10.00 (USD)"
         <= $10.00 (USD)
@@ -21,6 +33,9 @@ test "literal match with special regex chars" {
 }
 
 test "literal match with variable interpolation" {
+    """
+    Verify variables are interpolated in literal match payloads.
+    """
     shell s {
         let expected = "hello"
         > echo hello
@@ -29,6 +44,10 @@ test "literal match with variable interpolation" {
 }
 
 test "literal match advances cursor" {
+    """
+    Verify each literal match advances the cursor so subsequent
+    matches search from the new position.
+    """
     shell s {
         > echo first
         > echo second

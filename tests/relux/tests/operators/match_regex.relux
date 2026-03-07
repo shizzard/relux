@@ -1,4 +1,7 @@
 test "basic regex match" {
+    """
+    Verify regex match finds a pattern in the output buffer.
+    """
     shell s {
         > echo hello-relux
         <? ^hello-relux$
@@ -6,42 +9,58 @@ test "basic regex match" {
 }
 
 test "regex with capture groups" {
+    """
+    Verify capture groups are accessible via numbered variables.
+    """
     shell s {
         > echo "value=42"
         <? ^value=(\d+)$
         > echo "captured ${1}"
-        <? captured 42
+        <? ^captured 42$
     }
 }
 
 test "regex with multiple captures" {
+    """
+    Verify multiple capture groups are all accessible.
+    """
     shell s {
         > echo "key=name val=bob"
         <? key=(\w+) val=(\w+)
         > echo "${1} is ${2}"
-        <? name is bob
+        <? ^name is bob$
     }
 }
 
 test "regex match advances cursor" {
+    """
+    Verify each regex match advances the cursor so subsequent
+    matches search from the new position.
+    """
     shell s {
         > echo first
         > echo second
         > echo third
-        <? first
-        <? second
-        <? third
+        <? ^first$
+        <? ^second$
+        <? ^third$
     }
 }
 
 test "regex dot matches within line" {
+    """
+    Verify dot wildcard matches characters within a single line.
+    """
     shell s {
         > echo abcdef
-        <? a.*f
+        <? ^a.*f$
     }
 }
 
 test "captures overwritten by next match" {
+    """
+    Verify each new regex match overwrites the previous capture groups.
+    """
     shell s {
         > echo "aaa=111"
         <? ^aaa=(\d+)$
@@ -55,6 +74,9 @@ test "captures overwritten by next match" {
 }
 
 test "regex match is case sensitive" {
+    """
+    Verify regex matches are case-sensitive by default.
+    """
     shell s {
         > echo HELLO
         <? ^HELLO$
