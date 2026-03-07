@@ -1,6 +1,7 @@
-# Pure Functions (Draft)
+# R001: Pure Functions
 
-> **Status**: This is a design draft. Pure functions are not implemented yet. The concept needs further refinement before implementation.
+- **Status**: draft
+- **Created**: 2026-03-03
 
 ## Motivation
 
