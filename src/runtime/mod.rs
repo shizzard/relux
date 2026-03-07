@@ -23,7 +23,7 @@ pub mod shell_log;
 pub mod vars;
 pub mod vm;
 
-pub const DEFAULT_SHELL_PROMPT: &str = "relux> ";
+use crate::config;
 
 pub type SharedVm = Arc<Mutex<Vm>>;
 
@@ -127,12 +127,23 @@ fn evaluate_conditions(
     None
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunStrategy {
+    All,
+    FailFast,
+}
+
 pub struct Runtime {
     env: Arc<Env>,
     source_map: SourceMap,
     run_dir: PathBuf,
     project_root: PathBuf,
     default_timeout: Duration,
+    shell_command: String,
+    shell_prompt: String,
+    case_timeout: Option<Duration>,
+    suite_timeout: Option<Duration>,
+    strategy: RunStrategy,
 }
 
 pub struct RunContext {
@@ -140,6 +151,12 @@ pub struct RunContext {
     pub run_dir: PathBuf,
     pub artifacts_dir: PathBuf,
     pub project_root: PathBuf,
+    pub shell_command: String,
+    pub shell_prompt: String,
+    pub default_timeout: Duration,
+    pub case_timeout: Option<Duration>,
+    pub suite_timeout: Option<Duration>,
+    pub strategy: RunStrategy,
 }
 
 impl Runtime {
@@ -152,14 +169,19 @@ impl Runtime {
         );
         env.insert(
             "__RELUX_SHELL_PROMPT".to_string(),
-            DEFAULT_SHELL_PROMPT.to_string(),
+            run_context.shell_prompt.clone(),
         );
         Self {
             env: Arc::new(env),
             source_map,
             run_dir: run_context.run_dir,
             project_root: run_context.project_root,
-            default_timeout: Duration::from_secs(10),
+            default_timeout: run_context.default_timeout,
+            shell_command: run_context.shell_command,
+            shell_prompt: run_context.shell_prompt,
+            case_timeout: run_context.case_timeout,
+            suite_timeout: run_context.suite_timeout,
+            strategy: run_context.strategy,
         }
     }
 
@@ -172,14 +194,54 @@ impl Runtime {
     }
 
     pub async fn run(&self, plans: Vec<Plan>) -> Vec<TestResult> {
+        let run_fut = self.run_inner(plans);
+        match self.suite_timeout {
+            Some(timeout) => match tokio::time::timeout(timeout, run_fut).await {
+                Ok(results) => results,
+                Err(_) => {
+                    eprintln!("suite timeout ({timeout:?}) exceeded");
+                    Vec::new()
+                }
+            },
+            None => run_fut.await,
+        }
+    }
+
+    async fn run_inner(&self, plans: Vec<Plan>) -> Vec<TestResult> {
         let mut results = Vec::with_capacity(plans.len());
         for plan in plans {
-            results.push(self.run_plan(plan).await);
+            let result = self.run_plan(plan).await;
+            let failed = matches!(result.outcome, Outcome::Fail(_));
+            results.push(result);
+            if failed && self.strategy == RunStrategy::FailFast {
+                break;
+            }
         }
         results
     }
 
     async fn run_plan(&self, plan: Plan) -> TestResult {
+        match self.case_timeout {
+            Some(timeout) => match tokio::time::timeout(timeout, self.run_plan_inner(plan)).await {
+                Ok(result) => result,
+                Err(_) => TestResult {
+                    test_name: "(unknown)".to_string(),
+                    outcome: Outcome::Fail(Failure::Runtime {
+                        message: format!("case timeout ({timeout:?}) exceeded"),
+                        span: None,
+                        shell: None,
+                    }),
+                    duration: Duration::ZERO,
+                    shell_logs: HashMap::new(),
+                    progress: String::new(),
+                    log_dir: None,
+                },
+            },
+            None => self.run_plan_inner(plan).await,
+        }
+    }
+
+    async fn run_plan_inner(&self, plan: Plan) -> TestResult {
         let test_start = Instant::now();
         let test_name = plan.test.name.node.clone();
         let code_server = Arc::new(CodeServer::new(plan.functions.clone()));
@@ -411,7 +473,8 @@ impl Runtime {
                         );
                         match Vm::new(
                             scoped_name,
-                            DEFAULT_SHELL_PROMPT.to_string(),
+                            self.shell_prompt.clone(),
+                            self.shell_command.clone(),
                             scope,
                             code_server.clone(),
                             Some(progress_tx.clone()),
@@ -510,7 +573,8 @@ impl Runtime {
                 let scope = ScopeStack::new(test_scope.clone(), HashMap::new(), self.env.clone(), self.default_timeout);
                 let vm = match Vm::new(
                     shell_name.clone(),
-                    DEFAULT_SHELL_PROMPT.to_string(),
+                    self.shell_prompt.clone(),
+                    self.shell_command.clone(),
                     scope,
                     code_server.clone(),
                     Some(progress_tx.clone()),
@@ -553,7 +617,8 @@ impl Runtime {
             event_collector.push("", LogEventKind::Cleanup { shell: "__cleanup".to_string() }).await;
             if let Ok(mut vm) = Vm::new(
                 "__cleanup".to_string(),
-                DEFAULT_SHELL_PROMPT.to_string(),
+                self.shell_prompt.clone(),
+                self.shell_command.clone(),
                 scope,
                 code_server,
                 Some(progress_tx),
@@ -605,7 +670,8 @@ impl Runtime {
                 let code_server = Arc::new(CodeServer::new(Vec::new()));
                 if let Ok(mut vm) = Vm::new(
                     cleanup_name,
-                    DEFAULT_SHELL_PROMPT.to_string(),
+                    self.shell_prompt.clone(),
+                    self.shell_command.clone(),
                     scope,
                     code_server,
                     Some(progress_tx.clone()),
@@ -696,7 +762,7 @@ fn cleanup_to_shell_stmts(
             Spanned::new(node, stmt.span.clone())
         })
         .chain(std::iter::once(Spanned::new(
-            ir::ShellStmt::Timeout(Duration::from_secs(10)),
+            ir::ShellStmt::Timeout(config::DEFAULT_TIMEOUT),
             span.clone(),
         )))
         .collect()

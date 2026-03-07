@@ -116,6 +116,7 @@ impl Vm {
     pub async fn new(
         shell_name: String,
         shell_prompt: String,
+        shell_command: String,
         scope: ScopeStack,
         code_server: Arc<CodeServer>,
         progress_tx: Option<ProgressTx>,
@@ -138,7 +139,7 @@ impl Vm {
             shell: Some(shell_name.clone()),
         })?;
 
-        let mut cmd = pty_process::Command::new("/bin/sh").kill_on_drop(true);
+        let mut cmd = pty_process::Command::new(&shell_command).kill_on_drop(true);
         cmd = cmd.envs(scope.process_env());
         let child = cmd.spawn(pts).map_err(|e| Failure::Runtime {
             message: format!("failed to spawn shell: {e}"),

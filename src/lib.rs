@@ -12,5 +12,6 @@ impl<T, S> Spanned<T, S> {
     }
 }
 
+pub mod config;
 pub mod dsl;
 pub mod runtime;

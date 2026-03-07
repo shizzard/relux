@@ -4,20 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "token_dump"
-path = "bin/token_dump.rs"
-
-[[bin]]
-name = "ast_dump"
-path = "bin/ast_dump.rs"
-
-[[bin]]
-name = "ir_dump"
-path = "bin/ir_dump.rs"
-
-[[bin]]
-name = "relux_run"
-path = "bin/relux_run.rs"
+name = "relux"
+path = "bin/relux.rs"
 
 [dependencies]
 logos = { version = "~0.16" }
@@ -34,3 +22,7 @@ bs58 = "~0.5"
 ariadne = "~0.6"
 async-trait = "~0.1"
 uuid = { version = "~1", features = ["v4"] }
+clap = { version = "~4" }
+serde = { version = "~1", features = ["derive"] }
+toml = "~0.8"
+walkdir = "~2"

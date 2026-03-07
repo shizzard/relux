@@ -510,7 +510,7 @@ fn parse_timeout(
                 raw: raw.to_string(),
                 span: Span::new(file_id, content_span),
             });
-            Duration::from_secs(10)
+            crate::config::DEFAULT_TIMEOUT
         }
     }
 }

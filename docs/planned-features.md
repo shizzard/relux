@@ -1,14 +1,12 @@
 # Planned Features
 
 - Pure functions: functions that disallow send and match operators, can only call other pure functions, and can be called outside of a shell context
-- Unified binary: single `relux` binary combining all dump tools (token, AST, IR) and the test runner
-- Built-in functions: more string utilities
-- Custom shell command: configurable executable for shell spawn, with a global default and per-shell override; introduces new syntax for shell block attributes
-- Timeout multiplier: CLI flag to scale all timeouts by a factor for slow CI environments
-- Suite and case timeouts: cap total wall-clock time for an entire run and per test case
-- Progress output levels: configurable verbosity for real-time test execution feedback (basic progress implemented)
-- TAP and JUnit output: machine-readable test result formats for CI integration (JUnit via `quick-junit`, TAP hand-rolled)
+- Built-in functions: more string utilities, `log()` should emit to rich HTML logs (currently a no-op)
+- Per-shell command override: per-shell executable override via shell block attributes (global shell command now configurable in `Relux.toml`)
+- TAP and JUnit output: machine-readable test result formats for CI integration (flags registered, generation not yet implemented)
 - Run history: assemble timelines of test results across multiple runs with revision tracking
+- Re-run failed tests: `--rerun` flag to re-run only failed tests from the latest run (requires run history)
+- Custom scaffold templates: user-defined templates for `relux new --test` and `relux new --effect` via `Relux.toml`, replacing the built-in defaults
 
 ## Lux features not yet in Relux
 
