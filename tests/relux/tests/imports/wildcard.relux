@@ -1,0 +1,12 @@
+import imports/greeter
+
+test "wildcard import makes all functions available" {
+    """
+    Verify a wildcard import brings all functions from the module
+    into scope.
+    """
+    shell s {
+        greet("world")
+        farewell("world")
+    }
+}

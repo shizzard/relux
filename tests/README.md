@@ -63,6 +63,12 @@ Core interaction primitives: sending input and matching output.
 - `sleep.relux` — `sleep` with duration
 - `log.relux` — `log` and `annotate`
 
+### `imports/` — Module imports
+
+- `wildcard.relux` — wildcard import bringing all names into scope
+- `selective.relux` — selective import of functions and effects by name
+- `aliases.relux` — `as` aliases for imported functions and effects
+
 ### `lexer/` — Tokenization edge cases
 
 - `escapes.relux` — `$$` dollar escape, string escape sequences

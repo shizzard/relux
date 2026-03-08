@@ -1,0 +1,11 @@
+fn check_ready() {
+    > echo "ready"
+    <? ^ready$
+}
+
+effect StartService -> shell svc {
+    shell svc {
+        > export SVC_STATUS=running
+        match_ok()
+    }
+}

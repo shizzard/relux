@@ -1,0 +1,35 @@
+import imports/greeter { greet as hello, farewell as bye }
+import imports/setup { StartService as Svc }
+
+test "aliased function import" {
+    """
+    Verify a function imported with an alias is callable by its
+    alias name.
+    """
+    shell s {
+        hello("bob")
+    }
+}
+
+test "multiple aliased imports from same module" {
+    """
+    Verify multiple functions imported with aliases from the same
+    module are each callable by their alias name.
+    """
+    shell s {
+        hello("carol")
+        bye("carol")
+    }
+}
+
+test "aliased effect import" {
+    """
+    Verify an effect imported with an alias can be used with need
+    via the alias name.
+    """
+    need Svc
+    shell svc {
+        > echo $$SVC_STATUS
+        <? ^running$
+    }
+}

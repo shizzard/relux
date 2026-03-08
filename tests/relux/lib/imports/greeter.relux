@@ -1,0 +1,9 @@
+fn greet(name) {
+    > echo "hello ${name}"
+    <? ^hello ${name}$
+}
+
+fn farewell(name) {
+    > echo "goodbye ${name}"
+    <? ^goodbye ${name}$
+}

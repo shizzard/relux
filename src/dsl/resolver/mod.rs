@@ -1129,7 +1129,7 @@ fn collect_reachable_functions(
                 .collect();
 
             functions.push(ir::Function {
-                name: lower_spanned(*fn_file_id, fn_def.name.node.clone(), &fn_def.name.span),
+                name: lower_spanned(*fn_file_id, key.0.clone(), &fn_def.name.span),
                 params: fn_def
                     .params
                     .iter()

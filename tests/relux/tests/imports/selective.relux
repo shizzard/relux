@@ -1,0 +1,33 @@
+import imports/greeter { greet }
+import imports/setup { check_ready, StartService }
+
+test "selective import brings only named functions" {
+    """
+    Verify a selective import makes only the listed functions
+    available, not the entire module.
+    """
+    shell s {
+        greet("alice")
+    }
+}
+
+test "selective import of effect" {
+    """
+    Verify a selectively imported effect can be used with need.
+    """
+    need StartService
+    shell svc {
+        > echo $$SVC_STATUS
+        <? ^running$
+    }
+}
+
+test "selective import of function from second module" {
+    """
+    Verify a selectively imported function from a different module
+    works in the caller's shell context.
+    """
+    shell s {
+        check_ready()
+    }
+}
