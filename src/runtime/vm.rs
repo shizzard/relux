@@ -10,13 +10,33 @@ use tokio::process::Child;
 use tokio::sync::{Mutex, Notify, watch};
 
 use crate::dsl::resolver::ir::{self, Expr, ShellStmt, Span, Spanned};
-use crate::runtime::event_log::{EventCollector, LogEventKind};
+use crate::runtime::event_log::{BufferSnapshot, EventCollector, LogEventKind};
 use crate::runtime::result::Failure;
 use crate::runtime::shell_log::ShellLogger;
 use crate::runtime::vars::{FailPattern, ScopeStack, interpolate};
 use crate::runtime::bifs::VmContext;
 use crate::runtime::progress::{ProgressEvent, ProgressTx};
 use crate::runtime::{Callable, CodeServer};
+
+const BUFFER_PREFIX_LEN: usize = 40;
+const BUFFER_SUFFIX_LEN: usize = 40;
+const BUFFER_TAIL_LEN: usize = 80;
+
+fn truncate_before(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        format!("...{}", &s[s.len() - max..])
+    }
+}
+
+fn truncate_after(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max])
+    }
+}
 
 fn regex_error_summary(e: &regex::Error) -> String {
     let full = e.to_string();
@@ -332,7 +352,8 @@ impl Vm {
                 self.emit_progress(ProgressEvent::MatchStart);
                 let match_start = Instant::now();
                 let (start, end) = self.wait_for_literal(&pattern, timeout, expr.span.clone()).await?;
-                self.emit_event(LogEventKind::MatchDone { matched: pattern.clone(), elapsed: match_start.elapsed() }).await;
+                let buffer = self.buffer_snapshot_match(start, end).await;
+                self.emit_event(LogEventKind::MatchDone { matched: pattern.clone(), elapsed: match_start.elapsed(), buffer }).await;
                 self.emit_progress(ProgressEvent::MatchDone);
                 self.cursor = end.max(start);
                 Ok(pattern)
@@ -348,11 +369,12 @@ impl Vm {
                 self.emit_event(LogEventKind::MatchStart { pattern: pattern.clone(), is_regex: true }).await;
                 self.emit_progress(ProgressEvent::MatchStart);
                 let match_start = Instant::now();
-                let (_start, end, captures) = self
+                let (start, end, captures) = self
                     .wait_for_regex(&pattern, &re, timeout, expr.span.clone())
                     .await?;
                 let full = captures.get("0").cloned().unwrap_or_default();
-                self.emit_event(LogEventKind::MatchDone { matched: full.clone(), elapsed: match_start.elapsed() }).await;
+                let buffer = self.buffer_snapshot_match(start, end).await;
+                self.emit_event(LogEventKind::MatchDone { matched: full.clone(), elapsed: match_start.elapsed(), buffer }).await;
                 self.emit_progress(ProgressEvent::MatchDone);
                 self.cursor = end;
                 self.scope.set_captures(captures);
@@ -468,7 +490,8 @@ impl Vm {
             Ok(result) => result,
             Err(_) => {
                 self.emit_progress(ProgressEvent::Timeout);
-                self.emit_event(LogEventKind::Timeout { pattern: pattern.to_string() }).await;
+                let buffer = self.buffer_snapshot_tail().await;
+                self.emit_event(LogEventKind::Timeout { pattern: pattern.to_string(), buffer }).await;
                 Err(Failure::MatchTimeout {
                     pattern: pattern.to_string(),
                     span,
@@ -499,7 +522,8 @@ impl Vm {
             Ok(result) => result,
             Err(_) => {
                 self.emit_progress(ProgressEvent::Timeout);
-                self.emit_event(LogEventKind::Timeout { pattern: pattern.to_string() }).await;
+                let buffer = self.buffer_snapshot_tail().await;
+                self.emit_event(LogEventKind::Timeout { pattern: pattern.to_string(), buffer }).await;
                 Err(Failure::MatchTimeout {
                     pattern: pattern.to_string(),
                     span,
@@ -518,15 +542,16 @@ impl Vm {
         let fut = async {
             loop {
                 self.check_fail(span.clone()).await?;
-                if self
+                if let Some((start, end)) = self
                     .output_buf
                     .find_literal_from(self.cursor, pattern)
                     .await
-                    .is_some()
                 {
+                    let buffer = self.buffer_snapshot_match(start, end).await;
                     self.emit_event(LogEventKind::NegMatchFail {
                         pattern: pattern.to_string(),
                         matched_text: pattern.to_string(),
+                        buffer,
                     }).await;
                     return Err(Failure::NegativeMatchFailed {
                         pattern: pattern.to_string(),
@@ -555,13 +580,15 @@ impl Vm {
         let fut = async {
             loop {
                 self.check_fail(span.clone()).await?;
-                if let Some((_, _, captures)) =
+                if let Some((start, end, captures)) =
                     self.output_buf.find_regex_from(self.cursor, re).await
                 {
                     let matched_text = captures.get("0").cloned().unwrap_or_default();
+                    let buffer = self.buffer_snapshot_match(start, end).await;
                     self.emit_event(LogEventKind::NegMatchFail {
                         pattern: pattern.to_string(),
                         matched_text: matched_text.clone(),
+                        buffer,
                     }).await;
                     return Err(Failure::NegativeMatchFailed {
                         pattern: pattern.to_string(),
@@ -584,9 +611,11 @@ impl Vm {
         if self.fail_triggered.load(Ordering::Relaxed) {
             self.emit_progress(ProgressEvent::FailPattern);
             let detail = self.fail_detail.lock().await.clone().unwrap_or_default();
+            let buffer = self.buffer_snapshot_tail().await;
             self.emit_event(LogEventKind::FailPatternTriggered {
                 pattern: detail.0.clone(),
                 matched_line: detail.1.clone(),
+                buffer,
             }).await;
             return Err(Failure::FailPatternMatched {
                 pattern: detail.0,
@@ -636,6 +665,28 @@ impl Vm {
             ec.push(&self.shell_name, kind).await;
         }
     }
+
+    async fn buffer_snapshot_match(&self, start: usize, end: usize) -> BufferSnapshot {
+        let data = self.output_buf.snapshot().await;
+        let text = String::from_utf8_lossy(&data);
+        let before_raw = &text[self.cursor.min(text.len())..start.min(text.len())];
+        let matched_raw = &text[start.min(text.len())..end.min(text.len())];
+        let after_raw = &text[end.min(text.len())..];
+        BufferSnapshot::Match {
+            before: truncate_before(before_raw, BUFFER_PREFIX_LEN),
+            matched: matched_raw.to_string(),
+            after: truncate_after(after_raw, BUFFER_SUFFIX_LEN),
+        }
+    }
+
+    async fn buffer_snapshot_tail(&self) -> BufferSnapshot {
+        let data = self.output_buf.snapshot().await;
+        let text = String::from_utf8_lossy(&data);
+        let from_cursor = &text[self.cursor.min(text.len())..];
+        BufferSnapshot::Tail {
+            content: truncate_before(from_cursor, BUFFER_TAIL_LEN),
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -652,7 +703,8 @@ impl VmContext for Vm {
         let match_start = Instant::now();
         let timeout = self.scope.timeout();
         let (start, end) = self.wait_for_literal(pattern, timeout, span.clone()).await?;
-        self.emit_event(LogEventKind::MatchDone { matched: pattern.to_string(), elapsed: match_start.elapsed() }).await;
+        let buffer = self.buffer_snapshot_match(start, end).await;
+        self.emit_event(LogEventKind::MatchDone { matched: pattern.to_string(), elapsed: match_start.elapsed(), buffer }).await;
         self.emit_progress(ProgressEvent::MatchDone);
         self.cursor = end.max(start);
         Ok(pattern.to_string())

@@ -11,18 +11,26 @@ pub struct LogEvent {
 }
 
 #[derive(Debug, Clone)]
+pub enum BufferSnapshot {
+    /// Successful match: before (skipped), matched, after (remaining)
+    Match { before: String, matched: String, after: String },
+    /// Timeout: tail of buffer
+    Tail { content: String },
+}
+
+#[derive(Debug, Clone)]
 pub enum LogEventKind {
     ShellSwitch { name: String },
     Send { data: String },
     Recv { data: String },
     MatchStart { pattern: String, is_regex: bool },
-    MatchDone { matched: String, elapsed: Duration },
-    Timeout { pattern: String },
+    MatchDone { matched: String, elapsed: Duration, buffer: BufferSnapshot },
+    Timeout { pattern: String, buffer: BufferSnapshot },
     NegMatchStart { pattern: String, is_regex: bool },
     NegMatchPass { pattern: String, elapsed: Duration },
-    NegMatchFail { pattern: String, matched_text: String },
+    NegMatchFail { pattern: String, matched_text: String, buffer: BufferSnapshot },
     FailPatternSet { pattern: String },
-    FailPatternTriggered { pattern: String, matched_line: String },
+    FailPatternTriggered { pattern: String, matched_line: String, buffer: BufferSnapshot },
     EffectSetup { effect: String },
     EffectTeardown { effect: String },
     Sleep { duration: Duration },

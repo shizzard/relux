@@ -4,8 +4,8 @@ use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
-use crate::runtime::event_log::{LogEvent, LogEventKind};
-use crate::runtime::result::{Outcome, TestResult};
+use crate::runtime::event_log::{BufferSnapshot, LogEvent, LogEventKind};
+use crate::runtime::result::{Outcome, TestResult, format_duration};
 
 const CSS: &str = r#"
 :root{--bg:#fff;--fg:#222;--muted:#888;--ts-fg:#999;--send:#1a6dcc;--recv:#1a8a3f;
@@ -24,11 +24,12 @@ a{color:var(--link);text-decoration:none}
 a:hover{text-decoration:underline}
 table.log{width:100%;border-collapse:collapse;border:none}
 table.log td{padding:1px 6px;vertical-align:top;white-space:pre-wrap;word-break:break-all}
-table.log td.ts{width:10ch;color:var(--ts-fg)}
+table.log td.ts{white-space:nowrap;color:var(--ts-fg)}
 table.log td.ts a{color:var(--ts-fg);text-decoration:underline}
 table.log td.ts a:hover{text-decoration:underline}
-table.log td.sh{width:20ch;color:var(--muted)}
-table.log td.kind{width:10ch;font-weight:600}
+table.log td.sh{white-space:nowrap;color:var(--muted)}
+table.log td.kind{white-space:nowrap;font-weight:600}
+table.log tr:nth-child(even){background:var(--row-alt)}
 table.log tr:target{background:var(--highlight);outline:2px solid var(--hl-border);border-radius:3px}
 table.summary{border-collapse:collapse;width:100%;margin:8px 0}
 table.summary th,table.summary td{border:1px solid var(--tbl-border);padding:4px 8px;text-align:left}
@@ -38,12 +39,14 @@ table.summary tr:nth-child(even){background:var(--row-alt)}
 details{margin:4px 0}summary{cursor:pointer;color:var(--muted)}
 .hdr{margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--tbl-border)}
 .hdr a{margin-right:12px}
+table.log td.buf{white-space:pre-wrap;word-break:break-all}
+.buf-box{padding:2px 6px;border:1px solid var(--tbl-border);border-radius:3px;display:block;
+width:100%;min-height:100%;box-sizing:border-box}
+.buf-skip{color:var(--err)}.buf-match{color:var(--recv)}
 "#;
 
 fn fmt_duration(d: &Duration) -> String {
-    let secs = d.as_secs();
-    let millis = d.subsec_millis();
-    format!("+{secs}.{millis:03}s")
+    format!("+{}", format_duration(*d))
 }
 
 fn html_escape(s: &str) -> String {
@@ -85,7 +88,7 @@ fn event_data(kind: &LogEventKind) -> String {
             let prefix = if *is_regex { "regex " } else { "" };
             format!("{prefix}{}", html_escape(pattern))
         }
-        LogEventKind::MatchDone { matched, elapsed } => {
+        LogEventKind::MatchDone { matched, elapsed, .. } => {
             format!("{} ({})", html_escape(matched), fmt_duration(elapsed))
         }
         LogEventKind::NegMatchStart { pattern, is_regex } => {
@@ -95,12 +98,12 @@ fn event_data(kind: &LogEventKind) -> String {
         LogEventKind::NegMatchPass { pattern, elapsed } => {
             format!("!{} (pass, {})", html_escape(pattern), fmt_duration(elapsed))
         }
-        LogEventKind::NegMatchFail { pattern, matched_text } => {
+        LogEventKind::NegMatchFail { pattern, matched_text, .. } => {
             format!("!{} found: {}", html_escape(pattern), html_escape(matched_text))
         }
-        LogEventKind::Timeout { pattern } => html_escape(pattern),
+        LogEventKind::Timeout { pattern, .. } => html_escape(pattern),
         LogEventKind::FailPatternSet { pattern } => html_escape(pattern),
-        LogEventKind::FailPatternTriggered { pattern, matched_line } => {
+        LogEventKind::FailPatternTriggered { pattern, matched_line, .. } => {
             format!("{} matched: {}", html_escape(pattern), html_escape(matched_line))
         }
         LogEventKind::EffectSetup { effect } => html_escape(effect),
@@ -119,6 +122,48 @@ fn event_data(kind: &LogEventKind) -> String {
         LogEventKind::Cleanup { shell } => html_escape(shell),
         LogEventKind::ShellSwitch { name } => html_escape(name),
     }
+}
+
+fn event_buffer(kind: &LogEventKind) -> Option<&BufferSnapshot> {
+    match kind {
+        LogEventKind::MatchDone { buffer, .. } => Some(buffer),
+        LogEventKind::Timeout { buffer, .. } => Some(buffer),
+        LogEventKind::NegMatchFail { buffer, .. } => Some(buffer),
+        LogEventKind::FailPatternTriggered { buffer, .. } => Some(buffer),
+        _ => None,
+    }
+}
+
+fn render_buffer(kind: &LogEventKind) -> String {
+    let Some(snapshot) = event_buffer(kind) else {
+        return String::new();
+    };
+    let inner = match snapshot {
+        BufferSnapshot::Match { before, matched, after } => {
+            let is_neg = matches!(
+                kind,
+                LogEventKind::NegMatchFail { .. } | LogEventKind::FailPatternTriggered { .. }
+            );
+            let match_class = if is_neg { "buf-skip" } else { "buf-match" };
+            let before_class = if is_neg { "" } else { " class=\"buf-skip\"" };
+            let mut buf = String::new();
+            if !before.is_empty() {
+                let _ = write!(buf, "<span{before_class}>{}</span>", html_escape(before));
+            }
+            if !matched.is_empty() {
+                let _ = write!(buf, "<span class=\"{match_class}\">{}</span>", html_escape(matched));
+            }
+            if !after.is_empty() {
+                buf.push_str(&html_escape(after));
+            }
+            buf
+        }
+        BufferSnapshot::Tail { content } => html_escape(content),
+    };
+    if inner.is_empty() {
+        return String::new();
+    }
+    format!("<span class=\"buf-box\">{inner}</span>")
 }
 
 fn html_header(title: &str, extra_head: &str) -> String {
@@ -172,8 +217,8 @@ pub fn generate_run_summary(run_dir: &Path, results: &[TestResult]) {
         let _ = writeln!(
             html,
             "<tr><td>{link}</td><td class=\"{class}\">{label}</td>\
-             <td>{:?}</td><td>{}</td></tr>",
-            result.duration,
+             <td>{}</td><td>{}</td></tr>",
+            format_duration(result.duration),
             html_escape(&result.progress)
         );
     }
@@ -279,11 +324,14 @@ fn generate_test_event_log(
             format!(" class=\"{type_class}\"")
         };
 
+        let buf_html = render_buffer(&event.kind);
+        let buf_cell = format!("<td class=\"buf\">{buf_html}</td>");
+
         let _ = writeln!(
             html,
             "<tr id=\"{anchor}\">{ts_cell}{shell_cell}\
              <td class=\"kind\"{class_attr}>{type_label}</td>\
-             <td{class_attr}>{data}</td></tr>"
+             <td{class_attr}>{data}</td>{buf_cell}</tr>"
         );
     }
 
@@ -333,11 +381,14 @@ fn generate_shell_log(
             format!(" class=\"{type_class}\"")
         };
 
+        let buf_html = render_buffer(&event.kind);
+        let buf_cell = format!("<td class=\"buf\">{buf_html}</td>");
+
         let _ = writeln!(
             html,
             "<tr id=\"e{shell_idx}\">{ts_cell}\
              <td class=\"kind\"{class_attr}>{type_label}</td>\
-             <td{class_attr}>{data}</td></tr>"
+             <td{class_attr}>{data}</td>{buf_cell}</tr>"
         );
     }
 
