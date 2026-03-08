@@ -43,11 +43,10 @@ Core interaction primitives: sending input and matching output.
 
 ### `effects/` — Effect lifecycle
 
-- `basic_setup.relux` — effect with exported shell
-- `dependencies.relux` — `need` chains, topological execution order
-- `deduplication.relux` — same identity tuple reuses instance
-- `cleanup.relux` — cleanup blocks, execution order
-- `exported_shell.relux` — using effect-provided shells in tests
+- `basic_setup.relux` — effect with exported shell, alias, no-alias default, state retention
+- `dependencies.relux` — `need` chains, transitive dependencies, topological execution order
+- `deduplication.relux` — same identity tuple reuses instance, different overlays create separate instances
+- `cleanup.relux` — effect cleanup blocks, reverse dependency order, test-level cleanup
 
 ### `markers/` — Condition markers
 

@@ -449,12 +449,24 @@ impl<'a> EffectGraphBuilder<'a> {
                 .alias
                 .as_ref()
                 .map(|a| a.node.clone())
-                .unwrap_or_else(|| effect_name.clone());
+                .unwrap_or_else(|| {
+                    self.scope
+                        .effects
+                        .get(effect_name)
+                        .map(|(_, def)| def.exported_shell.node.clone())
+                        .unwrap_or_else(|| effect_name.clone())
+                });
             let alias_span = need
                 .alias
                 .as_ref()
                 .map(|a| Span::new(need_file_id, a.span.clone()))
-                .unwrap_or_else(|| Span::new(need_file_id, need.effect.span.clone()));
+                .unwrap_or_else(|| {
+                    self.scope
+                        .effects
+                        .get(effect_name)
+                        .map(|(fid, def)| sp(*fid, &def.exported_shell.span))
+                        .unwrap_or_else(|| Span::new(need_file_id, need.effect.span.clone()))
+                });
 
             let edge = ir::EffectEdge {
                 alias: ir::Spanned::new(alias_name, alias_span),
@@ -1017,12 +1029,24 @@ fn build_plan(
                 .alias
                 .as_ref()
                 .map(|a| a.node.clone())
-                .unwrap_or_else(|| need.effect.node.clone());
+                .unwrap_or_else(|| {
+                    scope
+                        .effects
+                        .get(&need.effect.node)
+                        .map(|(_, def)| def.exported_shell.node.clone())
+                        .unwrap_or_else(|| need.effect.node.clone())
+                });
             let alias_span = need
                 .alias
                 .as_ref()
                 .map(|a| sp(file_id, &a.span))
-                .unwrap_or_else(|| sp(file_id, &need.effect.span));
+                .unwrap_or_else(|| {
+                    scope
+                        .effects
+                        .get(&need.effect.node)
+                        .map(|(fid, def)| sp(*fid, &def.exported_shell.span))
+                        .unwrap_or_else(|| sp(file_id, &need.effect.span))
+                });
 
             ir_needs.push(ir::Spanned::new(
                 ir::TestNeed {
@@ -1442,6 +1466,22 @@ mod tests {
         assert_eq!(
             inst0, inst1,
             "both needs should resolve to the same instance"
+        );
+    }
+
+    #[test]
+    fn test_need_without_alias_defaults_to_exported_shell_name() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "main",
+            "effect StartDb -> shell db {\n  shell db {\n    > start\n  }\n}\n\ntest \"t\" {\n  need StartDb\n  shell db {\n    > query\n  }\n}\n",
+        );
+        let (plans, _, diags) = loader.resolve_one("main");
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        assert_eq!(plans.len(), 1);
+        assert_eq!(
+            plans[0].test.needs[0].node.alias.node, "db",
+            "default alias should be the exported shell name, not the effect name"
         );
     }
 

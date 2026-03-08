@@ -1,0 +1,51 @@
+effect StartService -> shell svc {
+    shell svc {
+        > echo "service ready"
+        <? ^service ready$
+    }
+}
+
+effect PrepareEnv -> shell env {
+    shell env {
+        > export SETUP_VAR=initialized
+        match_ok()
+        > echo "setup done"
+        <? ^setup done$
+    }
+}
+
+test "effect sets up shell before test runs" {
+    """
+    Verify an effect's shell block executes and completes before
+    the test body begins.
+    """
+    need StartService as worker
+    shell worker {
+        > echo "test using effect shell"
+        <? ^test using effect shell$
+    }
+}
+
+test "effect shell retains state from setup" {
+    """
+    Verify state established during effect setup (environment
+    variables, working directory, etc.) persists into the test.
+    """
+    need PrepareEnv
+    shell env {
+        > echo $$SETUP_VAR
+        <? ^initialized$
+    }
+}
+
+test "effect without alias exports by declared shell name" {
+    """
+    Verify that when no alias is given, the effect's exported shell
+    is accessible using the shell name from the effect header.
+    """
+    need StartService
+    shell svc {
+        > echo "using declared name"
+        <? ^using declared name$
+    }
+}

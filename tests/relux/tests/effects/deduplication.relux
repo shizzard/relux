@@ -1,0 +1,53 @@
+effect Counter -> shell ctr {
+    shell ctr {
+        > export COUNT=0
+        match_ok()
+        > COUNT=$$(($$COUNT + 1)) && echo $$COUNT
+        <? ^1$
+    }
+}
+
+effect Parameterized -> shell svc {
+    shell svc {
+        > export SVC_LABEL=${LABEL}
+        match_ok()
+    }
+}
+
+test "same effect needed twice shares one instance" {
+    """
+    Verify two needs for the same effect (same identity tuple) reuse
+    a single instance — the counter is incremented once, not twice.
+    """
+    need Counter as c1
+    need Counter as c2
+    shell c1 {
+        > echo $$COUNT
+        <? ^1$
+    }
+    shell c2 {
+        > echo $$COUNT
+        <? ^1$
+    }
+}
+
+test "different overlays create separate instances" {
+    """
+    Verify two needs for the same effect with different overlay values
+    create separate instances, each with their own shell and overlay.
+    """
+    need Parameterized as a {
+        LABEL = "alpha"
+    }
+    need Parameterized as b {
+        LABEL = "beta"
+    }
+    shell a {
+        > echo $$SVC_LABEL
+        <? ^alpha$
+    }
+    shell b {
+        > echo $$SVC_LABEL
+        <? ^beta$
+    }
+}

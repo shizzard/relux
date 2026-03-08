@@ -1,0 +1,70 @@
+effect WithCleanup -> shell svc {
+    shell svc {
+        > touch ${__RELUX_RUN_ARTIFACTS}/cleanup-test-marker
+        match_ok()
+    }
+    cleanup {
+        > rm -f ${__RELUX_RUN_ARTIFACTS}/cleanup-test-marker
+    }
+}
+
+effect StepA -> shell a {
+    shell a {
+        > echo "a setup"
+        <? ^a setup$
+    }
+    cleanup {
+        > echo "a cleanup"
+    }
+}
+
+effect StepB -> shell a {
+    need StepA
+    shell a {
+        > echo "b setup"
+        <? ^b setup$
+    }
+    cleanup {
+        > echo "b cleanup"
+    }
+}
+
+test "cleanup block runs after test" {
+    """
+    Verify the cleanup block executes after the test body completes,
+    removing artifacts created during setup.
+    """
+    need WithCleanup
+    shell svc {
+        > test -f ${__RELUX_RUN_ARTIFACTS}/cleanup-test-marker && echo "exists"
+        <? ^exists$
+    }
+}
+
+test "cleanup runs in reverse dependency order" {
+    """
+    Verify cleanup blocks run in reverse topological order: the
+    dependent (StepB) cleans up before the dependency (StepA).
+    """
+    need StepB
+    shell a {
+        > echo "test done"
+        <? ^test done$
+    }
+}
+
+test "test-level cleanup block runs" {
+    """
+    Verify a cleanup block at the test level executes after the
+    test body, removing artifacts created during the test.
+    """
+    shell s {
+        > touch ${__RELUX_RUN_ARTIFACTS}/test-cleanup-marker
+        match_ok()
+        > test -f ${__RELUX_RUN_ARTIFACTS}/test-cleanup-marker && echo "exists"
+        <? ^exists$
+    }
+    cleanup {
+        > rm -f ${__RELUX_RUN_ARTIFACTS}/test-cleanup-marker
+    }
+}

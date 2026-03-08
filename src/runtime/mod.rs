@@ -334,6 +334,9 @@ impl Runtime {
             &event_collector,
         )
         .await;
+        // Drop alias references before teardown so Arc::try_unwrap
+        // can succeed when shutting down effect shells.
+        effect_exec.alias_shells.clear();
         self.teardown_effects(
             &plan,
             &mut effect_exec,
