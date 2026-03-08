@@ -400,6 +400,25 @@ async fn cmd_run(matches: &clap::ArgMatches) {
     let runtime = Runtime::new(source_map, run_context);
     let results = runtime.run(plans).await;
     Reporter::print(&results, runtime.source_map());
+
+    let suite_name = relux_config.name.as_deref().unwrap_or("relux");
+    if matches.get_flag("tap") {
+        relux::runtime::tap::generate_tap(
+            runtime.run_dir(),
+            suite_name,
+            &results,
+            runtime.source_map(),
+        );
+    }
+    if matches.get_flag("junit") {
+        relux::runtime::junit::generate_junit(
+            runtime.run_dir(),
+            suite_name,
+            &results,
+            runtime.source_map(),
+        );
+    }
+
     generate_run_summary(runtime.run_dir(), &results);
 
     let failed = results

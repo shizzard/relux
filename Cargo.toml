@@ -23,6 +23,7 @@ ariadne = "~0.6"
 async-trait = "~0.1"
 uuid = { version = "~1", features = ["v4"] }
 clap = { version = "~4" }
+quick-junit = "~0.5"
 serde = { version = "~1", features = ["derive"] }
 toml = "~0.8"
 walkdir = "~2"

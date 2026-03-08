@@ -18,10 +18,12 @@ use crate::runtime::vm::Vm;
 pub mod bifs;
 pub mod event_log;
 pub mod html;
+pub mod junit;
 pub mod progress;
 pub mod result;
 pub mod shell_log;
 pub mod vars;
+pub mod tap;
 pub mod vm;
 
 use crate::config;

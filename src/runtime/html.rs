@@ -205,6 +205,17 @@ pub fn generate_run_summary(run_dir: &Path, results: &[TestResult]) {
         "<p>{passed} passed, {failed} failed, {skipped} skipped</p>"
     );
 
+    let mut report_links = Vec::new();
+    if run_dir.join("results.tap").exists() {
+        report_links.push("<a href=\"results.tap\">TAP</a>");
+    }
+    if run_dir.join("junit.xml").exists() {
+        report_links.push("<a href=\"junit.xml\">JUnit XML</a>");
+    }
+    if !report_links.is_empty() {
+        let _ = writeln!(html, "<p>Reports: {}</p>", report_links.join(" &middot; "));
+    }
+
     let _ = writeln!(html, "<table class=\"summary\">");
     let _ = writeln!(html, "<tr><th>Test</th><th>Result</th><th>Duration</th><th>Progress</th></tr>");
     for result in results {

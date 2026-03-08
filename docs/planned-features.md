@@ -3,7 +3,6 @@
 - Pure functions: functions that disallow send and match operators, can only call other pure functions, and can be called outside of a shell context
 - Built-in functions: more string utilities
 - Per-shell command override: per-shell executable override via shell block attributes (global shell command now configurable in `Relux.toml`)
-- TAP and JUnit output: machine-readable test result formats for CI integration (flags registered, generation not yet implemented)
 - Run history: assemble timelines of test results across multiple runs with revision tracking
 - Re-run failed tests: `--rerun` flag to re-run only failed tests from the latest run (requires run history)
 - Custom scaffold templates: user-defined templates for `relux new --test` and `relux new --effect` via `Relux.toml`, replacing the built-in defaults

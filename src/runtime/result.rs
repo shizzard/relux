@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use colored::Colorize;
@@ -36,6 +36,54 @@ pub enum Failure {
         span: Option<Span>,
         shell: Option<String>,
     },
+}
+
+impl Failure {
+    pub fn summary(&self) -> String {
+        match self {
+            Failure::MatchTimeout { pattern, shell, .. } => {
+                format!("match timeout in shell '{shell}': timed out waiting for {pattern}")
+            }
+            Failure::FailPatternMatched { pattern, matched_line, shell, .. } => {
+                format!(
+                    "fail pattern matched in shell '{shell}': pattern {pattern} triggered, matched: \"{matched_line}\""
+                )
+            }
+            Failure::NegativeMatchFailed { pattern, matched_text, shell, .. } => {
+                format!(
+                    "negative match failed in shell '{shell}': pattern {pattern} was found, matched: \"{matched_text}\""
+                )
+            }
+            Failure::ShellExited { shell, exit_code: Some(code), .. } => {
+                format!("shell '{shell}' exited unexpectedly with exit code {code}")
+            }
+            Failure::ShellExited { shell, exit_code: None, .. } => {
+                format!("shell '{shell}' exited unexpectedly without an exit code")
+            }
+            Failure::Runtime { message, shell: Some(shell), .. } => {
+                format!("runtime error in shell '{shell}': {message}")
+            }
+            Failure::Runtime { message, shell: None, .. } => {
+                format!("runtime error: {message}")
+            }
+        }
+    }
+
+    pub fn failure_type(&self) -> &'static str {
+        match self {
+            Failure::MatchTimeout { .. } => "MatchTimeout",
+            Failure::FailPatternMatched { .. } => "FailPatternMatched",
+            Failure::NegativeMatchFailed { .. } => "NegativeMatchFailed",
+            Failure::ShellExited { .. } => "ShellExited",
+            Failure::Runtime { .. } => "Runtime",
+        }
+    }
+}
+
+pub fn log_link(run_dir: &Path, result: &TestResult) -> Option<String> {
+    let log_dir = result.log_dir.as_ref()?;
+    let relative = log_dir.strip_prefix(run_dir).ok()?;
+    Some(format!("{}/event.html", relative.display()))
 }
 
 #[derive(Debug, Clone)]
@@ -120,5 +168,138 @@ pub fn format_duration(d: Duration) -> String {
         format!("{:.1}ms", total_ms)
     } else {
         format!("{:.1}s", total_ms / 1000.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn dummy_span() -> Span {
+        Span::new(0, 0..1)
+    }
+
+    #[test]
+    fn summary_match_timeout() {
+        let f = Failure::MatchTimeout {
+            pattern: "/ready/".into(),
+            shell: "default".into(),
+            span: dummy_span(),
+        };
+        assert_eq!(
+            f.summary(),
+            "match timeout in shell 'default': timed out waiting for /ready/"
+        );
+    }
+
+    #[test]
+    fn summary_fail_pattern_matched() {
+        let f = Failure::FailPatternMatched {
+            pattern: "/error/".into(),
+            matched_line: "error: connection refused".into(),
+            shell: "default".into(),
+            span: dummy_span(),
+        };
+        assert_eq!(
+            f.summary(),
+            "fail pattern matched in shell 'default': pattern /error/ triggered, matched: \"error: connection refused\""
+        );
+    }
+
+    #[test]
+    fn summary_negative_match_failed() {
+        let f = Failure::NegativeMatchFailed {
+            pattern: "/warning/".into(),
+            matched_text: "warning: deprecated".into(),
+            shell: "default".into(),
+            span: dummy_span(),
+        };
+        assert_eq!(
+            f.summary(),
+            "negative match failed in shell 'default': pattern /warning/ was found, matched: \"warning: deprecated\""
+        );
+    }
+
+    #[test]
+    fn summary_shell_exited_with_code() {
+        let f = Failure::ShellExited {
+            shell: "default".into(),
+            exit_code: Some(1),
+            span: dummy_span(),
+        };
+        assert_eq!(
+            f.summary(),
+            "shell 'default' exited unexpectedly with exit code 1"
+        );
+    }
+
+    #[test]
+    fn summary_shell_exited_without_code() {
+        let f = Failure::ShellExited {
+            shell: "default".into(),
+            exit_code: None,
+            span: dummy_span(),
+        };
+        assert_eq!(
+            f.summary(),
+            "shell 'default' exited unexpectedly without an exit code"
+        );
+    }
+
+    #[test]
+    fn summary_runtime_with_shell() {
+        let f = Failure::Runtime {
+            message: "something broke".into(),
+            shell: Some("default".into()),
+            span: None,
+        };
+        assert_eq!(
+            f.summary(),
+            "runtime error in shell 'default': something broke"
+        );
+    }
+
+    #[test]
+    fn summary_runtime_without_shell() {
+        let f = Failure::Runtime {
+            message: "something broke".into(),
+            shell: None,
+            span: None,
+        };
+        assert_eq!(f.summary(), "runtime error: something broke");
+    }
+
+    #[test]
+    fn log_link_with_log_dir() {
+        let run_dir = Path::new("/tmp/runs/run-001");
+        let result = TestResult {
+            test_name: "my_test".into(),
+            test_path: "tests/my_test.relux".into(),
+            outcome: Outcome::Pass,
+            duration: Duration::from_millis(100),
+            shell_logs: HashMap::new(),
+            progress: String::new(),
+            log_dir: Some(PathBuf::from("/tmp/runs/run-001/my_test")),
+        };
+        assert_eq!(
+            log_link(run_dir, &result),
+            Some("my_test/event.html".to_string())
+        );
+    }
+
+    #[test]
+    fn log_link_without_log_dir() {
+        let run_dir = Path::new("/tmp/runs/run-001");
+        let result = TestResult {
+            test_name: "my_test".into(),
+            test_path: "tests/my_test.relux".into(),
+            outcome: Outcome::Pass,
+            duration: Duration::from_millis(100),
+            shell_logs: HashMap::new(),
+            progress: String::new(),
+            log_dir: None,
+        };
+        assert_eq!(log_link(run_dir, &result), None);
     }
 }
