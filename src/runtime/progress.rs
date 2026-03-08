@@ -1,6 +1,7 @@
 use std::io::Write;
 use std::time::Instant;
 
+use colored::Colorize;
 use tokio::sync::mpsc;
 
 #[derive(Debug, Clone)]
@@ -128,19 +129,19 @@ pub fn spawn_printer(
                 ProgressEvent::Annotation(text) => {
                     let s = format!("({text})");
                     collected.push_str(&s);
-                    eprint!("{s}");
+                    eprint!("{}", s.dimmed());
                     let _ = std::io::stderr().flush();
                 }
             }
         }
 
-        eprintln!();
         collected
     })
 }
 
 fn emit(collected: &mut String, ch: char) {
     collected.push(ch);
-    eprint!("{ch}");
+    let s = ch.to_string().dimmed();
+    eprint!("{s}");
     let _ = std::io::stderr().flush();
 }

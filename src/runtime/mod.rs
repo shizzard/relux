@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -208,6 +209,7 @@ impl Runtime {
     }
 
     async fn run_inner(&self, plans: Vec<Plan>) -> Vec<TestResult> {
+        eprintln!("\nrunning {} tests", plans.len());
         let mut results = Vec::with_capacity(plans.len());
         for plan in plans {
             let result = self.run_plan(plan).await;
@@ -226,6 +228,7 @@ impl Runtime {
                 Ok(result) => result,
                 Err(_) => TestResult {
                     test_name: "(unknown)".to_string(),
+                    test_path: "(unknown)".to_string(),
                     outcome: Outcome::Fail(Failure::Runtime {
                         message: format!("case timeout ({timeout:?}) exceeded"),
                         span: None,
@@ -241,9 +244,20 @@ impl Runtime {
         }
     }
 
+    fn compute_test_path(&self, plan: &Plan) -> String {
+        let source_path = &self.source_map.files[plan.test.span.file].path;
+        let tests_dir = config::tests_dir(&self.project_root);
+        source_path
+            .strip_prefix(&tests_dir)
+            .unwrap_or(source_path)
+            .display()
+            .to_string()
+    }
+
     async fn run_plan_inner(&self, plan: Plan) -> TestResult {
         let test_start = Instant::now();
         let test_name = plan.test.name.node.clone();
+        let test_path = self.compute_test_path(&plan);
         let code_server = Arc::new(CodeServer::new(plan.functions.clone()));
         let mut shell_logs = HashMap::new();
 
@@ -251,7 +265,9 @@ impl Runtime {
         let _ = std::fs::create_dir_all(&log_dir);
         let event_collector = EventCollector::new(test_start);
 
-        eprint!("test \"{test_name}\": ");
+        eprint!("test {test_path}/\"{test_name}\": ");
+        let _ = std::io::stderr().flush();
+
         let (progress_tx, progress_rx) = progress::channel();
         let printer_handle = progress::spawn_printer(progress_rx);
 
@@ -260,6 +276,8 @@ impl Runtime {
         {
             drop(progress_tx);
             let progress_string = printer_handle.await.unwrap_or_default();
+            let duration = test_start.elapsed();
+            eprintln!("skipped ({})", reason);
             let events = event_collector.take().await;
             crate::runtime::html::generate_html_logs(
                 &log_dir,
@@ -269,8 +287,9 @@ impl Runtime {
             );
             return TestResult {
                 test_name,
+                test_path,
                 outcome: Outcome::Skipped(reason),
-                duration: test_start.elapsed(),
+                duration,
                 shell_logs,
                 progress: progress_string,
                 log_dir: Some(log_dir),
@@ -349,6 +368,18 @@ impl Runtime {
 
         drop(progress_tx);
         let progress_string = printer_handle.await.unwrap_or_default();
+        let duration = test_start.elapsed();
+
+        {
+            use colored::Colorize;
+            use crate::runtime::result::format_duration;
+            let suffix = match &outcome {
+                Outcome::Pass => format!(" {} ({})", "ok".green(), format_duration(duration)),
+                Outcome::Fail(_) => format!(" {} ({})", "FAILED".red(), format_duration(duration)),
+                Outcome::Skipped(reason) => format!(" skipped ({})", reason),
+            };
+            eprintln!("{suffix}");
+        }
 
         for (name, vm) in &effect_exec.alias_shells {
             let out = vm.lock().await.output_snapshot().await;
@@ -360,8 +391,9 @@ impl Runtime {
 
         TestResult {
             test_name,
+            test_path,
             outcome,
-            duration: test_start.elapsed(),
+            duration,
             shell_logs,
             progress: progress_string,
             log_dir: Some(log_dir),
