@@ -1,4 +1,4 @@
-effect Counter -> shell ctr {
+effect Counter -> ctr {
     shell ctr {
         > export COUNT=0
         match_ok()
@@ -7,7 +7,7 @@ effect Counter -> shell ctr {
     }
 }
 
-effect Parameterized -> shell svc {
+effect Parameterized -> svc {
     shell svc {
         > export SVC_LABEL=${LABEL}
         match_ok()

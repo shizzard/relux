@@ -1454,7 +1454,7 @@ mod tests {
     fn test_effect_deduplication() {
         let mut loader = InMemoryLoader::new();
         loader.add("main",
-            "effect StartDb -> shell db {\n  shell db {\n    > start db\n  }\n}\n\ntest \"t\" {\n  need StartDb as db1\n  need StartDb as db2\n  shell db1 {\n    > query 1\n  }\n}\n"
+            "effect StartDb -> db {\n  shell db {\n    > start db\n  }\n}\n\ntest \"t\" {\n  need StartDb as db1\n  need StartDb as db2\n  shell db1 {\n    > query 1\n  }\n}\n"
         );
         let (plans, _, diags) = loader.resolve_one("main");
         assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
@@ -1474,7 +1474,7 @@ mod tests {
         let mut loader = InMemoryLoader::new();
         loader.add(
             "main",
-            "effect StartDb -> shell db {\n  shell db {\n    > start\n  }\n}\n\ntest \"t\" {\n  need StartDb\n  shell db {\n    > query\n  }\n}\n",
+            "effect StartDb -> db {\n  shell db {\n    > start\n  }\n}\n\ntest \"t\" {\n  need StartDb\n  shell db {\n    > query\n  }\n}\n",
         );
         let (plans, _, diags) = loader.resolve_one("main");
         assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
@@ -1489,7 +1489,7 @@ mod tests {
     fn test_effect_different_overlay_different_instance() {
         let mut loader = InMemoryLoader::new();
         loader.add("main",
-            "effect StartSvc -> shell svc {\n  shell svc {\n    > start\n  }\n}\n\ntest \"t\" {\n  need StartSvc as s1 {\n    PORT = \"8080\"\n  }\n  need StartSvc as s2 {\n    PORT = \"9090\"\n  }\n  shell s1 {\n    > query\n  }\n}\n"
+            "effect StartSvc -> svc {\n  shell svc {\n    > start\n  }\n}\n\ntest \"t\" {\n  need StartSvc as s1 {\n    PORT = \"8080\"\n  }\n  need StartSvc as s2 {\n    PORT = \"9090\"\n  }\n  shell s1 {\n    > query\n  }\n}\n"
         );
         let (plans, _, diags) = loader.resolve_one("main");
         assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
@@ -1611,11 +1611,11 @@ mod tests {
         let mut loader = InMemoryLoader::new();
 
         loader.add("lib/module1",
-            "fn function1() {\n  > echo f1\n}\nfn function2() {\n  > echo f2\n}\nfn function3() {\n  > echo f3\n}\neffect Effect1 -> shell e1shell {\n  shell e1shell {\n    > start e1\n  }\n}\neffect Effect2 -> shell e2shell {\n  shell e2shell {\n    > start e2\n  }\n}\neffect Effect3 -> shell e3shell {\n  shell e3shell {\n    > start e3\n  }\n}\n"
+            "fn function1() {\n  > echo f1\n}\nfn function2() {\n  > echo f2\n}\nfn function3() {\n  > echo f3\n}\neffect Effect1 -> e1shell {\n  shell e1shell {\n    > start e1\n  }\n}\neffect Effect2 -> e2shell {\n  shell e2shell {\n    > start e2\n  }\n}\neffect Effect3 -> e3shell {\n  shell e3shell {\n    > start e3\n  }\n}\n"
         );
         loader.add("lib/module2", "fn mod2_fn() {\n  > echo mod2\n}\n");
         loader.add("main",
-            "import lib/module1 {\n  function1, function2, function3 as f3,\n  Effect1, Effect2, Effect3 as E3,\n}\nimport lib/module2\n\nfn some_function(arg1, arg2) {\n  > echo ${arg1} ${arg2}\n}\n\nfn match_uuid() {\n  <? ([0-9a-f-]+)\n  ${1}\n}\n\neffect StartSomething -> shell something {\n  need Effect1 as e1\n  need Effect2 as e2\n  need E3 as e3 {\n    E3_VAR = \"value\"\n  }\n  let some_important_var\n  shell e3 {\n    > some command\n    <? match (\\d+)\n    some_important_var = ${1}\n  }\n  shell something {\n    some_function(\"a\", \"b\")\n  }\n  cleanup {\n    let flags = \"--graceful\"\n    > shutdown ${flags}\n  }\n}\n\ntest \"Some test\" {\n  \"\"\"\n  The test description\n  \"\"\"\n  need StartSomething as something_shell\n  need StartSomething as another_something_shell {\n    E3_VAR = \"another value\"\n  }\n  let global_test_var\n  shell myshell {\n    ~10s\n    !? [Ee]rror|FATAL|panic\n    let variable = \"always-string\"\n    let global_test_var = \"new value\"\n    > echo ${variable}\n    <? always-string\n    ~120s\n    > ./long_running_command\n    <? completed\n    != error\n  }\n  shell something_shell {\n    let result = some_function(\"arg1\", \"arg2\")\n    let id = match_uuid()\n    > curl localhost:8080/resource/${id}\n    <? 200\n  }\n  cleanup {\n    > rm -f /tmp/test_artifacts\n  }\n}\n"
+            "import lib/module1 {\n  function1, function2, function3 as f3,\n  Effect1, Effect2, Effect3 as E3,\n}\nimport lib/module2\n\nfn some_function(arg1, arg2) {\n  > echo ${arg1} ${arg2}\n}\n\nfn match_uuid() {\n  <? ([0-9a-f-]+)\n  ${1}\n}\n\neffect StartSomething -> something {\n  need Effect1 as e1\n  need Effect2 as e2\n  need E3 as e3 {\n    E3_VAR = \"value\"\n  }\n  let some_important_var\n  shell e3 {\n    > some command\n    <? match (\\d+)\n    some_important_var = ${1}\n  }\n  shell something {\n    some_function(\"a\", \"b\")\n  }\n  cleanup {\n    let flags = \"--graceful\"\n    > shutdown ${flags}\n  }\n}\n\ntest \"Some test\" {\n  \"\"\"\n  The test description\n  \"\"\"\n  need StartSomething as something_shell\n  need StartSomething as another_something_shell {\n    E3_VAR = \"another value\"\n  }\n  let global_test_var\n  shell myshell {\n    ~10s\n    !? [Ee]rror|FATAL|panic\n    let variable = \"always-string\"\n    let global_test_var = \"new value\"\n    > echo ${variable}\n    <? always-string\n    ~120s\n    > ./long_running_command\n    <? completed\n    != error\n  }\n  shell something_shell {\n    let result = some_function(\"arg1\", \"arg2\")\n    let id = match_uuid()\n    > curl localhost:8080/resource/${id}\n    <? 200\n  }\n  cleanup {\n    > rm -f /tmp/test_artifacts\n  }\n}\n"
         );
 
         let (plans, source_map, diags) = loader.resolve_one("main");
@@ -1754,7 +1754,7 @@ mod tests {
             "main",
             concat!(
                 "[skip unless PLATFORM ? ^linux]\n",
-                "effect E -> shell s {\n",
+                "effect E -> s {\n",
                 "  shell s {\n    > start\n  }\n",
                 "}\n",
                 "test \"t\" {\n  need E as e\n  shell e {\n    > hi\n  }\n}\n",

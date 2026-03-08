@@ -484,7 +484,6 @@ where
     let effect_def = just(Token::Effect)
         .ignore_then(effect_ident.clone())
         .then_ignore(just(Token::Arrow))
-        .then_ignore(just(Token::Shell))
         .then(ident.clone())
         .then(
             just(Token::BraceOpen)
@@ -1088,7 +1087,7 @@ mod tests {
     #[test]
     fn test_effect_def() {
         let src = concat!(
-            "effect StartDb -> shell db {\n",
+            "effect StartDb -> db {\n",
             "  need Dep as d\n",
             "  let x\n",
             "  shell db {\n",
@@ -1668,7 +1667,7 @@ mod tests {
 
     #[test]
     fn test_error_effect_name_must_be_uppercase() {
-        let src = "effect start_db -> shell db {\n}\n";
+        let src = "effect start_db -> db {\n}\n";
         let (_, errors) = parse(src);
         assert!(
             !errors.is_empty(),
@@ -1825,7 +1824,7 @@ mod tests {
 
     #[test]
     fn test_marker_before_effect() {
-        let src = "[run if PLATFORM = linux]\neffect E -> shell s {\n  shell s {\n    > start\n  }\n}\n";
+        let src = "[run if PLATFORM = linux]\neffect E -> s {\n  shell s {\n    > start\n  }\n}\n";
         let m = parse_ok(src);
         match &m.items[0].node {
             Item::Effect(e) => {

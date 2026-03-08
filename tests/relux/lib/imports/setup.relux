@@ -3,7 +3,7 @@ fn check_ready() {
     <? ^ready$
 }
 
-effect StartService -> shell svc {
+effect StartService -> svc {
     shell svc {
         > export SVC_STATUS=running
         match_ok()

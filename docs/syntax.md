@@ -43,7 +43,7 @@ fn <name>(<param>, <param>) {
 ## Effects
 
 ```
-effect <EffectName> -> shell <exported_shell> {
+effect <EffectName> -> <exported_shell> {
     need <EffectName> as <alias>
     need <EffectName> as <alias> { KEY = "value" }
     shell <name> { <body> }
@@ -51,7 +51,7 @@ effect <EffectName> -> shell <exported_shell> {
 }
 ```
 
-- `-> shell <name>` declares the exported shell
+- `-> <name>` declares the exported shell
 - `need` declares dependencies (one per line)
 - `cleanup` block: only `>`, `=>`, `let`, variable reassignment allowed (no match operators)
 

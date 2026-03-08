@@ -63,7 +63,7 @@ public class ReluxColorSettingsPage implements ColorSettingsPage {
                     ${captured}
                 }
 
-                effect StartServer -> shell server {
+                effect StartServer -> server {
                     need E1 as e1
 
                     shell server {

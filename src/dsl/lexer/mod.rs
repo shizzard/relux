@@ -473,7 +473,7 @@ mod tests {
 
     #[test]
     fn test_effect_head() {
-        let input = "effect StartDb -> shell db {\n";
+        let input = "effect StartDb -> db {\n";
         let toks = tokens(input);
         assert_eq!(
             toks,
@@ -481,7 +481,6 @@ mod tests {
                 Token::Effect,
                 Token::EffectIdent("StartDb"),
                 Token::Arrow,
-                Token::Shell,
                 Token::Ident("db"),
                 Token::BraceOpen,
                 Token::Newline,
@@ -491,10 +490,9 @@ mod tests {
         assert_eq!(sp[0], 0..6);   // effect
         assert_eq!(sp[1], 7..14);  // StartDb
         assert_eq!(sp[2], 15..17); // ->
-        assert_eq!(sp[3], 18..23); // shell
-        assert_eq!(sp[4], 24..26); // db
-        assert_eq!(sp[5], 27..28); // {
-        assert_eq!(sp[6], 28..29); // \n
+        assert_eq!(sp[3], 18..20); // db
+        assert_eq!(sp[4], 21..22); // {
+        assert_eq!(sp[5], 22..23); // \n
     }
 
     #[test]

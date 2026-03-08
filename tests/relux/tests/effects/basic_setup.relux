@@ -1,11 +1,11 @@
-effect StartService -> shell svc {
+effect StartService -> svc {
     shell svc {
         > echo "service ready"
         <? ^service ready$
     }
 }
 
-effect PrepareEnv -> shell env {
+effect PrepareEnv -> env {
     shell env {
         > export SETUP_VAR=initialized
         match_ok()

@@ -8,6 +8,7 @@
 - Re-run failed tests: `--rerun` flag to re-run only failed tests from the latest run (requires run history)
 - Custom scaffold templates: user-defined templates for `relux new --test` and `relux new --effect` via `Relux.toml`, replacing the built-in defaults
 - Clear fail pattern: bare `!?` or `!=` with no argument clears the active fail pattern, resetting it to none
+- `free_port()` BIF: returns a random available TCP port number, useful as an overlay value for effects that start network services
 
 ## Lux features not yet in Relux
 

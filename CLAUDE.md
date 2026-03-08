@@ -17,6 +17,7 @@ just unit lexer                # Run tests matching "lexer"
 just unit parser               # Run tests matching "parser"
 just unit resolver             # Run tests matching "resolver"
 just e2e                       # Run e2e tests (check then run)
+just e2e <path>                # Run e2e particular test (check then run)
 just check                     # Run cargo check
 just intellij                  # Build IntelliJ plugin
 just clean                     # Remove build artifacts

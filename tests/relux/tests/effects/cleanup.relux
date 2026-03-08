@@ -1,4 +1,4 @@
-effect WithCleanup -> shell svc {
+effect WithCleanup -> svc {
     shell svc {
         > touch ${__RELUX_RUN_ARTIFACTS}/cleanup-test-marker
         match_ok()
@@ -8,7 +8,7 @@ effect WithCleanup -> shell svc {
     }
 }
 
-effect StepA -> shell a {
+effect StepA -> a {
     shell a {
         > echo "a setup"
         <? ^a setup$
@@ -18,7 +18,7 @@ effect StepA -> shell a {
     }
 }
 
-effect StepB -> shell a {
+effect StepB -> a {
     need StepA
     shell a {
         > echo "b setup"

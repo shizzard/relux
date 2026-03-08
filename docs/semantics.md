@@ -67,7 +67,7 @@
 
 - Effect names must start with an uppercase letter (`CamelCase`) — this is enforced at the syntactic level, disambiguating effects from functions in imports
 - An effect is a reusable setup procedure that produces a running shell
-- The `-> shell <name>` in the effect head declares which shell is exported
+- The `-> <name>` in the effect head declares which shell is exported
 - `need` declares a dependency on another effect
 - Effects see the base environment plus their explicit overlay — no implicit inheritance from parent effects
 - Effect instance identity is determined by `(effect-name, arguments, overlay)`:

@@ -1,11 +1,11 @@
-effect SetupDb -> shell db {
+effect SetupDb -> db {
     shell db {
         > export DB_STATUS=started
         match_ok()
     }
 }
 
-effect RunMigrations -> shell db {
+effect RunMigrations -> db {
     need SetupDb
     shell db {
         > export MIG_STATUS=applied
@@ -13,7 +13,7 @@ effect RunMigrations -> shell db {
     }
 }
 
-effect SeedData -> shell db {
+effect SeedData -> db {
     need RunMigrations
     shell db {
         > export SEED_STATUS=seeded
