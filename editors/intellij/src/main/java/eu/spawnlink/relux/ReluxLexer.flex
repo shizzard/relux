@@ -35,7 +35,7 @@ EFFECT_IDENTIFIER = {UPPERCASE}({LETTER}|{DIGIT})*
 MODULE_PATH = {LETTER}({LETTER}|{DIGIT})*(\/{LETTER}({LETTER}|{DIGIT})*)+
 
 // Duration/Timeout
-DURATION = {DIGIT}+[smhd]([0-9]+[smhd])*
+DURATION = {DIGIT}+{LETTER}+({DIGIT}+{LETTER}+)*
 
 // String interpolation
 INTERPOLATION = \$\{{LETTER}({LETTER}|{DIGIT})*\}
