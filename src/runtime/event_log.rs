@@ -31,6 +31,7 @@ pub enum LogEventKind {
     NegMatchFail { pattern: String, matched_text: String, buffer: BufferSnapshot },
     BufferReset { buffer: BufferSnapshot },
     FailPatternSet { pattern: String },
+    FailPatternCleared,
     FailPatternTriggered { pattern: String, matched_line: String, buffer: BufferSnapshot },
     EffectSetup { effect: String },
     EffectTeardown { effect: String },

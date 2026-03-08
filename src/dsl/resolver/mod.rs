@@ -710,6 +710,7 @@ fn lower_stmt(
         parser::Stmt::FailLiteral(s) => {
             ir::ShellStmt::FailLiteral(lower_string_expr(file_id, s, stmt_span, 2))
         }
+        parser::Stmt::ClearFailPattern => ir::ShellStmt::ClearFailPattern,
         parser::Stmt::Expr(e) => {
             ir::ShellStmt::Expr(lower_expr(file_id, e, stmt_span, scope, diagnostics))
         }

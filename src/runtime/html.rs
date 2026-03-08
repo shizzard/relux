@@ -66,6 +66,7 @@ fn event_type_class(kind: &LogEventKind) -> (&str, &str) {
         LogEventKind::Timeout { .. } => ("timeout", "err"),
         LogEventKind::BufferReset { .. } => ("reset", "err"),
         LogEventKind::FailPatternSet { .. } => ("fail-pat", "err"),
+        LogEventKind::FailPatternCleared => ("fail-pat", ""),
         LogEventKind::FailPatternTriggered { .. } => ("FAIL", "err"),
         LogEventKind::EffectSetup { .. } => ("effect+", ""),
         LogEventKind::EffectTeardown { .. } => ("effect-", ""),
@@ -105,6 +106,7 @@ fn event_data(kind: &LogEventKind) -> String {
         LogEventKind::BufferReset { .. } => String::new(),
         LogEventKind::Timeout { pattern, .. } => html_escape(pattern),
         LogEventKind::FailPatternSet { pattern } => html_escape(pattern),
+        LogEventKind::FailPatternCleared => "(cleared)".to_string(),
         LogEventKind::FailPatternTriggered { pattern, matched_line, .. } => {
             format!("{} matched: {}", html_escape(pattern), html_escape(matched_line))
         }

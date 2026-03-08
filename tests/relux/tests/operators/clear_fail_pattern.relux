@@ -1,0 +1,44 @@
+test "bare fail regex clears fail pattern" {
+    """
+    Verify bare !? clears the active regex fail pattern.
+
+    Set a regex fail pattern matching "error", clear it with bare !?,
+    then echo "error". The test passes only if the pattern was
+    actually cleared — otherwise the fail pattern would abort it.
+    """
+    shell s {
+        !? error
+        !?
+        > echo error
+        <? ^error$
+    }
+}
+
+test "bare fail literal clears fail pattern" {
+    """
+    Verify bare != clears the active literal fail pattern.
+    """
+    shell s {
+        != error
+        !=
+        > echo error
+        <? ^error$
+    }
+}
+
+test "fail pattern is active before clearing" {
+    """
+    Verify the fail pattern fires before it is cleared.
+
+    Set a fail pattern on "BOOM", confirm normal output still works,
+    then clear the pattern and produce the dangerous text safely.
+    """
+    shell s {
+        !? BOOM
+        > echo safe
+        <? ^safe$
+        !?
+        > echo BOOM
+        <? ^BOOM$
+    }
+}

@@ -129,6 +129,7 @@ pub enum Stmt {
     Timeout(String),
     FailRegex(AstStringExpr),
     FailLiteral(AstStringExpr),
+    ClearFailPattern,
     Expr(AstExpr),
 }
 

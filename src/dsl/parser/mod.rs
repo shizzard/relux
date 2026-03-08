@@ -250,14 +250,21 @@ where
         .map_with(|s, e| Spanned::new(s, sp(e.span())))
         .labelled("timeout");
 
-    let fail_regex_stmt = select! { Token::FailRegex(f) => Stmt::FailRegex(payload_to_expr(f)) }
+    let fail_regex_stmt = select! { Token::FailRegex(f) => f }
+        .map(|f| {
+            let expr = payload_to_expr(f);
+            if expr.parts.is_empty() { Stmt::ClearFailPattern } else { Stmt::FailRegex(expr) }
+        })
         .map_with(|s, e| Spanned::new(s, sp(e.span())))
         .labelled("fail pattern");
 
-    let fail_literal_stmt =
-        select! { Token::FailLiteral(f) => Stmt::FailLiteral(payload_to_expr(f)) }
-            .map_with(|s, e| Spanned::new(s, sp(e.span())))
-            .labelled("literal fail pattern");
+    let fail_literal_stmt = select! { Token::FailLiteral(f) => f }
+        .map(|f| {
+            let expr = payload_to_expr(f);
+            if expr.parts.is_empty() { Stmt::ClearFailPattern } else { Stmt::FailLiteral(expr) }
+        })
+        .map_with(|s, e| Spanned::new(s, sp(e.span())))
+        .labelled("literal fail pattern");
 
     let comment_stmt = select! { Token::Comment(s) => Stmt::Comment(s.to_string()) }
         .map_with(|s, e| Spanned::new(s, sp(e.span())))
@@ -950,6 +957,30 @@ mod tests {
                     assert_eq!(s.parts, vec![AstStringPart::Literal("error".into())]);
                 }
                 other => panic!("expected FailLiteral, got {other:?}"),
+            },
+            other => panic!("expected Fn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_clear_fail_pattern_bare_fail_regex() {
+        let m = parse_ok("fn f() {\n  !?\n}\n");
+        match &m.items[0].node {
+            Item::Fn(f) => match &f.body[0].node {
+                Stmt::ClearFailPattern => {}
+                other => panic!("expected ClearFailPattern, got {other:?}"),
+            },
+            other => panic!("expected Fn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_clear_fail_pattern_bare_fail_literal() {
+        let m = parse_ok("fn f() {\n  !=\n}\n");
+        match &m.items[0].node {
+            Item::Fn(f) => match &f.body[0].node {
+                Stmt::ClearFailPattern => {}
+                other => panic!("expected ClearFailPattern, got {other:?}"),
             },
             other => panic!("expected Fn, got {other:?}"),
         }

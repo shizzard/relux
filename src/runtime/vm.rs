@@ -280,6 +280,12 @@ impl Vm {
                 let _ = self.fail_watcher_tx.send(pattern);
                 Ok(String::new())
             }
+            ShellStmt::ClearFailPattern => {
+                self.emit_event(LogEventKind::FailPatternCleared).await;
+                self.scope.set_fail_pattern(None);
+                let _ = self.fail_watcher_tx.send(None);
+                Ok(String::new())
+            }
             ShellStmt::Timeout(d) => {
                 self.scope.set_timeout(*d);
                 Ok(String::new())

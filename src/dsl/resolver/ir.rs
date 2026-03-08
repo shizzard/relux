@@ -218,6 +218,8 @@ pub enum ShellStmt {
     FailRegex(StringExpr),
     /// Set fail pattern (literal). Replaces any previous fail pattern.
     FailLiteral(StringExpr),
+    /// Clear the active fail pattern, resetting it to none.
+    ClearFailPattern,
     /// Set match timeout for subsequent matches in this shell.
     Timeout(Duration),
     /// Declare a variable, optionally with initial value.
