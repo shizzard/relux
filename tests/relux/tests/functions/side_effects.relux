@@ -23,23 +23,13 @@ test "timeout set inside function does not persist in caller" {
     }
 }
 
-# BUG: fail pattern set inside a function persists in the caller's
-# shell. Fail patterns are stored in the VM's fail_watcher channel,
-# not in the scope stack, so they are not saved/restored around
-# function calls. See planned-features.md.
-
-test "fail pattern set inside function persists in caller" {
+test "fail pattern set inside function does not persist in caller" {
     """
-    BUG: fail pattern set inside a function leaks to the caller.
-    This test documents current (incorrect) behavior — fail patterns
-    should be restored after a function returns.
-
-    We verify the leak by setting a fail pattern inside a function,
-    then overwriting it in the caller to prevent it from triggering.
+    Verify a fail pattern set inside a function is restored to the
+    caller's fail pattern after the function returns.
     """
     shell s {
         set_fail_pattern_inside()
-        !? XYZZY_NEVER_MATCHES
         > echo "BOOM is safe now"
         <? ^BOOM is safe now$
     }

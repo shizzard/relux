@@ -2,11 +2,18 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use regex::Regex;
 use tokio::sync::Mutex;
 
 use crate::dsl::resolver::ir::{Expr, Spanned, StringExpr, StringPart, VarAssign, VarDecl};
 
 pub type Env = HashMap<String, String>;
+
+#[derive(Clone, Debug)]
+pub enum FailPattern {
+    Regex(Regex),
+    Literal(String),
+}
 
 #[derive(Debug, Default)]
 pub struct TestScope {
@@ -40,6 +47,7 @@ impl TestScope {
 struct Frame {
     vars: HashMap<String, String>,
     timeout: Duration,
+    fail_pattern: Option<FailPattern>,
     /// Function call boundary — prevents `assign()` from walking into the caller's scope.
     is_function_scope: bool,
 }
@@ -64,6 +72,7 @@ impl ScopeStack {
             frames: vec![Frame {
                 vars: HashMap::new(),
                 timeout: default_timeout,
+                fail_pattern: None,
                 is_function_scope: false,
             }],
             captures: HashMap::new(),
@@ -75,18 +84,22 @@ impl ScopeStack {
 
     pub fn push_frame(&mut self) {
         let timeout = self.timeout();
+        let fail_pattern = self.fail_pattern().cloned();
         self.frames.push(Frame {
             vars: HashMap::new(),
             timeout,
+            fail_pattern,
             is_function_scope: false,
         });
     }
 
     pub fn push_function_frame(&mut self) {
         let timeout = self.timeout();
+        let fail_pattern = self.fail_pattern().cloned();
         self.frames.push(Frame {
             vars: HashMap::new(),
             timeout,
+            fail_pattern,
             is_function_scope: true,
         });
     }
@@ -103,6 +116,14 @@ impl ScopeStack {
 
     pub fn set_timeout(&mut self, d: Duration) {
         self.frames.last_mut().unwrap().timeout = d;
+    }
+
+    pub fn fail_pattern(&self) -> Option<&FailPattern> {
+        self.frames.last().unwrap().fail_pattern.as_ref()
+    }
+
+    pub fn set_fail_pattern(&mut self, pattern: Option<FailPattern>) {
+        self.frames.last_mut().unwrap().fail_pattern = pattern;
     }
 
     pub async fn lookup(&self, key: &str) -> Option<String> {

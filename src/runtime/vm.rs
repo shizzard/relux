@@ -13,7 +13,7 @@ use crate::dsl::resolver::ir::{self, Expr, ShellStmt, Span, Spanned};
 use crate::runtime::event_log::{EventCollector, LogEventKind};
 use crate::runtime::result::Failure;
 use crate::runtime::shell_log::ShellLogger;
-use crate::runtime::vars::{ScopeStack, interpolate};
+use crate::runtime::vars::{FailPattern, ScopeStack, interpolate};
 use crate::runtime::bifs::VmContext;
 use crate::runtime::progress::{ProgressEvent, ProgressTx};
 use crate::runtime::{Callable, CodeServer};
@@ -27,12 +27,6 @@ fn regex_error_summary(e: &regex::Error) -> String {
         .strip_prefix("error: ")
         .unwrap_or(&full)
         .to_string()
-}
-
-#[derive(Clone, Debug)]
-pub enum FailPattern {
-    Regex(Regex),
-    Literal(String),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -253,13 +247,17 @@ impl Vm {
                     span: Some(expr.span.clone()),
                     shell: Some(self.shell_name.clone()),
                 })?;
-                let _ = self.fail_watcher_tx.send(Some(FailPattern::Regex(re)));
+                let pattern = Some(FailPattern::Regex(re));
+                self.scope.set_fail_pattern(pattern.clone());
+                let _ = self.fail_watcher_tx.send(pattern);
                 Ok(String::new())
             }
             ShellStmt::FailLiteral(expr) => {
                 let pat = interpolate(expr, &self.scope).await;
                 self.emit_event(LogEventKind::FailPatternSet { pattern: pat.clone() }).await;
-                let _ = self.fail_watcher_tx.send(Some(FailPattern::Literal(pat)));
+                let pattern = Some(FailPattern::Literal(pat));
+                self.scope.set_fail_pattern(pattern.clone());
+                let _ = self.fail_watcher_tx.send(pattern);
                 Ok(String::new())
             }
             ShellStmt::Timeout(d) => {
@@ -435,6 +433,7 @@ impl Vm {
                     last = self.exec_stmt(stmt).await?;
                 }
                 self.scope.pop_frame();
+                let _ = self.fail_watcher_tx.send(self.scope.fail_pattern().cloned());
                 self.emit_event(LogEventKind::FnExit).await;
                 self.emit_progress(ProgressEvent::FnExit);
                 Ok(last)
@@ -618,6 +617,7 @@ impl Vm {
 
     pub async fn reset_for_reuse(&mut self, timeout: Duration) {
         self.scope.set_timeout(timeout);
+        self.scope.set_fail_pattern(None);
         self.cursor = 0;
         self.fail_triggered.store(false, Ordering::Relaxed);
         *self.fail_detail.lock().await = None;
