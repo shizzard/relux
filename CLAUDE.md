@@ -9,13 +9,18 @@ Relux is a Rust reimplementation of [hawk/lux](https://github.com/hawk/lux) — 
 ## Build & Test Commands
 
 ```bash
-cargo build                    # Build the project
-cargo test --lib               # Run all ~187 unit tests
-cargo test --lib lexer         # Run tests matching "lexer"
-cargo test --lib parser        # Run tests matching "parser"
-cargo test --lib resolver      # Run tests matching "resolver"
-cargo run -- check <path>      # Validate .relux files without executing
-cargo run -- run <path>        # Execute .relux test files
+just build                     # Build in debug mode
+just release                   # Build in release mode
+just test                      # Run all tests (unit + e2e)
+just unit                      # Run all ~187 unit tests
+just unit lexer                # Run tests matching "lexer"
+just unit parser               # Run tests matching "parser"
+just unit resolver             # Run tests matching "resolver"
+just e2e                       # Run e2e tests (check then run)
+just check                     # Run cargo check
+just intellij                  # Build IntelliJ plugin
+just clean                     # Remove build artifacts
+just clean-logs                # Remove e2e test output logs
 ```
 
 ## Architecture
@@ -36,6 +41,10 @@ Classic compiler pipeline: **Lexer → Parser → Resolver → Runtime → Repor
 - **bifs.rs**: 24 built-in functions (`Bif` trait). String ops, control chars (`ctrl_c`, `ctrl_d`), `match_prompt()`, `sleep()`, `log()`, `uuid()`, etc.
 - **vars.rs**: Variable scoping via `ScopeStack`. All values are strings. `interpolate()` handles `${var}` and `${1}` (regex captures).
 - **html.rs**: Rich HTML test report generation.
+- **result.rs**: Test result types (`TestResult`, outcome enums).
+- **event_log.rs**: Structured event logging for test execution.
+- **progress.rs**: Progress reporting during test runs.
+- **shell_log.rs**: Shell I/O logging for debugging.
 
 ### Binary (`bin/relux.rs`)
 
@@ -44,6 +53,10 @@ Unified CLI with subcommands: `new`, `run`, `check`, `dump`. Uses clap for arg p
 ### Configuration (`src/config.rs`)
 
 Parses `Relux.toml` at project root: shell command/prompt, timeout defaults (match/case/suite).
+
+### Editor Support (`editors/`)
+
+- **IntelliJ** (`editors/intellij/`): Syntax highlighting plugin for `.relux` files. Build with `just intellij`.
 
 ## Key Design Decisions
 
