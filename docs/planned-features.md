@@ -7,13 +7,10 @@
 - Run history: assemble timelines of test results across multiple runs with revision tracking
 - Re-run failed tests: `--rerun` flag to re-run only failed tests from the latest run (requires run history)
 - Custom scaffold templates: user-defined templates for `relux new --test` and `relux new --effect` via `Relux.toml`, replacing the built-in defaults
-- Clear fail pattern: bare `!?` or `!=` with no argument clears the active fail pattern, resetting it to none
-- `free_port()` BIF: returns a random available TCP port number, useful as an overlay value for effects that start network services
 
 ## Lux features not yet in Relux
 
 ### Matching
-- Buffer reset: bare match operator with no argument resets (dumps) the output buffer, discarding all unmatched output (Lux `?` with no argument)
 - Multi-line match: match a block of expected output preserving indentation (Lux `"""?..."""`)
 - Permutation match: match a set of patterns in any order (Lux `?+`)
 - Success pattern: end the test early as passed when a pattern matches (Lux `+`)
