@@ -7,9 +7,9 @@ pub use tokens::{MarkerData, PayloadFragment, Spanned, StringFragment, Token};
 
 #[derive(Logos, Debug, PartialEq, Clone)]
 enum PayloadMode<'a> {
-    #[regex(r"\$(\{[a-zA-Z_0-9]+\}|[0-9]+)", |lex| {
+    #[regex(r"\$\{[a-zA-Z_0-9]+\}", |lex| {
         let s = lex.slice();
-        if s.as_bytes()[1] == b'{' { &s[2..s.len()-1] } else { &s[1..] }
+        &s[2..s.len()-1]
     })]
     Interpolation(&'a str),
 
@@ -19,7 +19,7 @@ enum PayloadMode<'a> {
     #[regex(r"[^\n$]+")]
     Text(&'a str),
 
-    #[regex(r"\$[^{\n0-9$]")]
+    #[regex(r"\$[^{\n$]")]
     LiteralDollar(&'a str),
 
     #[regex(r"\$\n")]
@@ -43,9 +43,9 @@ enum DocStringMode<'a> {
 
 #[derive(Logos, Debug, PartialEq, Clone)]
 enum StringMode<'a> {
-    #[regex(r"\$(\{[a-zA-Z_0-9]+\}|[0-9]+)", |lex| {
+    #[regex(r"\$\{[a-zA-Z_0-9]+\}", |lex| {
         let s = lex.slice();
-        if s.as_bytes()[1] == b'{' { &s[2..s.len()-1] } else { &s[1..] }
+        &s[2..s.len()-1]
     })]
     Interpolation(&'a str),
 
@@ -58,7 +58,7 @@ enum StringMode<'a> {
     #[regex(r#"[^"\\$\n]+"#)]
     Text(&'a str),
 
-    #[regex(r"\$[^{\n0-9$]")]
+    #[regex(r"\$[^{\n$]")]
     LiteralDollar(&'a str),
 
     #[token("\"")]
@@ -664,14 +664,14 @@ mod tests {
     }
 
     #[test]
-    fn test_bare_interp_in_payload() {
+    fn test_bare_dollar_digit_in_payload() {
         let input = "> echo $1\n";
         let toks = tokens(input);
         assert_eq!(
             toks,
             vec![Token::Send(vec![
                 PayloadFragment::Text(" echo "),
-                PayloadFragment::Interpolation("1"),
+                PayloadFragment::Text("$1"),
             ])]
         );
         let sp = spans(input);
@@ -679,7 +679,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bare_interp_in_string() {
+    fn test_bare_dollar_digit_in_string() {
         let input = "let x = \"val=$1\"\n";
         let toks = tokens(input);
         assert_eq!(
@@ -690,7 +690,7 @@ mod tests {
                 Token::Eq,
                 Token::String(vec![
                     StringFragment::Text("val="),
-                    StringFragment::Interpolation("1"),
+                    StringFragment::Text("$1"),
                 ]),
                 Token::Newline,
             ]
