@@ -1,0 +1,80 @@
+fn inner(x) {
+    > echo "inner=${x}"
+    <? ^inner=${x}$
+    "inner-${x}"
+}
+
+fn outer(x) {
+    let result = inner(x)
+    > echo "outer got ${result}"
+    <? ^outer got inner-${x}$
+    "outer-${result}"
+}
+
+fn make_prefix(tag) {
+    "[${tag}]"
+}
+
+fn log_msg(tag, msg) {
+    let pfx = make_prefix(tag)
+    > echo "${pfx} ${msg}"
+    <? ^\[${tag}\] ${msg}$
+}
+
+fn depth_a(x) {
+    let val = depth_b(x)
+    "${val}-a"
+}
+
+fn depth_b(x) {
+    let val = depth_c(x)
+    "${val}-b"
+}
+
+fn depth_c(x) {
+    "${x}-c"
+}
+
+test "function calls another function" {
+    """
+    Verify a function can call another function and receive its
+    return value.
+    """
+    shell s {
+        let result = outer("hello")
+        > echo "final=${result}"
+        <? ^final=outer-inner-hello$
+    }
+}
+
+test "nested function return value chains" {
+    """
+    Verify return values chain correctly through multiple levels
+    of nested function calls.
+    """
+    shell s {
+        let result = depth_a("root")
+        > echo "${result}"
+        <? ^root-c-b-a$
+    }
+}
+
+test "nested function parameters do not collide" {
+    """
+    Verify each function in a call chain has its own parameter
+    scope and parameters with the same name do not interfere.
+    """
+    shell s {
+        log_msg("INFO", "started")
+    }
+}
+
+test "nested function uses helper return value" {
+    """
+    Verify a function can use the return value of a helper
+    function in a send payload.
+    """
+    shell s {
+        log_msg("WARN", "check this")
+    }
+}

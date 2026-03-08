@@ -1,0 +1,78 @@
+fn get_greeting() {
+    > echo "hi there"
+    <? ^hi there$
+}
+
+fn make_label(prefix, value) {
+    "${prefix}:${value}"
+}
+
+fn make_label_via_let(prefix, value) {
+    let result = "${prefix}:${value}"
+}
+
+fn capture_version() {
+    > echo "version=3.2.1"
+    let val = <? ^version=(.+)$
+}
+
+fn noop() {
+}
+
+test "expression as return value" {
+    """
+    Verify a bare string expression as the last statement is returned.
+    """
+    shell s {
+        let label = make_label("key", "val")
+        > echo "${label}"
+        <? ^key:val$
+    }
+}
+
+test "let as return value" {
+    """
+    Verify a let declaration as the last statement returns the
+    assigned value.
+    """
+    shell s {
+        let label = make_label_via_let("key", "val")
+        > echo "${label}"
+        <? ^key:val$
+    }
+}
+
+test "capture return value from match" {
+    """
+    Verify a function that ends with a let-from-match returns
+    the captured match text.
+    """
+    shell s {
+        let ver = capture_version()
+        > echo "got=${ver}"
+        <? ^got=version=3.2.1$
+    }
+}
+
+test "return value ignored when not captured" {
+    """
+    Verify calling a function without capturing its return value
+    does not cause errors — the function runs for side effects only.
+    """
+    shell s {
+        get_greeting()
+        > echo "done"
+        <? ^done$
+    }
+}
+
+test "empty function returns empty string" {
+    """
+    Verify a function with no statements returns an empty string.
+    """
+    shell s {
+        let val = noop()
+        > echo "result='${val}'"
+        <? ^result=''$
+    }
+}

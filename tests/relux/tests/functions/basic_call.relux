@@ -1,0 +1,122 @@
+fn greet() {
+    > echo "hello from fn"
+    <? ^hello from fn$
+}
+
+fn say(msg) {
+    > echo "${msg}"
+    <? ^${msg}$
+}
+
+fn add_label(prefix, value) {
+    > echo "${prefix}: ${value}"
+    <? ^${prefix}: ${value}$
+}
+
+fn no_args() {
+    > echo "zero"
+    <? ^zero$
+}
+
+fn one_arg(x) {
+    > echo "one=${x}"
+    <? ^one=${x}$
+}
+
+fn two_args(x, y) {
+    > echo "two=${x},${y}"
+    <? ^two=${x},${y}$
+}
+
+fn check_shell_var() {
+    > echo $$MY_VAR
+    <? ^caller_state$
+}
+
+test "call function with no arguments" {
+    """
+    Verify a zero-arity function can be called and executes its body.
+    """
+    shell s {
+        greet()
+    }
+}
+
+test "call function with one argument" {
+    """
+    Verify a single argument is passed correctly to the function.
+    """
+    shell s {
+        say("world")
+    }
+}
+
+test "call function with multiple arguments" {
+    """
+    Verify multiple arguments are passed in order to the function.
+    """
+    shell s {
+        add_label("status", "ok")
+    }
+}
+
+test "function executes in caller shell" {
+    """
+    Verify a function's send and match operators execute in the
+    caller's shell context by reading state set before the call.
+    """
+    shell s {
+        > export MY_VAR=caller_state
+        match_ok()
+        check_shell_var()
+    }
+}
+
+test "same name different arity" {
+    """
+    Verify functions are dispatched by (name, arity), so the same
+    name with different parameter counts calls different definitions.
+    """
+    shell s {
+        no_args()
+        one_arg("a")
+        two_args("a", "b")
+    }
+}
+
+test "function parameter does not leak to caller" {
+    """
+    Verify function parameters are not visible in the caller's scope
+    after the function returns.
+    """
+    shell s {
+        say("test")
+        > echo "msg='${msg}'"
+        <? ^msg=''$
+    }
+}
+
+test "function local does not leak to caller" {
+    """
+    Verify a variable declared with let inside a function is not
+    visible in the caller's scope after the function returns.
+    """
+    shell s {
+        greet()
+        > echo "local='${local}'"
+        <? ^local=''$
+    }
+}
+
+test "function let shadows without mutating outer" {
+    """
+    Verify let inside a function creates a local shadow and the
+    outer variable is unchanged after the function returns.
+    """
+    shell s {
+        let x = "outer"
+        say(x)
+        > echo "x=${x}"
+        <? ^x=outer$
+    }
+}

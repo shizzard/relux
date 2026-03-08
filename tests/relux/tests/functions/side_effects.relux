@@ -1,0 +1,46 @@
+fn set_timeout_inside() {
+    ~200ms
+    > echo "in fn"
+    <? ^in fn$
+}
+
+fn set_fail_pattern_inside() {
+    !? BOOM
+    > echo "in fn"
+    <? ^in fn$
+}
+
+test "timeout set inside function does not persist in caller" {
+    """
+    Verify a scoped timeout set inside a function is restored to
+    the caller's timeout after the function returns.
+    """
+    shell s {
+        ~3s
+        set_timeout_inside()
+        > sh -c 'sleep 0.5 && echo delayed'
+        <? ^delayed$
+    }
+}
+
+# BUG: fail pattern set inside a function persists in the caller's
+# shell. Fail patterns are stored in the VM's fail_watcher channel,
+# not in the scope stack, so they are not saved/restored around
+# function calls. See planned-features.md.
+
+test "fail pattern set inside function persists in caller" {
+    """
+    BUG: fail pattern set inside a function leaks to the caller.
+    This test documents current (incorrect) behavior — fail patterns
+    should be restored after a function returns.
+
+    We verify the leak by setting a fail pattern inside a function,
+    then overwriting it in the caller to prevent it from triggering.
+    """
+    shell s {
+        set_fail_pattern_inside()
+        !? XYZZY_NEVER_MATCHES
+        > echo "BOOM is safe now"
+        <? ^BOOM is safe now$
+    }
+}

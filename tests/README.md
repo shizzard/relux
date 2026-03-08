@@ -36,10 +36,10 @@ Core interaction primitives: sending input and matching output.
 
 ### `functions/` — Function definitions and calls
 
-- `basic_call.relux` — defining and calling functions
-- `return_value.relux` — last expression as return value, capturing result
-- `side_effects.relux` — timeout/fail-pattern changes persist in caller
-- `nested_calls.relux` — functions calling other functions
+- `basic_call.relux` — calling functions, arity dispatch, parameter/local isolation, caller shell context
+- `return_value.relux` — expression and let as return value, match capture return, empty function
+- `side_effects.relux` — timeout isolation across function calls, fail pattern leak (documented bug)
+- `nested_calls.relux` — chained calls, return value threading, parameter scope independence
 
 ### `effects/` — Effect lifecycle
 

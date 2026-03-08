@@ -8,6 +8,10 @@
 - Re-run failed tests: `--rerun` flag to re-run only failed tests from the latest run (requires run history)
 - Custom scaffold templates: user-defined templates for `relux new --test` and `relux new --effect` via `Relux.toml`, replacing the built-in defaults
 
+## Bugs
+
+- Fail pattern leaks from function to caller: fail patterns set inside a function persist in the caller's shell after the function returns. Fail patterns are stored in the VM's `fail_watcher` channel (not in the scope stack), so they are not saved/restored around function calls like timeout is. Discovered via e2e test `tests/relux/tests/functions/side_effects.relux`.
+
 ## Lux features not yet in Relux
 
 ### Matching
