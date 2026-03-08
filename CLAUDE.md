@@ -9,19 +9,19 @@ Relux is a Rust reimplementation of [hawk/lux](https://github.com/hawk/lux) — 
 ## Build & Test Commands
 
 ```bash
-just build                     # Build in debug mode
-just release                   # Build in release mode
-just test                      # Run all tests (unit + e2e)
-just unit                      # Run all ~187 unit tests
-just unit lexer                # Run tests matching "lexer"
-just unit parser               # Run tests matching "parser"
-just unit resolver             # Run tests matching "resolver"
-just e2e                       # Run e2e tests (check then run)
-just e2e <path>                # Run e2e particular test (check then run)
-just check                     # Run cargo check
-just intellij                  # Build IntelliJ plugin
-just clean                     # Remove build artifacts
-just clean-logs                # Remove e2e test output logs
+just build                      # Build in debug mode
+just release                    # Build in release mode
+just test                       # Run all tests (unit + e2e)
+just unit                       # Run all ~187 unit tests
+just unit lexer                 # Run tests matching "lexer"
+just unit parser                # Run tests matching "parser"
+just unit resolver              # Run tests matching "resolver"
+just e2e                        # Run e2e tests (check then run)
+just e2e <path from tests root> # Run e2e particular test (check then run)
+just check                      # Run cargo check
+just intellij                   # Build IntelliJ plugin
+just clean                      # Remove build artifacts
+just clean-logs                 # Remove e2e test output logs
 ```
 
 ## Architecture
