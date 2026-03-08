@@ -35,6 +35,7 @@ pub fn lookup(name: &str, arity: usize) -> Option<Box<dyn Bif>> {
         ("uuid", 0) => Some(Box::new(Uuid)),
         ("rand", 1) => Some(Box::new(Rand)),
         ("rand", 2) => Some(Box::new(RandWithMode)),
+        ("available_port", 0) => Some(Box::new(AvailablePort)),
         ("match_prompt", 0) => Some(Box::new(MatchPrompt)),
         ("match_exit_code", 1) => Some(Box::new(MatchExitCode)),
         ("match_ok", 0) => Some(Box::new(MatchOk)),
@@ -265,6 +266,25 @@ fn random_string(len: usize, charset: &[u8]) -> String {
     (0..len)
         .map(|_| charset[rng.random_range(0..charset.len())] as char)
         .collect()
+}
+
+// ─── AvailablePort ──────────────────────────────────────────
+
+pub struct AvailablePort;
+
+#[async_trait]
+impl Bif for AvailablePort {
+    fn name(&self) -> &str { "available_port" }
+    fn arity(&self) -> usize { 0 }
+
+    async fn call(&self, _vm: &mut dyn VmContext, _args: Vec<String>, span: &Span) -> Result<String, Failure> {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")
+            .map_err(|e| runtime_error(format!("failed to bind to ephemeral port: {e}"), span))?;
+        let port = listener.local_addr()
+            .map_err(|e| runtime_error(format!("failed to get local address: {e}"), span))?
+            .port();
+        Ok(port.to_string())
+    }
 }
 
 // ─── MatchPrompt ────────────────────────────────────────────
@@ -574,7 +594,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_available_port() {
+        let mut vm = DummyVm;
+        let r = AvailablePort.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        let port: u16 = r.parse().expect("should be a valid port number");
+        assert!(port > 0);
+    }
+
+    #[tokio::test]
+    async fn test_available_port_unique() {
+        let mut vm = DummyVm;
+        let a = AvailablePort.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        let b = AvailablePort.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        // Not guaranteed but extremely likely with ephemeral ports
+        assert_ne!(a, b);
+    }
+
+    #[tokio::test]
     async fn test_lookup() {
+        assert!(lookup("available_port", 0).is_some());
         assert!(lookup("trim", 1).is_some());
         assert!(lookup("upper", 1).is_some());
         assert!(lookup("rand", 1).is_some());
