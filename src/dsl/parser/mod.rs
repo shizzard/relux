@@ -171,13 +171,20 @@ where
     let send_raw = select! { Token::SendRaw(f) => AstExpr::SendRaw(payload_to_expr(f)) }
         .map_with(|e, x| Spanned::new(e, sp(x.span())))
         .labelled("send raw");
-    let match_regex = select! { Token::MatchRegex(f) => AstExpr::MatchRegex(payload_to_expr(f)) }
+    let match_regex = select! { Token::MatchRegex(f) => f }
+        .map(|f| {
+            let expr = payload_to_expr(f);
+            if expr.parts.is_empty() { AstExpr::BufferReset } else { AstExpr::MatchRegex(expr) }
+        })
         .map_with(|e, x| Spanned::new(e, sp(x.span())))
         .labelled("match regex");
-    let match_literal =
-        select! { Token::MatchLiteral(f) => AstExpr::MatchLiteral(payload_to_expr(f)) }
-            .map_with(|e, x| Spanned::new(e, sp(x.span())))
-            .labelled("match literal");
+    let match_literal = select! { Token::MatchLiteral(f) => f }
+        .map(|f| {
+            let expr = payload_to_expr(f);
+            if expr.parts.is_empty() { AstExpr::BufferReset } else { AstExpr::MatchLiteral(expr) }
+        })
+        .map_with(|e, x| Spanned::new(e, sp(x.span())))
+        .labelled("match literal");
     let neg_match_regex =
         select! { Token::NegMatchRegex(f) => AstExpr::NegMatchRegex(payload_to_expr(f)) }
             .map_with(|e, x| Spanned::new(e, sp(x.span())))
@@ -1798,6 +1805,30 @@ mod tests {
                     );
                 }
                 other => panic!("expected TimedNegMatchLiteral, got {other:?}"),
+            },
+            other => panic!("expected Fn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_buffer_reset_bare_match_regex() {
+        let m = parse_ok("fn f() {\n  <?\n}\n");
+        match &m.items[0].node {
+            Item::Fn(f) => match &f.body[0].node {
+                Stmt::Expr(AstExpr::BufferReset) => {}
+                other => panic!("expected BufferReset, got {other:?}"),
+            },
+            other => panic!("expected Fn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_buffer_reset_bare_match_literal() {
+        let m = parse_ok("fn f() {\n  <=\n}\n");
+        match &m.items[0].node {
+            Item::Fn(f) => match &f.body[0].node {
+                Stmt::Expr(AstExpr::BufferReset) => {}
+                other => panic!("expected BufferReset, got {other:?}"),
             },
             other => panic!("expected Fn, got {other:?}"),
         }

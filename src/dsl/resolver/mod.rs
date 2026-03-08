@@ -666,6 +666,7 @@ fn lower_expr(
                 timeout_override: Some(parse_timeout(dur, file_id, expr_span, diagnostics)),
             })
         }
+        parser::AstExpr::BufferReset => ir::Expr::BufferReset,
     }
 }
 

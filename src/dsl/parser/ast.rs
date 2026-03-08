@@ -168,6 +168,7 @@ pub enum AstExpr {
     TimedMatchLiteral(String, AstStringExpr),
     TimedNegMatchRegex(String, AstStringExpr),
     TimedNegMatchLiteral(String, AstStringExpr),
+    BufferReset,
 }
 
 #[derive(Debug, Clone, PartialEq)]

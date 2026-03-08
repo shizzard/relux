@@ -1,0 +1,51 @@
+test "bare match regex resets buffer" {
+    """
+    Verify bare <? discards unmatched output and advances the cursor.
+
+    After echoing "noise", reset the buffer, then echo "signal".
+    A match for "noise" after the reset must time out because the
+    cursor has moved past it.
+    """
+    shell s {
+        > echo noise
+        > echo garbage1
+        > echo garbage2
+        sleep("10ms")
+        <?
+        > echo signal
+        <~100ms!= garbage1
+        <? ^signal$
+    }
+}
+
+test "bare match literal resets buffer" {
+    """
+    Verify bare <= also resets the buffer, same as bare <?.
+    """
+    shell s {
+        > echo noise
+        > echo garbage1
+        > echo garbage2
+        sleep("10ms")
+        <=
+        > echo signal
+        <~100ms!= garbage1
+        <? ^signal$
+    }
+}
+
+test "buffer reset does not affect subsequent matches" {
+    """
+    Verify matches after a buffer reset work normally on new output.
+    """
+    shell s {
+        > echo aaa
+        > echo bbb
+        sleep("10ms")
+        <?
+        > echo first
+        > echo second
+        <? ^first$
+        <? ^second$
+    }
+}

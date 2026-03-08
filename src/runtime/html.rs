@@ -64,6 +64,7 @@ fn event_type_class(kind: &LogEventKind) -> (&str, &str) {
         LogEventKind::NegMatchStart { .. } | LogEventKind::NegMatchPass { .. } => ("neg-match", "match-ev"),
         LogEventKind::NegMatchFail { .. } => ("neg-match", "err"),
         LogEventKind::Timeout { .. } => ("timeout", "err"),
+        LogEventKind::BufferReset { .. } => ("reset", "err"),
         LogEventKind::FailPatternSet { .. } => ("fail-pat", "err"),
         LogEventKind::FailPatternTriggered { .. } => ("FAIL", "err"),
         LogEventKind::EffectSetup { .. } => ("effect+", ""),
@@ -101,6 +102,7 @@ fn event_data(kind: &LogEventKind) -> String {
         LogEventKind::NegMatchFail { pattern, matched_text, .. } => {
             format!("!{} found: {}", html_escape(pattern), html_escape(matched_text))
         }
+        LogEventKind::BufferReset { .. } => String::new(),
         LogEventKind::Timeout { pattern, .. } => html_escape(pattern),
         LogEventKind::FailPatternSet { pattern } => html_escape(pattern),
         LogEventKind::FailPatternTriggered { pattern, matched_line, .. } => {
@@ -130,6 +132,7 @@ fn event_buffer(kind: &LogEventKind) -> Option<&BufferSnapshot> {
         LogEventKind::Timeout { buffer, .. } => Some(buffer),
         LogEventKind::NegMatchFail { buffer, .. } => Some(buffer),
         LogEventKind::FailPatternTriggered { buffer, .. } => Some(buffer),
+        LogEventKind::BufferReset { buffer } => Some(buffer),
         _ => None,
     }
 }
@@ -158,7 +161,13 @@ fn render_buffer(kind: &LogEventKind) -> String {
             }
             buf
         }
-        BufferSnapshot::Tail { content } => html_escape(content),
+        BufferSnapshot::Tail { content } => {
+            if matches!(kind, LogEventKind::BufferReset { .. }) {
+                format!("<span class=\"buf-skip\">{}</span>", html_escape(content))
+            } else {
+                html_escape(content)
+            }
+        }
     };
     if inner.is_empty() {
         return String::new();

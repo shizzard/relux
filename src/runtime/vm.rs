@@ -407,6 +407,13 @@ impl Vm {
                 self.emit_progress(ProgressEvent::MatchDone);
                 Ok(String::new())
             }
+            Expr::BufferReset => {
+                let buffer = self.buffer_snapshot_tail().await;
+                let data = self.output_buf.snapshot().await;
+                self.cursor = data.len();
+                self.emit_event(LogEventKind::BufferReset { buffer }).await;
+                Ok(String::new())
+            }
             Expr::Call(call) => self.eval_call(call, &expr.span).await,
         }
     }

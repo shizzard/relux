@@ -273,6 +273,9 @@ pub enum Expr {
     /// Assert literal does NOT appear in output within timeout.
     /// Succeeds if timeout expires without match. Value: empty string.
     NegMatchLiteral(MatchExpr),
+    /// Reset (drop) the output buffer by advancing the cursor to the end.
+    /// Discards all unmatched output. Value: empty string.
+    BufferReset,
 }
 
 /// Unified match expression carrying a pattern and optional one-shot timeout.

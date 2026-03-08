@@ -29,6 +29,7 @@ pub enum LogEventKind {
     NegMatchStart { pattern: String, is_regex: bool },
     NegMatchPass { pattern: String, elapsed: Duration },
     NegMatchFail { pattern: String, matched_text: String, buffer: BufferSnapshot },
+    BufferReset { buffer: BufferSnapshot },
     FailPatternSet { pattern: String },
     FailPatternTriggered { pattern: String, matched_line: String, buffer: BufferSnapshot },
     EffectSetup { effect: String },
