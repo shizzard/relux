@@ -8,11 +8,6 @@
 - Re-run failed tests: `--rerun` flag to re-run only failed tests from the latest run (requires run history)
 - Custom scaffold templates: user-defined templates for `relux new --test` and `relux new --effect` via `Relux.toml`, replacing the built-in defaults
 
-## Bugs
-
-- Function scope leaks to caller: assignment (`x = "val"`) inside a function walks the frame stack and mutates variables in the caller's scope. Functions should execute in an isolated scope where assignment cannot reach the caller. Discovered via e2e test `tests/relux/tests/variables/scoping.relux` — "function assignment mutates outer scope" currently passes but documents incorrect behavior.
-- Bare `$N` triggers variable interpolation: the lexer treats `$` followed by a digit (e.g. `$1`) as a capture group interpolation, even without braces. Only the `${N}` form should trigger interpolation. This causes problems when `$` appears naturally in operator payloads (e.g. `\$10` in a regex pattern has `$1` consumed as capture group 1). Discovered via e2e test `tests/relux/tests/variables/interpolation.relux`.
-
 ## Lux features not yet in Relux
 
 ### Matching
