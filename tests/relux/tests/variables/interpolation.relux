@@ -1,0 +1,102 @@
+test "interpolation in send payload" {
+    """
+    Verify ${var} is interpolated in send operator payloads.
+    """
+    shell s {
+        let name = "relux"
+        > echo "hello ${name}"
+        <? ^hello relux$
+    }
+}
+
+test "multiple interpolations in one string" {
+    """
+    Verify multiple ${var} references in a single string are all resolved.
+    """
+    shell s {
+        let a = "one"
+        let b = "two"
+        let c = "three"
+        > echo "${a}-${b}-${c}"
+        <? ^one-two-three$
+    }
+}
+
+test "undefined variable interpolates to empty string" {
+    """
+    Verify referencing an undeclared variable yields an empty string
+    without raising an error.
+    """
+    shell s {
+        > echo "before${nonexistent}after"
+        <? ^beforeafter$
+    }
+}
+
+test "interpolation at string boundaries" {
+    """
+    Verify interpolation works at the start, middle, and end of a string.
+    """
+    shell s {
+        let v = "X"
+        > echo "${v}-mid-${v}"
+        <? ^X-mid-X$
+    }
+}
+
+test "dollar escape produces literal dollar sign" {
+    """
+    Verify $$ is rendered as a literal $ in the output.
+    """
+    shell s {
+        > echo '$$HOME'
+        <? ^\$$HOME$
+    }
+}
+
+test "dollar escape with variable interpolation" {
+    """
+    Verify $$ and ${var} can coexist in the same payload.
+    """
+    shell s {
+        let name = "USD"
+        > echo "currency: $$${name}"
+        <= currency: $USD
+    }
+}
+
+test "interpolation in literal match payload" {
+    """
+    Verify ${var} is interpolated in literal match operator payloads.
+    The first literal match advances the cursor past the echoed command,
+    then the second matches the actual output.
+    """
+    shell s {
+        let word = "fox"
+        > echo "the quick brown fox"
+        <= echo "the quick brown fox"
+        <= quick brown ${word}
+    }
+}
+
+test "interpolation in regex match payload" {
+    """
+    Verify ${var} is interpolated in regex match operator payloads.
+    """
+    shell s {
+        let prefix = "hello"
+        > echo "hello world"
+        <? ^${prefix} \w+$
+    }
+}
+
+test "shell-side variable via dollar escape" {
+    """
+    Verify $$ passes a literal $ to the shell, allowing shell-side
+    variable expansion at runtime.
+    """
+    shell s {
+        > X=runtime_val && echo $$X
+        <? ^runtime_val$
+    }
+}

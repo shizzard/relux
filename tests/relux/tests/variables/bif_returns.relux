@@ -1,0 +1,101 @@
+test "uuid returns a valid uuid" {
+    """
+    Verify uuid() returns a non-empty string matching UUID format.
+    """
+    shell s {
+        let id = uuid()
+        > echo ${id}
+        <? ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+    }
+}
+
+test "trim removes whitespace" {
+    """
+    Verify trim() strips leading and trailing whitespace.
+    """
+    shell s {
+        let val = trim("  hello  ")
+        > echo "'${val}'"
+        <? ^'hello'$
+    }
+}
+
+test "upper converts to uppercase" {
+    """
+    Verify upper() converts a string to uppercase.
+    """
+    shell s {
+        let val = upper("hello")
+        > echo ${val}
+        <? ^HELLO$
+    }
+}
+
+test "lower converts to lowercase" {
+    """
+    Verify lower() converts a string to lowercase.
+    """
+    shell s {
+        let val = lower("HELLO")
+        > echo ${val}
+        <? ^hello$
+    }
+}
+
+test "replace substitutes text" {
+    """
+    Verify replace() substitutes all occurrences of a substring.
+    """
+    shell s {
+        let val = replace("foo-bar-foo", "foo", "baz")
+        > echo ${val}
+        <? ^baz-bar-baz$
+    }
+}
+
+test "split extracts element by index" {
+    """
+    Verify split() splits a string by separator and returns the
+    element at the given index.
+    """
+    shell s {
+        let val = split("a,b,c", ",", 1)
+        > echo ${val}
+        <? ^b$
+    }
+}
+
+test "len returns string length" {
+    """
+    Verify len() returns the character count of a string.
+    """
+    shell s {
+        let val = len("hello")
+        > echo ${val}
+        <? ^5$
+    }
+}
+
+test "rand returns string of requested length" {
+    """
+    Verify rand() returns an alphanumeric string of the specified length.
+    """
+    shell s {
+        let val = rand(8)
+        let size = len(val)
+        > echo ${size}
+        <? ^8$
+    }
+}
+
+test "chained bif results" {
+    """
+    Verify the result of one built-in function can be passed as
+    an argument to another.
+    """
+    shell s {
+        let val = upper(trim("  mixed  "))
+        > echo ${val}
+        <? ^MIXED$
+    }
+}

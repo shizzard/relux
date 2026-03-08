@@ -1,0 +1,79 @@
+fn set_var(val) {
+    let local = "fn-only"
+    > echo "param=${val} local=${local}"
+    <? ^param=${val} local=${local}$
+}
+
+fn mutate_outer() {
+    x = "mutated"
+}
+
+fn shadow_outer() {
+    let x = "shadowed"
+    > echo "inside=${x}"
+    <? ^inside=shadowed$
+}
+
+test "function parameters are scoped to function" {
+    """
+    Verify function parameters are accessible inside the function body.
+    """
+    shell s {
+        set_var("hello")
+    }
+}
+
+test "function local does not leak to caller" {
+    """
+    Verify a variable declared with let inside a function does not
+    exist in the caller's scope after the function returns.
+    """
+    shell s {
+        set_var("test")
+        > echo "local='${local}'"
+        <? ^local=''$
+    }
+}
+
+test "function assignment mutates outer scope" {
+    """
+    BUG: assignment inside a function leaks to the caller's scope.
+    This test documents current (incorrect) behavior — functions
+    should not be able to mutate the caller's variables.
+    """
+    shell s {
+        let x = "original"
+        mutate_outer()
+        > echo "x=${x}"
+        <? ^x=mutated$
+    }
+}
+
+test "function let shadows without mutating outer" {
+    """
+    Verify let inside a function creates a local shadow and the
+    outer variable is unchanged after the function returns.
+    """
+    shell s {
+        let x = "outer"
+        shadow_outer()
+        > echo "x=${x}"
+        <? ^x=outer$
+    }
+}
+
+test "test-level variable shared across shells" {
+    """
+    Verify a variable declared at test level is visible in all
+    shell blocks within the same test.
+    """
+    let shared = "from-test"
+    shell a {
+        > echo "a=${shared}"
+        <? ^a=from-test$
+    }
+    shell b {
+        > echo "b=${shared}"
+        <? ^b=from-test$
+    }
+}

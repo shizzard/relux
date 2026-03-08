@@ -29,9 +29,10 @@ Core interaction primitives: sending input and matching output.
 
 - `let_and_assign.relux` — declaration, initialization, reassignment
 - `scoping.relux` — block scoping, shadowing, mutation of outer scope
-- `interpolation.relux` — `${var}` in strings and payloads
-- `captures.relux` — `${1}`, `${2}` regex capture groups
-- `env_vars.relux` — environment variable access
+- `interpolation.relux` — `${var}` in send/match payloads, `$$` dollar escaping, undefined variables
+- `capture_groups.relux` — `${0}`, `${1}`, `${N}` regex capture groups, overwriting, let-from-match
+- `environment.relux` — host env vars, `__RELUX_*` special vars, undefined env var fallback
+- `bif_returns.relux` — capturing built-in function return values into variables, chaining
 
 ### `functions/` — Function definitions and calls
 

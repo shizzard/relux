@@ -1,0 +1,52 @@
+test "access host environment variable" {
+    """
+    Verify host process environment variables are accessible via ${VAR}.
+    """
+    shell s {
+        > echo ${HOME}
+        <? ^/
+    }
+}
+
+test "relux run id is set" {
+    """
+    Verify the __RELUX_RUN_ID special variable is populated with a
+    non-empty value.
+    """
+    shell s {
+        > echo "id=${__RELUX_RUN_ID}"
+        <? ^id=.+$
+    }
+}
+
+test "relux run artifacts path is set" {
+    """
+    Verify the __RELUX_RUN_ARTIFACTS special variable points to an
+    existing directory path.
+    """
+    shell s {
+        > test -d "${__RELUX_RUN_ARTIFACTS}"
+        match_ok()
+    }
+}
+
+test "relux shell prompt is set" {
+    """
+    Verify the __RELUX_SHELL_PROMPT special variable is populated.
+    """
+    shell s {
+        > echo "prompt=${__RELUX_SHELL_PROMPT}"
+        <? ^prompt=.+$
+    }
+}
+
+test "undefined environment variable is empty" {
+    """
+    Verify referencing an environment variable that does not exist
+    yields an empty string.
+    """
+    shell s {
+        > echo "val='${RELUX_NONEXISTENT_VAR_FOR_TESTING}'"
+        <? ^val=''$
+    }
+}

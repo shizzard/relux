@@ -1,0 +1,73 @@
+test "let with value" {
+    """
+    Verify let binds a variable to a string value for interpolation.
+    """
+    shell s {
+        let x = "hello"
+        > echo ${x}
+        <? ^hello$
+    }
+}
+
+test "let without value defaults to empty string" {
+    """
+    Verify let without an initializer defaults the variable to an empty string.
+    """
+    shell s {
+        let x
+        > echo "start${x}end"
+        <? ^startend$
+    }
+}
+
+test "reassignment updates value" {
+    """
+    Verify reassigning a variable replaces its previous value.
+    """
+    shell s {
+        let x = "before"
+        > echo ${x}
+        <? ^before$
+        x = "after"
+        > echo ${x}
+        <? ^after$
+    }
+}
+
+test "let from match expression" {
+    """
+    Verify let captures the full match from a regex match expression.
+    """
+    shell s {
+        > echo "num=42"
+        let val = <? num=(\d+)
+        > echo "got ${val}"
+        <? ^got num=42$
+    }
+}
+
+test "let with self-referencing interpolation" {
+    """
+    Verify let evaluates the right-hand side using the current value
+    of the variable before rebinding it.
+    """
+    shell s {
+        let x = "foo"
+        let x = "bar${x}"
+        > echo ${x}
+        <? ^barfoo$
+    }
+}
+
+test "multiple independent variables" {
+    """
+    Verify multiple variables can be declared and interpolated independently.
+    """
+    shell s {
+        let a = "alpha"
+        let b = "bravo"
+        let c = "charlie"
+        > echo "${a} ${b} ${c}"
+        <? ^alpha bravo charlie$
+    }
+}

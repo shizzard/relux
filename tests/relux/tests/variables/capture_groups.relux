@@ -1,0 +1,93 @@
+test "single capture group" {
+    """
+    Verify a single regex capture group is accessible via ${1}.
+    """
+    shell s {
+        > echo "version=3"
+        <? version=(\d+)
+        > echo "got ${1}"
+        <? ^got 3$
+    }
+}
+
+test "full match via capture group zero" {
+    """
+    Verify ${0} returns the full regex match text.
+    """
+    shell s {
+        > echo "hello world"
+        <? (hello) (world)
+        > echo "full='${0}' first='${1}' second='${2}'"
+        <? ^full='hello world' first='hello' second='world'$
+    }
+}
+
+test "multiple capture groups" {
+    """
+    Verify multiple capture groups are all independently accessible.
+    """
+    shell s {
+        > echo "2026-03-08"
+        <? ^(\d{4})-(\d{2})-(\d{2})$
+        > echo "year=${1} month=${2} day=${3}"
+        <? ^year=2026 month=03 day=08$
+    }
+}
+
+test "captures overwritten by next match" {
+    """
+    Verify each new regex match replaces all previous capture groups,
+    including clearing groups that the new match does not define.
+    """
+    shell s {
+        > echo "key=abc val=xyz"
+        <? ^key=(\w+) val=(\w+)$
+        > echo "g1=${1} g2=${2}"
+        <? ^g1=abc g2=xyz$
+        > echo "only=one"
+        <? ^only=(\w+)$
+        > echo "g1=${1} g2='${2}'"
+        <? ^g1=one g2=''$
+    }
+}
+
+test "missing capture group returns empty string" {
+    """
+    Verify accessing a capture group beyond those matched yields an empty string.
+    """
+    shell s {
+        > echo "one=1"
+        <? ^one=(\d+)$
+        > echo "five='${5}'"
+        <? ^five=''$
+    }
+}
+
+test "capture into variable" {
+    """
+    Verify a capture group value can be saved into a named variable
+    and survives subsequent matches.
+    """
+    shell s {
+        > echo "key=alpha"
+        <? ^key=(\w+)$
+        let saved = ${1}
+        > echo "other=beta"
+        <? ^other=(\w+)$
+        > echo "saved=${saved} current=${1}"
+        <? ^saved=alpha current=beta$
+    }
+}
+
+test "let from match expression captures full match" {
+    """
+    Verify let from a match expression stores the full match text,
+    not just the first capture group.
+    """
+    shell s {
+        > echo "code=42"
+        let result = <? code=(\d+)
+        > echo "result='${result}' group='${1}'"
+        <? ^result='code=42' group='42'$
+    }
+}
