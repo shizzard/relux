@@ -281,11 +281,21 @@ impl Vm {
             }
             ShellStmt::Assign(assign) => {
                 let value = self.eval_expr(&assign.value).await?;
+                let found = self.scope.assign(&assign.name.node, value.clone()).await;
+                if !found {
+                    return Err(Failure::Runtime {
+                        message: format!(
+                            "assignment to undeclared variable `{}`",
+                            assign.name.node
+                        ),
+                        span: Some(assign.name.span.clone()),
+                        shell: Some(self.shell_name.clone()),
+                    });
+                }
                 self.emit_event(LogEventKind::VarAssign {
                     name: assign.name.node.clone(),
                     value: value.clone(),
                 }).await;
-                let _ = self.scope.assign(&assign.name.node, value.clone()).await;
                 Ok(value)
             }
             ShellStmt::Expr(expr) => {
@@ -416,7 +426,7 @@ impl Vm {
 
                 self.emit_event(LogEventKind::FnEnter { name: call.name.node.clone() }).await;
                 self.emit_progress(ProgressEvent::FnEnter(call.name.node.clone()));
-                self.scope.push_frame();
+                self.scope.push_function_frame();
                 for (param, value) in params.iter().zip(evaluated_args.into_iter()) {
                     self.scope.let_insert(param.node.clone(), value);
                 }

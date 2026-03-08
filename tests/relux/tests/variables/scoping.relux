@@ -4,10 +4,6 @@ fn set_var(val) {
     <? ^param=${val} local=${local}$
 }
 
-fn mutate_outer() {
-    x = "mutated"
-}
-
 fn shadow_outer() {
     let x = "shadowed"
     > echo "inside=${x}"
@@ -32,20 +28,6 @@ test "function local does not leak to caller" {
         set_var("test")
         > echo "local='${local}'"
         <? ^local=''$
-    }
-}
-
-test "function assignment mutates outer scope" {
-    """
-    BUG: assignment inside a function leaks to the caller's scope.
-    This test documents current (incorrect) behavior — functions
-    should not be able to mutate the caller's variables.
-    """
-    shell s {
-        let x = "original"
-        mutate_outer()
-        > echo "x=${x}"
-        <? ^x=mutated$
     }
 }
 

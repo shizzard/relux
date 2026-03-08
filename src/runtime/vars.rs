@@ -40,6 +40,8 @@ impl TestScope {
 struct Frame {
     vars: HashMap<String, String>,
     timeout: Duration,
+    /// Function call boundary — prevents `assign()` from walking into the caller's scope.
+    is_function_scope: bool,
 }
 
 #[derive(Debug)]
@@ -62,6 +64,7 @@ impl ScopeStack {
             frames: vec![Frame {
                 vars: HashMap::new(),
                 timeout: default_timeout,
+                is_function_scope: false,
             }],
             captures: HashMap::new(),
             test_scope,
@@ -75,6 +78,16 @@ impl ScopeStack {
         self.frames.push(Frame {
             vars: HashMap::new(),
             timeout,
+            is_function_scope: false,
+        });
+    }
+
+    pub fn push_function_frame(&mut self) {
+        let timeout = self.timeout();
+        self.frames.push(Frame {
+            vars: HashMap::new(),
+            timeout,
+            is_function_scope: true,
         });
     }
 
@@ -125,6 +138,9 @@ impl ScopeStack {
             if let Some(slot) = frame.vars.get_mut(key) {
                 *slot = value;
                 return true;
+            }
+            if frame.is_function_scope {
+                break;
             }
         }
         self.test_scope.lock().await.assign(key, value)
