@@ -1,0 +1,21 @@
+test "log returns the message" {
+    """
+    Verify log() returns its argument as the result value.
+    """
+    shell s {
+        let msg = log("hello from log")
+        > echo "${msg}"
+        <? ^hello from log$
+    }
+}
+
+test "annotate returns the message" {
+    """
+    Verify annotate() returns its argument as the result value.
+    """
+    shell s {
+        let msg = annotate("test annotation")
+        > echo "${msg}"
+        <? ^test annotation$
+    }
+}

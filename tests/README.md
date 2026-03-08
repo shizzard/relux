@@ -60,7 +60,6 @@ Core interaction primitives: sending input and matching output.
 - `string_ops.relux` — `trim`, `upper`, `lower`, `replace`, `len`, `split`
 - `generators.relux` — `uuid`, `rand`
 - `control_chars.relux` — `ctrl_c`, `ctrl_d`, `ctrl_z`, `ctrl_l`, `ctrl_backslash`
-- `sleep.relux` — `sleep` with duration
 - `log.relux` — `log` and `annotate`
 
 ### `imports/` — Module imports

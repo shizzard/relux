@@ -1,0 +1,113 @@
+test "trim removes leading and trailing whitespace" {
+    """
+    Verify trim strips whitespace from both ends of a string.
+    """
+    shell s {
+        let val = trim("  hello world  ")
+        > echo "${val}"
+        <? ^hello world$
+    }
+}
+
+test "trim on string without whitespace is identity" {
+    """
+    Verify trim returns the original string when no whitespace is present.
+    """
+    shell s {
+        let val = trim("nospace")
+        > echo "${val}"
+        <? ^nospace$
+    }
+}
+
+test "upper converts to uppercase" {
+    """
+    Verify upper converts all characters to uppercase.
+    """
+    shell s {
+        let val = upper("hello")
+        > echo "${val}"
+        <? ^HELLO$
+    }
+}
+
+test "lower converts to lowercase" {
+    """
+    Verify lower converts all characters to lowercase.
+    """
+    shell s {
+        let val = lower("HELLO")
+        > echo "${val}"
+        <? ^hello$
+    }
+}
+
+test "replace substitutes all occurrences" {
+    """
+    Verify replace substitutes all occurrences of the target string.
+    """
+    shell s {
+        let val = replace("foo-bar-foo", "foo", "baz")
+        > echo "${val}"
+        <? ^baz-bar-baz$
+    }
+}
+
+test "replace with no match returns original" {
+    """
+    Verify replace returns the original string when the target is absent.
+    """
+    shell s {
+        let val = replace("hello", "xyz", "abc")
+        > echo "${val}"
+        <? ^hello$
+    }
+}
+
+test "split extracts element by index" {
+    """
+    Verify split splits a string by separator and returns the element
+    at the given index.
+    """
+    shell s {
+        let val = split("a,b,c", ",", 0)
+        > echo "${val}"
+        <? ^a$
+        let val = split("a,b,c", ",", 2)
+        > echo "${val}"
+        <? ^c$
+    }
+}
+
+test "split out of bounds returns empty" {
+    """
+    Verify split returns an empty string when the index is out of bounds.
+    """
+    shell s {
+        let val = split("a,b", ",", 5)
+        > echo "got:'${val}'"
+        <? ^got:''$
+    }
+}
+
+test "len returns string length" {
+    """
+    Verify len returns the byte length of the string.
+    """
+    shell s {
+        let val = len("hello")
+        > echo "${val}"
+        <? ^5$
+    }
+}
+
+test "len of empty string is zero" {
+    """
+    Verify len returns zero for an empty string.
+    """
+    shell s {
+        let val = len("")
+        > echo "${val}"
+        <? ^0$
+    }
+}

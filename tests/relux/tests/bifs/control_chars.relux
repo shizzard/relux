@@ -1,0 +1,58 @@
+test "ctrl_c interrupts a running command" {
+    """
+    Verify ctrl_c sends SIGINT to interrupt a long-running process.
+    """
+    shell s {
+        > sleep 60
+        ctrl_c()
+        match_prompt()
+    }
+}
+
+test "ctrl_d sends eof to interactive program" {
+    """
+    Verify ctrl_d sends EOF, causing cat to exit and print collected input.
+    """
+    shell s {
+        > cat
+        > hello
+        ctrl_d()
+        <? ^hello$
+    }
+}
+
+test "ctrl_z suspends a process" {
+    """
+    Verify ctrl_z sends SIGTSTP to suspend a process, returning to prompt.
+    """
+    shell s {
+        > sleep 60
+        ctrl_z()
+        match_prompt()
+        > kill %%
+        match_prompt()
+    }
+}
+
+test "ctrl_l sends form feed" {
+    """
+    Verify ctrl_l sends the form feed character without error.
+    """
+    shell s {
+        > echo ready
+        <? ^ready$
+        ctrl_l()
+        match_prompt()
+    }
+}
+
+test "ctrl_backslash sends sigquit" {
+    """
+    Verify ctrl_backslash sends SIGQUIT to terminate a process.
+    """
+    shell s {
+        > sleep 60
+        ctrl_backslash()
+        match_prompt()
+    }
+}
