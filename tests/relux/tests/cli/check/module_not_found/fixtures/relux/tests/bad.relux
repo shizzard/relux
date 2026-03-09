@@ -1,0 +1,7 @@
+import no/such/module
+
+test "missing import" {
+    shell s {
+        > echo hello
+    }
+}

@@ -1,0 +1,11 @@
+test "run reports negative match failure" {
+    """
+    Verify relux run reports when a negative match finds the unwanted pattern.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux run 2>&1
+        <? negative match failed
+        match_prompt()
+        match_exit_code(1)
+    }
+}

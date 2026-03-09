@@ -1,0 +1,7 @@
+[flaky]
+test "flaky test" {
+    shell s {
+        > echo hello
+        <? ^hello$
+    }
+}

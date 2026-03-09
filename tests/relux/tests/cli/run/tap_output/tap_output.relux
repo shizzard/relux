@@ -1,0 +1,14 @@
+test "run --tap generates TAP14 output" {
+    """
+    Verify relux run --tap produces a valid TAP14 results file.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux run --tap 2>&1
+        <? 1 passed
+        match_ok()
+        > cat ${__RELUX_TEST_ROOT}/fixtures/relux/out/latest/results.tap
+        <? TAP version 14
+        <? ok 1 - passes
+        match_prompt()
+    }
+}

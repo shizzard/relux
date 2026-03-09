@@ -1,0 +1,10 @@
+test "check passes on a valid project" {
+    """
+    Verify relux check exits 0 and prints check passed for a valid project.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux check 2>&1
+        <? check passed
+        match_ok()
+    }
+}

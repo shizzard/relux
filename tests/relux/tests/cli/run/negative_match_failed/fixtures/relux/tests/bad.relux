@@ -1,0 +1,7 @@
+test "negative match finds pattern" {
+    shell s {
+        ~500ms
+        > echo hello
+        <!? hello
+    }
+}

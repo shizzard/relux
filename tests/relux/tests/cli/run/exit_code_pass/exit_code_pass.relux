@@ -1,0 +1,10 @@
+test "run exits 0 when all tests pass" {
+    """
+    Verify relux run exits with code 0 when all tests pass.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux run 2>&1
+        <? 1 passed
+        match_ok()
+    }
+}

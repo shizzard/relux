@@ -1,0 +1,11 @@
+test "run exits 1 when a test fails" {
+    """
+    Verify relux run exits with code 1 when any test fails.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux run 2>&1
+        <? 1 failed
+        match_prompt()
+        match_exit_code(1)
+    }
+}

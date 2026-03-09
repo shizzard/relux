@@ -1,0 +1,7 @@
+test "fail pattern triggers" {
+    shell s {
+        !? ERROR
+        > echo ERROR
+        <? ^ERROR$
+    }
+}

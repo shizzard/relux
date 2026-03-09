@@ -1,0 +1,11 @@
+test "test without name string is a parse error" {
+    """
+    Verify relux check rejects a test definition without a name string.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux check 2>&1
+        <? unexpected token
+        match_prompt()
+        match_exit_code(1)
+    }
+}

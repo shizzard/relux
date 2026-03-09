@@ -1,0 +1,20 @@
+effect A -> s {
+    need B as dep
+    shell s {
+        > echo a
+    }
+}
+
+effect B -> s {
+    need A as dep
+    shell s {
+        > echo b
+    }
+}
+
+test "cycle" {
+    need A as a
+    shell s {
+        > echo hello
+    }
+}

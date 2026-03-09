@@ -1,0 +1,32 @@
+test "skip if eq: skips when var matches" {
+    """
+    Verify skip-if equality marker skips when the variable equals the value.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && MY_VAR=yes relux run 2>&1
+        <? 1 skipped
+        match_ok()
+    }
+}
+
+test "skip if eq: runs when var differs" {
+    """
+    Verify skip-if equality marker runs when the variable does not match.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && MY_VAR=no relux run 2>&1
+        <? 1 passed
+        match_ok()
+    }
+}
+
+test "skip if eq: runs when var is unset" {
+    """
+    Verify skip-if equality marker runs when the variable is unset.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux run 2>&1
+        <? 1 passed
+        match_ok()
+    }
+}

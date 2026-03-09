@@ -1,0 +1,10 @@
+test "unconditional skip always skips" {
+    """
+    Verify bare skip marker unconditionally skips the test.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux run 2>&1
+        <? 1 skipped
+        match_ok()
+    }
+}

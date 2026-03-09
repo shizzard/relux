@@ -1,0 +1,11 @@
+test "check detects invalid regex" {
+    """
+    Verify relux check reports an invalid regex in a condition marker.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux check 2>&1
+        <? invalid regex
+        match_prompt()
+        match_exit_code(1)
+    }
+}

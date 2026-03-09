@@ -1,0 +1,11 @@
+test "check detects duplicate definition" {
+    """
+    Verify relux check reports a duplicate function definition via imports.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux check 2>&1
+        <? duplicate definition
+        match_prompt()
+        match_exit_code(1)
+    }
+}

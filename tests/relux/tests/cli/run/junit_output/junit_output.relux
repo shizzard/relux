@@ -1,0 +1,14 @@
+test "run --junit generates JUnit XML output" {
+    """
+    Verify relux run --junit produces a valid JUnit XML results file.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux run --junit 2>&1
+        <? 1 passed
+        match_ok()
+        > cat ${__RELUX_TEST_ROOT}/fixtures/relux/out/latest/junit.xml
+        <? testsuite
+        <? name="passes"
+        match_prompt()
+    }
+}

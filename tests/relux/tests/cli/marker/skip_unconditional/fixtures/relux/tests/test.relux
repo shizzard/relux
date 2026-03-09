@@ -1,0 +1,7 @@
+[skip]
+test "always skipped" {
+    shell s {
+        > echo hello
+        <? ^hello$
+    }
+}

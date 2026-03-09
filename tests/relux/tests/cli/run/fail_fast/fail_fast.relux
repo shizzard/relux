@@ -1,0 +1,11 @@
+test "fail-fast stops after first failure" {
+    """
+    Verify relux run --strategy fail-fast stops after the first test failure.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux run --strategy fail-fast 2>&1
+        <? 1 failed
+        match_prompt()
+        match_exit_code(1)
+    }
+}

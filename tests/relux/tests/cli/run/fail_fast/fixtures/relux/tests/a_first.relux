@@ -1,0 +1,7 @@
+test "will timeout" {
+    shell s {
+        ~500ms
+        > echo hello
+        <? ^this_will_never_match$
+    }
+}

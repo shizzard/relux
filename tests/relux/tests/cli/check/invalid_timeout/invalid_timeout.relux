@@ -1,0 +1,11 @@
+test "check detects invalid timeout" {
+    """
+    Verify relux check reports an unparseable timeout duration.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux check 2>&1
+        <? invalid timeout
+        match_prompt()
+        match_exit_code(1)
+    }
+}

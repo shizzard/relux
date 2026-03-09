@@ -1,0 +1,11 @@
+test "check detects wrong arity" {
+    """
+    Verify relux check reports a call with the wrong number of arguments.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux check 2>&1
+        <? undefined name
+        match_prompt()
+        match_exit_code(1)
+    }
+}

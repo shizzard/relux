@@ -1,0 +1,5 @@
+import b
+
+fn a_fn() {
+    > echo a
+}

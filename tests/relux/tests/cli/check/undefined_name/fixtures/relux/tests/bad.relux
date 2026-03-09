@@ -1,0 +1,5 @@
+test "calls undefined" {
+    shell s {
+        no_such_fn()
+    }
+}

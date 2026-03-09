@@ -1,0 +1,7 @@
+[skip if "${MY_VAR}"]
+test "conditional" {
+    shell s {
+        > echo hello
+        <? hello
+    }
+}

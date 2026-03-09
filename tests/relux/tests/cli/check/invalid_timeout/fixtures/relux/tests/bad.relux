@@ -1,0 +1,6 @@
+test "bad timeout" {
+    shell s {
+        ~10xyz
+        > echo hello
+    }
+}

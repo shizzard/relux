@@ -1,0 +1,7 @@
+import mylib { no_such_fn }
+
+test "bad import" {
+    shell s {
+        > echo hello
+    }
+}

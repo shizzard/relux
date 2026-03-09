@@ -1,0 +1,7 @@
+import a { a_fn }
+
+test "trigger circular import" {
+    shell s {
+        a_fn()
+    }
+}

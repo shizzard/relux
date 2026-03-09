@@ -1,0 +1,5 @@
+test "wrong arity" {
+    shell s {
+        log("a", "b")
+    }
+}

@@ -1,0 +1,11 @@
+test "run reports fail pattern triggered" {
+    """
+    Verify relux run reports when a fail pattern matches output.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux run 2>&1
+        <? fail pattern matched
+        match_prompt()
+        match_exit_code(1)
+    }
+}

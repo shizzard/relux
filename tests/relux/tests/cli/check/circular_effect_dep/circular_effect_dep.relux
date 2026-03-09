@@ -1,0 +1,11 @@
+test "check detects circular effect dependency" {
+    """
+    Verify relux check reports circular effect dependencies.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux check 2>&1
+        <? circular effect dependency
+        match_prompt()
+        match_exit_code(1)
+    }
+}

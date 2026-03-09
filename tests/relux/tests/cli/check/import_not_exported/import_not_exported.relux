@@ -1,0 +1,11 @@
+test "check detects import not exported" {
+    """
+    Verify relux check reports a selective import of a name not exported by the module.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux check 2>&1
+        <? not exported
+        match_prompt()
+        match_exit_code(1)
+    }
+}

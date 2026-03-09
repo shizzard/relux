@@ -1,0 +1,5 @@
+test "broken" {
+    shell s {
+        << echo hello
+    }
+}

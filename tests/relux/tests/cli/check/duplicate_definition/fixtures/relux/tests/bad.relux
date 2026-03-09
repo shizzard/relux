@@ -1,0 +1,11 @@
+import helpers
+
+fn foo() {
+    > echo local
+}
+
+test "dup" {
+    shell s {
+        foo()
+    }
+}

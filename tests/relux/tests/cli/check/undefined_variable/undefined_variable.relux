@@ -1,0 +1,12 @@
+[skip]
+test "check detects undefined variable" {
+    """
+    Verify relux check reports use of an undefined variable.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux check 2>&1
+        <? undefined variable
+        match_prompt()
+        match_exit_code(1)
+    }
+}

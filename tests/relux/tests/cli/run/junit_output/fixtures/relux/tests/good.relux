@@ -1,0 +1,6 @@
+test "passes" {
+    shell s {
+        > echo hi
+        <? ^hi$
+    }
+}
