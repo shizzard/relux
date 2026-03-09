@@ -22,12 +22,23 @@ pub mod junit;
 pub mod progress;
 pub mod pure;
 pub mod result;
+pub mod run_summary;
 pub mod shell_log;
 pub mod vars;
 pub mod tap;
 pub mod vm;
 
 use crate::config;
+
+pub fn compute_test_path(source_map: &SourceMap, project_root: &Path, plan: &Plan) -> String {
+    let source_path = &source_map.files[plan.test.span.file].path;
+    let tests_dir = config::tests_dir(project_root);
+    source_path
+        .strip_prefix(&tests_dir)
+        .unwrap_or(source_path)
+        .display()
+        .to_string()
+}
 
 pub type SharedVm = Arc<Mutex<Vm>>;
 
@@ -306,13 +317,7 @@ impl Runtime {
     }
 
     fn compute_test_path(&self, plan: &Plan) -> String {
-        let source_path = &self.source_map.files[plan.test.span.file].path;
-        let tests_dir = config::tests_dir(&self.project_root);
-        source_path
-            .strip_prefix(&tests_dir)
-            .unwrap_or(source_path)
-            .display()
-            .to_string()
+        compute_test_path(&self.source_map, &self.project_root, plan)
     }
 
     fn plan_env(&self, plan: &Plan) -> Arc<Env> {

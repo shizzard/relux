@@ -1,8 +1,7 @@
 # Planned Features
 
 - Per-shell command override: per-shell executable override via shell block attributes (global shell command now configurable in `Relux.toml`)
-- Run history: assemble timelines of test results across multiple runs with revision tracking
-- Re-run failed tests: `--rerun` flag to re-run only failed tests from the latest run (requires run history)
+- Run history analysis: timeline visualization, flakiness detection, and runtime trend analysis across historical runs (foundation: `run_summary.toml` per run)
 - Custom scaffold templates: user-defined templates for `relux new --test` and `relux new --effect` via `Relux.toml`, replacing the built-in defaults
 
 ## Lux features not yet in Relux

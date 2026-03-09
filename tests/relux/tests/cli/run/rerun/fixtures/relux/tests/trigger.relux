@@ -1,0 +1,10 @@
+test "trigger test" {
+    """
+    Fail or pass depending on the TRIGGER environment variable.
+    """
+    shell s {
+        != error
+        > echo ${TRIGGER}
+        match_ok()
+    }
+}

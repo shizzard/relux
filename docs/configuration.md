@@ -121,7 +121,7 @@ Exits with code 1 if any test fails.
 | `-m`, `--timeout-multiplier`  | Scale all timeout values (default: `1.0`)                    |
 | `--progress <level>`          | Output verbosity: `quiet`, `basic`, `verbose` (default: `basic`) |
 | `--strategy <mode>`           | `all` (default) or `fail-fast`                               |
-| `--rerun`                     | Re-run only failed tests (not yet implemented)               |
+| `--rerun`                     | Re-run only failed tests from the latest run                 |
 
 ### `relux check [paths...]`
 

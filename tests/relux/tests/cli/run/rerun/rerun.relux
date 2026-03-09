@@ -1,0 +1,18 @@
+test "rerun re-runs only failed tests" {
+    """
+    Verify --rerun selects only tests that failed in the latest run.
+
+    Run a trigger test that fails via fail pattern, then re-run with
+    the trigger set to pass and verify --rerun picks it up.
+    """
+    shell s {
+        > TRIGGER=error relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 failed
+        match_not_ok()
+
+        > TRIGGER=success relux run --rerun --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? re-running 1 failed test
+        <? 1 passed
+        match_ok()
+    }
+}

@@ -357,11 +357,6 @@ fn capitalize_effect_name(segment: &str) -> String {
 }
 
 async fn cmd_run(matches: &clap::ArgMatches) {
-    if matches.get_flag("rerun") {
-        eprintln!("error: --rerun requires run history (not yet implemented)");
-        process::exit(1);
-    }
-
     let (project_root, mut relux_config) = resolve_project(matches);
 
     let multiplier: f64 = *matches.get_one("multiplier").unwrap();
@@ -374,14 +369,53 @@ async fn cmd_run(matches: &clap::ArgMatches) {
         _ => RunStrategy::All,
     };
 
-    let paths: Option<Vec<PathBuf>> = matches
-        .get_many::<PathBuf>("paths")
-        .map(|p| p.cloned().collect());
-    let (plans, source_map, diagnostics) = resolve(&project_root, paths.as_deref());
-    if !diagnostics.is_empty() {
-        print_diagnostics(&diagnostics, &source_map);
-        process::exit(1);
-    }
+    let (plans, source_map, _diagnostics) = if matches.get_flag("rerun") {
+        let (plans, source_map, diagnostics) = resolve(&project_root, None);
+        if !diagnostics.is_empty() {
+            print_diagnostics(&diagnostics, &source_map);
+            process::exit(1);
+        }
+
+        let out_root = config::out_dir(&project_root);
+        let latest = find_latest_run(&out_root);
+        let summary = relux::runtime::run_summary::read_run_summary(&latest)
+            .unwrap_or_else(|e| {
+                eprintln!("error: {e}");
+                process::exit(1);
+            });
+        let failed_ids = relux::runtime::run_summary::failed_test_ids(&summary);
+        if failed_ids.is_empty() {
+            eprintln!("no failed tests in the latest run");
+            process::exit(0);
+        }
+
+        let filtered: Vec<_> = plans
+            .into_iter()
+            .filter(|plan| {
+                let tp = relux::runtime::compute_test_path(&source_map, &project_root, plan);
+                let tn = &plan.test.name.node;
+                failed_ids.iter().any(|&(p, n)| p == tp && n == tn)
+            })
+            .collect();
+
+        if filtered.is_empty() {
+            eprintln!("no matching test plans found for previously failed tests");
+            process::exit(0);
+        }
+
+        eprintln!("re-running {} failed test(s)", filtered.len());
+        (filtered, source_map, vec![])
+    } else {
+        let paths: Option<Vec<PathBuf>> = matches
+            .get_many::<PathBuf>("paths")
+            .map(|p| p.cloned().collect());
+        let (plans, source_map, diagnostics) = resolve(&project_root, paths.as_deref());
+        if !diagnostics.is_empty() {
+            print_diagnostics(&diagnostics, &source_map);
+            process::exit(1);
+        }
+        (plans, source_map, diagnostics)
+    };
 
     if plans.is_empty() {
         eprintln!("no tests found");
@@ -389,6 +423,7 @@ async fn cmd_run(matches: &clap::ArgMatches) {
     }
 
     let run_context = create_run_context(&project_root, &relux_config, strategy);
+    let run_id = run_context.run_id.clone();
     let runtime = Runtime::new(source_map, run_context);
     let results = runtime.run(plans).await;
     Reporter::print(&results, runtime.source_map());
@@ -413,12 +448,50 @@ async fn cmd_run(matches: &clap::ArgMatches) {
 
     generate_run_summary(runtime.run_dir(), &results);
 
+    let total_duration: std::time::Duration = results.iter().map(|r| r.duration).sum();
+    relux::runtime::run_summary::write_run_summary(
+        runtime.run_dir(),
+        &run_id,
+        &results,
+        total_duration,
+    );
+
     let failed = results
         .iter()
         .any(|r| matches!(r.outcome, Outcome::Fail(_)));
     if failed {
         process::exit(1);
     }
+}
+
+fn find_latest_run(out_root: &std::path::Path) -> PathBuf {
+    let latest = out_root.join("latest");
+    if latest.exists() {
+        return latest;
+    }
+
+    // Fallback: find the most recent run-* directory by name (timestamps sort lexicographically)
+    let mut run_dirs: Vec<_> = fs::read_dir(out_root)
+        .unwrap_or_else(|e| {
+            eprintln!("error: cannot read output directory {}: {e}", out_root.display());
+            process::exit(1);
+        })
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with("run-") && entry.file_type().ok()?.is_dir() {
+                Some(entry.path())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    run_dirs.sort();
+    run_dirs.pop().unwrap_or_else(|| {
+        eprintln!("error: no previous runs found in {}", out_root.display());
+        process::exit(1);
+    })
 }
 
 fn cmd_check(matches: &clap::ArgMatches) {
