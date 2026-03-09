@@ -1,0 +1,29 @@
+test "match_not_ok after failing command" {
+    """
+    Verify match_not_ok() succeeds when the previous command exited with non-zero.
+    """
+    shell s {
+        > false
+        match_not_ok()
+    }
+}
+
+test "match_not_ok after exit 2" {
+    """
+    Verify match_not_ok() succeeds for exit code 2.
+    """
+    shell s {
+        > sh -c 'exit 2'
+        match_not_ok()
+    }
+}
+
+test "match_not_ok after command-not-found" {
+    """
+    Verify match_not_ok() succeeds for a missing command (exit 127).
+    """
+    shell s {
+        > relux_nonexistent_command_42
+        match_not_ok()
+    }
+}

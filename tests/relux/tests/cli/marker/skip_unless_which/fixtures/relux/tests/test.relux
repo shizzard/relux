@@ -1,0 +1,10 @@
+[skip unless which("${EXECUTABLE}")]
+test "conditional" {
+    """
+    Skip unless the executable is found on PATH.
+    """
+    shell s {
+        > echo hello
+        <? ^hello$
+    }
+}

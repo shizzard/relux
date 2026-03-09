@@ -1,0 +1,23 @@
+test "which finds an executable on PATH" {
+    """
+    Verify which() returns the full path for a known executable.
+    """
+    shell s {
+        let path = which("sh")
+        > test -n "${path}" && echo "found"
+        <? ^found$
+        > test -x "${path}" && echo "executable"
+        <? ^executable$
+    }
+}
+
+test "which returns empty for nonexistent program" {
+    """
+    Verify which() returns an empty string when the executable does not exist.
+    """
+    shell s {
+        let path = which("nonexistent_program_xyz_123")
+        > test -z "${path}" && echo "empty"
+        <? ^empty$
+    }
+}

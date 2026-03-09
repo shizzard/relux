@@ -1,0 +1,21 @@
+test "skip unless which: runs when executable exists" {
+    """
+    Verify [skip unless which("${EXECUTABLE}")] runs when the executable is on PATH.
+    """
+    shell s {
+        > EXECUTABLE=sh relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 passed
+        match_ok()
+    }
+}
+
+test "skip unless which: skips when executable does not exist" {
+    """
+    Verify [skip unless which("${EXECUTABLE}")] skips when the executable is not found.
+    """
+    shell s {
+        > EXECUTABLE=nonexistent_program_xyz relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 skipped
+        match_ok()
+    }
+}

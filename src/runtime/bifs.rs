@@ -57,6 +57,7 @@ pub fn lookup_pure(name: &str, arity: usize) -> Option<Box<dyn PureBif>> {
         ("rand", 1) => Some(Box::new(Rand)),
         ("rand", 2) => Some(Box::new(RandWithMode)),
         ("available_port", 0) => Some(Box::new(AvailablePort)),
+        ("which", 1) => Some(Box::new(Which)),
         _ => None,
     }
 }
@@ -66,6 +67,7 @@ pub fn lookup_impure(name: &str, arity: usize) -> Option<Box<dyn Bif>> {
         ("match_prompt", 0) => Some(Box::new(MatchPrompt)),
         ("match_exit_code", 1) => Some(Box::new(MatchExitCode)),
         ("match_ok", 0) => Some(Box::new(MatchOk)),
+        ("match_not_ok", 0) => Some(Box::new(MatchNotOk)),
         ("ctrl_c", 0) => Some(Box::new(CtrlChar { name: "ctrl_c", byte: 0x03 })),
         ("ctrl_d", 0) => Some(Box::new(CtrlChar { name: "ctrl_d", byte: 0x04 })),
         ("ctrl_z", 0) => Some(Box::new(CtrlChar { name: "ctrl_z", byte: 0x1A })),
@@ -297,6 +299,46 @@ impl PureBif for AvailablePort {
     }
 }
 
+pub struct Which;
+
+#[async_trait]
+impl PureBif for Which {
+    fn name(&self) -> &str { "which" }
+    fn arity(&self) -> usize { 1 }
+
+    async fn call(&self, _ctx: &mut dyn PureContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+        let name = &args[0];
+        if name.is_empty() {
+            return Ok(String::new());
+        }
+
+        // If the name contains a path separator, check it directly
+        if name.contains(std::path::MAIN_SEPARATOR) {
+            let path = std::path::Path::new(name);
+            if is_executable(path) {
+                return Ok(path.to_string_lossy().into_owned());
+            }
+            return Ok(String::new());
+        }
+
+        let path_var = std::env::var("PATH").unwrap_or_default();
+        for dir in std::env::split_paths(&path_var) {
+            let candidate = dir.join(name);
+            if is_executable(&candidate) {
+                return Ok(candidate.to_string_lossy().into_owned());
+            }
+        }
+        Ok(String::new())
+    }
+}
+
+fn is_executable(path: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path)
+        .map(|m| m.is_file() && (m.permissions().mode() & 0o111 != 0))
+        .unwrap_or(false)
+}
+
 // ─── Impure BIFs ────────────────────────────────────────────
 
 pub struct MatchPrompt;
@@ -321,8 +363,8 @@ impl Bif for MatchExitCode {
 
     async fn call(&self, vm: &mut dyn VmContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
         let prompt = vm.shell_prompt().to_string();
-        vm.send_line("echo $?", span).await?;
-        vm.match_literal(&args[0], span).await?;
+        vm.send_line("echo ::$?::", span).await?;
+        vm.match_literal(&format!("::{}::", args[0]), span).await?;
         vm.match_literal(&prompt, span).await
     }
 }
@@ -337,8 +379,24 @@ impl Bif for MatchOk {
     async fn call(&self, vm: &mut dyn VmContext, _args: Vec<String>, span: &Span) -> Result<String, Failure> {
         let prompt = vm.shell_prompt().to_string();
         vm.match_literal(&prompt, span).await?;
-        vm.send_line("echo $?", span).await?;
-        vm.match_literal("0", span).await?;
+        vm.send_line("echo ::$?::", span).await?;
+        vm.match_literal("::0::", span).await?;
+        vm.match_literal(&prompt, span).await
+    }
+}
+
+pub struct MatchNotOk;
+
+#[async_trait]
+impl Bif for MatchNotOk {
+    fn name(&self) -> &str { "match_not_ok" }
+    fn arity(&self) -> usize { 0 }
+
+    async fn call(&self, vm: &mut dyn VmContext, _args: Vec<String>, span: &Span) -> Result<String, Failure> {
+        let prompt = vm.shell_prompt().to_string();
+        vm.match_literal(&prompt, span).await?;
+        vm.send_line("__RE=$(echo ::$?::) && test \"${__RE}\" != '::0::' && echo ${__RE}", span).await?;
+        vm.match_literal("::", span).await?;
         vm.match_literal(&prompt, span).await
     }
 }
@@ -565,6 +623,13 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_match_not_ok() {
+        let mut vm = DummyVm;
+        let r = MatchNotOk.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        assert_eq!(r, "test> ");
+    }
+
+    #[tokio::test]
     async fn test_ctrl_c() {
         let mut vm = DummyVm;
         let r = CtrlChar { name: "ctrl_c", byte: 0x03 }.call(&mut vm, vec![], &dummy_span()).await.unwrap();
@@ -617,6 +682,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_which_finds_sh() {
+        let mut vm = DummyVm;
+        let r = Which.call(&mut vm, vec!["sh".into()], &dummy_span()).await.unwrap();
+        assert!(!r.is_empty(), "which(\"sh\") should find sh on PATH");
+        assert!(r.ends_with("/sh"), "result should be an absolute path ending in /sh, got: {r}");
+    }
+
+    #[tokio::test]
+    async fn test_which_not_found() {
+        let mut vm = DummyVm;
+        let r = Which.call(&mut vm, vec!["nonexistent_program_xyz_123".into()], &dummy_span()).await.unwrap();
+        assert_eq!(r, "");
+    }
+
+    #[tokio::test]
+    async fn test_which_empty_name() {
+        let mut vm = DummyVm;
+        let r = Which.call(&mut vm, vec!["".into()], &dummy_span()).await.unwrap();
+        assert_eq!(r, "");
+    }
+
+    #[tokio::test]
+    async fn test_which_result_is_executable() {
+        let mut vm = DummyVm;
+        let r = Which.call(&mut vm, vec!["sh".into()], &dummy_span()).await.unwrap();
+        assert!(!r.is_empty());
+        let metadata = std::fs::metadata(&r).expect("path should exist");
+        use std::os::unix::fs::PermissionsExt;
+        assert!(metadata.permissions().mode() & 0o111 != 0, "result should be executable");
+    }
+
+    #[tokio::test]
     async fn test_lookup() {
         assert!(lookup_pure("available_port", 0).is_some());
         assert!(lookup_pure("trim", 1).is_some());
@@ -624,9 +721,11 @@ mod tests {
         assert!(lookup_pure("rand", 1).is_some());
         assert!(lookup_pure("rand", 2).is_some());
         assert!(lookup_pure("uuid", 0).is_some());
+        assert!(lookup_pure("which", 1).is_some());
         assert!(lookup_impure("match_prompt", 0).is_some());
         assert!(lookup_impure("match_exit_code", 1).is_some());
         assert!(lookup_impure("match_ok", 0).is_some());
+        assert!(lookup_impure("match_not_ok", 0).is_some());
         assert!(lookup_impure("ctrl_c", 0).is_some());
         assert!(lookup_impure("ctrl_d", 0).is_some());
         assert!(lookup_impure("ctrl_z", 0).is_some());
