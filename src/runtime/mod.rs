@@ -351,7 +351,10 @@ impl Runtime {
             drop(progress_tx);
             let progress_string = printer_handle.await.unwrap_or_default();
             let duration = test_start.elapsed();
-            eprintln!("skipped ({})", reason);
+            {
+                use colored::Colorize;
+                eprintln!("{} ({})", "skipped".yellow(), reason);
+            }
             let events = event_collector.take().await;
             crate::runtime::html::generate_html_logs(
                 &log_dir,
@@ -455,7 +458,7 @@ impl Runtime {
             let suffix = match &outcome {
                 Outcome::Pass => format!(" {} ({})", "ok".green(), format_duration(duration)),
                 Outcome::Fail(_) => format!(" {} ({})", "FAILED".red(), format_duration(duration)),
-                Outcome::Skipped(reason) => format!(" skipped ({})", reason),
+                Outcome::Skipped(reason) => format!(" {} ({})", "skipped".yellow(), reason),
             };
             eprintln!("{suffix}");
         }
