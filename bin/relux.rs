@@ -82,6 +82,12 @@ fn cli() -> Command {
                         .long("rerun")
                         .help("Re-run only failed tests from the latest run")
                         .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("manifest")
+                        .long("manifest")
+                        .help("Path to the suite manifest file (default: auto-discover Relux.toml)")
+                        .value_parser(value_parser!(PathBuf)),
                 ),
         )
         .subcommand(
@@ -91,6 +97,12 @@ fn cli() -> Command {
                     Arg::new("paths")
                         .help("Test files or directories to check (default: relux/tests/)")
                         .num_args(0..)
+                        .value_parser(value_parser!(PathBuf)),
+                )
+                .arg(
+                    Arg::new("manifest")
+                        .long("manifest")
+                        .help("Path to the suite manifest file (default: auto-discover Relux.toml)")
                         .value_parser(value_parser!(PathBuf)),
                 ),
         )
@@ -350,10 +362,7 @@ async fn cmd_run(matches: &clap::ArgMatches) {
         process::exit(1);
     }
 
-    let (project_root, mut relux_config) = config::discover_project_root().unwrap_or_else(|e| {
-        eprintln!("error: {e}");
-        process::exit(1);
-    });
+    let (project_root, mut relux_config) = resolve_project(matches);
 
     let multiplier: f64 = *matches.get_one("multiplier").unwrap();
     if (multiplier - 1.0).abs() > f64::EPSILON {
@@ -365,31 +374,14 @@ async fn cmd_run(matches: &clap::ArgMatches) {
         _ => RunStrategy::All,
     };
 
-    let test_files = resolve_test_files(matches, &project_root);
-    if test_files.is_empty() {
-        eprintln!("error: no .relux test files found");
-        process::exit(1);
-    }
-
-    let lib_files = config::discover_relux_files(&config::lib_dir(&project_root));
-    let mut all_roots: Vec<PathBuf> = lib_files.clone();
-    all_roots.extend(test_files.clone());
-
-    let lib_dir = config::lib_dir(&project_root);
-    let (plans, source_map, diagnostics) = resolve(&all_roots, &project_root, &lib_dir);
+    let paths: Option<Vec<PathBuf>> = matches
+        .get_many::<PathBuf>("paths")
+        .map(|p| p.cloned().collect());
+    let (plans, source_map, diagnostics) = resolve(&project_root, paths.as_deref());
     if !diagnostics.is_empty() {
         print_diagnostics(&diagnostics, &source_map);
         process::exit(1);
     }
-
-    let lib_prefix = lib_dir;
-    let plans: Vec<_> = plans
-        .into_iter()
-        .filter(|plan| {
-            let source_path = &source_map.files[plan.test.span.file].path;
-            !source_path.starts_with(&lib_prefix)
-        })
-        .collect();
 
     if plans.is_empty() {
         eprintln!("no tests found");
@@ -430,23 +422,12 @@ async fn cmd_run(matches: &clap::ArgMatches) {
 }
 
 fn cmd_check(matches: &clap::ArgMatches) {
-    let (project_root, _config) = config::discover_project_root().unwrap_or_else(|e| {
-        eprintln!("error: {e}");
-        process::exit(1);
-    });
+    let (project_root, _config) = resolve_project(matches);
 
-    let test_files = resolve_test_files(matches, &project_root);
-    let lib_dir = config::lib_dir(&project_root);
-    let lib_files = config::discover_relux_files(&lib_dir);
-    let mut all_roots: Vec<PathBuf> = lib_files;
-    all_roots.extend(test_files);
-
-    if all_roots.is_empty() {
-        eprintln!("error: no .relux files found");
-        process::exit(1);
-    }
-
-    let (_plans, source_map, diagnostics) = resolve(&all_roots, &project_root, &lib_dir);
+    let paths: Option<Vec<PathBuf>> = matches
+        .get_many::<PathBuf>("paths")
+        .map(|p| p.cloned().collect());
+    let (_plans, source_map, diagnostics) = resolve(&project_root, paths.as_deref());
     if !diagnostics.is_empty() {
         print_diagnostics(&diagnostics, &source_map);
         process::exit(1);
@@ -494,8 +475,7 @@ fn cmd_dump_ir(matches: &clap::ArgMatches) {
         .cloned()
         .collect();
 
-    let lib_dir = config::lib_dir(&project_root);
-    let (plans, source_map, diagnostics) = resolve(&files, &project_root, &lib_dir);
+    let (plans, source_map, diagnostics) = resolve(&project_root, Some(&files));
 
     for (i, plan) in plans.iter().enumerate() {
         if i > 0 {
@@ -510,11 +490,15 @@ fn cmd_dump_ir(matches: &clap::ArgMatches) {
     }
 }
 
-fn resolve_test_files(matches: &clap::ArgMatches, project_root: &PathBuf) -> Vec<PathBuf> {
-    match matches.get_many::<PathBuf>("paths") {
-        Some(paths) => config::resolve_paths(&paths.cloned().collect::<Vec<_>>()),
-        None => config::discover_relux_files(&config::tests_dir(project_root)),
-    }
+fn resolve_project(matches: &clap::ArgMatches) -> (PathBuf, ReluxConfig) {
+    let result = match matches.get_one::<PathBuf>("manifest") {
+        Some(path) => config::load_manifest(path),
+        None => config::discover_project_root(),
+    };
+    result.unwrap_or_else(|e| {
+        eprintln!("error: {e}");
+        process::exit(1);
+    })
 }
 
 fn read_file(path: &PathBuf) -> String {

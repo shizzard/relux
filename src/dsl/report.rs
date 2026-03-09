@@ -103,6 +103,10 @@ fn render_diagnostic(
                 .eprint(cache);
         }
 
+        Diagnostic::RootNotFound { path } => {
+            eprintln!("error: test file not found: {path}");
+        }
+
         Diagnostic::CircularImport { cycle } => {
             eprintln!("Error: circular import detected");
             eprintln!("  = note: cycle: {}", cycle.join(" -> "));

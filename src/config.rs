@@ -2,8 +2,6 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::Deserialize;
-use walkdir::WalkDir;
-
 pub const DEFAULT_SHELL_COMMAND: &str = "/bin/sh";
 pub const DEFAULT_SHELL_PROMPT: &str = "relux> ";
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -133,6 +131,23 @@ pub fn load_config(path: &Path) -> Result<ReluxConfig, String> {
     toml::from_str(&contents).map_err(|e| format!("invalid {}: {e}", path.display()))
 }
 
+pub fn load_manifest(path: &Path) -> Result<(PathBuf, ReluxConfig), String> {
+    let path = path
+        .canonicalize()
+        .map_err(|e| format!("cannot resolve {}: {e}", path.display()))?;
+    let project_root = path
+        .parent()
+        .ok_or_else(|| format!("manifest path has no parent directory: {}", path.display()))?
+        .to_path_buf();
+    let mut config = load_config(&path)?;
+    if config.name.is_none() {
+        config.name = project_root
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned());
+    }
+    Ok((project_root, config))
+}
+
 pub fn tests_dir(project_root: &Path) -> PathBuf {
     project_root.join(RELUX_DIR).join(TESTS_DIR)
 }
@@ -143,49 +158,6 @@ pub fn lib_dir(project_root: &Path) -> PathBuf {
 
 pub fn out_dir(project_root: &Path) -> PathBuf {
     project_root.join(RELUX_DIR).join(OUT_DIR)
-}
-
-pub fn discover_relux_files(dir: &Path) -> Vec<PathBuf> {
-    if !dir.is_dir() {
-        return Vec::new();
-    }
-    let mut files: Vec<PathBuf> = WalkDir::new(dir)
-        .into_iter()
-        .filter_entry(|e| {
-            // Always include the root directory itself
-            if e.path() == dir {
-                return true;
-            }
-            // Skip subdirectories that contain a Relux.toml (nested suites)
-            if e.file_type().is_dir() && e.path().join(CONFIG_FILE).exists() {
-                return false;
-            }
-            true
-        })
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "relux"))
-        .map(|e| e.into_path())
-        .collect();
-    files.sort();
-    files
-}
-
-pub fn resolve_paths(paths: &[PathBuf]) -> Vec<PathBuf> {
-    let mut files = Vec::new();
-    for path in paths {
-        if path.is_dir() {
-            files.extend(discover_relux_files(path));
-        } else if path.exists() {
-            files.push(path.clone());
-        } else {
-            eprintln!("error: file not found: {}", path.display());
-            std::process::exit(1);
-        }
-    }
-    files.sort();
-    files.dedup();
-    files
 }
 
 pub fn apply_multiplier(config: &mut ReluxConfig, multiplier: f64) {

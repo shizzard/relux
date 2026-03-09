@@ -3,7 +3,7 @@ test "run reports match timeout" {
     Verify relux run reports a match timeout when a pattern is never found.
     """
     shell s {
-        > cd ${__RELUX_TEST_ROOT}/fixtures && relux run 2>&1
+        > relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? timed out waiting for
         match_prompt()
         match_exit_code(1)

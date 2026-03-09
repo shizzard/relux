@@ -3,7 +3,7 @@ test "multiple markers: runs when all conditions met" {
     Verify test runs when all marker conditions are satisfied.
     """
     shell s {
-        > cd ${__RELUX_TEST_ROOT}/fixtures && CI=1 relux run 2>&1
+        > CI=1 relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? 1 passed
         match_ok()
     }
@@ -14,7 +14,7 @@ test "multiple markers: skips on first unmet condition" {
     Verify test skips when the first marker condition is not met.
     """
     shell s {
-        > cd ${__RELUX_TEST_ROOT}/fixtures && relux run 2>&1
+        > relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? 1 skipped
         match_ok()
     }
@@ -25,7 +25,7 @@ test "multiple markers: skips on second marker trigger" {
     Verify test skips when the second marker triggers even if the first passes.
     """
     shell s {
-        > cd ${__RELUX_TEST_ROOT}/fixtures && CI=1 SKIP_ME=1 relux run 2>&1
+        > CI=1 SKIP_ME=1 relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? 1 skipped
         match_ok()
     }

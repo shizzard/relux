@@ -3,7 +3,7 @@ test "invalid operator is a parse error" {
     Verify relux check rejects an invalid operator in a shell block.
     """
     shell s {
-        > cd ${__RELUX_TEST_ROOT}/fixtures && relux check 2>&1
+        > relux check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? unexpected token
         match_prompt()
         match_exit_code(1)

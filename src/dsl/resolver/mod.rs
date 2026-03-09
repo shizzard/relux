@@ -4,7 +4,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use walkdir::WalkDir;
+
 use crate::Spanned as AstSpanned;
+use crate::config;
 use crate::dsl::parser;
 use ir::{FileId, SourceMap, Span};
 
@@ -49,6 +52,9 @@ pub enum Diagnostic {
     ModuleNotFound {
         path: String,
         referenced_from: Span,
+    },
+    RootNotFound {
+        path: String,
     },
     CircularImport {
         cycle: Vec<String>,
@@ -143,7 +149,8 @@ impl<'a> Loader<'a> {
         let (file_path, source) = match self.source_loader.load(mod_path) {
             Some(pair) => pair,
             None => {
-                let span = referenced_from.unwrap_or_else(|| Span::new(0, 0..0));
+                let span = referenced_from
+                    .expect("root module should have been validated before resolving");
                 self.diagnostics.push(Diagnostic::ModuleNotFound {
                     path: mod_path.to_string(),
                     referenced_from: span,
@@ -1214,26 +1221,128 @@ fn collect_calls_from_expr(expr: &parser::AstExpr, keys: &mut Vec<FnKey>) {
     }
 }
 
+// ─── File Discovery ─────────────────────────────────────────
+
+fn discover_relux_files(dir: &Path) -> Vec<PathBuf> {
+    if !dir.is_dir() {
+        return Vec::new();
+    }
+    let mut files: Vec<PathBuf> = WalkDir::new(dir)
+        .into_iter()
+        .filter_entry(|e| {
+            if e.path() == dir {
+                return true;
+            }
+            if e.file_type().is_dir() && e.path().join(config::CONFIG_FILE).exists() {
+                return false;
+            }
+            true
+        })
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "relux"))
+        .map(|e| e.into_path())
+        .collect();
+    files.sort();
+    files
+}
+
+fn resolve_paths(
+    paths: &[PathBuf],
+    project_root: &Path,
+) -> (Vec<PathBuf>, Vec<Diagnostic>) {
+    let mut files = Vec::new();
+    let mut diagnostics = Vec::new();
+    for path in paths {
+        if path.is_dir() {
+            match path.canonicalize() {
+                Ok(canonical) if canonical.starts_with(project_root) => {
+                    files.extend(discover_relux_files(&canonical));
+                }
+                Ok(_) => {
+                    diagnostics.push(Diagnostic::RootNotFound {
+                        path: path.display().to_string(),
+                    });
+                }
+                Err(_) => {
+                    diagnostics.push(Diagnostic::RootNotFound {
+                        path: path.display().to_string(),
+                    });
+                }
+            }
+        } else if path.exists() {
+            match path.canonicalize() {
+                Ok(canonical) if canonical.starts_with(project_root) => {
+                    files.push(canonical);
+                }
+                Ok(_) => {
+                    diagnostics.push(Diagnostic::RootNotFound {
+                        path: path.display().to_string(),
+                    });
+                }
+                Err(_) => {
+                    diagnostics.push(Diagnostic::RootNotFound {
+                        path: path.display().to_string(),
+                    });
+                }
+            }
+        } else {
+            diagnostics.push(Diagnostic::RootNotFound {
+                path: path.display().to_string(),
+            });
+        }
+    }
+    files.sort();
+    files.dedup();
+    (files, diagnostics)
+}
+
+fn path_to_mod(path: &Path, project_root: &Path) -> String {
+    path.strip_prefix(project_root)
+        .unwrap_or(path)
+        .with_extension("")
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
 // ─── Public API ─────────────────────────────────────────────
 
 pub fn resolve(
-    roots: &[PathBuf],
     project_root: &Path,
-    lib_dir: &Path,
+    paths: Option<&[PathBuf]>,
 ) -> (Vec<ir::Plan>, SourceMap, Vec<Diagnostic>) {
+    let lib_dir = config::lib_dir(project_root);
+    let tests_dir = config::tests_dir(project_root);
+
+    let lib_files = discover_relux_files(&lib_dir);
+
+    let (test_files, mut early_diagnostics) = match paths {
+        Some(paths) => resolve_paths(paths, project_root),
+        None => (discover_relux_files(&tests_dir), Vec::new()),
+    };
+
+    let mut all_files = lib_files;
+    all_files.extend(test_files);
+
     let loader = FsSourceLoader::new(project_root.to_path_buf(), vec![lib_dir.to_path_buf()]);
-    let mod_paths: Vec<String> = roots
+    let mod_paths: Vec<String> = all_files
         .iter()
-        .map(|root_path| {
-            root_path
-                .strip_prefix(project_root)
-                .unwrap_or(root_path)
-                .with_extension("")
-                .to_string_lossy()
-                .replace('\\', "/")
+        .map(|p| path_to_mod(p, project_root))
+        .collect();
+
+    let (plans, source_map, mut diagnostics) = resolve_with(&mod_paths, &loader);
+    early_diagnostics.append(&mut diagnostics);
+
+    // Filter out plans from lib-only modules
+    let plans = plans
+        .into_iter()
+        .filter(|plan| {
+            let source_path = &source_map.files[plan.test.span.file].path;
+            !source_path.starts_with(&lib_dir)
         })
         .collect();
-    resolve_with(&mod_paths, &loader)
+
+    (plans, source_map, early_diagnostics)
 }
 
 pub fn resolve_with(
@@ -1338,6 +1447,7 @@ mod tests {
             .map(|d| match d {
                 Diagnostic::Parse { .. } => "Parse",
                 Diagnostic::ModuleNotFound { .. } => "ModuleNotFound",
+                Diagnostic::RootNotFound { .. } => "RootNotFound",
                 Diagnostic::CircularImport { .. } => "CircularImport",
                 Diagnostic::UndefinedName { .. } => "UndefinedName",
                 Diagnostic::DuplicateDefinition { .. } => "DuplicateDefinition",

@@ -3,7 +3,7 @@ test "skip unless regex: runs when var matches pattern" {
     Verify skip-unless regex marker runs when the variable matches the pattern.
     """
     shell s {
-        > cd ${__RELUX_TEST_ROOT}/fixtures && MY_VAR=yes relux run 2>&1
+        > MY_VAR=yes relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? 1 passed
         match_ok()
     }
@@ -14,7 +14,7 @@ test "skip unless regex: skips when var does not match" {
     Verify skip-unless regex marker skips when the variable does not match.
     """
     shell s {
-        > cd ${__RELUX_TEST_ROOT}/fixtures && MY_VAR=no relux run 2>&1
+        > MY_VAR=no relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? 1 skipped
         match_ok()
     }
@@ -25,7 +25,7 @@ test "skip unless regex: skips when var is unset" {
     Verify skip-unless regex marker skips when the variable is unset.
     """
     shell s {
-        > cd ${__RELUX_TEST_ROOT}/fixtures && relux run 2>&1
+        > relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? 1 skipped
         match_ok()
     }

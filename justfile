@@ -23,8 +23,8 @@ unit *ARGS:
 
 # Run e2e tests (check then run)
 e2e *ARGS:
-    cd tests && cargo run --manifest-path ../Cargo.toml -- check {{ARGS}}
-    cd tests && cargo run --manifest-path ../Cargo.toml -- run {{ARGS}}
+    cargo run -- check --manifest tests/Relux.toml {{ARGS}}
+    cargo run -- run --manifest tests/Relux.toml {{ARGS}}
 
 # Build the IntelliJ plugin
 intellij:
