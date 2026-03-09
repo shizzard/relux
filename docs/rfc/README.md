@@ -22,4 +22,4 @@ Substantial changes to Relux are proposed and discussed through RFCs (Requests f
 
 | RFC  | Title          | Status |
 |------|----------------|--------|
-| R001 | Pure Functions | draft  |
+| R001 | Pure Functions | implemented |

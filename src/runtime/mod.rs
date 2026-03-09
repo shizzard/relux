@@ -20,6 +20,7 @@ pub mod event_log;
 pub mod html;
 pub mod junit;
 pub mod progress;
+pub mod pure;
 pub mod result;
 pub mod shell_log;
 pub mod vars;
@@ -32,43 +33,83 @@ pub type SharedVm = Arc<Mutex<Vm>>;
 
 pub enum Callable {
     UserDefined(usize),
+    UserDefinedPure(usize),
     Builtin(Box<dyn bifs::Bif>),
+    PureBuiltin(Box<dyn bifs::PureBif>),
 }
 
 pub struct CodeServer {
     functions: Vec<ir::Function>,
     index: HashMap<(String, usize), usize>,
+    pure_functions: Vec<ir::PureFunction>,
+    pure_index: HashMap<(String, usize), usize>,
 }
 
 impl CodeServer {
-    pub fn new(functions: Vec<ir::Function>) -> Self {
+    pub fn new(functions: Vec<ir::Function>, pure_functions: Vec<ir::PureFunction>) -> Self {
         let mut index = HashMap::new();
         for (i, f) in functions.iter().enumerate() {
             index.insert((f.name.node.clone(), f.params.len()), i);
         }
-        Self { functions, index }
+        let mut pure_index = HashMap::new();
+        for (i, f) in pure_functions.iter().enumerate() {
+            pure_index.insert((f.name.node.clone(), f.params.len()), i);
+        }
+        Self { functions, index, pure_functions, pure_index }
     }
 
     pub fn lookup(&self, name: &str, arity: usize) -> Option<Callable> {
-        if let Some(&id) = self.index.get(&(name.to_string(), arity)) {
+        let key = (name.to_string(), arity);
+        if let Some(&id) = self.index.get(&key) {
             Some(Callable::UserDefined(id))
+        } else if let Some(&id) = self.pure_index.get(&key) {
+            Some(Callable::UserDefinedPure(id))
+        } else if let Some(bif) = bifs::lookup_impure(name, arity) {
+            Some(Callable::Builtin(bif))
         } else {
-            bifs::lookup(name, arity).map(Callable::Builtin)
+            bifs::lookup_pure(name, arity).map(Callable::PureBuiltin)
+        }
+    }
+
+    /// Lookup for pure contexts — only returns pure callables.
+    pub fn lookup_pure(&self, name: &str, arity: usize) -> Option<Callable> {
+        let key = (name.to_string(), arity);
+        if let Some(&id) = self.pure_index.get(&key) {
+            Some(Callable::UserDefinedPure(id))
+        } else {
+            bifs::lookup_pure(name, arity).map(Callable::PureBuiltin)
         }
     }
 
     pub fn get(&self, fn_id: usize) -> Option<&ir::Function> {
         self.functions.get(fn_id)
     }
+
+    pub fn get_pure(&self, fn_id: usize) -> Option<&ir::PureFunction> {
+        self.pure_functions.get(fn_id)
+    }
 }
 
-fn eval_marker_expr(expr: &ir::StringExpr, env: &Env) -> String {
+fn eval_marker_string_expr(expr: &ir::StringExpr, env: &Env) -> String {
     interpolate_with_lookup(expr, |name| env.get(name).cloned())
 }
 
-fn evaluate_conditions(
+async fn eval_marker_pure_expr(
+    expr: &ir::PureExpr,
+    env: &Arc<Env>,
+    code_server: &CodeServer,
+) -> String {
+    let spanned = Spanned::new(expr.clone(), ir::Span::new(0, 0..0));
+    let mut vars = std::collections::HashMap::new();
+    pure::eval_pure_expr(&spanned, &mut vars, env, code_server, &mut pure::SimplePureContext)
+        .await
+        .unwrap_or_default()
+}
+
+async fn evaluate_conditions(
     conditions: &[Spanned<ir::Condition>],
-    env: &Env,
+    env: &Arc<Env>,
+    code_server: &CodeServer,
 ) -> Option<String> {
     for cond in conditions {
         // Bare (unconditional) markers: no condition body
@@ -81,10 +122,10 @@ fn evaluate_conditions(
         };
 
         let result_value = match &cond_expr.body {
-            ir::CondBody::Bare(expr) => eval_marker_expr(expr, env),
+            ir::CondBody::Bare(expr) => eval_marker_pure_expr(expr, env, code_server).await,
             ir::CondBody::Eq(lhs, rhs) => {
-                let lval = eval_marker_expr(lhs, env);
-                let rval = eval_marker_expr(rhs, env);
+                let lval = eval_marker_pure_expr(lhs, env, code_server).await;
+                let rval = eval_marker_pure_expr(rhs, env, code_server).await;
                 if lval == rval {
                     lval
                 } else {
@@ -92,8 +133,8 @@ fn evaluate_conditions(
                 }
             }
             ir::CondBody::Regex(lhs, pat) => {
-                let lval = eval_marker_expr(lhs, env);
-                let pat_str = eval_marker_expr(pat, env);
+                let lval = eval_marker_pure_expr(lhs, env, code_server).await;
+                let pat_str = eval_marker_string_expr(pat, env);
                 match regex::Regex::new(&pat_str) {
                     Ok(re) => re
                         .find(&lval)
@@ -290,7 +331,7 @@ impl Runtime {
         let test_start = Instant::now();
         let test_name = plan.test.name.node.clone();
         let test_path = self.compute_test_path(&plan);
-        let code_server = Arc::new(CodeServer::new(plan.functions.clone()));
+        let code_server = Arc::new(CodeServer::new(plan.functions.clone(), plan.pure_functions.clone()));
         let mut shell_logs = HashMap::new();
         let env = self.plan_env(&plan);
 
@@ -305,7 +346,7 @@ impl Runtime {
         let printer_handle = progress::spawn_printer(progress_rx);
 
         if let Some(reason) =
-            evaluate_conditions(&plan.test.conditions, &env)
+            evaluate_conditions(&plan.test.conditions, &env, &code_server).await
         {
             drop(progress_tx);
             let progress_string = printer_handle.await.unwrap_or_default();
@@ -348,13 +389,14 @@ impl Runtime {
                 let test_scope = Arc::new(Mutex::new(TestScope::new()));
                 for decl in &plan.test.vars {
                     let value = if let Some(expr) = &decl.node.value {
-                        let vars = ScopeStack::new(
-                            test_scope.clone(),
-                            HashMap::new(),
-                            env.clone(),
-                            self.default_timeout,
-                        );
-                        self.eval_static_expr(expr, &vars).await.unwrap_or_default()
+                        pure::eval_pure_var_value(
+                            expr,
+                            &env,
+                            &code_server,
+                            &mut pure::SimplePureContext,
+                        )
+                        .await
+                        .unwrap_or_default()
                     } else {
                         String::new()
                     };
@@ -478,13 +520,13 @@ impl Runtime {
             let Some(instance) = plan.effect_graph.dag.node_weight(instance_id).cloned() else {
                 continue;
             };
-            let overlay = self.interpolate_overlay(&instance.overlay, env);
+            let overlay = self.interpolate_overlay(&instance.overlay, env, &code_server).await;
             let effect = &plan.effects[instance.effect];
             let _ = progress_tx.send(ProgressEvent::EffectSetup(effect.name.node.clone()));
             event_collector.push("", LogEventKind::EffectSetup { effect: effect.name.node.clone() }).await;
 
             if let Some(reason) =
-                evaluate_conditions(&effect.conditions, env)
+                evaluate_conditions(&effect.conditions, env, &code_server).await
             {
                 let reason = format!("effect {} skipped: {reason}", effect.name.node);
                 effect_state.outcome = Some(Outcome::Skipped(reason));
@@ -515,9 +557,14 @@ impl Runtime {
             let mut setup_failed = None;
             for var in &effect.vars {
                 let value = if let Some(expr) = &var.node.value {
-                    let vars =
-                        ScopeStack::new(effect_scope.clone(), overlay.clone(), env.clone(), self.default_timeout);
-                    match self.eval_static_expr(expr, &vars).await {
+                    match pure::eval_pure_var_value(
+                        expr,
+                        env,
+                        &code_server,
+                        &mut pure::SimplePureContext,
+                    )
+                    .await
+                    {
                         Ok(v) => v,
                         Err(f) => {
                             setup_failed = Some(f);
@@ -688,7 +735,7 @@ impl Runtime {
             let _ = progress_tx.send(ProgressEvent::Cleanup);
             let test_scope = Arc::new(Mutex::new(TestScope::new()));
             let scope = ScopeStack::new(test_scope, HashMap::new(), env.clone(), self.default_timeout);
-            let code_server = Arc::new(CodeServer::new(plan.functions.clone()));
+            let code_server = Arc::new(CodeServer::new(plan.functions.clone(), plan.pure_functions.clone()));
             event_collector.push("", LogEventKind::Cleanup { shell: "__cleanup".to_string() }).await;
             if let Ok(mut vm) = Vm::new(
                 "__cleanup".to_string(),
@@ -741,9 +788,9 @@ impl Runtime {
                 event_collector.push("", LogEventKind::EffectTeardown { effect: effect.name.node.clone() }).await;
                 event_collector.push("", LogEventKind::Cleanup { shell: cleanup_name.clone() }).await;
                 let test_scope = Arc::new(Mutex::new(TestScope::new()));
-                let overlay = self.interpolate_overlay(&instance_state.info.overlay, env);
+                let code_server = Arc::new(CodeServer::new(Vec::new(), Vec::new()));
+                let overlay = self.interpolate_overlay(&instance_state.info.overlay, env, &code_server).await;
                 let scope = ScopeStack::new(test_scope, overlay, env.clone(), self.default_timeout);
-                let code_server = Arc::new(CodeServer::new(Vec::new()));
                 if let Ok(mut vm) = Vm::new(
                     cleanup_name,
                     self.shell_prompt.clone(),
@@ -770,32 +817,15 @@ impl Runtime {
         }
     }
 
-    fn interpolate_overlay(&self, overlay: &[ir::OverlayEntry], env: &Arc<Env>) -> HashMap<String, String> {
-        overlay
-            .iter()
-            .map(|entry| {
-                let v =
-                    interpolate_with_lookup(&entry.value.node, |name| env.get(name).cloned());
-                (entry.key.node.clone(), v)
-            })
-            .collect()
+    async fn interpolate_overlay(
+        &self,
+        overlay: &[ir::OverlayEntry],
+        env: &Arc<Env>,
+        code_server: &Arc<CodeServer>,
+    ) -> HashMap<String, String> {
+        pure::eval_overlay(overlay, env, code_server).await
     }
 
-    async fn eval_static_expr(
-        &self,
-        expr: &Spanned<ir::Expr>,
-        scope: &ScopeStack,
-    ) -> Result<String, Failure> {
-        match &expr.node {
-            ir::Expr::String(s) => Ok(crate::runtime::vars::interpolate(s, scope).await),
-            ir::Expr::Var(name) => Ok(scope.lookup(name).await.unwrap_or_default()),
-            _ => Err(Failure::Runtime {
-                message: "unsupported expression in static context".to_string(),
-                span: Some(expr.span.clone()),
-                shell: None,
-            }),
-        }
-    }
 }
 
 #[derive(Default)]
@@ -919,14 +949,12 @@ mod tests {
         }
     }
 
-    fn make_interp_expr(var: &str) -> ir::StringExpr {
-        ir::StringExpr {
-            parts: vec![ir::Spanned::new(
-                ir::StringPart::Interp(var.to_string()),
-                Span::new(0, 0..0),
-            )],
-            span: Span::new(0, 0..0),
-        }
+    fn make_var_pure_expr(var: &str) -> ir::PureExpr {
+        ir::PureExpr::Var(var.to_string())
+    }
+
+    fn make_str_pure_expr(s: &str) -> ir::PureExpr {
+        ir::PureExpr::String(make_str_expr(s))
     }
 
     fn make_cond(
@@ -939,18 +967,18 @@ mod tests {
             (None, None, None) => None,
             (Some(modifier), Some(var_name), None) => Some(ir::CondExpr {
                 modifier,
-                body: ir::CondBody::Bare(make_interp_expr(var_name)),
+                body: ir::CondBody::Bare(make_var_pure_expr(var_name)),
             }),
             (Some(modifier), Some(var_name), Some(CondTest::Eq(val))) => {
                 Some(ir::CondExpr {
                     modifier,
-                    body: ir::CondBody::Eq(make_interp_expr(var_name), make_str_expr(&val)),
+                    body: ir::CondBody::Eq(make_var_pure_expr(var_name), make_str_pure_expr(&val)),
                 })
             }
             (Some(modifier), Some(var_name), Some(CondTest::Regex(pat))) => {
                 Some(ir::CondExpr {
                     modifier,
-                    body: ir::CondBody::Regex(make_interp_expr(var_name), make_str_expr(&pat)),
+                    body: ir::CondBody::Regex(make_var_pure_expr(var_name), make_str_expr(&pat)),
                 })
             }
             _ => unreachable!(),
@@ -964,22 +992,26 @@ mod tests {
         Regex(String),
     }
 
-    #[test]
-    fn skip_unless_unset_var() {
+    fn empty_code_server() -> Arc<CodeServer> {
+        Arc::new(CodeServer::new(Vec::new(), Vec::new()))
+    }
+
+    #[tokio::test]
+    async fn skip_unless_unset_var() {
         let conds = vec![make_cond(
             ir::CondKind::Skip,
             Some(ir::CondModifier::Unless),
             Some("MISSING"),
             None,
         )];
-        let env = Env::new();
-        let result = evaluate_conditions(&conds, &env);
+        let env = Arc::new(Env::new());
+        let result = evaluate_conditions(&conds, &env, &empty_code_server()).await;
         assert!(result.is_some());
         assert!(result.unwrap().contains("skip"));
     }
 
-    #[test]
-    fn skip_unless_set_var() {
+    #[tokio::test]
+    async fn skip_unless_set_var() {
         let conds = vec![make_cond(
             ir::CondKind::Skip,
             Some(ir::CondModifier::Unless),
@@ -988,11 +1020,12 @@ mod tests {
         )];
         let mut env = Env::new();
         env.insert("CI".into(), "true".into());
-        assert!(evaluate_conditions(&conds, &env).is_none());
+        let env = Arc::new(env);
+        assert!(evaluate_conditions(&conds, &env, &empty_code_server()).await.is_none());
     }
 
-    #[test]
-    fn skip_if_set_var() {
+    #[tokio::test]
+    async fn skip_if_set_var() {
         let conds = vec![make_cond(
             ir::CondKind::Skip,
             Some(ir::CondModifier::If),
@@ -1001,13 +1034,14 @@ mod tests {
         )];
         let mut env = Env::new();
         env.insert("CI".into(), "1".into());
-        let result = evaluate_conditions(&conds, &env);
+        let env = Arc::new(env);
+        let result = evaluate_conditions(&conds, &env, &empty_code_server()).await;
         assert!(result.is_some());
         assert!(result.unwrap().contains("skip"));
     }
 
-    #[test]
-    fn run_if_matching_literal() {
+    #[tokio::test]
+    async fn run_if_matching_literal() {
         let conds = vec![make_cond(
             ir::CondKind::Run,
             Some(ir::CondModifier::If),
@@ -1016,11 +1050,12 @@ mod tests {
         )];
         let mut env = Env::new();
         env.insert("OS".into(), "linux".into());
-        assert!(evaluate_conditions(&conds, &env).is_none());
+        let env = Arc::new(env);
+        assert!(evaluate_conditions(&conds, &env, &empty_code_server()).await.is_none());
     }
 
-    #[test]
-    fn run_if_not_matching_literal() {
+    #[tokio::test]
+    async fn run_if_not_matching_literal() {
         let conds = vec![make_cond(
             ir::CondKind::Run,
             Some(ir::CondModifier::If),
@@ -1029,13 +1064,14 @@ mod tests {
         )];
         let mut env = Env::new();
         env.insert("OS".into(), "macos".into());
-        let result = evaluate_conditions(&conds, &env);
+        let env = Arc::new(env);
+        let result = evaluate_conditions(&conds, &env, &empty_code_server()).await;
         assert!(result.is_some());
         assert!(result.unwrap().contains("condition not met"));
     }
 
-    #[test]
-    fn skip_unless_regex_match() {
+    #[tokio::test]
+    async fn skip_unless_regex_match() {
         let conds = vec![make_cond(
             ir::CondKind::Skip,
             Some(ir::CondModifier::Unless),
@@ -1044,11 +1080,12 @@ mod tests {
         )];
         let mut env = Env::new();
         env.insert("ARCH".into(), "x86_64".into());
-        assert!(evaluate_conditions(&conds, &env).is_none());
+        let env = Arc::new(env);
+        assert!(evaluate_conditions(&conds, &env, &empty_code_server()).await.is_none());
     }
 
-    #[test]
-    fn skip_unless_regex_no_match() {
+    #[tokio::test]
+    async fn skip_unless_regex_no_match() {
         let conds = vec![make_cond(
             ir::CondKind::Skip,
             Some(ir::CondModifier::Unless),
@@ -1057,12 +1094,13 @@ mod tests {
         )];
         let mut env = Env::new();
         env.insert("ARCH".into(), "riscv".into());
-        let result = evaluate_conditions(&conds, &env);
+        let env = Arc::new(env);
+        let result = evaluate_conditions(&conds, &env, &empty_code_server()).await;
         assert!(result.is_some());
     }
 
-    #[test]
-    fn multiple_conditions_all_pass() {
+    #[tokio::test]
+    async fn multiple_conditions_all_pass() {
         let conds = vec![
             make_cond(ir::CondKind::Skip, Some(ir::CondModifier::Unless), Some("CI"), None),
             make_cond(
@@ -1075,11 +1113,12 @@ mod tests {
         let mut env = Env::new();
         env.insert("CI".into(), "1".into());
         env.insert("OS".into(), "linux".into());
-        assert!(evaluate_conditions(&conds, &env).is_none());
+        let env = Arc::new(env);
+        assert!(evaluate_conditions(&conds, &env, &empty_code_server()).await.is_none());
     }
 
-    #[test]
-    fn multiple_conditions_second_fails() {
+    #[tokio::test]
+    async fn multiple_conditions_second_fails() {
         let conds = vec![
             make_cond(ir::CondKind::Skip, Some(ir::CondModifier::Unless), Some("CI"), None),
             make_cond(
@@ -1092,12 +1131,13 @@ mod tests {
         let mut env = Env::new();
         env.insert("CI".into(), "1".into());
         env.insert("OS".into(), "macos".into());
-        let result = evaluate_conditions(&conds, &env);
+        let env = Arc::new(env);
+        let result = evaluate_conditions(&conds, &env, &empty_code_server()).await;
         assert!(result.is_some());
     }
 
-    #[test]
-    fn flaky_if_set() {
+    #[tokio::test]
+    async fn flaky_if_set() {
         let conds = vec![make_cond(
             ir::CondKind::Flaky,
             Some(ir::CondModifier::If),
@@ -1106,40 +1146,41 @@ mod tests {
         )];
         let mut env = Env::new();
         env.insert("CI".into(), "1".into());
-        let result = evaluate_conditions(&conds, &env);
+        let env = Arc::new(env);
+        let result = evaluate_conditions(&conds, &env, &empty_code_server()).await;
         assert!(result.is_some());
         assert!(result.unwrap().contains("flaky"));
     }
 
-    #[test]
-    fn bare_skip_unconditionally_skips() {
+    #[tokio::test]
+    async fn bare_skip_unconditionally_skips() {
         let conds = vec![make_cond(ir::CondKind::Skip, None, None, None)];
-        let env = Env::new();
-        let result = evaluate_conditions(&conds, &env);
+        let env = Arc::new(Env::new());
+        let result = evaluate_conditions(&conds, &env, &empty_code_server()).await;
         assert!(result.is_some());
         assert!(result.unwrap().contains("skip: unconditional"));
     }
 
-    #[test]
-    fn bare_run_is_noop() {
+    #[tokio::test]
+    async fn bare_run_is_noop() {
         let conds = vec![make_cond(ir::CondKind::Run, None, None, None)];
-        let env = Env::new();
-        assert!(evaluate_conditions(&conds, &env).is_none());
+        let env = Arc::new(Env::new());
+        assert!(evaluate_conditions(&conds, &env, &empty_code_server()).await.is_none());
     }
 
-    #[test]
-    fn bare_flaky_unconditionally_flaky() {
+    #[tokio::test]
+    async fn bare_flaky_unconditionally_flaky() {
         let conds = vec![make_cond(ir::CondKind::Flaky, None, None, None)];
-        let env = Env::new();
-        let result = evaluate_conditions(&conds, &env);
+        let env = Arc::new(Env::new());
+        let result = evaluate_conditions(&conds, &env, &empty_code_server()).await;
         assert!(result.is_some());
         assert!(result.unwrap().contains("flaky: unconditional"));
     }
 
-    #[test]
-    fn empty_conditions_pass() {
+    #[tokio::test]
+    async fn empty_conditions_pass() {
         let conds: Vec<Spanned<ir::Condition>> = vec![];
-        let env = Env::new();
-        assert!(evaluate_conditions(&conds, &env).is_none());
+        let env = Arc::new(Env::new());
+        assert!(evaluate_conditions(&conds, &env, &empty_code_server()).await.is_none());
     }
 }

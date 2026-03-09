@@ -229,6 +229,36 @@ fn lex_marker_expr<'a>(content: &'a str) -> Option<(MarkerExpr<'a>, &'a str)> {
             return None;
         }
         Some((MarkerExpr::Number(&content[..end]), &content[end..]))
+    } else if content.as_bytes()[0].is_ascii_alphabetic() || content.as_bytes()[0] == b'_' {
+        let end = content
+            .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+            .unwrap_or(content.len());
+        let name = &content[..end];
+        let rest = &content[end..];
+        if rest.starts_with('(') {
+            // Function call: name(arg1, arg2, ...)
+            let inner_start = &rest[1..]; // skip '('
+            let mut args = Vec::new();
+            let mut remaining = inner_start.trim_start();
+            if !remaining.starts_with(')') {
+                loop {
+                    let (arg, after_arg) = lex_marker_expr(remaining)?;
+                    args.push(arg);
+                    remaining = after_arg.trim_start();
+                    if remaining.starts_with(',') {
+                        remaining = remaining[1..].trim_start();
+                    } else {
+                        break;
+                    }
+                }
+            }
+            if !remaining.starts_with(')') {
+                return None;
+            }
+            Some((MarkerExpr::Call(name, args), &remaining[1..]))
+        } else {
+            Some((MarkerExpr::Var(name), rest))
+        }
     } else {
         None
     }

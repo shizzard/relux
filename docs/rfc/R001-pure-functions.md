@@ -1,6 +1,6 @@
 # R001: Pure Functions
 
-- **Status**: draft
+- **Status**: implemented
 - **Created**: 2026-03-03
 
 ## Motivation
@@ -66,28 +66,28 @@ pub trait PureBif: Send + Sync {
 
 ### Pure BIFs
 
-| BIF | Notes |
-|-----|-------|
-| `trim(s)` | |
-| `upper(s)` | |
-| `lower(s)` | |
-| `replace(s, from, to)` | |
-| `split(s, sep, idx)` | |
-| `len(s)` | |
-| `uuid()` | |
-| `rand(n)` / `rand(n, mode)` | |
-| `sleep(duration)` | |
-| `log(s)` | |
-| `annotate(s)` | |
+| BIF                         | Notes |
+|-----------------------------|-------|
+| `trim(s)`                   |       |
+| `upper(s)`                  |       |
+| `lower(s)`                  |       |
+| `replace(s, from, to)`      |       |
+| `split(s, sep, idx)`        |       |
+| `len(s)`                    |       |
+| `uuid()`                    |       |
+| `rand(n)` / `rand(n, mode)` |       |
+| `sleep(duration)`           |       |
+| `log(s)`                    |       |
+| `annotate(s)`               |       |
 
 ### Impure BIFs (shell context required)
 
-| BIF | Why impure |
-|-----|-----------|
-| `match_prompt()` | Reads shell output |
-| `match_exit_code(code)` | Sends to shell and reads output |
-| `match_ok()` | Sends to shell and reads output |
-| `ctrl_c()`, `ctrl_d()`, `ctrl_z()`, `ctrl_l()`, `ctrl_backslash()` | Sends bytes to shell |
+| BIF                                                                | Why impure                      |
+|--------------------------------------------------------------------|---------------------------------|
+| `match_prompt()`                                                   | Reads shell output              |
+| `match_exit_code(code)`                                            | Sends to shell and reads output |
+| `match_ok()`                                                       | Sends to shell and reads output |
+| `ctrl_c()`, `ctrl_d()`, `ctrl_z()`, `ctrl_l()`, `ctrl_backslash()` | Sends bytes to shell            |
 
 ## Runtime
 

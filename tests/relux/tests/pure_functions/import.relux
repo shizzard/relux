@@ -1,0 +1,34 @@
+import imports/pure_helpers { tag, shout }
+
+test "imported pure function works" {
+    """
+    Verify a pure function imported from a library module works correctly.
+    """
+    shell s {
+        let result = tag("env", "production")
+        > echo ${result}
+        <? ^env:production$
+    }
+}
+
+test "imported pure function calling bif" {
+    """
+    Verify an imported pure function that calls a BIF works.
+    """
+    shell s {
+        let result = shout("quiet")
+        > echo ${result}
+        <? ^QUIET$
+    }
+}
+
+test "imported pure function composed with local logic" {
+    """
+    Verify imported pure functions compose with local shell logic.
+    """
+    shell s {
+        let label = tag("status", shout("ok"))
+        > echo ${label}
+        <? ^status:OK$
+    }
+}

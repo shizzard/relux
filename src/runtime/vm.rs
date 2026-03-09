@@ -14,7 +14,7 @@ use crate::runtime::event_log::{BufferSnapshot, EventCollector, LogEventKind};
 use crate::runtime::result::Failure;
 use crate::runtime::shell_log::ShellLogger;
 use crate::runtime::vars::{FailPattern, ScopeStack, interpolate};
-use crate::runtime::bifs::VmContext;
+use crate::runtime::bifs::{PureContext, VmContext};
 use crate::runtime::progress::{ProgressEvent, ProgressTx};
 use crate::runtime::{Callable, CodeServer};
 
@@ -461,21 +461,62 @@ impl Vm {
 
                 self.emit_event(LogEventKind::FnEnter { name: call.name.node.clone() }).await;
                 self.emit_progress(ProgressEvent::FnEnter(call.name.node.clone()));
-                self.scope.push_function_frame();
+                let mut fn_vars = HashMap::new();
                 for (param, value) in params.iter().zip(evaluated_args.into_iter()) {
-                    self.scope.let_insert(param.node.clone(), value);
+                    fn_vars.insert(param.node.clone(), value);
                 }
+                let save = self.scope.enter_function(fn_vars);
                 let mut last = String::new();
                 for stmt in &body {
-                    last = self.exec_stmt(stmt).await?;
+                    match self.exec_stmt(stmt).await {
+                        Ok(v) => last = v,
+                        Err(e) => {
+                            self.scope.exit_function(save);
+                            let _ = self.fail_watcher_tx.send(self.scope.fail_pattern().cloned());
+                            return Err(e);
+                        }
+                    }
                 }
-                self.scope.pop_frame();
+                self.scope.exit_function(save);
                 let _ = self.fail_watcher_tx.send(self.scope.fail_pattern().cloned());
                 self.emit_event(LogEventKind::FnExit).await;
                 self.emit_progress(ProgressEvent::FnExit);
                 Ok(last)
             }
+            Callable::UserDefinedPure(fn_id) => {
+                let func = self
+                    .code_server
+                    .get_pure(fn_id)
+                    .ok_or_else(|| Failure::Runtime {
+                        message: format!("invalid pure function id {fn_id}"),
+                        span: Some(span.clone()),
+                        shell: Some(self.shell_name.clone()),
+                    })?
+                    .clone();
+
+                self.emit_event(LogEventKind::FnEnter { name: call.name.node.clone() }).await;
+                self.emit_progress(ProgressEvent::FnEnter(call.name.node.clone()));
+                let mut fn_vars = HashMap::new();
+                for (param, value) in func.params.iter().zip(evaluated_args.into_iter()) {
+                    fn_vars.insert(param.node.clone(), value);
+                }
+                let env = self.scope.env();
+                let cs = self.code_server.clone();
+                let result = crate::runtime::pure::exec_pure_body(
+                    &func.body,
+                    &mut fn_vars,
+                    &env,
+                    &cs,
+                    self,
+                ).await;
+                self.emit_event(LogEventKind::FnExit).await;
+                self.emit_progress(ProgressEvent::FnExit);
+                result
+            }
             Callable::Builtin(bif) => {
+                bif.call(self, evaluated_args, span).await
+            }
+            Callable::PureBuiltin(bif) => {
                 bif.call(self, evaluated_args, span).await
             }
         }
@@ -705,13 +746,20 @@ impl Vm {
 }
 
 #[async_trait::async_trait]
-impl VmContext for Vm {
+impl PureContext for Vm {
     fn emit_progress(&self, event: ProgressEvent) {
         if let Some(tx) = &self.progress_tx {
             let _ = tx.send(event);
         }
     }
 
+    async fn emit_log(&mut self, message: String) {
+        self.emit_event(LogEventKind::Log { message }).await;
+    }
+}
+
+#[async_trait::async_trait]
+impl VmContext for Vm {
     async fn match_literal(&mut self, pattern: &str, span: &Span) -> Result<String, Failure> {
         self.emit_event(LogEventKind::MatchStart { pattern: pattern.to_string(), is_regex: false }).await;
         self.emit_progress(ProgressEvent::MatchStart);
@@ -742,10 +790,6 @@ impl VmContext for Vm {
 
     fn shell_prompt(&self) -> &str {
         &self.shell_prompt
-    }
-
-    async fn emit_log(&mut self, message: String) {
-        self.emit_event(LogEventKind::Log { message }).await;
     }
 }
 

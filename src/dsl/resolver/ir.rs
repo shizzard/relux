@@ -75,6 +75,9 @@ pub type EffectId = usize;
 /// Index into `Plan::functions`. Identifies a specific (name, arity) pair.
 pub type FnId = usize;
 
+/// Index into `Plan::pure_functions`.
+pub type PureFnId = usize;
+
 /// Node in the effect instance DAG.
 pub type InstanceId = daggy::NodeIndex;
 
@@ -85,8 +88,10 @@ pub type InstanceId = daggy::NodeIndex;
 
 #[derive(Debug, Clone)]
 pub struct Plan {
-    /// Functions reachable from this test (directly or via effects).
+    /// Impure functions reachable from this test (directly or via effects).
     pub functions: Vec<Function>,
+    /// Pure functions reachable from this test.
+    pub pure_functions: Vec<PureFunction>,
     /// Effect definitions (templates). Referenced by EffectId.
     pub effects: Vec<Effect>,
     /// Instantiated, deduplicated effect dependency graph.
@@ -171,9 +176,9 @@ pub struct CondExpr {
 
 #[derive(Debug, Clone)]
 pub enum CondBody {
-    Bare(StringExpr),
-    Eq(StringExpr, StringExpr),
-    Regex(StringExpr, StringExpr),
+    Bare(PureExpr),
+    Eq(PureExpr, PureExpr),
+    Regex(PureExpr, StringExpr),
 }
 
 // ─── Effect Definition ──────────────────────────────────────
@@ -186,7 +191,7 @@ pub struct Effect {
     pub name: Spanned<String>,
     pub exported_shell: Spanned<String>,
     pub conditions: Vec<Spanned<Condition>>,
-    pub vars: Vec<Spanned<VarDecl>>,
+    pub vars: Vec<Spanned<PureVarDecl>>,
     pub shells: Vec<Spanned<ShellBlock>>,
     pub cleanup: Option<Spanned<CleanupBlock>>,
     pub span: Span,
@@ -210,7 +215,7 @@ pub struct Test {
     pub conditions: Vec<Spanned<Condition>>,
     /// Resolved references to effect instances in the DAG.
     pub needs: Vec<Spanned<TestNeed>>,
-    pub vars: Vec<Spanned<VarDecl>>,
+    pub vars: Vec<Spanned<PureVarDecl>>,
     pub shells: Vec<Spanned<ShellBlock>>,
     pub cleanup: Option<Spanned<CleanupBlock>>,
     pub span: Span,
@@ -230,7 +235,7 @@ pub struct TestNeed {
 #[derive(Debug, Clone)]
 pub struct OverlayEntry {
     pub key: Spanned<String>,
-    pub value: Spanned<StringExpr>,
+    pub value: Spanned<PureExpr>,
 }
 
 // ─── Shell Block ────────────────────────────────────────────
@@ -363,4 +368,47 @@ pub struct VarAssign {
 pub struct FnCall {
     pub name: Spanned<String>,
     pub args: Vec<Spanned<Expr>>,
+}
+
+// ─── Pure Function Types ────────────────────────────────────
+// Structurally cannot contain shell operations.
+
+#[derive(Debug, Clone)]
+pub struct PureFunction {
+    pub name: Spanned<String>,
+    pub params: Vec<Spanned<String>>,
+    pub body: Vec<Spanned<PureStmt>>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum PureStmt {
+    Let(PureVarDecl),
+    Assign(PureVarAssign),
+    Expr(PureExpr),
+}
+
+#[derive(Debug, Clone)]
+pub struct PureVarDecl {
+    pub name: Spanned<String>,
+    pub value: Option<Spanned<PureExpr>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PureVarAssign {
+    pub name: Spanned<String>,
+    pub value: Spanned<PureExpr>,
+}
+
+#[derive(Debug, Clone)]
+pub enum PureExpr {
+    String(StringExpr),
+    Var(String),
+    Call(PureFnCall),
+}
+
+#[derive(Debug, Clone)]
+pub struct PureFnCall {
+    pub name: Spanned<String>,
+    pub args: Vec<Spanned<PureExpr>>,
 }

@@ -1,0 +1,14 @@
+pure fn always_true() {
+    "yes"
+}
+
+[skip if always_true()]
+test "conditional" {
+    """
+    Skip when the pure function returns a truthy value.
+    """
+    shell s {
+        > echo hello
+        <? ^hello$
+    }
+}

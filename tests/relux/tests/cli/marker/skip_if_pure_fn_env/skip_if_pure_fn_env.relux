@@ -1,0 +1,21 @@
+test "skip if pure fn env: skips when env var is set" {
+    """
+    Verify [skip if fn("${VAR}")] skips when the env var makes the function return truthy.
+    """
+    shell s {
+        > SKIP_ME=1 relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 skipped
+        match_ok()
+    }
+}
+
+test "skip if pure fn env: runs when env var is unset" {
+    """
+    Verify [skip if fn("${VAR}")] runs when the env var is empty (falsy return).
+    """
+    shell s {
+        > relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 passed
+        match_ok()
+    }
+}

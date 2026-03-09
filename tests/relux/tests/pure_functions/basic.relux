@@ -1,0 +1,66 @@
+pure fn greet(name) {
+    "hello ${name}"
+}
+
+pure fn add_suffix(s, suffix) {
+    "${s}${suffix}"
+}
+
+pure fn constant() {
+    "forty-two"
+}
+
+test "call pure function with one argument" {
+    """
+    Verify a pure function returns a string with interpolation.
+    """
+    shell s {
+        let result = greet("world")
+        > echo ${result}
+        <? ^hello world$
+    }
+}
+
+test "call pure function with multiple arguments" {
+    """
+    Verify a pure function accepts and uses multiple parameters.
+    """
+    shell s {
+        let result = add_suffix("foo", "_bar")
+        > echo ${result}
+        <? ^foo_bar$
+    }
+}
+
+test "call pure function with no arguments" {
+    """
+    Verify a pure function with no parameters returns its body value.
+    """
+    shell s {
+        let result = constant()
+        > echo ${result}
+        <? ^forty-two$
+    }
+}
+
+test "pure function return value used in send" {
+    """
+    Verify a pure function return value can be interpolated in a send.
+    """
+    shell s {
+        let name = greet("relux")
+        > echo ${name}
+        <? ^hello relux$
+    }
+}
+
+test "pure function calling pure bif" {
+    """
+    Verify a pure function can call built-in pure functions.
+    """
+    shell s {
+        let result = add_suffix(upper("abc"), "_done")
+        > echo ${result}
+        <? ^ABC_done$
+    }
+}

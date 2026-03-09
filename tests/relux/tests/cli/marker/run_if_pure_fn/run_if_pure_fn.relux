@@ -1,0 +1,10 @@
+test "run if pure fn: runs when function returns truthy" {
+    """
+    Verify [run if pure_fn()] runs the test when the pure function returns a truthy value.
+    """
+    shell s {
+        > relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 passed
+        match_ok()
+    }
+}

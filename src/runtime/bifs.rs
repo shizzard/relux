@@ -4,14 +4,33 @@ use crate::dsl::resolver::ir::Span;
 use crate::runtime::progress::ProgressEvent;
 use crate::runtime::result::Failure;
 
+// ─── Context Traits ─────────────────────────────────────────
+// PureContext: available everywhere (pure + impure functions).
+// VmContext: shell context, extends PureContext (impure only).
+
 #[async_trait]
-pub trait VmContext: Send {
+pub trait PureContext: Send {
     fn emit_progress(&self, event: ProgressEvent);
+    async fn emit_log(&mut self, message: String);
+}
+
+#[async_trait]
+pub trait VmContext: PureContext {
     async fn match_literal(&mut self, pattern: &str, span: &Span) -> Result<String, Failure>;
     async fn send_line(&mut self, line: &str, span: &Span) -> Result<(), Failure>;
     async fn send_raw(&mut self, data: &[u8], span: &Span) -> Result<(), Failure>;
     fn shell_prompt(&self) -> &str;
-    async fn emit_log(&mut self, message: String);
+}
+
+// ─── BIF Traits ─────────────────────────────────────────────
+// PureBif: callable from pure and impure contexts.
+// Bif: callable only from impure (shell) contexts.
+
+#[async_trait]
+pub trait PureBif: Send + Sync {
+    fn name(&self) -> &str;
+    fn arity(&self) -> usize;
+    async fn call(&self, ctx: &mut dyn PureContext, args: Vec<String>, span: &Span) -> Result<String, Failure>;
 }
 
 #[async_trait]
@@ -21,7 +40,9 @@ pub trait Bif: Send + Sync {
     async fn call(&self, vm: &mut dyn VmContext, args: Vec<String>, span: &Span) -> Result<String, Failure>;
 }
 
-pub fn lookup(name: &str, arity: usize) -> Option<Box<dyn Bif>> {
+// ─── Lookup ─────────────────────────────────────────────────
+
+pub fn lookup_pure(name: &str, arity: usize) -> Option<Box<dyn PureBif>> {
     match (name, arity) {
         ("sleep", 1) => Some(Box::new(Sleep)),
         ("annotate", 1) => Some(Box::new(Annotate)),
@@ -36,6 +57,12 @@ pub fn lookup(name: &str, arity: usize) -> Option<Box<dyn Bif>> {
         ("rand", 1) => Some(Box::new(Rand)),
         ("rand", 2) => Some(Box::new(RandWithMode)),
         ("available_port", 0) => Some(Box::new(AvailablePort)),
+        _ => None,
+    }
+}
+
+pub fn lookup_impure(name: &str, arity: usize) -> Option<Box<dyn Bif>> {
+    match (name, arity) {
         ("match_prompt", 0) => Some(Box::new(MatchPrompt)),
         ("match_exit_code", 1) => Some(Box::new(MatchExitCode)),
         ("match_ok", 0) => Some(Box::new(MatchOk)),
@@ -48,6 +75,11 @@ pub fn lookup(name: &str, arity: usize) -> Option<Box<dyn Bif>> {
     }
 }
 
+/// Returns true if a BIF with the given name and arity exists (pure or impure).
+pub fn is_known(name: &str, arity: usize) -> bool {
+    lookup_pure(name, arity).is_some() || lookup_impure(name, arity).is_some()
+}
+
 fn runtime_error(message: String, span: &Span) -> Failure {
     Failure::Runtime {
         message,
@@ -56,123 +88,109 @@ fn runtime_error(message: String, span: &Span) -> Failure {
     }
 }
 
-// ─── Sleep ─────────────────────────────────────────────────
+// ─── Pure BIFs ──────────────────────────────────────────────
 
 pub struct Sleep;
 
 #[async_trait]
-impl Bif for Sleep {
+impl PureBif for Sleep {
     fn name(&self) -> &str { "sleep" }
     fn arity(&self) -> usize { 1 }
 
-    async fn call(&self, vm: &mut dyn VmContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(&self, ctx: &mut dyn PureContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
         let duration = humantime::parse_duration(args[0].trim())
             .map_err(|_| runtime_error(format!("invalid duration: `{}`", args[0]), span))?;
-        vm.emit_progress(ProgressEvent::SleepStart);
+        ctx.emit_progress(ProgressEvent::SleepStart);
         tokio::time::sleep(duration).await;
-        vm.emit_progress(ProgressEvent::SleepDone);
+        ctx.emit_progress(ProgressEvent::SleepDone);
         Ok(String::new())
     }
 }
 
-// ─── Annotate ──────────────────────────────────────────────
-
 pub struct Annotate;
 
 #[async_trait]
-impl Bif for Annotate {
+impl PureBif for Annotate {
     fn name(&self) -> &str { "annotate" }
     fn arity(&self) -> usize { 1 }
 
-    async fn call(&self, vm: &mut dyn VmContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(&self, ctx: &mut dyn PureContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
         let text = args[0].clone();
-        vm.emit_progress(ProgressEvent::Annotation(text.clone()));
+        ctx.emit_progress(ProgressEvent::Annotation(text.clone()));
         Ok(text)
     }
 }
 
-// ─── Log ───────────────────────────────────────────────────
-
 pub struct Log;
 
 #[async_trait]
-impl Bif for Log {
+impl PureBif for Log {
     fn name(&self) -> &str { "log" }
     fn arity(&self) -> usize { 1 }
 
-    async fn call(&self, vm: &mut dyn VmContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(&self, ctx: &mut dyn PureContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
         let message = args[0].clone();
-        vm.emit_log(message.clone()).await;
+        ctx.emit_log(message.clone()).await;
         Ok(message)
     }
 }
 
-// ─── Trim ──────────────────────────────────────────────────
-
 pub struct Trim;
 
 #[async_trait]
-impl Bif for Trim {
+impl PureBif for Trim {
     fn name(&self) -> &str { "trim" }
     fn arity(&self) -> usize { 1 }
 
-    async fn call(&self, _vm: &mut dyn VmContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _ctx: &mut dyn PureContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
         Ok(args[0].trim().to_string())
     }
 }
 
-// ─── Upper ─────────────────────────────────────────────────
-
 pub struct Upper;
 
 #[async_trait]
-impl Bif for Upper {
+impl PureBif for Upper {
     fn name(&self) -> &str { "upper" }
     fn arity(&self) -> usize { 1 }
 
-    async fn call(&self, _vm: &mut dyn VmContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _ctx: &mut dyn PureContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
         Ok(args[0].to_uppercase())
     }
 }
 
-// ─── Lower ─────────────────────────────────────────────────
-
 pub struct Lower;
 
 #[async_trait]
-impl Bif for Lower {
+impl PureBif for Lower {
     fn name(&self) -> &str { "lower" }
     fn arity(&self) -> usize { 1 }
 
-    async fn call(&self, _vm: &mut dyn VmContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _ctx: &mut dyn PureContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
         Ok(args[0].to_lowercase())
     }
 }
 
-// ─── Replace ───────────────────────────────────────────────
-
 pub struct Replace;
 
 #[async_trait]
-impl Bif for Replace {
+impl PureBif for Replace {
     fn name(&self) -> &str { "replace" }
     fn arity(&self) -> usize { 3 }
 
-    async fn call(&self, _vm: &mut dyn VmContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _ctx: &mut dyn PureContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
         Ok(args[0].replace(&args[1], &args[2]))
     }
 }
 
-// ─── Split ─────────────────────────────────────────────────
-
 pub struct Split;
 
 #[async_trait]
-impl Bif for Split {
+impl PureBif for Split {
     fn name(&self) -> &str { "split" }
     fn arity(&self) -> usize { 3 }
 
-    async fn call(&self, _vm: &mut dyn VmContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _ctx: &mut dyn PureContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
         let index: usize = args[2].parse()
             .map_err(|_| runtime_error(format!("invalid index: `{}`", args[2]), span))?;
         let parts: Vec<&str> = args[0].split(&args[1]).collect();
@@ -180,44 +198,38 @@ impl Bif for Split {
     }
 }
 
-// ─── Len ───────────────────────────────────────────────────
-
 pub struct Len;
 
 #[async_trait]
-impl Bif for Len {
+impl PureBif for Len {
     fn name(&self) -> &str { "len" }
     fn arity(&self) -> usize { 1 }
 
-    async fn call(&self, _vm: &mut dyn VmContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _ctx: &mut dyn PureContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
         Ok(args[0].len().to_string())
     }
 }
 
-// ─── Uuid ──────────────────────────────────────────────────
-
 pub struct Uuid;
 
 #[async_trait]
-impl Bif for Uuid {
+impl PureBif for Uuid {
     fn name(&self) -> &str { "uuid" }
     fn arity(&self) -> usize { 0 }
 
-    async fn call(&self, _vm: &mut dyn VmContext, _args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _ctx: &mut dyn PureContext, _args: Vec<String>, _span: &Span) -> Result<String, Failure> {
         Ok(uuid::Uuid::new_v4().to_string())
     }
 }
 
-// ─── Rand ──────────────────────────────────────────────────
-
 pub struct Rand;
 
 #[async_trait]
-impl Bif for Rand {
+impl PureBif for Rand {
     fn name(&self) -> &str { "rand" }
     fn arity(&self) -> usize { 1 }
 
-    async fn call(&self, _vm: &mut dyn VmContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _ctx: &mut dyn PureContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
         let n = parse_length(&args[0], span)?;
         Ok(random_string(n, ALPHANUM))
     }
@@ -226,11 +238,11 @@ impl Bif for Rand {
 pub struct RandWithMode;
 
 #[async_trait]
-impl Bif for RandWithMode {
+impl PureBif for RandWithMode {
     fn name(&self) -> &str { "rand" }
     fn arity(&self) -> usize { 2 }
 
-    async fn call(&self, _vm: &mut dyn VmContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _ctx: &mut dyn PureContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
         let n = parse_length(&args[0], span)?;
         let charset = match args[1].as_str() {
             "alpha" => ALPHA,
@@ -268,16 +280,14 @@ fn random_string(len: usize, charset: &[u8]) -> String {
         .collect()
 }
 
-// ─── AvailablePort ──────────────────────────────────────────
-
 pub struct AvailablePort;
 
 #[async_trait]
-impl Bif for AvailablePort {
+impl PureBif for AvailablePort {
     fn name(&self) -> &str { "available_port" }
     fn arity(&self) -> usize { 0 }
 
-    async fn call(&self, _vm: &mut dyn VmContext, _args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(&self, _ctx: &mut dyn PureContext, _args: Vec<String>, span: &Span) -> Result<String, Failure> {
         let listener = std::net::TcpListener::bind("127.0.0.1:0")
             .map_err(|e| runtime_error(format!("failed to bind to ephemeral port: {e}"), span))?;
         let port = listener.local_addr()
@@ -287,7 +297,7 @@ impl Bif for AvailablePort {
     }
 }
 
-// ─── MatchPrompt ────────────────────────────────────────────
+// ─── Impure BIFs ────────────────────────────────────────────
 
 pub struct MatchPrompt;
 
@@ -301,8 +311,6 @@ impl Bif for MatchPrompt {
         vm.match_literal(&prompt, span).await
     }
 }
-
-// ─── MatchExitCode ──────────────────────────────────────────
 
 pub struct MatchExitCode;
 
@@ -319,8 +327,6 @@ impl Bif for MatchExitCode {
     }
 }
 
-// ─── MatchOk ────────────────────────────────────────────────
-
 pub struct MatchOk;
 
 #[async_trait]
@@ -336,8 +342,6 @@ impl Bif for MatchOk {
         vm.match_literal(&prompt, span).await
     }
 }
-
-// ─── CtrlChar ───────────────────────────────────────────────
 
 pub struct CtrlChar {
     name: &'static str,
@@ -362,9 +366,13 @@ mod tests {
     struct DummyVm;
 
     #[async_trait]
-    impl VmContext for DummyVm {
+    impl PureContext for DummyVm {
         fn emit_progress(&self, _event: ProgressEvent) {}
+        async fn emit_log(&mut self, _message: String) {}
+    }
 
+    #[async_trait]
+    impl VmContext for DummyVm {
         async fn match_literal(&mut self, pattern: &str, _span: &Span) -> Result<String, Failure> {
             Ok(pattern.to_string())
         }
@@ -380,8 +388,6 @@ mod tests {
         fn shell_prompt(&self) -> &str {
             "test> "
         }
-
-        async fn emit_log(&mut self, _message: String) {}
     }
 
     fn dummy_span() -> Span {
@@ -612,21 +618,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_lookup() {
-        assert!(lookup("available_port", 0).is_some());
-        assert!(lookup("trim", 1).is_some());
-        assert!(lookup("upper", 1).is_some());
-        assert!(lookup("rand", 1).is_some());
-        assert!(lookup("rand", 2).is_some());
-        assert!(lookup("uuid", 0).is_some());
-        assert!(lookup("match_prompt", 0).is_some());
-        assert!(lookup("match_exit_code", 1).is_some());
-        assert!(lookup("match_ok", 0).is_some());
-        assert!(lookup("ctrl_c", 0).is_some());
-        assert!(lookup("ctrl_d", 0).is_some());
-        assert!(lookup("ctrl_z", 0).is_some());
-        assert!(lookup("ctrl_l", 0).is_some());
-        assert!(lookup("ctrl_backslash", 0).is_some());
-        assert!(lookup("nonexistent", 0).is_none());
-        assert!(lookup("trim", 2).is_none());
+        assert!(lookup_pure("available_port", 0).is_some());
+        assert!(lookup_pure("trim", 1).is_some());
+        assert!(lookup_pure("upper", 1).is_some());
+        assert!(lookup_pure("rand", 1).is_some());
+        assert!(lookup_pure("rand", 2).is_some());
+        assert!(lookup_pure("uuid", 0).is_some());
+        assert!(lookup_impure("match_prompt", 0).is_some());
+        assert!(lookup_impure("match_exit_code", 1).is_some());
+        assert!(lookup_impure("match_ok", 0).is_some());
+        assert!(lookup_impure("ctrl_c", 0).is_some());
+        assert!(lookup_impure("ctrl_d", 0).is_some());
+        assert!(lookup_impure("ctrl_z", 0).is_some());
+        assert!(lookup_impure("ctrl_l", 0).is_some());
+        assert!(lookup_impure("ctrl_backslash", 0).is_some());
+        assert!(!is_known("nonexistent", 0));
+        assert!(!is_known("trim", 2));
     }
 }

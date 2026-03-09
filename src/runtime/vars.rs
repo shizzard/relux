@@ -9,6 +9,13 @@ use crate::dsl::resolver::ir::{Expr, Spanned, StringExpr, StringPart, VarAssign,
 
 pub type Env = HashMap<String, String>;
 
+/// Saved state from before a function call, used to restore after the call.
+#[derive(Debug)]
+pub struct FunctionSave {
+    frames: Vec<Frame>,
+    captures: HashMap<String, String>,
+}
+
 #[derive(Clone, Debug)]
 pub enum FailPattern {
     Regex(Regex),
@@ -48,8 +55,6 @@ struct Frame {
     vars: HashMap<String, String>,
     timeout: Duration,
     fail_pattern: Option<FailPattern>,
-    /// Function call boundary — prevents `assign()` from walking into the caller's scope.
-    is_function_scope: bool,
 }
 
 #[derive(Debug)]
@@ -73,7 +78,6 @@ impl ScopeStack {
                 vars: HashMap::new(),
                 timeout: default_timeout,
                 fail_pattern: None,
-                is_function_scope: false,
             }],
             captures: HashMap::new(),
             test_scope,
@@ -89,19 +93,35 @@ impl ScopeStack {
             vars: HashMap::new(),
             timeout,
             fail_pattern,
-            is_function_scope: false,
         });
     }
 
-    pub fn push_function_frame(&mut self) {
+    /// Enter a function call: save current frames/captures and replace with a
+    /// single isolated frame containing only the function's parameters.
+    /// Returns the saved state to be passed to `exit_function()`.
+    pub fn enter_function(&mut self, params: HashMap<String, String>) -> FunctionSave {
         let timeout = self.timeout();
         let fail_pattern = self.fail_pattern().cloned();
-        self.frames.push(Frame {
-            vars: HashMap::new(),
-            timeout,
-            fail_pattern,
-            is_function_scope: true,
-        });
+        let saved_frames = std::mem::replace(
+            &mut self.frames,
+            vec![Frame {
+                vars: params,
+                timeout,
+                fail_pattern,
+            }],
+        );
+        let saved_captures = std::mem::take(&mut self.captures);
+        FunctionSave {
+            frames: saved_frames,
+            captures: saved_captures,
+        }
+    }
+
+    /// Exit a function call: restore the saved frames/captures.
+    /// Timeout and fail pattern changes inside the function are discarded.
+    pub fn exit_function(&mut self, save: FunctionSave) {
+        self.frames = save.frames;
+        self.captures = save.captures;
     }
 
     pub fn pop_frame(&mut self) {
@@ -160,15 +180,17 @@ impl ScopeStack {
                 *slot = value;
                 return true;
             }
-            if frame.is_function_scope {
-                break;
-            }
         }
         self.test_scope.lock().await.assign(key, value)
     }
 
     pub fn set_captures(&mut self, captures: HashMap<String, String>) {
         self.captures = captures;
+    }
+
+    /// Returns the combined env + overlay for pure function contexts.
+    pub fn env(&self) -> Arc<Env> {
+        self.env.clone()
     }
 
     pub fn process_env(&self) -> HashMap<String, String> {

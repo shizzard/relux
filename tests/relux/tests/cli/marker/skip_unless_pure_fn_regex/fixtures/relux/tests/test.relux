@@ -1,0 +1,14 @@
+pure fn normalize(val) {
+    lower(val)
+}
+
+[skip unless normalize("${TARGET_OS}") ? ^(linux|darwin)$]
+test "conditional" {
+    """
+    Skip unless the normalized env var matches a supported platform.
+    """
+    shell s {
+        > echo hello
+        <? ^hello$
+    }
+}

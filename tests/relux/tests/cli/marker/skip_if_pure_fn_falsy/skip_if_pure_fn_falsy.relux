@@ -1,0 +1,10 @@
+test "skip if pure fn falsy: runs when function returns empty" {
+    """
+    Verify [skip if pure_fn()] runs the test when the pure function returns an empty (falsy) value.
+    """
+    shell s {
+        > relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 passed
+        match_ok()
+    }
+}

@@ -32,6 +32,8 @@ pub enum MarkerModifier {
 pub enum MarkerExpr<'a> {
     String(Vec<StringFragment<'a>>),
     Number(&'a str),
+    Var(&'a str),
+    Call(&'a str, Vec<MarkerExpr<'a>>),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -63,6 +65,8 @@ pub enum Token<'a> {
     Import,
     #[token("as")]
     As,
+    #[token("pure")]
+    Pure,
     #[token("fn")]
     Fn,
     #[token("effect")]
@@ -164,6 +168,7 @@ impl fmt::Display for Token<'_> {
             Token::Comment(s) => write!(f, "#{s}"),
             Token::Import => write!(f, "import"),
             Token::As => write!(f, "as"),
+            Token::Pure => write!(f, "pure"),
             Token::Fn => write!(f, "fn"),
             Token::Effect => write!(f, "effect"),
             Token::Test => write!(f, "test"),

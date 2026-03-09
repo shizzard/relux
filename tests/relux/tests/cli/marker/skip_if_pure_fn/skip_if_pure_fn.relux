@@ -1,0 +1,10 @@
+test "skip if pure fn: skips when function returns truthy" {
+    """
+    Verify [skip if pure_fn()] skips the test when the pure function returns a truthy value.
+    """
+    shell s {
+        > relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 skipped
+        match_ok()
+    }
+}

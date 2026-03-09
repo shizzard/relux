@@ -1,0 +1,14 @@
+pure fn is_set(val) {
+    val
+}
+
+[skip if is_set("${SKIP_ME}")]
+test "conditional" {
+    """
+    Skip when the pure function returns the env var value (truthy if set).
+    """
+    shell s {
+        > echo hello
+        <? ^hello$
+    }
+}

@@ -1,0 +1,66 @@
+pure fn tag(key, value) {
+    "${key}:${value}"
+}
+
+pure fn make_label(name) {
+    "label-${name}"
+}
+
+effect Tagged -> tagged {
+    shell tagged {
+        > echo 1
+        match_ok()
+    }
+}
+
+effect WithVar -> wv {
+    let greeting = tag("msg", "hello")
+    shell wv {
+        > echo ${greeting}
+    }
+}
+
+test "pure function in test-scope let" {
+    """
+    Verify a pure function can be called in a test-level let declaration.
+    """
+    let label = tag("env", "test")
+    shell s {
+        > echo ${label}
+        <? ^env:test$
+    }
+}
+
+test "pure function with bif in test-scope let" {
+    """
+    Verify a pure function composed with a BIF works in test-level let.
+    """
+    let label = tag("status", upper("ok"))
+    shell s {
+        > echo ${label}
+        <? ^status:OK$
+    }
+}
+
+test "pure function in effect-scope let" {
+    """
+    Verify a pure function can be called in an effect-level let declaration.
+    """
+    need WithVar as wv
+    shell wv {
+        <? ^msg:hello$
+    }
+}
+
+test "pure function in overlay value" {
+    """
+    Verify a pure function can be called in an effect overlay value.
+    """
+    need Tagged as tagged {
+        CONFIG = make_label("production")
+    }
+    shell tagged {
+        > echo $CONFIG
+        <? ^label-production$
+    }
+}

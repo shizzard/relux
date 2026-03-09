@@ -1,0 +1,7 @@
+pure fn tag(prefix, value) {
+    "${prefix}:${value}"
+}
+
+pure fn shout(msg) {
+    upper(msg)
+}

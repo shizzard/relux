@@ -103,6 +103,7 @@ type FnKey = (String, usize);
 #[derive(Debug, Clone)]
 struct ModuleExports {
     functions: HashMap<FnKey, (FileId, parser::FnDef)>,
+    pure_functions: HashMap<FnKey, (FileId, parser::PureFnDef)>,
     effects: HashMap<String, (FileId, parser::EffectDef)>,
 }
 
@@ -110,6 +111,7 @@ struct ModuleExports {
 #[derive(Debug)]
 struct ModuleScope {
     functions: HashMap<FnKey, (FileId, parser::FnDef)>,
+    pure_functions: HashMap<FnKey, (FileId, parser::PureFnDef)>,
     effects: HashMap<String, (FileId, parser::EffectDef)>,
     imported_module_exports: HashMap<String, ModuleExports>,
 }
@@ -206,6 +208,7 @@ impl<'a> Loader<'a> {
 
 fn build_module_exports(file_id: FileId, module: &parser::Module) -> ModuleExports {
     let mut functions = HashMap::new();
+    let mut pure_functions = HashMap::new();
     let mut effects = HashMap::new();
 
     for item in &module.items {
@@ -214,6 +217,10 @@ fn build_module_exports(file_id: FileId, module: &parser::Module) -> ModuleExpor
                 let key = (f.name.node.clone(), f.params.len());
                 functions.insert(key, (file_id, f.clone()));
             }
+            parser::Item::PureFn(f) => {
+                let key = (f.name.node.clone(), f.params.len());
+                pure_functions.insert(key, (file_id, f.clone()));
+            }
             parser::Item::Effect(e) => {
                 effects.insert(e.name.node.clone(), (file_id, e.clone()));
             }
@@ -221,7 +228,7 @@ fn build_module_exports(file_id: FileId, module: &parser::Module) -> ModuleExpor
         }
     }
 
-    ModuleExports { functions, effects }
+    ModuleExports { functions, pure_functions, effects }
 }
 
 fn build_module_scope(
@@ -234,6 +241,7 @@ fn build_module_scope(
     let own_exports = build_module_exports(file_id, module);
     let mut scope = ModuleScope {
         functions: own_exports.functions.clone(),
+        pure_functions: own_exports.pure_functions.clone(),
         effects: own_exports.effects.clone(),
         imported_module_exports: HashMap::new(),
     };
@@ -268,6 +276,18 @@ fn build_module_scope(
                         });
                     } else {
                         scope.functions.insert(key.clone(), val.clone());
+                    }
+                }
+                for (key, val) in &target_exports.pure_functions {
+                    if let Some(existing) = scope.pure_functions.get(key) {
+                        diagnostics.push(Diagnostic::DuplicateDefinition {
+                            name: key.0.clone(),
+                            arity: Some(key.1),
+                            first: pure_fn_def_span(existing.0, &existing.1),
+                            second: pure_fn_def_span(val.0, &val.1),
+                        });
+                    } else {
+                        scope.pure_functions.insert(key.clone(), val.clone());
                     }
                 }
                 for (name, val) in &target_exports.effects {
@@ -316,6 +336,27 @@ fn build_module_scope(
                         }
                     }
 
+                    // Try pure functions (all arities)
+                    let pure_fn_matches: Vec<_> = target_exports
+                        .pure_functions
+                        .iter()
+                        .filter(|((n, _), _)| n == raw_name)
+                        .collect();
+                    for ((_, arity), val) in &pure_fn_matches {
+                        found = true;
+                        let key = (local_name.clone(), *arity);
+                        if let Some(existing) = scope.pure_functions.get(&key) {
+                            diagnostics.push(Diagnostic::DuplicateDefinition {
+                                name: local_name.clone(),
+                                arity: Some(*arity),
+                                first: pure_fn_def_span(existing.0, &existing.1),
+                                second: pure_fn_def_span(val.0, &val.1),
+                            });
+                        } else {
+                            scope.pure_functions.insert(key, (*val).clone());
+                        }
+                    }
+
                     // Try effects
                     if let Some(val) = target_exports.effects.get(raw_name) {
                         found = true;
@@ -347,6 +388,10 @@ fn build_module_scope(
 }
 
 fn fn_def_span(file_id: FileId, f: &parser::FnDef) -> Span {
+    Span::new(file_id, f.name.span.clone())
+}
+
+fn pure_fn_def_span(file_id: FileId, f: &parser::PureFnDef) -> Span {
     Span::new(file_id, f.name.span.clone())
 }
 
@@ -425,7 +470,7 @@ impl<'a> EffectGraphBuilder<'a> {
             existing
         } else {
             let effect_id = self.ensure_effect_def(effect_name, effect_file_id, &effect_def);
-            let overlay = lower_overlay(&need.overlay, need_file_id);
+            let overlay = lower_overlay(&need.overlay, need_file_id, self.scope, &mut self.diagnostics);
             let instance = ir::EffectInstance {
                 effect: effect_id,
                 overlay,
@@ -645,14 +690,18 @@ fn lower_expr(
             let arity = call.args.len();
             let fn_key = (call.name.node.clone(), arity);
             if !scope.functions.contains_key(&fn_key)
-                && crate::runtime::bifs::lookup(&call.name.node, arity).is_none()
+                && !scope.pure_functions.contains_key(&fn_key)
+                && !crate::runtime::bifs::is_known(&call.name.node, arity)
             {
-                let available: Vec<usize> = scope
+                let mut available: Vec<usize> = scope
                     .functions
                     .keys()
+                    .chain(scope.pure_functions.keys())
                     .filter(|(n, _)| n == &call.name.node)
                     .map(|(_, a)| *a)
                     .collect();
+                available.sort();
+                available.dedup();
                 diagnostics.push(Diagnostic::UndefinedName {
                     name: format!("{}/{}", call.name.node, arity),
                     span: sp(file_id, &call.name.span),
@@ -789,6 +838,7 @@ fn lower_cleanup_stmt(
 ) -> Option<ir::Spanned<ir::CleanupStmt>> {
     let empty_scope = ModuleScope {
         functions: HashMap::new(),
+        pure_functions: HashMap::new(),
         effects: HashMap::new(),
         imported_module_exports: HashMap::new(),
     };
@@ -819,6 +869,103 @@ fn lower_cleanup_stmt(
                 sp(file_id, &a.value.span),
             ),
         }),
+    };
+    Some(ir::Spanned::new(ir_stmt, sp(file_id, stmt_span)))
+}
+
+// ─── Pure Function Lowering ─────────────────────────────────
+
+fn lower_pure_expr(
+    file_id: FileId,
+    ast: &parser::PureAstExpr,
+    expr_span: &parser::Span,
+    scope: &ModuleScope,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> ir::PureExpr {
+    match ast {
+        parser::PureAstExpr::String(s) => {
+            ir::PureExpr::String(lower_string_expr(file_id, s, expr_span, 0))
+        }
+        parser::PureAstExpr::Var(name) => ir::PureExpr::Var(name.clone()),
+        parser::PureAstExpr::Call(call) => {
+            let arity = call.args.len();
+            let fn_key = (call.name.node.clone(), arity);
+            if !scope.pure_functions.contains_key(&fn_key)
+                && !crate::runtime::bifs::is_known(&call.name.node, arity)
+            {
+                // Check if it's an impure function — give a better error
+                if scope.functions.contains_key(&fn_key) {
+                    diagnostics.push(Diagnostic::UndefinedName {
+                        name: format!("{}/{} (impure function cannot be called from pure context)", call.name.node, arity),
+                        span: sp(file_id, &call.name.span),
+                        available_arities: Vec::new(),
+                    });
+                } else {
+                    let available: Vec<usize> = scope
+                        .pure_functions
+                        .keys()
+                        .filter(|(n, _)| n == &call.name.node)
+                        .map(|(_, a)| *a)
+                        .collect();
+                    diagnostics.push(Diagnostic::UndefinedName {
+                        name: format!("{}/{}", call.name.node, arity),
+                        span: sp(file_id, &call.name.span),
+                        available_arities: available,
+                    });
+                }
+            }
+            let args = call
+                .args
+                .iter()
+                .map(|a| {
+                    lower_spanned(
+                        file_id,
+                        lower_pure_expr(file_id, &a.node, &a.span, scope, diagnostics),
+                        &a.span,
+                    )
+                })
+                .collect();
+            ir::PureExpr::Call(ir::PureFnCall {
+                name: lower_spanned(file_id, call.name.node.clone(), &call.name.span),
+                args,
+            })
+        }
+    }
+}
+
+fn lower_pure_stmt(
+    file_id: FileId,
+    ast: &parser::PureAstStmt,
+    stmt_span: &parser::Span,
+    scope: &ModuleScope,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<ir::Spanned<ir::PureStmt>> {
+    let ir_stmt = match ast {
+        parser::PureAstStmt::Comment(_) => return None,
+        parser::PureAstStmt::Let(l) => {
+            let value = l.value.as_ref().map(|v| {
+                lower_spanned(
+                    file_id,
+                    lower_pure_expr(file_id, &v.node, &v.span, scope, diagnostics),
+                    &v.span,
+                )
+            });
+            ir::PureStmt::Let(ir::PureVarDecl {
+                name: lower_spanned(file_id, l.name.node.clone(), &l.name.span),
+                value,
+            })
+        }
+        parser::PureAstStmt::Assign(a) => ir::PureStmt::Assign(ir::PureVarAssign {
+            name: lower_spanned(file_id, a.name.node.clone(), &a.name.span),
+            value: lower_spanned(
+                file_id,
+                lower_pure_expr(file_id, &a.value.node, &a.value.span, scope, diagnostics),
+                &a.value.span,
+            ),
+        }),
+        parser::PureAstStmt::Expr(e) => {
+            ir::PureStmt::Expr(lower_pure_expr(file_id, e, stmt_span, scope, diagnostics))
+        }
     };
     Some(ir::Spanned::new(ir_stmt, sp(file_id, stmt_span)))
 }
@@ -861,19 +1008,14 @@ fn lower_cleanup_block(
 fn lower_overlay(
     overlay: &[AstSpanned<parser::OverlayEntry>],
     file_id: FileId,
+    scope: &ModuleScope,
+    diagnostics: &mut Vec<Diagnostic>,
 ) -> Vec<ir::OverlayEntry> {
     overlay
         .iter()
         .map(|e| {
-            let value_expr = match &e.node.value.node {
-                parser::AstExpr::String(s) => {
-                    lower_string_expr(file_id, s, &e.node.value.span, 0)
-                }
-                _ => ir::StringExpr {
-                    parts: vec![],
-                    span: Span::new(file_id, e.node.value.span.clone()),
-                },
-            };
+            let value_expr =
+                lower_pure_expr(file_id, &e.node.value.node, &e.node.value.span, scope, diagnostics);
             ir::OverlayEntry {
                 key: lower_spanned(file_id, e.node.key.node.clone(), &e.node.key.span),
                 value: ir::Spanned::new(value_expr, sp(file_id, &e.node.value.span)),
@@ -882,27 +1024,11 @@ fn lower_overlay(
         .collect()
 }
 
-fn lower_marker_expr(
-    file_id: FileId,
-    expr: &parser::AstMarkerExpr,
-    span: &parser::Span,
-) -> ir::StringExpr {
-    match expr {
-        parser::AstMarkerExpr::String(s) => lower_string_expr(file_id, s, span, 0),
-        parser::AstMarkerExpr::Number(n) => ir::StringExpr {
-            parts: vec![ir::Spanned::new(
-                ir::StringPart::Literal(n.clone()),
-                sp(file_id, span),
-            )],
-            span: sp(file_id, span),
-        },
-    }
-}
-
 fn lower_marker(
     file_id: FileId,
     m: &parser::MarkerDecl,
     marker_span: &parser::Span,
+    scope: &ModuleScope,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ir::Condition {
     let kind = match m.kind {
@@ -917,11 +1043,11 @@ fn lower_marker(
         };
         let body = match &c.body {
             parser::AstMarkerCondBody::Bare(expr) => {
-                ir::CondBody::Bare(lower_marker_expr(file_id, expr, marker_span))
+                ir::CondBody::Bare(lower_pure_expr(file_id, expr, marker_span, scope, diagnostics))
             }
             parser::AstMarkerCondBody::Eq(lhs, rhs) => ir::CondBody::Eq(
-                lower_marker_expr(file_id, lhs, marker_span),
-                lower_marker_expr(file_id, rhs, marker_span),
+                lower_pure_expr(file_id, lhs, marker_span, scope, diagnostics),
+                lower_pure_expr(file_id, rhs, marker_span, scope, diagnostics),
             ),
             parser::AstMarkerCondBody::Regex(lhs, pat_expr) => {
                 let pat_ir = lower_string_expr(file_id, pat_expr, marker_span, 0);
@@ -948,7 +1074,7 @@ fn lower_marker(
                     }
                 }
                 ir::CondBody::Regex(
-                    lower_marker_expr(file_id, lhs, marker_span),
+                    lower_pure_expr(file_id, lhs, marker_span, scope, diagnostics),
                     pat_ir,
                 )
             }
@@ -969,7 +1095,7 @@ fn lower_effect_def(
         .iter()
         .map(|m| {
             ir::Spanned::new(
-                lower_marker(file_id, &m.node, &m.span, diagnostics),
+                lower_marker(file_id, &m.node, &m.span, scope, diagnostics),
                 sp(file_id, &m.span),
             )
         })
@@ -986,12 +1112,12 @@ fn lower_effect_def(
                 let value = l.value.as_ref().map(|v| {
                     lower_spanned(
                         file_id,
-                        lower_expr(file_id, &v.node, &v.span, scope, diagnostics),
+                        lower_pure_expr(file_id, &v.node, &v.span, scope, diagnostics),
                         &v.span,
                     )
                 });
                 vars.push(ir::Spanned::new(
-                    ir::VarDecl {
+                    ir::PureVarDecl {
                         name: lower_spanned(file_id, l.name.node.clone(), &l.name.span),
                         value,
                     },
@@ -1042,7 +1168,7 @@ fn lower_test_def(
         .iter()
         .map(|m| {
             ir::Spanned::new(
-                lower_marker(file_id, &m.node, &m.span, diagnostics),
+                lower_marker(file_id, &m.node, &m.span, scope, diagnostics),
                 sp(file_id, &m.span),
             )
         })
@@ -1062,12 +1188,12 @@ fn lower_test_def(
                 let value = l.value.as_ref().map(|v| {
                     lower_spanned(
                         file_id,
-                        lower_expr(file_id, &v.node, &v.span, scope, diagnostics),
+                        lower_pure_expr(file_id, &v.node, &v.span, scope, diagnostics),
                         &v.span,
                     )
                 });
                 vars.push(ir::Spanned::new(
-                    ir::VarDecl {
+                    ir::PureVarDecl {
                         name: lower_spanned(file_id, l.name.node.clone(), &l.name.span),
                         value,
                     },
@@ -1170,15 +1296,19 @@ fn build_plan(
 
     diagnostics.extend(graph_builder.diagnostics);
 
-    // Collect reachable functions
+    // Collect reachable functions (both impure and pure)
     let mut reachable_fns = Vec::new();
     let mut seen_fns: HashMap<FnKey, ir::FnId> = HashMap::new();
+    let mut reachable_pure_fns = Vec::new();
+    let mut seen_pure_fns: HashMap<FnKey, ir::PureFnId> = HashMap::new();
     collect_reachable_functions(
         test_def,
         scope,
         scopes_by_file,
         &mut reachable_fns,
         &mut seen_fns,
+        &mut reachable_pure_fns,
+        &mut seen_pure_fns,
         diagnostics,
     );
 
@@ -1186,6 +1316,7 @@ fn build_plan(
 
     ir::Plan {
         functions: reachable_fns,
+        pure_functions: reachable_pure_fns,
         effects: graph_builder.effects,
         effect_graph: ir::EffectGraph {
             dag: graph_builder.dag,
@@ -1200,29 +1331,66 @@ fn collect_reachable_functions(
     scopes_by_file: &HashMap<FileId, &ModuleScope>,
     functions: &mut Vec<ir::Function>,
     seen: &mut HashMap<FnKey, ir::FnId>,
+    pure_functions: &mut Vec<ir::PureFunction>,
+    seen_pure: &mut HashMap<FnKey, ir::PureFnId>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     // Walk test body to find all function calls
     let mut call_keys: Vec<FnKey> = Vec::new();
+
+    // Walk test markers for pure function calls
+    for marker in &test_def.markers {
+        collect_pure_calls_from_marker(&marker.node, &mut call_keys);
+    }
+
     for item in &test_def.body {
-        if let parser::TestItem::Shell(block) = &item.node {
-            collect_calls_from_stmts(&block.stmts, &mut call_keys);
+        match &item.node {
+            parser::TestItem::Shell(block) => {
+                collect_calls_from_stmts(&block.stmts, &mut call_keys);
+            }
+            parser::TestItem::Let(l) => {
+                if let Some(v) = &l.value {
+                    collect_pure_calls_from_pure_expr(&v.node, &mut call_keys);
+                }
+            }
+            parser::TestItem::Need(need) => {
+                for entry in &need.overlay {
+                    collect_pure_calls_from_pure_expr(&entry.node.value.node, &mut call_keys);
+                }
+            }
+            _ => {}
         }
     }
 
-    // Also walk effect shells
+    // Also walk effect shells, lets, need overlays, and markers
     for (_, (_, effect_def)) in &scope.effects {
+        for marker in &effect_def.markers {
+            collect_pure_calls_from_marker(&marker.node, &mut call_keys);
+        }
         for item in &effect_def.body {
-            if let parser::EffectItem::Shell(block) = &item.node {
-                collect_calls_from_stmts(&block.stmts, &mut call_keys);
+            match &item.node {
+                parser::EffectItem::Shell(block) => {
+                    collect_calls_from_stmts(&block.stmts, &mut call_keys);
+                }
+                parser::EffectItem::Let(l) => {
+                    if let Some(v) = &l.value {
+                        collect_pure_calls_from_pure_expr(&v.node, &mut call_keys);
+                    }
+                }
+                parser::EffectItem::Need(need) => {
+                    for entry in &need.overlay {
+                        collect_pure_calls_from_pure_expr(&entry.node.value.node, &mut call_keys);
+                    }
+                }
+                _ => {}
             }
         }
     }
 
-    // Resolve each call, then recursively resolve calls within function bodies
+    // Resolve each call — check impure functions first, then pure functions
     let mut queue = call_keys;
     while let Some(key) = queue.pop() {
-        if seen.contains_key(&key) {
+        if seen.contains_key(&key) || seen_pure.contains_key(&key) {
             continue;
         }
         if let Some((fn_file_id, fn_def)) = scope.functions.get(&key) {
@@ -1248,6 +1416,31 @@ fn collect_reachable_functions(
                 body,
                 span: sp(*fn_file_id, &fn_def.name.span),
             });
+        } else if let Some((fn_file_id, fn_def)) = scope.pure_functions.get(&key) {
+            let fn_id = pure_functions.len();
+            seen_pure.insert(key.clone(), fn_id);
+
+            collect_pure_calls_from_pure_stmts(&fn_def.body, &mut queue);
+
+            let fn_scope = scopes_by_file.get(fn_file_id).copied().unwrap_or(scope);
+            let body = fn_def
+                .body
+                .iter()
+                .filter_map(|s| {
+                    lower_pure_stmt(*fn_file_id, &s.node, &s.span, fn_scope, diagnostics)
+                })
+                .collect();
+
+            pure_functions.push(ir::PureFunction {
+                name: lower_spanned(*fn_file_id, key.0.clone(), &fn_def.name.span),
+                params: fn_def
+                    .params
+                    .iter()
+                    .map(|p| lower_spanned(*fn_file_id, p.node.clone(), &p.span))
+                    .collect(),
+                body,
+                span: sp(*fn_file_id, &fn_def.name.span),
+            });
         }
     }
 }
@@ -1255,8 +1448,8 @@ fn collect_reachable_functions(
 fn collect_calls_from_stmts(stmts: &[AstSpanned<parser::Stmt>], keys: &mut Vec<FnKey>) {
     for stmt in stmts {
         match &stmt.node {
-            parser::Stmt::Expr(parser::AstExpr::Call(call)) => {
-                keys.push((call.name.node.clone(), call.args.len()));
+            parser::Stmt::Expr(e) => {
+                collect_calls_from_expr(e, keys);
             }
             parser::Stmt::Let(l) => {
                 if let Some(v) = &l.value {
@@ -1280,6 +1473,59 @@ fn collect_calls_from_expr(expr: &parser::AstExpr, keys: &mut Vec<FnKey>) {
             }
         }
         _ => {}
+    }
+}
+
+// ─── Pure Function Collection ───────────────────────────────
+
+fn collect_pure_calls_from_marker(marker: &parser::MarkerDecl, keys: &mut Vec<FnKey>) {
+    if let Some(cond) = &marker.condition {
+        match &cond.body {
+            parser::AstMarkerCondBody::Bare(expr) => {
+                collect_pure_calls_from_pure_expr(expr, keys);
+            }
+            parser::AstMarkerCondBody::Eq(lhs, rhs) => {
+                collect_pure_calls_from_pure_expr(lhs, keys);
+                collect_pure_calls_from_pure_expr(rhs, keys);
+            }
+            parser::AstMarkerCondBody::Regex(lhs, _) => {
+                collect_pure_calls_from_pure_expr(lhs, keys);
+            }
+        }
+    }
+}
+
+fn collect_pure_calls_from_pure_expr(expr: &parser::PureAstExpr, keys: &mut Vec<FnKey>) {
+    match expr {
+        parser::PureAstExpr::Call(call) => {
+            keys.push((call.name.node.clone(), call.args.len()));
+            for arg in &call.args {
+                collect_pure_calls_from_pure_expr(&arg.node, keys);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_pure_calls_from_pure_stmts(
+    stmts: &[AstSpanned<parser::PureAstStmt>],
+    keys: &mut Vec<FnKey>,
+) {
+    for stmt in stmts {
+        match &stmt.node {
+            parser::PureAstStmt::Let(l) => {
+                if let Some(v) = &l.value {
+                    collect_pure_calls_from_pure_expr(&v.node, keys);
+                }
+            }
+            parser::PureAstStmt::Assign(a) => {
+                collect_pure_calls_from_pure_expr(&a.value.node, keys);
+            }
+            parser::PureAstStmt::Expr(e) => {
+                collect_pure_calls_from_pure_expr(e, keys);
+            }
+            parser::PureAstStmt::Comment(_) => {}
+        }
     }
 }
 

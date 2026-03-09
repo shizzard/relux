@@ -1,0 +1,32 @@
+test "skip unless pure fn regex: runs when normalized var matches" {
+    """
+    Verify [skip unless fn("${VAR}") ? regex] runs when the function result matches.
+    """
+    shell s {
+        > TARGET_OS=Linux relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 passed
+        match_ok()
+    }
+}
+
+test "skip unless pure fn regex: skips when normalized var does not match" {
+    """
+    Verify [skip unless fn("${VAR}") ? regex] skips when the function result does not match.
+    """
+    shell s {
+        > TARGET_OS=windows relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 skipped
+        match_ok()
+    }
+}
+
+test "skip unless pure fn regex: skips when var is unset" {
+    """
+    Verify [skip unless fn("${VAR}") ? regex] skips when the env var is empty.
+    """
+    shell s {
+        > relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 skipped
+        match_ok()
+    }
+}

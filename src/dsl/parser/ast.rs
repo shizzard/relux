@@ -12,6 +12,7 @@ pub enum Item {
     Comment(String),
     Import(Import),
     Fn(FnDef),
+    PureFn(PureFnDef),
     Effect(EffectDef),
     Test(TestDef),
     Marker(MarkerDecl),
@@ -48,7 +49,7 @@ pub struct EffectDef {
 pub enum EffectItem {
     Comment(String),
     Need(NeedDecl),
-    Let(LetStmt),
+    Let(PureLetStmt),
     Shell(ShellBlock),
     Cleanup(CleanupBlock),
 }
@@ -66,7 +67,7 @@ pub enum TestItem {
     Comment(String),
     DocString(String),
     Need(NeedDecl),
-    Let(LetStmt),
+    Let(PureLetStmt),
     Shell(ShellBlock),
     Cleanup(CleanupBlock),
 }
@@ -97,16 +98,10 @@ pub struct AstMarkerCond {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AstMarkerExpr {
-    String(AstStringExpr),
-    Number(String),
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub enum AstMarkerCondBody {
-    Bare(AstMarkerExpr),
-    Eq(AstMarkerExpr, AstMarkerExpr),
-    Regex(AstMarkerExpr, AstStringExpr),
+    Bare(PureAstExpr),
+    Eq(PureAstExpr, PureAstExpr),
+    Regex(PureAstExpr, AstStringExpr),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -119,7 +114,7 @@ pub struct NeedDecl {
 #[derive(Debug, Clone, PartialEq)]
 pub struct OverlayEntry {
     pub key: Spanned<String>,
-    pub value: Spanned<AstExpr>,
+    pub value: Spanned<PureAstExpr>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -201,4 +196,47 @@ pub enum AstStringPart {
 pub struct CallExpr {
     pub name: Spanned<String>,
     pub args: Vec<Spanned<AstExpr>>,
+}
+
+// ─── Pure Function AST Types ────────────────────────────────
+// Structurally cannot contain shell operations.
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PureFnDef {
+    pub name: Spanned<String>,
+    pub params: Vec<Spanned<String>>,
+    pub body: Vec<Spanned<PureAstStmt>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PureAstStmt {
+    Comment(String),
+    Let(PureLetStmt),
+    Assign(PureAssignStmt),
+    Expr(PureAstExpr),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PureLetStmt {
+    pub name: Spanned<String>,
+    pub value: Option<Spanned<PureAstExpr>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PureAssignStmt {
+    pub name: Spanned<String>,
+    pub value: Spanned<PureAstExpr>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PureAstExpr {
+    String(AstStringExpr),
+    Var(String),
+    Call(PureCallExpr),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PureCallExpr {
+    pub name: Spanned<String>,
+    pub args: Vec<Spanned<PureAstExpr>>,
 }

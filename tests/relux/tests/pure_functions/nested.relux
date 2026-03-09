@@ -1,0 +1,71 @@
+pure fn wrap(s) {
+    "[${s}]"
+}
+
+pure fn double_wrap(s) {
+    wrap(wrap(s))
+}
+
+pure fn build_greeting(first, last) {
+    let full = "${first} ${last}"
+    upper(full)
+}
+
+pure fn identity(x) {
+    x
+}
+
+test "pure function calls another pure function" {
+    """
+    Verify pure functions can call other pure functions.
+    """
+    shell s {
+        let result = double_wrap("hi")
+        > echo ${result}
+        <? ^\[\[hi\]\]$
+    }
+}
+
+test "pure function calls pure bif in body" {
+    """
+    Verify a pure function can use BIFs like upper() internally.
+    """
+    shell s {
+        let result = build_greeting("jane", "doe")
+        > echo ${result}
+        <? ^JANE DOE$
+    }
+}
+
+test "pure function with let and return" {
+    """
+    Verify let bindings work inside pure functions.
+    """
+    shell s {
+        let result = build_greeting("foo", "bar")
+        > echo ${result}
+        <? ^FOO BAR$
+    }
+}
+
+test "pure function passes through variable" {
+    """
+    Verify a pure function can return its parameter unchanged.
+    """
+    shell s {
+        let result = identity("passthrough")
+        > echo ${result}
+        <? ^passthrough$
+    }
+}
+
+test "impure function calls pure function" {
+    """
+    Verify an impure function can call a pure function.
+    """
+    shell s {
+        let val = wrap("from-shell")
+        > echo ${val}
+        <? ^\[from-shell\]$
+    }
+}

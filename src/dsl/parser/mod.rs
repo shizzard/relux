@@ -14,10 +14,26 @@ fn sp(s: SimpleSpan) -> Span {
     s.start..s.end
 }
 
-fn marker_expr_to_ast(expr: MarkerExpr<'_>) -> AstMarkerExpr {
+fn marker_expr_to_pure_ast(expr: MarkerExpr<'_>) -> PureAstExpr {
     match expr {
-        MarkerExpr::String(fragments) => AstMarkerExpr::String(string_to_expr(fragments)),
-        MarkerExpr::Number(n) => AstMarkerExpr::Number(n.to_string()),
+        MarkerExpr::String(fragments) => PureAstExpr::String(string_to_expr(fragments)),
+        MarkerExpr::Number(n) => PureAstExpr::String(AstStringExpr {
+            parts: vec![AstStringPart::Literal(n.to_string())],
+        }),
+        MarkerExpr::Var(name) => PureAstExpr::Var(name.to_string()),
+        MarkerExpr::Call(name, args) => {
+            let ast_args = args
+                .into_iter()
+                .map(|a| {
+                    let expr = marker_expr_to_pure_ast(a);
+                    Spanned::new(expr, 0..0)
+                })
+                .collect();
+            PureAstExpr::Call(PureCallExpr {
+                name: Spanned::new(name.to_string(), 0..0),
+                args: ast_args,
+            })
+        }
     }
 }
 
@@ -33,12 +49,12 @@ fn marker_token_to_decl(m: MarkerToken<'_>) -> MarkerDecl {
             MarkerModifier::Unless => CondModifier::Unless,
         };
         let body = match cond.body {
-            MarkerCondBody::Bare(expr) => AstMarkerCondBody::Bare(marker_expr_to_ast(expr)),
+            MarkerCondBody::Bare(expr) => AstMarkerCondBody::Bare(marker_expr_to_pure_ast(expr)),
             MarkerCondBody::Eq(lhs, rhs) => {
-                AstMarkerCondBody::Eq(marker_expr_to_ast(lhs), marker_expr_to_ast(rhs))
+                AstMarkerCondBody::Eq(marker_expr_to_pure_ast(lhs), marker_expr_to_pure_ast(rhs))
             }
             MarkerCondBody::Regex(lhs, fragments) => {
-                AstMarkerCondBody::Regex(marker_expr_to_ast(lhs), payload_to_expr(fragments))
+                AstMarkerCondBody::Regex(marker_expr_to_pure_ast(lhs), payload_to_expr(fragments))
             }
         };
         AstMarkerCond { modifier, body }
@@ -371,41 +387,6 @@ where
         .map_with(|stmts, e| Spanned::new(CleanupBlock { stmts }, sp(e.span())))
         .labelled("cleanup block");
 
-    let overlay_entry = any_ident
-        .clone()
-        .then_ignore(just(Token::Eq))
-        .then(arg_expr.clone())
-        .map_with(|(key, value), e| Spanned::new(OverlayEntry { key, value }, sp(e.span())))
-        .labelled("overlay entry");
-
-    let overlay = just(Token::BraceOpen)
-        .ignore_then(
-            newlines
-                .clone()
-                .ignore_then(overlay_entry)
-                .repeated()
-                .collect::<Vec<_>>(),
-        )
-        .then_ignore(newlines.clone())
-        .then_ignore(just(Token::BraceClose))
-        .labelled("overlay");
-
-    let need_decl = just(Token::Need)
-        .ignore_then(effect_ident.clone())
-        .then(just(Token::As).ignore_then(ident.clone()).or_not())
-        .then(overlay.or_not())
-        .map_with(|((effect, alias), overlay), e| {
-            Spanned::new(
-                NeedDecl {
-                    effect,
-                    alias,
-                    overlay: overlay.unwrap_or_default(),
-                },
-                sp(e.span()),
-            )
-        })
-        .labelled("need declaration");
-
     // ── import ──
 
     let fn_import_name = ident
@@ -453,7 +434,7 @@ where
 
     let fn_def = just(Token::Fn)
         .ignore_then(ident.clone())
-        .then(params)
+        .then(params.clone())
         .then(
             just(Token::BraceOpen)
                 .ignore_then(
@@ -471,6 +452,142 @@ where
         })
         .labelled("function definition");
 
+    // ── pure function definition ──
+
+    let pure_arg_expr = recursive(|pure_arg_expr| {
+        let string_lit = select! {
+            Token::String(fragments) => PureAstExpr::String(string_to_expr(fragments)),
+        }
+        .map_with(|e, x| Spanned::new(e, sp(x.span())))
+        .labelled("string literal");
+
+        let var = select! {
+            Token::Interpolation(s) => PureAstExpr::Var(s.to_string()),
+        }
+        .map_with(|e, x| Spanned::new(e, sp(x.span())))
+        .labelled("interpolation");
+
+        let call = ident
+            .clone()
+            .then(
+                pure_arg_expr
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing()
+                    .collect::<Vec<_>>()
+                    .delimited_by(just(Token::ParenOpen), just(Token::ParenClose)),
+            )
+            .map_with(|(name, args), e| {
+                Spanned::new(PureAstExpr::Call(PureCallExpr { name, args }), sp(e.span()))
+            })
+            .labelled("function call");
+
+        let number_lit = select! {
+            Token::Number(n) => PureAstExpr::String(AstStringExpr {
+                parts: vec![AstStringPart::Literal(n.to_string())],
+            }),
+        }
+        .map_with(|e, x| Spanned::new(e, sp(x.span())))
+        .labelled("number");
+
+        let ident_var = ident
+            .clone()
+            .map(|name| Spanned::new(PureAstExpr::Var(name.node), name.span))
+            .labelled("variable");
+
+        choice((string_lit, var, call, number_lit, ident_var))
+    })
+    .labelled("pure argument expression");
+
+    let overlay_entry = any_ident
+        .clone()
+        .then_ignore(just(Token::Eq))
+        .then(pure_arg_expr.clone())
+        .map_with(|(key, value), e| Spanned::new(OverlayEntry { key, value }, sp(e.span())))
+        .labelled("overlay entry");
+
+    let overlay = just(Token::BraceOpen)
+        .ignore_then(
+            newlines
+                .clone()
+                .ignore_then(overlay_entry)
+                .repeated()
+                .collect::<Vec<_>>(),
+        )
+        .then_ignore(newlines.clone())
+        .then_ignore(just(Token::BraceClose))
+        .labelled("overlay");
+
+    let need_decl = just(Token::Need)
+        .ignore_then(effect_ident.clone())
+        .then(just(Token::As).ignore_then(ident.clone()).or_not())
+        .then(overlay.or_not())
+        .map_with(|((effect, alias), overlay), e| {
+            Spanned::new(
+                NeedDecl {
+                    effect,
+                    alias,
+                    overlay: overlay.unwrap_or_default(),
+                },
+                sp(e.span()),
+            )
+        })
+        .labelled("need declaration");
+
+    let pure_expr = pure_arg_expr.clone().labelled("pure expression");
+
+    let pure_let_stmt = just(Token::Let)
+        .ignore_then(ident.clone())
+        .then(just(Token::Eq).ignore_then(pure_expr.clone()).or_not())
+        .map_with(|(name, value), e| {
+            Spanned::new(PureAstStmt::Let(PureLetStmt { name, value }), sp(e.span()))
+        })
+        .labelled("variable declaration");
+
+    let pure_assign_stmt = ident
+        .clone()
+        .then_ignore(just(Token::Eq))
+        .then(pure_expr.clone())
+        .map_with(|(name, value), e| {
+            Spanned::new(
+                PureAstStmt::Assign(PureAssignStmt { name, value }),
+                sp(e.span()),
+            )
+        })
+        .labelled("assignment");
+
+    let pure_comment_stmt = select! { Token::Comment(s) => PureAstStmt::Comment(s.to_string()) }
+        .map_with(|s, e| Spanned::new(s, sp(e.span())))
+        .labelled("comment");
+
+    let pure_expr_stmt = pure_expr
+        .clone()
+        .map(|spanned| Spanned::new(PureAstStmt::Expr(spanned.node), spanned.span))
+        .labelled("expression");
+
+    let pure_stmt = choice((pure_let_stmt, pure_assign_stmt, pure_comment_stmt, pure_expr_stmt))
+        .labelled("pure statement");
+
+    let pure_fn_def = just(Token::Pure)
+        .ignore_then(just(Token::Fn))
+        .ignore_then(ident.clone())
+        .then(params.clone())
+        .then(
+            just(Token::BraceOpen)
+                .ignore_then(
+                    newlines
+                        .clone()
+                        .ignore_then(pure_stmt)
+                        .repeated()
+                        .collect::<Vec<_>>(),
+                )
+                .then_ignore(newlines.clone())
+                .then_ignore(just(Token::BraceClose)),
+        )
+        .map_with(|((name, params), body), e| {
+            Spanned::new(Item::PureFn(PureFnDef { name, params, body }), sp(e.span()))
+        })
+        .labelled("pure function definition");
+
     // ── effect definition ──
 
     let effect_comment = select! { Token::Comment(s) => EffectItem::Comment(s.to_string()) }
@@ -482,9 +599,9 @@ where
         .labelled("need declaration");
     let effect_let = just(Token::Let)
         .ignore_then(ident.clone())
-        .then(just(Token::Eq).ignore_then(expr.clone()).or_not())
+        .then(just(Token::Eq).ignore_then(pure_expr.clone()).or_not())
         .map_with(|(name, value), e| {
-            Spanned::new(EffectItem::Let(LetStmt { name, value }), sp(e.span()))
+            Spanned::new(EffectItem::Let(PureLetStmt { name, value }), sp(e.span()))
         })
         .labelled("variable declaration");
     let effect_shell = shell_block
@@ -551,9 +668,9 @@ where
         .labelled("need declaration");
     let test_let = just(Token::Let)
         .ignore_then(ident.clone())
-        .then(just(Token::Eq).ignore_then(expr).or_not())
+        .then(just(Token::Eq).ignore_then(pure_expr).or_not())
         .map_with(|(name, value), e| {
-            Spanned::new(TestItem::Let(LetStmt { name, value }), sp(e.span()))
+            Spanned::new(TestItem::Let(PureLetStmt { name, value }), sp(e.span()))
         })
         .labelled("variable declaration");
     let test_shell = shell_block
@@ -607,7 +724,7 @@ where
     .map_with(|item, e| Spanned::new(item, sp(e.span())))
     .labelled("condition marker");
 
-    let item = choice((import, fn_def, effect_def, test_def, marker, comment)).labelled("module item");
+    let item = choice((import, pure_fn_def, fn_def, effect_def, test_def, marker, comment)).labelled("module item");
 
     // ── module ──
 
