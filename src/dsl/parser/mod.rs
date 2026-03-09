@@ -18,11 +18,11 @@ fn marker_data_to_decl(m: MarkerData<'_>) -> MarkerDecl {
         "flaky" => MarkerKind::Flaky,
         _ => unreachable!(),
     };
-    let modifier = match m.modifier {
+    let modifier = m.modifier.map(|s| match s {
         "if" => CondModifier::If,
         "unless" => CondModifier::Unless,
         _ => unreachable!(),
-    };
+    });
     let condition = match (m.op, m.value) {
         (Some('='), Some(v)) => Some(MarkerCondition::Eq(v.to_string())),
         (Some('?'), Some(v)) => Some(MarkerCondition::Regex(v.to_string())),
@@ -31,7 +31,7 @@ fn marker_data_to_decl(m: MarkerData<'_>) -> MarkerDecl {
     MarkerDecl {
         kind,
         modifier,
-        var: m.var.to_string(),
+        var: m.var.map(|s| s.to_string()),
         condition,
     }
 }
@@ -1876,8 +1876,8 @@ mod tests {
                 assert_eq!(t.markers.len(), 1);
                 let decl = &t.markers[0].node;
                 assert_eq!(decl.kind, MarkerKind::Skip);
-                assert_eq!(decl.modifier, CondModifier::Unless);
-                assert_eq!(decl.var, "CI");
+                assert_eq!(decl.modifier, Some(CondModifier::Unless));
+                assert_eq!(decl.var.as_deref(), Some("CI"));
                 assert!(decl.condition.is_none());
             }
             other => panic!("expected Test, got {other:?}"),
@@ -1893,8 +1893,8 @@ mod tests {
                 assert_eq!(e.markers.len(), 1);
                 let decl = &e.markers[0].node;
                 assert_eq!(decl.kind, MarkerKind::Run);
-                assert_eq!(decl.modifier, CondModifier::If);
-                assert_eq!(decl.var, "PLATFORM");
+                assert_eq!(decl.modifier, Some(CondModifier::If));
+                assert_eq!(decl.var.as_deref(), Some("PLATFORM"));
                 assert_eq!(
                     decl.condition,
                     Some(MarkerCondition::Eq("linux".into()))
@@ -1913,12 +1913,29 @@ mod tests {
                 assert_eq!(t.markers.len(), 1);
                 let decl = &t.markers[0].node;
                 assert_eq!(decl.kind, MarkerKind::Skip);
-                assert_eq!(decl.modifier, CondModifier::Unless);
-                assert_eq!(decl.var, "ARCH");
+                assert_eq!(decl.modifier, Some(CondModifier::Unless));
+                assert_eq!(decl.var.as_deref(), Some("ARCH"));
                 assert_eq!(
                     decl.condition,
                     Some(MarkerCondition::Regex("^(x86|arm)".into()))
                 );
+            }
+            other => panic!("expected Test, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_bare_marker_before_test() {
+        let src = "[skip]\ntest \"t\" {\n  shell s {\n    > hi\n  }\n}\n";
+        let m = parse_ok(src);
+        match &m.items[0].node {
+            Item::Test(t) => {
+                assert_eq!(t.markers.len(), 1);
+                let decl = &t.markers[0].node;
+                assert_eq!(decl.kind, MarkerKind::Skip);
+                assert!(decl.modifier.is_none());
+                assert!(decl.var.is_none());
+                assert!(decl.condition.is_none());
             }
             other => panic!("expected Test, got {other:?}"),
         }

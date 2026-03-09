@@ -73,6 +73,8 @@ test "<name>" {
 ## Condition Markers
 
 ```
+[skip]
+[flaky]
 [skip unless VAR]
 [skip if VAR]
 [run if VAR = value]
@@ -81,10 +83,11 @@ test "<name>" {
 ```
 
 - **Marker kinds**: `skip`, `run`, `flaky`
-- **Modifiers**: `if`, `unless`
-- **Variable**: bare environment variable name (no `${}` wrapping)
+- **Modifiers** (optional): `if`, `unless`
+- **Variable**: bare environment variable name (no `${}` wrapping); required when a modifier is present
 - **Operator** (optional): `=` (literal equality) or `?` (regex match)
 - **Value/pattern** (optional): everything after the operator until the closing `]`, trimmed
+- A bare marker (kind only, no modifier) is unconditional
 - One marker per line
 - Multiple markers stack with AND semantics (all must pass or test is skipped)
 - Placed immediately before `test` or `effect` declarations (not inside the body)
@@ -92,10 +95,13 @@ test "<name>" {
 
 | Marker | Modifier | Condition | Meaning |
 |--------|----------|-----------|---------|
+| `skip` | _(none)_ | _(unconditional)_ | always skip |
 | `skip` | `if`     | truthy    | skip when condition is true |
 | `skip` | `unless` | falsy     | skip when condition is false |
+| `run`  | _(none)_ | _(unconditional)_ | no-op (always run) |
 | `run`  | `if`     | falsy     | skip when condition is false |
 | `run`  | `unless` | truthy    | skip when condition is true |
+| `flaky`| _(none)_ | _(unconditional)_ | always mark as flaky |
 | `flaky`| `if`     | truthy    | mark as flaky when condition is true |
 | `flaky`| `unless` | falsy     | mark as flaky when condition is false |
 

@@ -85,6 +85,9 @@
 - Condition markers evaluate **before** any shells are spawned
   - Test-level markers are checked before `execute_effects`
   - Effect-level markers are checked before the effect's shells are created
+- A bare marker (kind only, no modifier) is unconditional:
+  - `[skip]` always skips, `[flaky]` always marks flaky, `[run]` is a no-op
+- A conditional marker requires a modifier (`if`/`unless`) and a variable
 - Variable lookup is ENV-only (`Arc<Env>`) — no frame variables or test-scope variables exist at evaluation time
 - Truthiness: empty string or unset variable is false, any non-empty string is true
 - `=` operator: returns the value if it equals the expected string, empty string otherwise
@@ -97,7 +100,7 @@
   - `run`: skips the test/effect when the condition is NOT met (inverse of `skip`)
   - `flaky`: marks the test as flaky (skip semantics for now; retry is a future feature)
 - Multiple markers stack with AND semantics: all conditions must pass or the test is skipped
-- Skip reason includes the marker text for diagnostics (e.g. `"skip: FOO is not set"`)
+- Skip reason includes the marker text for diagnostics (e.g. `"skip: FOO is not set"`, `"skip: unconditional"`)
 - When an effect is skipped, all tests depending on it are also skipped
 
 ## Tests

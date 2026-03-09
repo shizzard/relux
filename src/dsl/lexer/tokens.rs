@@ -18,8 +18,8 @@ pub enum StringFragment<'a> {
 #[derive(Debug, PartialEq, Clone)]
 pub struct MarkerData<'a> {
     pub kind: &'a str,
-    pub modifier: &'a str,
-    pub var: &'a str,
+    pub modifier: Option<&'a str>,
+    pub var: Option<&'a str>,
     pub op: Option<char>,
     pub value: Option<&'a str>,
 }
@@ -143,12 +143,15 @@ impl fmt::Display for Token<'_> {
             Token::Need => write!(f, "need"),
             Token::Cleanup => write!(f, "cleanup"),
             Token::Marker(m) => {
-                write!(f, "[{} {} {}", m.kind, m.modifier, m.var)?;
-                if let Some(op) = m.op {
-                    write!(f, " {op}")?;
-                    if let Some(val) = m.value {
-                        if !val.is_empty() {
-                            write!(f, " {val}")?;
+                write!(f, "[{}", m.kind)?;
+                if let (Some(modifier), Some(var)) = (m.modifier, m.var) {
+                    write!(f, " {} {}", modifier, var)?;
+                    if let Some(op) = m.op {
+                        write!(f, " {op}")?;
+                        if let Some(val) = m.value {
+                            if !val.is_empty() {
+                                write!(f, " {val}")?;
+                            }
                         }
                     }
                 }

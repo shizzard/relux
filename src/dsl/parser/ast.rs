@@ -73,8 +73,8 @@ pub enum TestItem {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MarkerDecl {
     pub kind: MarkerKind,
-    pub modifier: CondModifier,
-    pub var: String,
+    pub modifier: Option<CondModifier>,
+    pub var: Option<String>,
     pub condition: Option<MarkerCondition>,
 }
 

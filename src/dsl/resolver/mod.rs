@@ -830,10 +830,10 @@ fn lower_marker(
         parser::MarkerKind::Run => ir::CondKind::Run,
         parser::MarkerKind::Flaky => ir::CondKind::Flaky,
     };
-    let modifier = match m.modifier {
+    let modifier = m.modifier.as_ref().map(|mod_| match mod_ {
         parser::CondModifier::If => ir::CondModifier::If,
         parser::CondModifier::Unless => ir::CondModifier::Unless,
-    };
+    });
     let test = match &m.condition {
         Some(parser::MarkerCondition::Eq(s)) => Some(ir::CondTest::Eq(s.clone())),
         Some(parser::MarkerCondition::Regex(pat)) => {
@@ -1740,12 +1740,12 @@ mod tests {
         let plan = &plans[0];
         assert_eq!(plan.test.conditions.len(), 2);
         assert!(matches!(plan.test.conditions[0].node.kind, ir::CondKind::Skip));
-        assert!(matches!(plan.test.conditions[0].node.modifier, ir::CondModifier::Unless));
-        assert_eq!(plan.test.conditions[0].node.var, "CI");
+        assert!(matches!(plan.test.conditions[0].node.modifier, Some(ir::CondModifier::Unless)));
+        assert_eq!(plan.test.conditions[0].node.var.as_deref(), Some("CI"));
         assert!(plan.test.conditions[0].node.test.is_none());
         assert!(matches!(plan.test.conditions[1].node.kind, ir::CondKind::Run));
-        assert!(matches!(plan.test.conditions[1].node.modifier, ir::CondModifier::If));
-        assert_eq!(plan.test.conditions[1].node.var, "OS");
+        assert!(matches!(plan.test.conditions[1].node.modifier, Some(ir::CondModifier::If)));
+        assert_eq!(plan.test.conditions[1].node.var.as_deref(), Some("OS"));
         assert!(matches!(plan.test.conditions[1].node.test, Some(ir::CondTest::Eq(ref s)) if s == "linux"));
     }
 
@@ -1769,6 +1769,23 @@ mod tests {
         assert_eq!(effect.conditions.len(), 1);
         assert!(matches!(effect.conditions[0].node.kind, ir::CondKind::Skip));
         assert!(matches!(effect.conditions[0].node.test, Some(ir::CondTest::Regex(ref s)) if s == "^linux"));
+    }
+
+    #[test]
+    fn test_bare_marker_lowering() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "main",
+            "[skip]\ntest \"t\" {\n  shell s {\n    > hi\n  }\n}\n",
+        );
+        let (plans, _, diags) = loader.resolve_one("main");
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        let plan = &plans[0];
+        assert_eq!(plan.test.conditions.len(), 1);
+        assert!(matches!(plan.test.conditions[0].node.kind, ir::CondKind::Skip));
+        assert!(plan.test.conditions[0].node.modifier.is_none());
+        assert!(plan.test.conditions[0].node.var.is_none());
+        assert!(plan.test.conditions[0].node.test.is_none());
     }
 
     #[test]

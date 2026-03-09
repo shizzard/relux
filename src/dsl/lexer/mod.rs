@@ -180,14 +180,38 @@ fn lex_marker<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option<MarkerData<'s
     let matched = lex.slice();
     let inner = matched[1..matched.len() - 1].trim();
 
-    let space1 = inner.find(|c: char| c.is_whitespace())?;
-    let kind = &inner[..space1];
+    let space1 = inner.find(|c: char| c.is_whitespace());
+    let kind = match space1 {
+        Some(pos) => &inner[..pos],
+        None => inner,
+    };
     match kind {
         "skip" | "run" | "flaky" => {}
         _ => return None,
     }
-    let rest = inner[space1..].trim_start();
 
+    // Bare marker: [skip], [flaky], [run]
+    let Some(space1) = space1 else {
+        return Some(MarkerData {
+            kind,
+            modifier: None,
+            var: None,
+            op: None,
+            value: None,
+        });
+    };
+    let rest = inner[space1..].trim_start();
+    if rest.is_empty() {
+        return Some(MarkerData {
+            kind,
+            modifier: None,
+            var: None,
+            op: None,
+            value: None,
+        });
+    }
+
+    // Conditional marker: modifier is required from here
     let space2 = rest.find(|c: char| c.is_whitespace())?;
     let modifier = &rest[..space2];
     match modifier {
@@ -212,8 +236,8 @@ fn lex_marker<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option<MarkerData<'s
     if rest.is_empty() {
         return Some(MarkerData {
             kind,
-            modifier,
-            var,
+            modifier: Some(modifier),
+            var: Some(var),
             op: None,
             value: None,
         });
@@ -226,8 +250,8 @@ fn lex_marker<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option<MarkerData<'s
     let val = rest[1..].trim();
     Some(MarkerData {
         kind,
-        modifier,
-        var,
+        modifier: Some(modifier),
+        var: Some(var),
         op: Some(op_char),
         value: Some(val),
     })
@@ -913,8 +937,8 @@ mod tests {
             vec![
                 Token::Marker(MarkerData {
                     kind: "skip",
-                    modifier: "unless",
-                    var: "FOO",
+                    modifier: Some("unless"),
+                    var: Some("FOO"),
                     op: None,
                     value: None,
                 }),
@@ -932,8 +956,8 @@ mod tests {
             vec![
                 Token::Marker(MarkerData {
                     kind: "run",
-                    modifier: "if",
-                    var: "BAR",
+                    modifier: Some("if"),
+                    var: Some("BAR"),
                     op: Some('='),
                     value: Some("linux"),
                 }),
@@ -951,8 +975,8 @@ mod tests {
             vec![
                 Token::Marker(MarkerData {
                     kind: "skip",
-                    modifier: "unless",
-                    var: "ARCH",
+                    modifier: Some("unless"),
+                    var: Some("ARCH"),
                     op: Some('?'),
                     value: Some("^(x86_64|aarch64)$"),
                 }),
@@ -970,8 +994,8 @@ mod tests {
             vec![
                 Token::Marker(MarkerData {
                     kind: "skip",
-                    modifier: "unless",
-                    var: "FOO",
+                    modifier: Some("unless"),
+                    var: Some("FOO"),
                     op: Some('?'),
                     value: Some("^[a-z]+$"),
                 }),
@@ -989,8 +1013,8 @@ mod tests {
             vec![
                 Token::Marker(MarkerData {
                     kind: "flaky",
-                    modifier: "if",
-                    var: "CI",
+                    modifier: Some("if"),
+                    var: Some("CI"),
                     op: None,
                     value: None,
                 }),
@@ -1007,10 +1031,67 @@ mod tests {
     }
 
     #[test]
-    fn test_marker_missing_modifier() {
+    fn test_marker_invalid_modifier_word() {
         let input = "[skip FOO]\n";
         let toks = tokens(input);
         assert!(matches!(toks[0], Token::Unrecognized(_)));
+    }
+
+    #[test]
+    fn test_bare_skip_marker() {
+        let input = "[skip]\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![
+                Token::Marker(MarkerData {
+                    kind: "skip",
+                    modifier: None,
+                    var: None,
+                    op: None,
+                    value: None,
+                }),
+                Token::Newline,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_bare_flaky_marker() {
+        let input = "[flaky]\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![
+                Token::Marker(MarkerData {
+                    kind: "flaky",
+                    modifier: None,
+                    var: None,
+                    op: None,
+                    value: None,
+                }),
+                Token::Newline,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_bare_run_marker() {
+        let input = "[run]\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![
+                Token::Marker(MarkerData {
+                    kind: "run",
+                    modifier: None,
+                    var: None,
+                    op: None,
+                    value: None,
+                }),
+                Token::Newline,
+            ]
+        );
     }
 
     #[test]
@@ -1022,8 +1103,8 @@ mod tests {
             vec![
                 Token::Marker(MarkerData {
                     kind: "run",
-                    modifier: "if",
-                    var: "OS",
+                    modifier: Some("if"),
+                    var: Some("OS"),
                     op: Some('='),
                     value: Some("hello world"),
                 }),

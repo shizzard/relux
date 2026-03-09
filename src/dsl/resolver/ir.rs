@@ -145,8 +145,8 @@ pub enum CondTest {
 #[derive(Debug, Clone)]
 pub struct Condition {
     pub kind: CondKind,
-    pub modifier: CondModifier,
-    pub var: String,
+    pub modifier: Option<CondModifier>,
+    pub var: Option<String>,
     pub test: Option<CondTest>,
 }
 

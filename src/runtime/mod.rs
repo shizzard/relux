@@ -67,7 +67,16 @@ fn evaluate_conditions(
     env: &Env,
 ) -> Option<String> {
     for cond in conditions {
-        let raw = env.get(&cond.node.var).cloned().unwrap_or_default();
+        // Bare (unconditional) markers: no variable or modifier
+        let Some(ref var) = cond.node.var else {
+            match cond.node.kind {
+                ir::CondKind::Skip => return Some("skip: unconditional".to_string()),
+                ir::CondKind::Run => continue,
+                ir::CondKind::Flaky => return Some("flaky: unconditional".to_string()),
+            }
+        };
+
+        let raw = env.get(var).cloned().unwrap_or_default();
 
         let result_value = match &cond.node.test {
             None => raw.clone(),
@@ -89,7 +98,9 @@ fn evaluate_conditions(
 
         let truthy = !result_value.is_empty();
 
-        let should_act = match cond.node.modifier {
+        let modifier = cond.node.modifier.as_ref()
+            .expect("modifier must be set when var is set");
+        let should_act = match modifier {
             ir::CondModifier::If => truthy,
             ir::CondModifier::Unless => !truthy,
         };
@@ -98,9 +109,9 @@ fn evaluate_conditions(
             ir::CondKind::Skip => {
                 if should_act {
                     let reason = if raw.is_empty() {
-                        format!("skip: {} is not set", cond.node.var)
+                        format!("skip: {var} is not set")
                     } else {
-                        format!("skip: {} = {:?}", cond.node.var, raw)
+                        format!("skip: {var} = {raw:?}")
                     };
                     return Some(reason);
                 }
@@ -108,9 +119,9 @@ fn evaluate_conditions(
             ir::CondKind::Run => {
                 if !should_act {
                     let reason = if raw.is_empty() {
-                        format!("run condition not met: {} is not set", cond.node.var)
+                        format!("run condition not met: {var} is not set")
                     } else {
-                        format!("run condition not met: {} = {:?}", cond.node.var, raw)
+                        format!("run condition not met: {var} = {raw:?}")
                     };
                     return Some(reason);
                 }
@@ -118,9 +129,9 @@ fn evaluate_conditions(
             ir::CondKind::Flaky => {
                 if should_act {
                     let reason = if raw.is_empty() {
-                        format!("flaky: {} is not set", cond.node.var)
+                        format!("flaky: {var} is not set")
                     } else {
-                        format!("flaky: {} = {:?}", cond.node.var, raw)
+                        format!("flaky: {var} = {raw:?}")
                     };
                     return Some(reason);
                 }
@@ -872,15 +883,15 @@ mod tests {
 
     fn make_cond(
         kind: ir::CondKind,
-        modifier: ir::CondModifier,
-        var: &str,
+        modifier: Option<ir::CondModifier>,
+        var: Option<&str>,
         test: Option<ir::CondTest>,
     ) -> Spanned<ir::Condition> {
         Spanned::new(
             ir::Condition {
                 kind,
                 modifier,
-                var: var.to_string(),
+                var: var.map(|s| s.to_string()),
                 test,
             },
             Span::new(0, 0..0),
@@ -891,8 +902,8 @@ mod tests {
     fn skip_unless_unset_var() {
         let conds = vec![make_cond(
             ir::CondKind::Skip,
-            ir::CondModifier::Unless,
-            "MISSING",
+            Some(ir::CondModifier::Unless),
+            Some("MISSING"),
             None,
         )];
         let env = Env::new();
@@ -905,8 +916,8 @@ mod tests {
     fn skip_unless_set_var() {
         let conds = vec![make_cond(
             ir::CondKind::Skip,
-            ir::CondModifier::Unless,
-            "CI",
+            Some(ir::CondModifier::Unless),
+            Some("CI"),
             None,
         )];
         let mut env = Env::new();
@@ -918,8 +929,8 @@ mod tests {
     fn skip_if_set_var() {
         let conds = vec![make_cond(
             ir::CondKind::Skip,
-            ir::CondModifier::If,
-            "CI",
+            Some(ir::CondModifier::If),
+            Some("CI"),
             None,
         )];
         let mut env = Env::new();
@@ -933,8 +944,8 @@ mod tests {
     fn run_if_matching_literal() {
         let conds = vec![make_cond(
             ir::CondKind::Run,
-            ir::CondModifier::If,
-            "OS",
+            Some(ir::CondModifier::If),
+            Some("OS"),
             Some(ir::CondTest::Eq("linux".into())),
         )];
         let mut env = Env::new();
@@ -946,8 +957,8 @@ mod tests {
     fn run_if_not_matching_literal() {
         let conds = vec![make_cond(
             ir::CondKind::Run,
-            ir::CondModifier::If,
-            "OS",
+            Some(ir::CondModifier::If),
+            Some("OS"),
             Some(ir::CondTest::Eq("linux".into())),
         )];
         let mut env = Env::new();
@@ -961,8 +972,8 @@ mod tests {
     fn skip_unless_regex_match() {
         let conds = vec![make_cond(
             ir::CondKind::Skip,
-            ir::CondModifier::Unless,
-            "ARCH",
+            Some(ir::CondModifier::Unless),
+            Some("ARCH"),
             Some(ir::CondTest::Regex("^(x86_64|aarch64)$".into())),
         )];
         let mut env = Env::new();
@@ -974,8 +985,8 @@ mod tests {
     fn skip_unless_regex_no_match() {
         let conds = vec![make_cond(
             ir::CondKind::Skip,
-            ir::CondModifier::Unless,
-            "ARCH",
+            Some(ir::CondModifier::Unless),
+            Some("ARCH"),
             Some(ir::CondTest::Regex("^(x86_64|aarch64)$".into())),
         )];
         let mut env = Env::new();
@@ -987,11 +998,11 @@ mod tests {
     #[test]
     fn multiple_conditions_all_pass() {
         let conds = vec![
-            make_cond(ir::CondKind::Skip, ir::CondModifier::Unless, "CI", None),
+            make_cond(ir::CondKind::Skip, Some(ir::CondModifier::Unless), Some("CI"), None),
             make_cond(
                 ir::CondKind::Run,
-                ir::CondModifier::If,
-                "OS",
+                Some(ir::CondModifier::If),
+                Some("OS"),
                 Some(ir::CondTest::Eq("linux".into())),
             ),
         ];
@@ -1004,11 +1015,11 @@ mod tests {
     #[test]
     fn multiple_conditions_second_fails() {
         let conds = vec![
-            make_cond(ir::CondKind::Skip, ir::CondModifier::Unless, "CI", None),
+            make_cond(ir::CondKind::Skip, Some(ir::CondModifier::Unless), Some("CI"), None),
             make_cond(
                 ir::CondKind::Run,
-                ir::CondModifier::If,
-                "OS",
+                Some(ir::CondModifier::If),
+                Some("OS"),
                 Some(ir::CondTest::Eq("linux".into())),
             ),
         ];
@@ -1023,8 +1034,8 @@ mod tests {
     fn flaky_if_set() {
         let conds = vec![make_cond(
             ir::CondKind::Flaky,
-            ir::CondModifier::If,
-            "CI",
+            Some(ir::CondModifier::If),
+            Some("CI"),
             None,
         )];
         let mut env = Env::new();
@@ -1032,6 +1043,31 @@ mod tests {
         let result = evaluate_conditions(&conds, &env);
         assert!(result.is_some());
         assert!(result.unwrap().contains("flaky"));
+    }
+
+    #[test]
+    fn bare_skip_unconditionally_skips() {
+        let conds = vec![make_cond(ir::CondKind::Skip, None, None, None)];
+        let env = Env::new();
+        let result = evaluate_conditions(&conds, &env);
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("skip: unconditional"));
+    }
+
+    #[test]
+    fn bare_run_is_noop() {
+        let conds = vec![make_cond(ir::CondKind::Run, None, None, None)];
+        let env = Env::new();
+        assert!(evaluate_conditions(&conds, &env).is_none());
+    }
+
+    #[test]
+    fn bare_flaky_unconditionally_flaky() {
+        let conds = vec![make_cond(ir::CondKind::Flaky, None, None, None)];
+        let env = Env::new();
+        let result = evaluate_conditions(&conds, &env);
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("flaky: unconditional"));
     }
 
     #[test]
