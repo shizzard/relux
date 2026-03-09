@@ -1,0 +1,10 @@
+test "run exits 1 for non-existent file" {
+    """
+    Verify relux run reports a clear error when given a non-existent file path.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && relux run relux/tests/nonexistent.relux 2>&1
+        <? ^error: file not found: relux/tests/nonexistent\.relux$
+        match_exit_code(1)
+    }
+}

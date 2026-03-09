@@ -176,8 +176,11 @@ pub fn resolve_paths(paths: &[PathBuf]) -> Vec<PathBuf> {
     for path in paths {
         if path.is_dir() {
             files.extend(discover_relux_files(path));
-        } else {
+        } else if path.exists() {
             files.push(path.clone());
+        } else {
+            eprintln!("error: file not found: {}", path.display());
+            std::process::exit(1);
         }
     }
     files.sort();
