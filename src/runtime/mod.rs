@@ -182,6 +182,10 @@ impl Runtime {
             "__RELUX_SHELL_PROMPT".to_string(),
             run_context.shell_prompt.clone(),
         );
+        env.insert(
+            "__RELUX_SUITE_ROOT".to_string(),
+            run_context.project_root.display().to_string(),
+        );
         Self {
             env: Arc::new(env),
             source_map,
@@ -264,12 +268,25 @@ impl Runtime {
             .to_string()
     }
 
+    fn plan_env(&self, plan: &Plan) -> Arc<Env> {
+        let mut env = (*self.env).clone();
+        let test_file = &self.source_map.files[plan.test.span.file].path;
+        if let Some(dir) = test_file.parent() {
+            env.insert(
+                "__RELUX_TEST_ROOT".to_string(),
+                dir.display().to_string(),
+            );
+        }
+        Arc::new(env)
+    }
+
     async fn run_plan_inner(&self, plan: Plan) -> TestResult {
         let test_start = Instant::now();
         let test_name = plan.test.name.node.clone();
         let test_path = self.compute_test_path(&plan);
         let code_server = Arc::new(CodeServer::new(plan.functions.clone()));
         let mut shell_logs = HashMap::new();
+        let env = self.plan_env(&plan);
 
         let log_dir = self.compute_test_log_dir(&plan);
         let _ = std::fs::create_dir_all(&log_dir);
@@ -282,7 +299,7 @@ impl Runtime {
         let printer_handle = progress::spawn_printer(progress_rx);
 
         if let Some(reason) =
-            evaluate_conditions(&plan.test.conditions, &self.env)
+            evaluate_conditions(&plan.test.conditions, &env)
         {
             drop(progress_tx);
             let progress_string = printer_handle.await.unwrap_or_default();
@@ -315,6 +332,7 @@ impl Runtime {
                 &log_dir,
                 test_start,
                 &event_collector,
+                &env,
             )
             .await;
 
@@ -327,7 +345,7 @@ impl Runtime {
                         let vars = ScopeStack::new(
                             test_scope.clone(),
                             HashMap::new(),
-                            self.env.clone(),
+                            env.clone(),
                             self.default_timeout,
                         );
                         self.eval_static_expr(expr, &vars).await.unwrap_or_default()
@@ -349,6 +367,7 @@ impl Runtime {
                     &log_dir,
                     test_start,
                     &event_collector,
+                    &env,
                 )
                 .await
             }
@@ -361,6 +380,7 @@ impl Runtime {
             &log_dir,
             test_start,
             &event_collector,
+            &env,
         )
         .await;
         // Drop alias references before teardown so Arc::try_unwrap
@@ -373,6 +393,7 @@ impl Runtime {
             &log_dir,
             test_start,
             &event_collector,
+            &env,
         )
         .await;
 
@@ -430,6 +451,7 @@ impl Runtime {
         log_dir: &Path,
         test_start: Instant,
         event_collector: &EventCollector,
+        env: &Arc<Env>,
     ) -> EffectExecution {
         let mut effect_state = EffectExecution::default();
         let order = match toposort(&plan.effect_graph.dag, None) {
@@ -450,13 +472,13 @@ impl Runtime {
             let Some(instance) = plan.effect_graph.dag.node_weight(instance_id).cloned() else {
                 continue;
             };
-            let overlay = self.interpolate_overlay(&instance.overlay);
+            let overlay = self.interpolate_overlay(&instance.overlay, env);
             let effect = &plan.effects[instance.effect];
             let _ = progress_tx.send(ProgressEvent::EffectSetup(effect.name.node.clone()));
             event_collector.push("", LogEventKind::EffectSetup { effect: effect.name.node.clone() }).await;
 
             if let Some(reason) =
-                evaluate_conditions(&effect.conditions, &self.env)
+                evaluate_conditions(&effect.conditions, env)
             {
                 let reason = format!("effect {} skipped: {reason}", effect.name.node);
                 effect_state.outcome = Some(Outcome::Skipped(reason));
@@ -488,7 +510,7 @@ impl Runtime {
             for var in &effect.vars {
                 let value = if let Some(expr) = &var.node.value {
                     let vars =
-                        ScopeStack::new(effect_scope.clone(), overlay.clone(), self.env.clone(), self.default_timeout);
+                        ScopeStack::new(effect_scope.clone(), overlay.clone(), env.clone(), self.default_timeout);
                     match self.eval_static_expr(expr, &vars).await {
                         Ok(v) => v,
                         Err(f) => {
@@ -513,7 +535,7 @@ impl Runtime {
                         let scope = ScopeStack::new(
                             effect_scope.clone(),
                             overlay.clone(),
-                            self.env.clone(),
+                            env.clone(),
                             self.default_timeout,
                         );
                         match Vm::new(
@@ -604,6 +626,7 @@ impl Runtime {
         log_dir: &Path,
         test_start: Instant,
         event_collector: &EventCollector,
+        env: &Arc<Env>,
     ) -> Outcome {
         let mut local_shells: HashMap<String, SharedVm> = HashMap::new();
         for block in &plan.test.shells {
@@ -615,7 +638,7 @@ impl Runtime {
             } else if let Some(vm) = local_shells.get(&shell_name).cloned() {
                 vm
             } else {
-                let scope = ScopeStack::new(test_scope.clone(), HashMap::new(), self.env.clone(), self.default_timeout);
+                let scope = ScopeStack::new(test_scope.clone(), HashMap::new(), env.clone(), self.default_timeout);
                 let vm = match Vm::new(
                     shell_name.clone(),
                     self.shell_prompt.clone(),
@@ -653,11 +676,12 @@ impl Runtime {
         log_dir: &Path,
         test_start: Instant,
         event_collector: &EventCollector,
+        env: &Arc<Env>,
     ) {
         if let Some(cleanup) = &plan.test.cleanup {
             let _ = progress_tx.send(ProgressEvent::Cleanup);
             let test_scope = Arc::new(Mutex::new(TestScope::new()));
-            let scope = ScopeStack::new(test_scope, HashMap::new(), self.env.clone(), self.default_timeout);
+            let scope = ScopeStack::new(test_scope, HashMap::new(), env.clone(), self.default_timeout);
             let code_server = Arc::new(CodeServer::new(plan.functions.clone()));
             event_collector.push("", LogEventKind::Cleanup { shell: "__cleanup".to_string() }).await;
             if let Ok(mut vm) = Vm::new(
@@ -692,6 +716,7 @@ impl Runtime {
         log_dir: &Path,
         test_start: Instant,
         event_collector: &EventCollector,
+        env: &Arc<Env>,
     ) {
         let mut order = match toposort(&plan.effect_graph.dag, None) {
             Ok(v) => v,
@@ -710,8 +735,8 @@ impl Runtime {
                 event_collector.push("", LogEventKind::EffectTeardown { effect: effect.name.node.clone() }).await;
                 event_collector.push("", LogEventKind::Cleanup { shell: cleanup_name.clone() }).await;
                 let test_scope = Arc::new(Mutex::new(TestScope::new()));
-                let overlay = self.interpolate_overlay(&instance_state.info.overlay);
-                let scope = ScopeStack::new(test_scope, overlay, self.env.clone(), self.default_timeout);
+                let overlay = self.interpolate_overlay(&instance_state.info.overlay, env);
+                let scope = ScopeStack::new(test_scope, overlay, env.clone(), self.default_timeout);
                 let code_server = Arc::new(CodeServer::new(Vec::new()));
                 if let Ok(mut vm) = Vm::new(
                     cleanup_name,
@@ -739,12 +764,12 @@ impl Runtime {
         }
     }
 
-    fn interpolate_overlay(&self, overlay: &[ir::OverlayEntry]) -> HashMap<String, String> {
+    fn interpolate_overlay(&self, overlay: &[ir::OverlayEntry], env: &Arc<Env>) -> HashMap<String, String> {
         overlay
             .iter()
             .map(|entry| {
                 let v =
-                    interpolate_with_lookup(&entry.value.node, |name| self.env.get(name).cloned());
+                    interpolate_with_lookup(&entry.value.node, |name| env.get(name).cloned());
                 (entry.key.node.clone(), v)
             })
             .collect()

@@ -26,7 +26,8 @@ fn truncate_before(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
-        format!("...{}", &s[s.len() - max..])
+        let start = s.ceil_char_boundary(s.len() - max);
+        format!("...{}", &s[start..])
     }
 }
 
@@ -34,7 +35,8 @@ fn truncate_after(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
-        format!("{}...", &s[..max])
+        let end = s.floor_char_boundary(max);
+        format!("{}...", &s[..end])
     }
 }
 
