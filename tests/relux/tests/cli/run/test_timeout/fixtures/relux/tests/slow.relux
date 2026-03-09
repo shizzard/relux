@@ -1,0 +1,7 @@
+test "will exceed test timeout" ~100ms {
+    shell s {
+        sleep("200ms")
+        > echo done
+        <? ^done$
+    }
+}

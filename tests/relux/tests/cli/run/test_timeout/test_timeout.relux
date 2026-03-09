@@ -1,0 +1,14 @@
+test "run reports inline test timeout exceeded" ~2s {
+    """
+    Verify relux run fails when a test exceeds its inline per-test timeout.
+
+    The inner fixture has a 100ms test timeout with a 200ms sleep,
+    so it must fail with a "test timeout" message.
+    """
+    shell s {
+        > relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? test timeout.*exceeded
+        match_prompt()
+        match_exit_code(1)
+    }
+}

@@ -10,7 +10,7 @@ just e2e              # run all e2e tests
 just e2e relux/tests/operators/  # run a single group
 ```
 
-## Test Groups
+## Implemented Test Groups
 
 ### `operators/` — Shell send/match operators
 
@@ -23,6 +23,8 @@ Core interaction primitives: sending input and matching output.
 - `timed_match.relux` — `<~dur?` and `<~dur=` inline timeout overrides
 - `timed_neg_match.relux` — `<~dur!?` and `<~dur!=` inline timeout on negative matches
 - `fail_pattern.relux` — `!?` and `!=` fail pattern operators
+- `clear_fail_pattern.relux` — bare `!?` and `!=` to clear active fail patterns
+- `buffer_reset.relux` — bare `<?` and `<=` to discard unmatched output and advance cursor
 - `timeout.relux` — `~dur` scoped timeout
 
 ### `variables/` — Variable system
@@ -48,13 +50,6 @@ Core interaction primitives: sending input and matching output.
 - `deduplication.relux` — same identity tuple reuses instance, different overlays create separate instances
 - `cleanup.relux` — effect cleanup blocks, reverse dependency order, test-level cleanup
 
-### `markers/` — Condition markers
-
-- `skip.relux` — `[skip if/unless VAR]`
-- `run.relux` — `[run if/unless VAR]`
-- `flaky.relux` — `[flaky if/unless VAR]`
-- `stacking.relux` — multiple markers with AND semantics
-
 ### `bifs/` — Built-in functions
 
 - `string_ops.relux` — `trim`, `upper`, `lower`, `replace`, `len`, `split`
@@ -68,33 +63,65 @@ Core interaction primitives: sending input and matching output.
 - `selective.relux` — selective import of functions and effects by name
 - `aliases.relux` — `as` aliases for imported functions and effects
 
-### `lexer/` — Tokenization edge cases
+### `cli/` — Binary interface (meta-tests)
 
-- `escapes.relux` — `$$` dollar escape, string escape sequences
-- `interpolation.relux` — `${var}` and `${1}` in various positions
-- `operators.relux` — operator token boundaries, whitespace sensitivity
+Each subdirectory is a self-contained mini-project with a `.relux` meta-test
+that invokes the `relux` binary and verifies its output or exit code.
 
-### `parser/` — Syntax validation
+#### `cli/check/` — Static analysis diagnostics
 
-- `error_messages.relux` — diagnostic output for malformed input
-- `edge_cases.relux` — empty blocks, trailing commas, blank lines
+- `parse_bad_fn_def/` — rejects function definitions without a name
+- `parse_bad_import/` — rejects import statements without a module path
+- `parse_bad_operator/` — rejects invalid operators in shell blocks
+- `parse_missing_brace/` — rejects test bodies with missing closing braces
+- `parse_missing_test_name/` — rejects test definitions without a name string
+- `undefined_name/` — detects calls to undefined functions
+- `undefined_variable/` — detects use of undefined variables
+- `wrong_arity/` — detects function calls with wrong number of arguments
+- `invalid_regex/` — detects invalid regex patterns in condition markers
+- `invalid_timeout/` — detects unparseable timeout durations
+- `module_not_found/` — detects import of nonexistent modules
+- `circular_import/` — detects circular module imports
+- `circular_effect_dep/` — detects circular effect dependencies
+- `duplicate_definition/` — detects duplicate function definitions via imports
+- `import_not_exported/` — detects selective import of names not exported by the module
 
-### `resolver/` — Name resolution and imports
+#### `cli/run/` — Test execution behaviour
 
-- `imports.relux` — wildcard, selective, aliases
-- `circular_deps.relux` — circular import detection
-- `undefined_names.relux` — undefined function/effect/variable diagnostics
-- `effect_graph.relux` — effect dependency graph construction
+- `valid_check/` — exits with code 0 and prints "check passed" for a valid project
+- `exit_code_pass/` — exits with code 0 when all tests pass
+- `exit_code_fail/` — exits with code 1 when any test fails
+- `match_timeout/` — reports match timeout when a pattern is never found
+- `fail_pattern/` — reports when a fail pattern matches output
+- `negative_match_failed/` — reports when a negative match finds the unwanted pattern
+- `fail_fast/` — stops after the first test failure with `--strategy fail-fast`
+- `file_not_found/` — reports a clear error for non-existent test file paths
+- `tap_output/` — generates valid TAP14 results file with `--tap`
+- `junit_output/` — generates valid JUnit XML results file with `--junit`
+- `test_timeout/` — fails when a test exceeds its inline per-test timeout (`test "name" ~100ms { ... }`)
 
-### `cli/` — Binary interface
+#### `cli/marker/` — Condition markers
 
-- `subcommands.relux` — `new`, `run`, `check`, `dump`
-- `flags.relux` — `--tap`, `--junit`, `--progress`, `--strategy`
-- `exit_codes.relux` — correct exit codes for pass/fail/error
+- `skip_unconditional/` — bare `@skip` unconditionally skips the test
+- `skip_if/` — skips when condition variable is set; runs when unset
+- `skip_if_eq/` — skips when variable equals value; runs when different or unset
+- `skip_unless/` — runs when condition variable is set; skips when unset
+- `skip_unless_regex/` — runs when variable matches pattern; skips when not matching or unset
+- `run_if/` — runs when condition variable is set; skips when unset
+- `run_unless/` — skips when condition variable is set; runs when unset
+- `flaky/` — flaky marker causes the test to be reported as skipped
+- `multiple/` — multiple markers with AND semantics
 
-### `reporting/` — Output formats
+## Covered Elsewhere
 
-- `tap.relux` — TAP artifact generation
-- `junit.relux` — JUnit XML output
-- `html.relux` — HTML summary report
-- `diagnostics.relux` — ariadne error annotation output
+The following empty directories exist in `tests/` but their coverage lives in
+unit tests or the `cli/` meta-tests above. They are kept as placeholders but
+have no `.relux` files:
+
+| Directory | Coverage |
+|---|---|
+| `lexer/` | 66 unit tests in `src/dsl/lexer/mod.rs` |
+| `parser/` | 70 unit tests in `src/dsl/parser/mod.rs` |
+| `resolver/` | 29 unit tests in `src/dsl/resolver/mod.rs` + `cli/check/` meta-tests |
+| `markers/` | `cli/marker/` meta-tests (see above) |
+| `reporting/` | `cli/run/tap_output`, `cli/run/junit_output` + unit tests in `src/runtime/tap.rs`, `src/runtime/junit.rs` |
