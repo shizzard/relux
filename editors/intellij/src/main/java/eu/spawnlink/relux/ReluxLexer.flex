@@ -182,6 +182,11 @@ CONDITION_OP = [=?]
     ","                         { return ReluxTokenTypes.COMMA; }
 }
 
+// Numbers
+<YYINITIAL> {
+    {DIGIT}+                    { return ReluxTokenTypes.NUMBER; }
+}
+
 // Identifiers and module paths
 <YYINITIAL> {
     {MODULE_PATH}               { return ReluxTokenTypes.MODULE_PATH; }

@@ -139,8 +139,9 @@ public class ReluxSyntaxHighlighter extends SyntaxHighlighterBase {
             return DOCSTRING_KEYS;
         }
 
-        // Timeout (number-like)
-        if (tokenType.equals(ReluxTokenTypes.TIMEOUT)) {
+        // Numbers and timeout
+        if (tokenType.equals(ReluxTokenTypes.NUMBER) ||
+            tokenType.equals(ReluxTokenTypes.TIMEOUT)) {
             return NUMBER_KEYS;
         }
 

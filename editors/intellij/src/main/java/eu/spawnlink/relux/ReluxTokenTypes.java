@@ -49,6 +49,7 @@ public interface ReluxTokenTypes {
     IElementType COMMA = new ReluxElementType("COMMA");
 
     // Literals
+    IElementType NUMBER = new ReluxElementType("NUMBER");
     IElementType STRING = new ReluxElementType("STRING");
     IElementType DOCSTRING = new ReluxElementType("DOCSTRING");
     IElementType INTERPOLATION = new ReluxElementType("INTERPOLATION");
