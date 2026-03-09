@@ -45,6 +45,7 @@ CAPTURE_VAR = \${DIGIT}+
 CONDITION_OP = [=?]
 
 %state IN_CONDITION_MARKER
+%state IN_CONDITION_STRING
 %state IN_OPERATOR_PAYLOAD
 %state IN_REGEX_PAYLOAD
 %state IN_STRING
@@ -81,6 +82,15 @@ CONDITION_OP = [=?]
     \$                          { return ReluxTokenTypes.STRING; }
 }
 
+// Strings inside condition markers (return to IN_CONDITION_MARKER on close)
+<IN_CONDITION_STRING> {
+    \"                          { yybegin(IN_CONDITION_MARKER); return ReluxTokenTypes.STRING; }
+    {INTERPOLATION}             { return ReluxTokenTypes.INTERPOLATION; }
+    \\. |
+    [^\"\\\$]+                  { return ReluxTokenTypes.STRING; }
+    \$                          { return ReluxTokenTypes.STRING; }
+}
+
 // Condition markers: [skip|run|flaky if|unless ...]
 <YYINITIAL> {
     "["                         { yybegin(IN_CONDITION_MARKER); return ReluxTokenTypes.LBRACKET; }
@@ -93,8 +103,9 @@ CONDITION_OP = [=?]
     "if"                        { return ReluxTokenTypes.IF; }
     "unless"                    { return ReluxTokenTypes.UNLESS; }
     {CONDITION_OP}              { return ReluxTokenTypes.CONDITION_OP; }
-    {IDENTIFIER}                { return ReluxTokenTypes.ENV_VAR; }
-    [^\]\s=?]+                  { return ReluxTokenTypes.CONDITION_VALUE; }
+    \"                          { yybegin(IN_CONDITION_STRING); return ReluxTokenTypes.STRING; }
+    {DIGIT}+                    { return ReluxTokenTypes.CONDITION_VALUE; }
+    [^\] \t\r\n=?\x22]+         { return ReluxTokenTypes.CONDITION_VALUE; }
     {SPACE}                     { return TokenType.WHITE_SPACE; }
     "]"                         { yybegin(YYINITIAL); return ReluxTokenTypes.RBRACKET; }
 }

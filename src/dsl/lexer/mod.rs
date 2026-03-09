@@ -1,12 +1,27 @@
 pub mod tokens;
 
 use logos::Logos;
-pub use tokens::{MarkerData, PayloadFragment, Spanned, StringFragment, Token};
+pub use tokens::{
+    MarkerCondBody, MarkerCondition, MarkerExpr, MarkerKind, MarkerModifier, MarkerToken,
+    PayloadFragment, Spanned, StringFragment, Token,
+};
 
 // ─── Internal Lexer Modes ───────────────────────────────────
 
 #[derive(Logos, Debug, PartialEq, Clone)]
-enum PayloadMode<'a> {
+enum DocStringMode<'a> {
+    #[token("\"\"\"")]
+    Close,
+
+    #[regex(r#"[^"]+"#)]
+    Text(&'a str),
+
+    #[regex(r#""{1,2}"#)]
+    QuotedText(&'a str),
+}
+
+#[derive(Logos, Debug, PartialEq, Clone)]
+enum RegexInterpolationMode<'a> {
     #[regex(r"\$\{[a-zA-Z_0-9]+\}", |lex| {
         let s = lex.slice();
         &s[2..s.len()-1]
@@ -19,26 +34,14 @@ enum PayloadMode<'a> {
     #[regex(r"[^\n$]+")]
     Text(&'a str),
 
-    #[regex(r"\$[^{\n$]")]
-    LiteralDollar(&'a str),
-
-    #[regex(r"\$\n")]
+    #[token("$\n", priority = 3)]
     TrailingDollar,
 
     #[token("\n")]
     Newline,
-}
 
-#[derive(Logos, Debug, PartialEq, Clone)]
-enum DocStringMode<'a> {
-    #[token("\"\"\"")]
-    Close,
-
-    #[regex(r#"[^"]+"#)]
-    Text(&'a str),
-
-    #[regex(r#""{1,2}"#)]
-    QuotedText(&'a str),
+    #[token("$")]
+    BareDollar,
 }
 
 #[derive(Logos, Debug, PartialEq, Clone)]
@@ -68,27 +71,27 @@ enum StringMode<'a> {
 // ─── Morph Callbacks ────────────────────────────────────────
 
 fn lex_payload<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option<Vec<PayloadFragment<'s>>> {
-    let mut sub = lex.clone().morph::<PayloadMode<'s>>();
+    let mut sub = lex.clone().morph::<RegexInterpolationMode<'s>>();
     let mut fragments = Vec::new();
     while let Some(result) = sub.next() {
         match result {
-            Ok(PayloadMode::Interpolation(s)) => {
+            Ok(RegexInterpolationMode::Interpolation(s)) => {
                 fragments.push(PayloadFragment::Interpolation(s));
             }
-            Ok(PayloadMode::EscapedDollar) => {
+            Ok(RegexInterpolationMode::EscapedDollar) => {
                 fragments.push(PayloadFragment::EscapedDollar);
             }
-            Ok(PayloadMode::Text(s)) => {
+            Ok(RegexInterpolationMode::Text(s)) => {
                 fragments.push(PayloadFragment::Text(s));
             }
-            Ok(PayloadMode::LiteralDollar(s)) => {
-                fragments.push(PayloadFragment::Text(s));
+            Ok(RegexInterpolationMode::BareDollar) => {
+                fragments.push(PayloadFragment::Text("$"));
             }
-            Ok(PayloadMode::TrailingDollar) => {
+            Ok(RegexInterpolationMode::TrailingDollar) => {
                 fragments.push(PayloadFragment::Text("$"));
                 break;
             }
-            Ok(PayloadMode::Newline) => break,
+            Ok(RegexInterpolationMode::Newline) => break,
             Err(_) => continue,
         }
     }
@@ -176,84 +179,164 @@ fn lex_docstring<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option<Vec<&'s st
     Some(parts)
 }
 
-fn lex_marker<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option<MarkerData<'s>> {
+fn lex_marker_string<'a>(content: &'a str) -> Option<(Vec<StringFragment<'a>>, &'a str)> {
+    if !content.starts_with('"') {
+        return None;
+    }
+    let src = &content[1..];
+    let mut sub = StringMode::lexer(src);
+    let mut fragments = Vec::new();
+    while let Some(result) = sub.next() {
+        match result {
+            Ok(StringMode::Interpolation(s)) => {
+                fragments.push(StringFragment::Interpolation(s));
+            }
+            Ok(StringMode::EscapedDollar) => {
+                fragments.push(StringFragment::Text("$"));
+            }
+            Ok(StringMode::Escape(s)) => {
+                fragments.push(StringFragment::Escape(s));
+            }
+            Ok(StringMode::Text(s)) => {
+                fragments.push(StringFragment::Text(s));
+            }
+            Ok(StringMode::LiteralDollar(s)) => {
+                fragments.push(StringFragment::Text(s));
+            }
+            Ok(StringMode::Close) => {
+                let consumed = src.len() - sub.remainder().len();
+                return Some((fragments, &content[1 + consumed..]));
+            }
+            Err(_) => continue,
+        }
+    }
+    None // unterminated string
+}
+
+fn lex_marker_expr<'a>(content: &'a str) -> Option<(MarkerExpr<'a>, &'a str)> {
+    let content = content.trim_start();
+    if content.is_empty() {
+        return None;
+    }
+    if content.starts_with('"') {
+        let (fragments, rest) = lex_marker_string(content)?;
+        Some((MarkerExpr::String(fragments), rest))
+    } else if content.as_bytes()[0].is_ascii_digit() {
+        let end = content
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(content.len());
+        if end == 0 {
+            return None;
+        }
+        Some((MarkerExpr::Number(&content[..end]), &content[end..]))
+    } else {
+        None
+    }
+}
+
+/// Lex regex content with `${var}` and `$$` interpolation.
+///
+/// Unlike `PayloadMode` (which treats every `$` as an interpolation prefix),
+/// this only splits on `${…}` and `$$`. A bare `$` (regex anchor) stays in
+/// the text fragment — the correct behavior for regex patterns.
+fn lex_marker_regex<'a>(content: &'a str) -> Vec<PayloadFragment<'a>> {
+    let mut sub = RegexInterpolationMode::lexer(content);
+    let mut fragments = Vec::new();
+    while let Some(result) = sub.next() {
+        match result {
+            Ok(RegexInterpolationMode::Interpolation(s)) => {
+                fragments.push(PayloadFragment::Interpolation(s));
+            }
+            Ok(RegexInterpolationMode::EscapedDollar) => {
+                fragments.push(PayloadFragment::EscapedDollar);
+            }
+            Ok(RegexInterpolationMode::Text(s)) => {
+                fragments.push(PayloadFragment::Text(s));
+            }
+            Ok(RegexInterpolationMode::BareDollar) => {
+                fragments.push(PayloadFragment::Text("$"));
+            }
+            Ok(RegexInterpolationMode::TrailingDollar | RegexInterpolationMode::Newline) => break,
+            Err(_) => continue,
+        }
+    }
+    fragments
+}
+
+fn lex_marker<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option<MarkerToken<'s>> {
     let matched = lex.slice();
     let inner = matched[1..matched.len() - 1].trim();
 
     let space1 = inner.find(|c: char| c.is_whitespace());
-    let kind = match space1 {
+    let kind_str = match space1 {
         Some(pos) => &inner[..pos],
         None => inner,
     };
-    match kind {
-        "skip" | "run" | "flaky" => {}
+    let kind = match kind_str {
+        "skip" => MarkerKind::Skip,
+        "run" => MarkerKind::Run,
+        "flaky" => MarkerKind::Flaky,
         _ => return None,
-    }
+    };
 
     // Bare marker: [skip], [flaky], [run]
     let Some(space1) = space1 else {
-        return Some(MarkerData {
+        return Some(MarkerToken {
             kind,
-            modifier: None,
-            var: None,
-            op: None,
-            value: None,
+            condition: None,
         });
     };
     let rest = inner[space1..].trim_start();
     if rest.is_empty() {
-        return Some(MarkerData {
+        return Some(MarkerToken {
             kind,
-            modifier: None,
-            var: None,
-            op: None,
-            value: None,
+            condition: None,
         });
     }
 
-    // Conditional marker: modifier is required from here
+    // Conditional marker: modifier is required
     let space2 = rest.find(|c: char| c.is_whitespace())?;
-    let modifier = &rest[..space2];
-    match modifier {
-        "if" | "unless" => {}
+    let modifier = match &rest[..space2] {
+        "if" => MarkerModifier::If,
+        "unless" => MarkerModifier::Unless,
         _ => return None,
-    }
+    };
     let rest = rest[space2..].trim_start();
 
     if rest.is_empty() {
         return None;
     }
 
-    let var_end = rest
-        .find(|c: char| c.is_whitespace() || c == '=' || c == '?')
-        .unwrap_or(rest.len());
-    if var_end == 0 {
-        return None;
-    }
-    let var = &rest[..var_end];
-    let rest = rest[var_end..].trim_start();
+    // Parse LHS expression
+    let (lhs, rest) = lex_marker_expr(rest)?;
+    let rest = rest.trim_start();
 
-    if rest.is_empty() {
-        return Some(MarkerData {
-            kind,
-            modifier: Some(modifier),
-            var: Some(var),
-            op: None,
-            value: None,
-        });
-    }
+    // Check what follows
+    let body = if rest.is_empty() {
+        // Truthiness check
+        MarkerCondBody::Bare(lhs)
+    } else {
+        match rest.as_bytes()[0] {
+            b'=' => {
+                let rest = rest[1..].trim_start();
+                let (rhs, trailing) = lex_marker_expr(rest)?;
+                if !trailing.trim().is_empty() {
+                    return None;
+                }
+                MarkerCondBody::Eq(lhs, rhs)
+            }
+            b'?' => {
+                let rest = rest[1..].trim_start();
+                let fragments = lex_marker_regex(rest);
+                MarkerCondBody::Regex(lhs, fragments)
+            }
+            _ => return None,
+        }
+    };
 
-    let op_char = rest.as_bytes()[0] as char;
-    if op_char != '=' && op_char != '?' {
-        return None;
-    }
-    let val = rest[1..].trim();
-    Some(MarkerData {
+    Some(MarkerToken {
         kind,
-        modifier: Some(modifier),
-        var: Some(var),
-        op: Some(op_char),
-        value: Some(val),
+        condition: Some(MarkerCondition { modifier, body }),
     })
 }
 
@@ -693,7 +776,8 @@ mod tests {
             toks,
             vec![Token::Send(vec![
                 PayloadFragment::Text(" echo "),
-                PayloadFragment::Text("$1"),
+                PayloadFragment::Text("$"),
+                PayloadFragment::Text("1"),
             ])]
         );
         let sp = spans(input);
@@ -930,17 +1014,19 @@ mod tests {
 
     #[test]
     fn test_marker_bare_var() {
-        let input = "[skip unless FOO]\n";
+        let input = "[skip unless \"${FOO}\"]\n";
         let toks = tokens(input);
         assert_eq!(
             toks,
             vec![
-                Token::Marker(MarkerData {
-                    kind: "skip",
-                    modifier: Some("unless"),
-                    var: Some("FOO"),
-                    op: None,
-                    value: None,
+                Token::Marker(MarkerToken {
+                    kind: MarkerKind::Skip,
+                    condition: Some(MarkerCondition {
+                        modifier: MarkerModifier::Unless,
+                        body: MarkerCondBody::Bare(MarkerExpr::String(vec![
+                            StringFragment::Interpolation("FOO"),
+                        ])),
+                    }),
                 }),
                 Token::Newline,
             ]
@@ -949,17 +1035,48 @@ mod tests {
 
     #[test]
     fn test_marker_literal_eq() {
-        let input = "[run if BAR = linux]\n";
+        let input = "[run if \"${BAR}\" = \"linux\"]\n";
         let toks = tokens(input);
         assert_eq!(
             toks,
             vec![
-                Token::Marker(MarkerData {
-                    kind: "run",
-                    modifier: Some("if"),
-                    var: Some("BAR"),
-                    op: Some('='),
-                    value: Some("linux"),
+                Token::Marker(MarkerToken {
+                    kind: MarkerKind::Run,
+                    condition: Some(MarkerCondition {
+                        modifier: MarkerModifier::If,
+                        body: MarkerCondBody::Eq(
+                            MarkerExpr::String(vec![
+                                StringFragment::Interpolation("BAR"),
+                            ]),
+                            MarkerExpr::String(vec![
+                                StringFragment::Text("linux"),
+                            ]),
+                        ),
+                    }),
+                }),
+                Token::Newline,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_marker_eq_number() {
+        let input = "[run if \"${COUNT}\" = 0]\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![
+                Token::Marker(MarkerToken {
+                    kind: MarkerKind::Run,
+                    condition: Some(MarkerCondition {
+                        modifier: MarkerModifier::If,
+                        body: MarkerCondBody::Eq(
+                            MarkerExpr::String(vec![
+                                StringFragment::Interpolation("COUNT"),
+                            ]),
+                            MarkerExpr::Number("0"),
+                        ),
+                    }),
                 }),
                 Token::Newline,
             ]
@@ -968,17 +1085,22 @@ mod tests {
 
     #[test]
     fn test_marker_regex() {
-        let input = "[skip unless ARCH ? ^(x86_64|aarch64)$]\n";
+        let input = "[skip unless \"${ARCH}\" ? ^(x86_64|aarch64)$]\n";
         let toks = tokens(input);
         assert_eq!(
             toks,
             vec![
-                Token::Marker(MarkerData {
-                    kind: "skip",
-                    modifier: Some("unless"),
-                    var: Some("ARCH"),
-                    op: Some('?'),
-                    value: Some("^(x86_64|aarch64)$"),
+                Token::Marker(MarkerToken {
+                    kind: MarkerKind::Skip,
+                    condition: Some(MarkerCondition {
+                        modifier: MarkerModifier::Unless,
+                        body: MarkerCondBody::Regex(
+                            MarkerExpr::String(vec![
+                                StringFragment::Interpolation("ARCH"),
+                            ]),
+                            vec![PayloadFragment::Text("^(x86_64|aarch64)"), PayloadFragment::Text("$")],
+                        ),
+                    }),
                 }),
                 Token::Newline,
             ]
@@ -987,17 +1109,22 @@ mod tests {
 
     #[test]
     fn test_marker_regex_with_bracket() {
-        let input = "[skip unless FOO ? ^[a-z]+$]\n";
+        let input = "[skip unless \"${FOO}\" ? ^[a-z]+$]\n";
         let toks = tokens(input);
         assert_eq!(
             toks,
             vec![
-                Token::Marker(MarkerData {
-                    kind: "skip",
-                    modifier: Some("unless"),
-                    var: Some("FOO"),
-                    op: Some('?'),
-                    value: Some("^[a-z]+$"),
+                Token::Marker(MarkerToken {
+                    kind: MarkerKind::Skip,
+                    condition: Some(MarkerCondition {
+                        modifier: MarkerModifier::Unless,
+                        body: MarkerCondBody::Regex(
+                            MarkerExpr::String(vec![
+                                StringFragment::Interpolation("FOO"),
+                            ]),
+                            vec![PayloadFragment::Text("^[a-z]+"), PayloadFragment::Text("$")],
+                        ),
+                    }),
                 }),
                 Token::Newline,
             ]
@@ -1005,18 +1132,156 @@ mod tests {
     }
 
     #[test]
-    fn test_marker_flaky() {
-        let input = "[flaky if CI]\n";
+    fn test_marker_regex_with_interpolation() {
+        let input = "[skip unless \"${VER}\" ? ^${MAJOR}\\..*$]\n";
         let toks = tokens(input);
         assert_eq!(
             toks,
             vec![
-                Token::Marker(MarkerData {
-                    kind: "flaky",
-                    modifier: Some("if"),
-                    var: Some("CI"),
-                    op: None,
-                    value: None,
+                Token::Marker(MarkerToken {
+                    kind: MarkerKind::Skip,
+                    condition: Some(MarkerCondition {
+                        modifier: MarkerModifier::Unless,
+                        body: MarkerCondBody::Regex(
+                            MarkerExpr::String(vec![
+                                StringFragment::Interpolation("VER"),
+                            ]),
+                            vec![
+                                PayloadFragment::Text("^"),
+                                PayloadFragment::Interpolation("MAJOR"),
+                                PayloadFragment::Text("\\..*"),
+                                PayloadFragment::Text("$"),
+                            ],
+                        ),
+                    }),
+                }),
+                Token::Newline,
+            ]
+        );
+    }
+
+    /// Helper: lex regex content directly via `lex_marker_regex` and return fragments.
+    fn marker_regex_fragments(regex: &str) -> Vec<PayloadFragment<'_>> {
+        super::lex_marker_regex(regex)
+    }
+
+    #[test]
+    fn test_marker_regex_backslash_escapes() {
+        let frags = marker_regex_fragments(r"\d{3}-\d{4}");
+        assert_eq!(frags, vec![PayloadFragment::Text(r"\d{3}-\d{4}")]);
+    }
+
+    #[test]
+    fn test_marker_regex_quantifiers() {
+        let frags = marker_regex_fragments("a{2,5}b+c*d?");
+        assert_eq!(frags, vec![PayloadFragment::Text("a{2,5}b+c*d?")]);
+    }
+
+    #[test]
+    fn test_marker_regex_char_class_nested_bracket() {
+        let frags = marker_regex_fragments(r"^[a-z\]]+$");
+        assert_eq!(
+            frags,
+            vec![PayloadFragment::Text(r"^[a-z\]]+"), PayloadFragment::Text("$")]
+        );
+    }
+
+    #[test]
+    fn test_marker_regex_groups_and_alternation() {
+        let frags = marker_regex_fragments("(?:foo|bar)");
+        assert_eq!(frags, vec![PayloadFragment::Text("(?:foo|bar)")]);
+    }
+
+    #[test]
+    fn test_marker_regex_dot_and_anchors() {
+        let frags = marker_regex_fragments("^.*$");
+        assert_eq!(
+            frags,
+            vec![PayloadFragment::Text("^.*"), PayloadFragment::Text("$")]
+        );
+    }
+
+    #[test]
+    fn test_marker_regex_bare_dollar_mid() {
+        let frags = marker_regex_fragments("foo$bar");
+        assert_eq!(
+            frags,
+            vec![
+                PayloadFragment::Text("foo"),
+                PayloadFragment::Text("$"),
+                PayloadFragment::Text("bar"),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_marker_regex_escaped_dollar() {
+        let frags = marker_regex_fragments("cost $$5");
+        assert_eq!(
+            frags,
+            vec![
+                PayloadFragment::Text("cost "),
+                PayloadFragment::EscapedDollar,
+                PayloadFragment::Text("5"),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_marker_regex_interp_adjacent_to_text() {
+        let frags = marker_regex_fragments("pre${VAR}post");
+        assert_eq!(
+            frags,
+            vec![
+                PayloadFragment::Text("pre"),
+                PayloadFragment::Interpolation("VAR"),
+                PayloadFragment::Text("post"),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_marker_regex_only_dollar_anchor() {
+        let frags = marker_regex_fragments("$");
+        assert_eq!(frags, vec![PayloadFragment::Text("$")]);
+    }
+
+    #[test]
+    fn test_marker_regex_consecutive_dollars() {
+        let frags = marker_regex_fragments("$$$$");
+        assert_eq!(
+            frags,
+            vec![PayloadFragment::EscapedDollar, PayloadFragment::EscapedDollar]
+        );
+    }
+
+    #[test]
+    fn test_marker_regex_lookahead() {
+        let frags = marker_regex_fragments("foo(?=bar)");
+        assert_eq!(frags, vec![PayloadFragment::Text("foo(?=bar)")]);
+    }
+
+    #[test]
+    fn test_marker_regex_curly_braces() {
+        let frags = marker_regex_fragments(r"\d{3,}");
+        assert_eq!(frags, vec![PayloadFragment::Text(r"\d{3,}")]);
+    }
+
+    #[test]
+    fn test_marker_flaky() {
+        let input = "[flaky if \"${CI}\"]\n";
+        let toks = tokens(input);
+        assert_eq!(
+            toks,
+            vec![
+                Token::Marker(MarkerToken {
+                    kind: MarkerKind::Flaky,
+                    condition: Some(MarkerCondition {
+                        modifier: MarkerModifier::If,
+                        body: MarkerCondBody::Bare(MarkerExpr::String(vec![
+                            StringFragment::Interpolation("CI"),
+                        ])),
+                    }),
                 }),
                 Token::Newline,
             ]
@@ -1025,7 +1290,7 @@ mod tests {
 
     #[test]
     fn test_marker_invalid_kind() {
-        let input = "[nope if FOO]\n";
+        let input = "[nope if \"${FOO}\"]\n";
         let toks = tokens(input);
         assert!(matches!(toks[0], Token::Unrecognized(_)));
     }
@@ -1044,12 +1309,9 @@ mod tests {
         assert_eq!(
             toks,
             vec![
-                Token::Marker(MarkerData {
-                    kind: "skip",
-                    modifier: None,
-                    var: None,
-                    op: None,
-                    value: None,
+                Token::Marker(MarkerToken {
+                    kind: MarkerKind::Skip,
+                    condition: None,
                 }),
                 Token::Newline,
             ]
@@ -1063,12 +1325,9 @@ mod tests {
         assert_eq!(
             toks,
             vec![
-                Token::Marker(MarkerData {
-                    kind: "flaky",
-                    modifier: None,
-                    var: None,
-                    op: None,
-                    value: None,
+                Token::Marker(MarkerToken {
+                    kind: MarkerKind::Flaky,
+                    condition: None,
                 }),
                 Token::Newline,
             ]
@@ -1082,12 +1341,9 @@ mod tests {
         assert_eq!(
             toks,
             vec![
-                Token::Marker(MarkerData {
-                    kind: "run",
-                    modifier: None,
-                    var: None,
-                    op: None,
-                    value: None,
+                Token::Marker(MarkerToken {
+                    kind: MarkerKind::Run,
+                    condition: None,
                 }),
                 Token::Newline,
             ]
@@ -1095,18 +1351,27 @@ mod tests {
     }
 
     #[test]
-    fn test_marker_value_with_spaces() {
-        let input = "[run if OS = hello world]\n";
+    fn test_marker_string_with_compound_interp() {
+        let input = "[run if \"${HOST}:${PORT}\" = \"localhost:8080\"]\n";
         let toks = tokens(input);
         assert_eq!(
             toks,
             vec![
-                Token::Marker(MarkerData {
-                    kind: "run",
-                    modifier: Some("if"),
-                    var: Some("OS"),
-                    op: Some('='),
-                    value: Some("hello world"),
+                Token::Marker(MarkerToken {
+                    kind: MarkerKind::Run,
+                    condition: Some(MarkerCondition {
+                        modifier: MarkerModifier::If,
+                        body: MarkerCondBody::Eq(
+                            MarkerExpr::String(vec![
+                                StringFragment::Interpolation("HOST"),
+                                StringFragment::Text(":"),
+                                StringFragment::Interpolation("PORT"),
+                            ]),
+                            MarkerExpr::String(vec![
+                                StringFragment::Text("localhost:8080"),
+                            ]),
+                        ),
+                    }),
                 }),
                 Token::Newline,
             ]

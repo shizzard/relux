@@ -62,13 +62,17 @@ impl CodeServer {
     }
 }
 
+fn eval_marker_expr(expr: &ir::StringExpr, env: &Env) -> String {
+    interpolate_with_lookup(expr, |name| env.get(name).cloned())
+}
+
 fn evaluate_conditions(
     conditions: &[Spanned<ir::Condition>],
     env: &Env,
 ) -> Option<String> {
     for cond in conditions {
-        // Bare (unconditional) markers: no variable or modifier
-        let Some(ref var) = cond.node.var else {
+        // Bare (unconditional) markers: no condition body
+        let Some(ref cond_expr) = cond.node.cond else {
             match cond.node.kind {
                 ir::CondKind::Skip => return Some("skip: unconditional".to_string()),
                 ir::CondKind::Run => continue,
@@ -76,64 +80,57 @@ fn evaluate_conditions(
             }
         };
 
-        let raw = env.get(var).cloned().unwrap_or_default();
-
-        let result_value = match &cond.node.test {
-            None => raw.clone(),
-            Some(ir::CondTest::Eq(expected)) => {
-                if raw == *expected {
-                    raw.clone()
+        let result_value = match &cond_expr.body {
+            ir::CondBody::Bare(expr) => eval_marker_expr(expr, env),
+            ir::CondBody::Eq(lhs, rhs) => {
+                let lval = eval_marker_expr(lhs, env);
+                let rval = eval_marker_expr(rhs, env);
+                if lval == rval {
+                    lval
                 } else {
                     String::new()
                 }
             }
-            Some(ir::CondTest::Regex(pat)) => match regex::Regex::new(pat) {
-                Ok(re) => re
-                    .find(&raw)
-                    .map(|m| m.as_str().to_string())
-                    .unwrap_or_default(),
-                Err(_) => String::new(),
-            },
+            ir::CondBody::Regex(lhs, pat) => {
+                let lval = eval_marker_expr(lhs, env);
+                let pat_str = eval_marker_expr(pat, env);
+                match regex::Regex::new(&pat_str) {
+                    Ok(re) => re
+                        .find(&lval)
+                        .map(|m| m.as_str().to_string())
+                        .unwrap_or_default(),
+                    Err(_) => String::new(),
+                }
+            }
         };
 
         let truthy = !result_value.is_empty();
 
-        let modifier = cond.node.modifier.as_ref()
-            .expect("modifier must be set when var is set");
-        let should_act = match modifier {
+        let should_act = match cond_expr.modifier {
             ir::CondModifier::If => truthy,
             ir::CondModifier::Unless => !truthy,
+        };
+
+        let kind_label = match cond.node.kind {
+            ir::CondKind::Skip => "skip",
+            ir::CondKind::Run => "run",
+            ir::CondKind::Flaky => "flaky",
         };
 
         match cond.node.kind {
             ir::CondKind::Skip => {
                 if should_act {
-                    let reason = if raw.is_empty() {
-                        format!("skip: {var} is not set")
-                    } else {
-                        format!("skip: {var} = {raw:?}")
-                    };
-                    return Some(reason);
+                    return Some(format!("{kind_label}: condition not met"));
                 }
             }
             ir::CondKind::Run => {
                 if !should_act {
-                    let reason = if raw.is_empty() {
-                        format!("run condition not met: {var} is not set")
-                    } else {
-                        format!("run condition not met: {var} = {raw:?}")
-                    };
-                    return Some(reason);
+                    return Some(format!("{kind_label}: condition not met"));
                 }
             }
             ir::CondKind::Flaky => {
                 if should_act {
-                    let reason = if raw.is_empty() {
-                        format!("flaky: {var} is not set")
-                    } else {
-                        format!("flaky: {var} = {raw:?}")
-                    };
-                    return Some(reason);
+                    return Some(format!("{kind_label}: condition not met"));
                 }
             }
         }
@@ -881,21 +878,59 @@ mod tests {
     use super::*;
     use crate::dsl::resolver::ir::{self, Span};
 
+    fn make_str_expr(s: &str) -> ir::StringExpr {
+        ir::StringExpr {
+            parts: vec![ir::Spanned::new(
+                ir::StringPart::Literal(s.to_string()),
+                Span::new(0, 0..0),
+            )],
+            span: Span::new(0, 0..0),
+        }
+    }
+
+    fn make_interp_expr(var: &str) -> ir::StringExpr {
+        ir::StringExpr {
+            parts: vec![ir::Spanned::new(
+                ir::StringPart::Interp(var.to_string()),
+                Span::new(0, 0..0),
+            )],
+            span: Span::new(0, 0..0),
+        }
+    }
+
     fn make_cond(
         kind: ir::CondKind,
         modifier: Option<ir::CondModifier>,
         var: Option<&str>,
-        test: Option<ir::CondTest>,
+        test: Option<CondTest>,
     ) -> Spanned<ir::Condition> {
-        Spanned::new(
-            ir::Condition {
-                kind,
+        let cond = match (modifier, var, test) {
+            (None, None, None) => None,
+            (Some(modifier), Some(var_name), None) => Some(ir::CondExpr {
                 modifier,
-                var: var.map(|s| s.to_string()),
-                test,
-            },
-            Span::new(0, 0..0),
-        )
+                body: ir::CondBody::Bare(make_interp_expr(var_name)),
+            }),
+            (Some(modifier), Some(var_name), Some(CondTest::Eq(val))) => {
+                Some(ir::CondExpr {
+                    modifier,
+                    body: ir::CondBody::Eq(make_interp_expr(var_name), make_str_expr(&val)),
+                })
+            }
+            (Some(modifier), Some(var_name), Some(CondTest::Regex(pat))) => {
+                Some(ir::CondExpr {
+                    modifier,
+                    body: ir::CondBody::Regex(make_interp_expr(var_name), make_str_expr(&pat)),
+                })
+            }
+            _ => unreachable!(),
+        };
+        Spanned::new(ir::Condition { kind, cond }, Span::new(0, 0..0))
+    }
+
+    // Keep CondTest as a local helper enum for test compatibility
+    enum CondTest {
+        Eq(String),
+        Regex(String),
     }
 
     #[test]
@@ -946,7 +981,7 @@ mod tests {
             ir::CondKind::Run,
             Some(ir::CondModifier::If),
             Some("OS"),
-            Some(ir::CondTest::Eq("linux".into())),
+            Some(CondTest::Eq("linux".into())),
         )];
         let mut env = Env::new();
         env.insert("OS".into(), "linux".into());
@@ -959,13 +994,13 @@ mod tests {
             ir::CondKind::Run,
             Some(ir::CondModifier::If),
             Some("OS"),
-            Some(ir::CondTest::Eq("linux".into())),
+            Some(CondTest::Eq("linux".into())),
         )];
         let mut env = Env::new();
         env.insert("OS".into(), "macos".into());
         let result = evaluate_conditions(&conds, &env);
         assert!(result.is_some());
-        assert!(result.unwrap().contains("run condition not met"));
+        assert!(result.unwrap().contains("condition not met"));
     }
 
     #[test]
@@ -974,7 +1009,7 @@ mod tests {
             ir::CondKind::Skip,
             Some(ir::CondModifier::Unless),
             Some("ARCH"),
-            Some(ir::CondTest::Regex("^(x86_64|aarch64)$".into())),
+            Some(CondTest::Regex("^(x86_64|aarch64)$".into())),
         )];
         let mut env = Env::new();
         env.insert("ARCH".into(), "x86_64".into());
@@ -987,7 +1022,7 @@ mod tests {
             ir::CondKind::Skip,
             Some(ir::CondModifier::Unless),
             Some("ARCH"),
-            Some(ir::CondTest::Regex("^(x86_64|aarch64)$".into())),
+            Some(CondTest::Regex("^(x86_64|aarch64)$".into())),
         )];
         let mut env = Env::new();
         env.insert("ARCH".into(), "riscv".into());
@@ -1003,7 +1038,7 @@ mod tests {
                 ir::CondKind::Run,
                 Some(ir::CondModifier::If),
                 Some("OS"),
-                Some(ir::CondTest::Eq("linux".into())),
+                Some(CondTest::Eq("linux".into())),
             ),
         ];
         let mut env = Env::new();
@@ -1020,7 +1055,7 @@ mod tests {
                 ir::CondKind::Run,
                 Some(ir::CondModifier::If),
                 Some("OS"),
-                Some(ir::CondTest::Eq("linux".into())),
+                Some(CondTest::Eq("linux".into())),
             ),
         ];
         let mut env = Env::new();

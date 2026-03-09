@@ -16,12 +16,41 @@ pub enum StringFragment<'a> {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct MarkerData<'a> {
-    pub kind: &'a str,
-    pub modifier: Option<&'a str>,
-    pub var: Option<&'a str>,
-    pub op: Option<char>,
-    pub value: Option<&'a str>,
+pub enum MarkerKind {
+    Skip,
+    Run,
+    Flaky,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum MarkerModifier {
+    If,
+    Unless,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum MarkerExpr<'a> {
+    String(Vec<StringFragment<'a>>),
+    Number(&'a str),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum MarkerCondBody<'a> {
+    Bare(MarkerExpr<'a>),
+    Eq(MarkerExpr<'a>, MarkerExpr<'a>),
+    Regex(MarkerExpr<'a>, Vec<PayloadFragment<'a>>),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct MarkerCondition<'a> {
+    pub modifier: MarkerModifier,
+    pub body: MarkerCondBody<'a>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct MarkerToken<'a> {
+    pub kind: MarkerKind,
+    pub condition: Option<MarkerCondition<'a>>,
 }
 
 #[derive(Logos, PartialEq, Clone)]
@@ -50,7 +79,7 @@ pub enum Token<'a> {
     Cleanup,
 
     #[regex(r"\[[^\n]*\]", super::lex_marker, allow_greedy = true)]
-    Marker(MarkerData<'a>),
+    Marker(MarkerToken<'a>),
 
     #[token("{")]
     BraceOpen,
@@ -143,17 +172,18 @@ impl fmt::Display for Token<'_> {
             Token::Need => write!(f, "need"),
             Token::Cleanup => write!(f, "cleanup"),
             Token::Marker(m) => {
-                write!(f, "[{}", m.kind)?;
-                if let (Some(modifier), Some(var)) = (m.modifier, m.var) {
-                    write!(f, " {} {}", modifier, var)?;
-                    if let Some(op) = m.op {
-                        write!(f, " {op}")?;
-                        if let Some(val) = m.value {
-                            if !val.is_empty() {
-                                write!(f, " {val}")?;
-                            }
-                        }
-                    }
+                let kind_str = match m.kind {
+                    MarkerKind::Skip => "skip",
+                    MarkerKind::Run => "run",
+                    MarkerKind::Flaky => "flaky",
+                };
+                write!(f, "[{kind_str}")?;
+                if let Some(ref cond) = m.condition {
+                    let mod_str = match cond.modifier {
+                        MarkerModifier::If => "if",
+                        MarkerModifier::Unless => "unless",
+                    };
+                    write!(f, " {mod_str} ...")?;
                 }
                 write!(f, "]")
             }

@@ -819,6 +819,23 @@ fn lower_overlay(
         .collect()
 }
 
+fn lower_marker_expr(
+    file_id: FileId,
+    expr: &parser::AstMarkerExpr,
+    span: &parser::Span,
+) -> ir::StringExpr {
+    match expr {
+        parser::AstMarkerExpr::String(s) => lower_string_expr(file_id, s, span, 0),
+        parser::AstMarkerExpr::Number(n) => ir::StringExpr {
+            parts: vec![ir::Spanned::new(
+                ir::StringPart::Literal(n.clone()),
+                sp(file_id, span),
+            )],
+            span: sp(file_id, span),
+        },
+    }
+}
+
 fn lower_marker(
     file_id: FileId,
     m: &parser::MarkerDecl,
@@ -830,30 +847,52 @@ fn lower_marker(
         parser::MarkerKind::Run => ir::CondKind::Run,
         parser::MarkerKind::Flaky => ir::CondKind::Flaky,
     };
-    let modifier = m.modifier.as_ref().map(|mod_| match mod_ {
-        parser::CondModifier::If => ir::CondModifier::If,
-        parser::CondModifier::Unless => ir::CondModifier::Unless,
-    });
-    let test = match &m.condition {
-        Some(parser::MarkerCondition::Eq(s)) => Some(ir::CondTest::Eq(s.clone())),
-        Some(parser::MarkerCondition::Regex(pat)) => {
-            if let Err(e) = regex::Regex::new(pat) {
-                diagnostics.push(Diagnostic::InvalidRegex {
-                    pattern: pat.clone(),
-                    message: format!("{e}"),
-                    span: sp(file_id, marker_span),
-                });
+    let cond = m.condition.as_ref().map(|c| {
+        let modifier = match c.modifier {
+            parser::CondModifier::If => ir::CondModifier::If,
+            parser::CondModifier::Unless => ir::CondModifier::Unless,
+        };
+        let body = match &c.body {
+            parser::AstMarkerCondBody::Bare(expr) => {
+                ir::CondBody::Bare(lower_marker_expr(file_id, expr, marker_span))
             }
-            Some(ir::CondTest::Regex(pat.clone()))
-        }
-        None => None,
-    };
-    ir::Condition {
-        kind,
-        modifier,
-        var: m.var.clone(),
-        test,
-    }
+            parser::AstMarkerCondBody::Eq(lhs, rhs) => ir::CondBody::Eq(
+                lower_marker_expr(file_id, lhs, marker_span),
+                lower_marker_expr(file_id, rhs, marker_span),
+            ),
+            parser::AstMarkerCondBody::Regex(lhs, pat_expr) => {
+                let pat_ir = lower_string_expr(file_id, pat_expr, marker_span, 0);
+                // Validate regex if no interpolations
+                let has_interps = pat_ir.parts.iter().any(|p| {
+                    matches!(p.node, ir::StringPart::Interp(_))
+                });
+                if !has_interps {
+                    let literal: String = pat_ir
+                        .parts
+                        .iter()
+                        .filter_map(|p| match &p.node {
+                            ir::StringPart::Literal(s) => Some(s.as_str()),
+                            ir::StringPart::EscapedDollar => Some("$"),
+                            _ => None,
+                        })
+                        .collect();
+                    if let Err(e) = regex::Regex::new(&literal) {
+                        diagnostics.push(Diagnostic::InvalidRegex {
+                            pattern: literal,
+                            message: format!("{e}"),
+                            span: sp(file_id, marker_span),
+                        });
+                    }
+                }
+                ir::CondBody::Regex(
+                    lower_marker_expr(file_id, lhs, marker_span),
+                    pat_ir,
+                )
+            }
+        };
+        ir::CondExpr { modifier, body }
+    });
+    ir::Condition { kind, cond }
 }
 
 fn lower_effect_def(
@@ -1733,20 +1772,20 @@ mod tests {
         let mut loader = InMemoryLoader::new();
         loader.add(
             "main",
-            "[skip unless CI]\n[run if OS = linux]\ntest \"t\" {\n  shell s {\n    > hi\n  }\n}\n",
+            "[skip unless \"${CI}\"]\n[run if \"${OS}\" = \"linux\"]\ntest \"t\" {\n  shell s {\n    > hi\n  }\n}\n",
         );
         let (plans, _, diags) = loader.resolve_one("main");
         assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
         let plan = &plans[0];
         assert_eq!(plan.test.conditions.len(), 2);
         assert!(matches!(plan.test.conditions[0].node.kind, ir::CondKind::Skip));
-        assert!(matches!(plan.test.conditions[0].node.modifier, Some(ir::CondModifier::Unless)));
-        assert_eq!(plan.test.conditions[0].node.var.as_deref(), Some("CI"));
-        assert!(plan.test.conditions[0].node.test.is_none());
+        let c0 = plan.test.conditions[0].node.cond.as_ref().unwrap();
+        assert!(matches!(c0.modifier, ir::CondModifier::Unless));
+        assert!(matches!(c0.body, ir::CondBody::Bare(_)));
         assert!(matches!(plan.test.conditions[1].node.kind, ir::CondKind::Run));
-        assert!(matches!(plan.test.conditions[1].node.modifier, Some(ir::CondModifier::If)));
-        assert_eq!(plan.test.conditions[1].node.var.as_deref(), Some("OS"));
-        assert!(matches!(plan.test.conditions[1].node.test, Some(ir::CondTest::Eq(ref s)) if s == "linux"));
+        let c1 = plan.test.conditions[1].node.cond.as_ref().unwrap();
+        assert!(matches!(c1.modifier, ir::CondModifier::If));
+        assert!(matches!(c1.body, ir::CondBody::Eq(_, _)));
     }
 
     #[test]
@@ -1755,7 +1794,7 @@ mod tests {
         loader.add(
             "main",
             concat!(
-                "[skip unless PLATFORM ? ^linux]\n",
+                "[skip unless \"${PLATFORM}\" ? ^linux]\n",
                 "effect E -> s {\n",
                 "  shell s {\n    > start\n  }\n",
                 "}\n",
@@ -1768,7 +1807,8 @@ mod tests {
         let effect = &plan.effects[0];
         assert_eq!(effect.conditions.len(), 1);
         assert!(matches!(effect.conditions[0].node.kind, ir::CondKind::Skip));
-        assert!(matches!(effect.conditions[0].node.test, Some(ir::CondTest::Regex(ref s)) if s == "^linux"));
+        let c0 = effect.conditions[0].node.cond.as_ref().unwrap();
+        assert!(matches!(c0.body, ir::CondBody::Regex(_, _)));
     }
 
     #[test]
@@ -1783,9 +1823,7 @@ mod tests {
         let plan = &plans[0];
         assert_eq!(plan.test.conditions.len(), 1);
         assert!(matches!(plan.test.conditions[0].node.kind, ir::CondKind::Skip));
-        assert!(plan.test.conditions[0].node.modifier.is_none());
-        assert!(plan.test.conditions[0].node.var.is_none());
-        assert!(plan.test.conditions[0].node.test.is_none());
+        assert!(plan.test.conditions[0].node.cond.is_none());
     }
 
     #[test]
@@ -1793,7 +1831,7 @@ mod tests {
         let mut loader = InMemoryLoader::new();
         loader.add(
             "main",
-            "[skip unless FOO ? *invalid]\ntest \"t\" {\n  shell s {\n    > hi\n  }\n}\n",
+            "[skip unless \"${FOO}\" ? *invalid]\ntest \"t\" {\n  shell s {\n    > hi\n  }\n}\n",
         );
         let (_, _, diags) = loader.resolve_one("main");
         assert!(diag_names(&diags).contains(&"InvalidRegex"));

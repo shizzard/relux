@@ -73,9 +73,7 @@ pub enum TestItem {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MarkerDecl {
     pub kind: MarkerKind,
-    pub modifier: Option<CondModifier>,
-    pub var: Option<String>,
-    pub condition: Option<MarkerCondition>,
+    pub condition: Option<AstMarkerCond>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -92,9 +90,22 @@ pub enum CondModifier {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum MarkerCondition {
-    Eq(String),
-    Regex(String),
+pub struct AstMarkerCond {
+    pub modifier: CondModifier,
+    pub body: AstMarkerCondBody,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstMarkerExpr {
+    String(AstStringExpr),
+    Number(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstMarkerCondBody {
+    Bare(AstMarkerExpr),
+    Eq(AstMarkerExpr, AstMarkerExpr),
+    Regex(AstMarkerExpr, AstStringExpr),
 }
 
 #[derive(Debug, Clone, PartialEq)]

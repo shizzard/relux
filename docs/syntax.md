@@ -73,20 +73,30 @@ test "<name>" {
 ## Condition Markers
 
 ```
-[skip]
-[flaky]
-[skip unless VAR]
-[skip if VAR]
-[run if VAR = value]
-[run unless VAR ? regex]
-[flaky if VAR]
+[kind]                                  # unconditional
+[kind modifier expr]                    # truthiness check
+[kind modifier expr = expr]             # equality comparison
+[kind modifier expr ? regex]            # regex match
 ```
 
-- **Marker kinds**: `skip`, `run`, `flaky`
-- **Modifiers** (optional): `if`, `unless`
-- **Variable**: bare environment variable name (no `${}` wrapping); required when a modifier is present
-- **Operator** (optional): `=` (literal equality) or `?` (regex match)
-- **Value/pattern** (optional): everything after the operator until the closing `]`, trimmed
+Where:
+- `kind`: `skip` | `run` | `flaky`
+- `modifier`: `if` | `unless`
+- `expr`: quoted string with interpolation (`"${VAR}"`, `"literal"`, `"${A}:${B}"`) or bare number (`42`)
+- `regex`: regex pattern with `${var}` interpolation, up to closing `]`
+
+Examples:
+```
+[skip]
+[skip unless "${CI}"]
+[run if "${OS}" = "linux"]
+[run if "${COUNT}" = 0]
+[skip unless "${ARCH}" ? ^(x86_64|aarch64)$]
+[flaky if "${CI}" = "true"]
+[run if "${HOST}:${PORT}" = "localhost:8080"]
+[skip unless "${VER}" ? ^${MAJOR}\..*$]
+```
+
 - A bare marker (kind only, no modifier) is unconditional
 - One marker per line
 - Multiple markers stack with AND semantics (all must pass or test is skipped)
@@ -109,7 +119,7 @@ test "<name>" {
 
 - Empty string or unset variable = false
 - Any non-empty string = true
-- `=` returns the value if equal, empty string otherwise
+- `=` returns the LHS value if LHS equals RHS, empty string otherwise
 - `?` returns the regex match if matched, empty string otherwise
 
 ## Shell Blocks

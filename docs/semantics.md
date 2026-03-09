@@ -87,11 +87,17 @@
   - Effect-level markers are checked before the effect's shells are created
 - A bare marker (kind only, no modifier) is unconditional:
   - `[skip]` always skips, `[flaky]` always marks flaky, `[run]` is a no-op
-- A conditional marker requires a modifier (`if`/`unless`) and a variable
-- Variable lookup is ENV-only (`Arc<Env>`) — no frame variables or test-scope variables exist at evaluation time
+- A conditional marker requires a modifier (`if`/`unless`) and an expression
+- Expressions are quoted strings with `${VAR}` interpolation or bare numbers:
+  - `"${CI}"` — environment variable reference
+  - `"literal"` — literal string
+  - `"${HOST}:${PORT}"` — compound interpolation
+  - `42` — bare number (compared as string)
+- Bare variable identifiers (e.g. `CI`) are **not** valid in markers — use `"${CI}"` instead
+- Expression evaluation uses ENV-only lookup (`Arc<Env>`) — no frame variables or test-scope variables exist at evaluation time
 - Truthiness: empty string or unset variable is false, any non-empty string is true
-- `=` operator: returns the value if it equals the expected string, empty string otherwise
-- `?` operator: compiles the pattern as a regex and returns the match if found, empty string otherwise
+- `=` operator: evaluates both sides, returns the LHS value if LHS equals RHS, empty string otherwise
+- `?` operator: evaluates LHS, compiles the regex pattern (with `${var}` interpolation), returns the match if found, empty string otherwise
 - Modifier semantics:
   - `if` acts when the result is truthy
   - `unless` acts when the result is falsy
@@ -100,7 +106,6 @@
   - `run`: skips the test/effect when the condition is NOT met (inverse of `skip`)
   - `flaky`: marks the test as flaky (skip semantics for now; retry is a future feature)
 - Multiple markers stack with AND semantics: all conditions must pass or the test is skipped
-- Skip reason includes the marker text for diagnostics (e.g. `"skip: FOO is not set"`, `"skip: unconditional"`)
 - When an effect is skipped, all tests depending on it are also skipped
 
 ## Tests

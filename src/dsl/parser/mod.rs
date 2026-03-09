@@ -1,7 +1,10 @@
 pub mod ast;
 
 use crate::Spanned;
-use crate::dsl::lexer::{MarkerData, PayloadFragment, StringFragment, Token, lex};
+use crate::dsl::lexer::{
+    MarkerCondBody, MarkerExpr, MarkerModifier, MarkerToken, PayloadFragment, StringFragment,
+    Token, lex,
+};
 use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 
@@ -11,29 +14,36 @@ fn sp(s: SimpleSpan) -> Span {
     s.start..s.end
 }
 
-fn marker_data_to_decl(m: MarkerData<'_>) -> MarkerDecl {
-    let kind = match m.kind {
-        "skip" => MarkerKind::Skip,
-        "run" => MarkerKind::Run,
-        "flaky" => MarkerKind::Flaky,
-        _ => unreachable!(),
-    };
-    let modifier = m.modifier.map(|s| match s {
-        "if" => CondModifier::If,
-        "unless" => CondModifier::Unless,
-        _ => unreachable!(),
-    });
-    let condition = match (m.op, m.value) {
-        (Some('='), Some(v)) => Some(MarkerCondition::Eq(v.to_string())),
-        (Some('?'), Some(v)) => Some(MarkerCondition::Regex(v.to_string())),
-        _ => None,
-    };
-    MarkerDecl {
-        kind,
-        modifier,
-        var: m.var.map(|s| s.to_string()),
-        condition,
+fn marker_expr_to_ast(expr: MarkerExpr<'_>) -> AstMarkerExpr {
+    match expr {
+        MarkerExpr::String(fragments) => AstMarkerExpr::String(string_to_expr(fragments)),
+        MarkerExpr::Number(n) => AstMarkerExpr::Number(n.to_string()),
     }
+}
+
+fn marker_token_to_decl(m: MarkerToken<'_>) -> MarkerDecl {
+    let kind = match m.kind {
+        crate::dsl::lexer::MarkerKind::Skip => MarkerKind::Skip,
+        crate::dsl::lexer::MarkerKind::Run => MarkerKind::Run,
+        crate::dsl::lexer::MarkerKind::Flaky => MarkerKind::Flaky,
+    };
+    let condition = m.condition.map(|cond| {
+        let modifier = match cond.modifier {
+            MarkerModifier::If => CondModifier::If,
+            MarkerModifier::Unless => CondModifier::Unless,
+        };
+        let body = match cond.body {
+            MarkerCondBody::Bare(expr) => AstMarkerCondBody::Bare(marker_expr_to_ast(expr)),
+            MarkerCondBody::Eq(lhs, rhs) => {
+                AstMarkerCondBody::Eq(marker_expr_to_ast(lhs), marker_expr_to_ast(rhs))
+            }
+            MarkerCondBody::Regex(lhs, fragments) => {
+                AstMarkerCondBody::Regex(marker_expr_to_ast(lhs), payload_to_expr(fragments))
+            }
+        };
+        AstMarkerCond { modifier, body }
+    });
+    MarkerDecl { kind, condition }
 }
 
 // ─── Fragment Conversion ─────────────────────────────────────
@@ -587,7 +597,7 @@ where
         .labelled("comment");
 
     let marker = select! {
-        Token::Marker(m) => Item::Marker(marker_data_to_decl(m)),
+        Token::Marker(m) => Item::Marker(marker_token_to_decl(m)),
     }
     .map_with(|item, e| Spanned::new(item, sp(e.span())))
     .labelled("condition marker");
@@ -1370,7 +1380,7 @@ mod tests {
                     .collect();
                 assert_eq!(docstrings.len(), 1);
 
-                assert_eq!(t.markers.len(), 3, "test has 3 condition markers");
+                assert_eq!(t.markers.len(), 4, "test has 4 condition markers");
 
                 let needs: Vec<_> = t
                     .body
@@ -1869,16 +1879,16 @@ mod tests {
 
     #[test]
     fn test_marker_before_test() {
-        let src = "[skip unless CI]\ntest \"t\" {\n  shell s {\n    > hi\n  }\n}\n";
+        let src = "[skip unless \"${CI}\"]\ntest \"t\" {\n  shell s {\n    > hi\n  }\n}\n";
         let m = parse_ok(src);
         match &m.items[0].node {
             Item::Test(t) => {
                 assert_eq!(t.markers.len(), 1);
                 let decl = &t.markers[0].node;
                 assert_eq!(decl.kind, MarkerKind::Skip);
-                assert_eq!(decl.modifier, Some(CondModifier::Unless));
-                assert_eq!(decl.var.as_deref(), Some("CI"));
-                assert!(decl.condition.is_none());
+                let cond = decl.condition.as_ref().unwrap();
+                assert_eq!(cond.modifier, CondModifier::Unless);
+                assert!(matches!(cond.body, AstMarkerCondBody::Bare(_)));
             }
             other => panic!("expected Test, got {other:?}"),
         }
@@ -1886,19 +1896,16 @@ mod tests {
 
     #[test]
     fn test_marker_before_effect() {
-        let src = "[run if PLATFORM = linux]\neffect E -> s {\n  shell s {\n    > start\n  }\n}\n";
+        let src = "[run if \"${PLATFORM}\" = \"linux\"]\neffect E -> s {\n  shell s {\n    > start\n  }\n}\n";
         let m = parse_ok(src);
         match &m.items[0].node {
             Item::Effect(e) => {
                 assert_eq!(e.markers.len(), 1);
                 let decl = &e.markers[0].node;
                 assert_eq!(decl.kind, MarkerKind::Run);
-                assert_eq!(decl.modifier, Some(CondModifier::If));
-                assert_eq!(decl.var.as_deref(), Some("PLATFORM"));
-                assert_eq!(
-                    decl.condition,
-                    Some(MarkerCondition::Eq("linux".into()))
-                );
+                let cond = decl.condition.as_ref().unwrap();
+                assert_eq!(cond.modifier, CondModifier::If);
+                assert!(matches!(cond.body, AstMarkerCondBody::Eq(_, _)));
             }
             other => panic!("expected Effect, got {other:?}"),
         }
@@ -1906,19 +1913,16 @@ mod tests {
 
     #[test]
     fn test_marker_with_regex() {
-        let src = "[skip unless ARCH ? ^(x86|arm)]\ntest \"t\" {\n  shell s {\n    > hi\n  }\n}\n";
+        let src = "[skip unless \"${ARCH}\" ? ^(x86|arm)]\ntest \"t\" {\n  shell s {\n    > hi\n  }\n}\n";
         let m = parse_ok(src);
         match &m.items[0].node {
             Item::Test(t) => {
                 assert_eq!(t.markers.len(), 1);
                 let decl = &t.markers[0].node;
                 assert_eq!(decl.kind, MarkerKind::Skip);
-                assert_eq!(decl.modifier, Some(CondModifier::Unless));
-                assert_eq!(decl.var.as_deref(), Some("ARCH"));
-                assert_eq!(
-                    decl.condition,
-                    Some(MarkerCondition::Regex("^(x86|arm)".into()))
-                );
+                let cond = decl.condition.as_ref().unwrap();
+                assert_eq!(cond.modifier, CondModifier::Unless);
+                assert!(matches!(cond.body, AstMarkerCondBody::Regex(_, _)));
             }
             other => panic!("expected Test, got {other:?}"),
         }
@@ -1933,8 +1937,6 @@ mod tests {
                 assert_eq!(t.markers.len(), 1);
                 let decl = &t.markers[0].node;
                 assert_eq!(decl.kind, MarkerKind::Skip);
-                assert!(decl.modifier.is_none());
-                assert!(decl.var.is_none());
                 assert!(decl.condition.is_none());
             }
             other => panic!("expected Test, got {other:?}"),
@@ -1943,7 +1945,7 @@ mod tests {
 
     #[test]
     fn test_multiple_markers() {
-        let src = "[skip unless CI]\n[run if OS = linux]\ntest \"t\" {\n  shell s {\n    > hi\n  }\n}\n";
+        let src = "[skip unless \"${CI}\"]\n[run if \"${OS}\" = \"linux\"]\ntest \"t\" {\n  shell s {\n    > hi\n  }\n}\n";
         let m = parse_ok(src);
         match &m.items[0].node {
             Item::Test(t) => {

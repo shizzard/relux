@@ -137,17 +137,22 @@ pub enum CondModifier {
 }
 
 #[derive(Debug, Clone)]
-pub enum CondTest {
-    Eq(String),
-    Regex(String),
+pub struct Condition {
+    pub kind: CondKind,
+    pub cond: Option<CondExpr>,
 }
 
 #[derive(Debug, Clone)]
-pub struct Condition {
-    pub kind: CondKind,
-    pub modifier: Option<CondModifier>,
-    pub var: Option<String>,
-    pub test: Option<CondTest>,
+pub struct CondExpr {
+    pub modifier: CondModifier,
+    pub body: CondBody,
+}
+
+#[derive(Debug, Clone)]
+pub enum CondBody {
+    Bare(StringExpr),
+    Eq(StringExpr, StringExpr),
+    Regex(StringExpr, StringExpr),
 }
 
 // ─── Effect Definition ──────────────────────────────────────

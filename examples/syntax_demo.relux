@@ -71,11 +71,11 @@ effect StartSomething -> something {
 # bare marker: unconditional (no modifier or variable)
 [skip]
 # conditional: bare var truthiness (non-empty = truthy)
-[skip unless CI]
+[skip unless "${CI}"]
 # literal equality check
-[run if TARGET_OS = linux]
+[run if "${TARGET_OS}" = "linux"]
 # regex check
-[skip unless ARCH ? ^(x86_64|aarch64)$]
+[skip unless "${ARCH}" ? ^(x86_64|aarch64)$]
 test "Some test" {
     """
     The test description

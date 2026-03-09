@@ -66,28 +66,41 @@
     },
 
     "condition-marker": {
-      "begin": "(\\[)(skip|run|flaky)\\s+(if|unless)\\s+",
-      "end": "(\\])",
-      "beginCaptures": {
-        "1": { "name": "punctuation.section.bracket.relux" },
-        "2": { "name": "keyword.control.marker.relux" },
-        "3": { "name": "keyword.control.modifier.relux" }
-      },
-      "endCaptures": {
-        "1": { "name": "punctuation.section.bracket.relux" }
-      },
       "patterns": [
         {
-          "match": "([^\\]\\s]+)\\s+([=?])\\s*(.*?)(?=\\])",
+          "match": "(\\[)(skip|run|flaky)(\\])",
           "captures": {
-            "1": { "name": "variable.other.env.relux" },
-            "2": { "name": "keyword.operator.condition.relux" },
-            "3": { "name": "string.unquoted.condition-value.relux" }
+            "1": { "name": "punctuation.section.bracket.relux" },
+            "2": { "name": "keyword.control.marker.relux" },
+            "3": { "name": "punctuation.section.bracket.relux" }
           }
         },
         {
-          "match": "[^\\]\\s]+",
-          "name": "variable.other.env.relux"
+          "begin": "(\\[)(skip|run|flaky)\\s+(if|unless)\\s+",
+          "end": "(\\])",
+          "beginCaptures": {
+            "1": { "name": "punctuation.section.bracket.relux" },
+            "2": { "name": "keyword.control.marker.relux" },
+            "3": { "name": "keyword.control.modifier.relux" }
+          },
+          "endCaptures": {
+            "1": { "name": "punctuation.section.bracket.relux" }
+          },
+          "patterns": [
+            {
+              "match": "([=?])",
+              "captures": { "1": { "name": "keyword.operator.condition.relux" } }
+            },
+            { "include": "#string" },
+            {
+              "match": "\\b[0-9]+\\b",
+              "name": "constant.numeric.relux"
+            },
+            {
+              "match": "[^\\]\"=?\\s]+",
+              "name": "string.regexp.relux"
+            }
+          ]
         }
       ]
     },
