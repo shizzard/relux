@@ -1,0 +1,45 @@
+test "shells have independent environments" {
+    """
+    Verify that environment variables set in one shell are not
+    visible in another shell within the same test.
+    """
+    shell a {
+        > export SHELL_MARKER=from_a
+        match_ok()
+    }
+    shell b {
+        > echo "marker='$${SHELL_MARKER}'"
+        <? ^marker=''$
+    }
+}
+
+test "shells have independent working directories" {
+    """
+    Verify that changing directory in one shell does not affect
+    the working directory of another shell.
+    """
+    shell a {
+        > cd /tmp && pwd
+        <? ^/tmp$
+    }
+    shell b {
+        > pwd
+        <~100ms!? ^/tmp$
+    }
+}
+
+test "test-level variables are shared across shells" {
+    """
+    Verify that variables declared at the test level are visible
+    in all shell blocks within the same test.
+    """
+    let shared = "hello"
+    shell a {
+        > echo "${shared}"
+        <? ^hello$
+    }
+    shell b {
+        > echo "${shared}"
+        <? ^hello$
+    }
+}

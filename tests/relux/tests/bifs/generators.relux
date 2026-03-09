@@ -76,3 +76,14 @@ test "rand with bin mode" {
         <? ^[01]{8}$
     }
 }
+
+test "rand with oct mode" {
+    """
+    Verify rand(n, "oct") returns only octal digits.
+    """
+    shell s {
+        let val = rand(12, "oct")
+        > echo "${val}"
+        <? ^[0-7]{12}$
+    }
+}

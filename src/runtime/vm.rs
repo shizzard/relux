@@ -840,3 +840,243 @@ fn spawn_fail_watcher(
         }
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── truncate_before ──────────────────────────────────────────────
+
+    #[test]
+    fn truncate_before_short_string_unchanged() {
+        assert_eq!(truncate_before("hello", 10), "hello");
+    }
+
+    #[test]
+    fn truncate_before_exact_length_unchanged() {
+        assert_eq!(truncate_before("hello", 5), "hello");
+    }
+
+    #[test]
+    fn truncate_before_keeps_last_n_chars() {
+        assert_eq!(truncate_before("hello world", 5), "...world");
+    }
+
+    #[test]
+    fn truncate_before_empty_string() {
+        assert_eq!(truncate_before("", 5), "");
+    }
+
+    #[test]
+    fn truncate_before_max_zero() {
+        assert_eq!(truncate_before("hello", 0), "...");
+    }
+
+    // ── truncate_after ───────────────────────────────────────────────
+
+    #[test]
+    fn truncate_after_short_string_unchanged() {
+        assert_eq!(truncate_after("hello", 10), "hello");
+    }
+
+    #[test]
+    fn truncate_after_exact_length_unchanged() {
+        assert_eq!(truncate_after("hello", 5), "hello");
+    }
+
+    #[test]
+    fn truncate_after_keeps_first_n_chars() {
+        assert_eq!(truncate_after("hello world", 5), "hello...");
+    }
+
+    #[test]
+    fn truncate_after_empty_string() {
+        assert_eq!(truncate_after("", 5), "");
+    }
+
+    #[test]
+    fn truncate_after_max_zero() {
+        assert_eq!(truncate_after("hello", 0), "...");
+    }
+
+    // ── regex_error_summary ──────────────────────────────────────────
+
+    #[test]
+    fn regex_error_summary_extracts_last_line() {
+        let err = Regex::new("(unclosed").unwrap_err();
+        let summary = regex_error_summary(&err);
+        assert!(!summary.is_empty());
+        assert!(!summary.starts_with("error: "));
+    }
+
+    #[test]
+    fn regex_error_summary_strips_error_prefix() {
+        let err = Regex::new("[invalid").unwrap_err();
+        let summary = regex_error_summary(&err);
+        assert!(!summary.starts_with("error: "));
+    }
+
+    // ── OutputBuffer::new ────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn output_buffer_new_is_empty() {
+        let buf = OutputBuffer::new();
+        assert!(buf.snapshot().await.is_empty());
+    }
+
+    // ── OutputBuffer::append + snapshot ──────────────────────────────
+
+    #[tokio::test]
+    async fn output_buffer_append_and_snapshot() {
+        let buf = OutputBuffer::new();
+        buf.append(b"hello ").await;
+        buf.append(b"world").await;
+        assert_eq!(buf.snapshot().await, b"hello world");
+    }
+
+    #[tokio::test]
+    async fn output_buffer_append_empty_bytes() {
+        let buf = OutputBuffer::new();
+        buf.append(b"").await;
+        assert!(buf.snapshot().await.is_empty());
+    }
+
+    // ── OutputBuffer::find_literal_from ──────────────────────────────
+
+    #[tokio::test]
+    async fn find_literal_basic() {
+        let buf = OutputBuffer::new();
+        buf.append(b"hello world").await;
+        let result = buf.find_literal_from(0, "hello").await;
+        assert_eq!(result, Some((0, 5)));
+    }
+
+    #[tokio::test]
+    async fn find_literal_cursor_past_match() {
+        let buf = OutputBuffer::new();
+        buf.append(b"hello world").await;
+        let result = buf.find_literal_from(6, "hello").await;
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn find_literal_cursor_before_match() {
+        let buf = OutputBuffer::new();
+        buf.append(b"hello world").await;
+        let result = buf.find_literal_from(0, "world").await;
+        assert_eq!(result, Some((6, 11)));
+    }
+
+    #[tokio::test]
+    async fn find_literal_not_found() {
+        let buf = OutputBuffer::new();
+        buf.append(b"hello world").await;
+        let result = buf.find_literal_from(0, "xyz").await;
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn find_literal_positions_are_absolute() {
+        let buf = OutputBuffer::new();
+        buf.append(b"aaa bbb ccc").await;
+        let result = buf.find_literal_from(4, "bbb").await;
+        assert_eq!(result, Some((4, 7)));
+    }
+
+    #[tokio::test]
+    async fn find_literal_cursor_at_buffer_end() {
+        let buf = OutputBuffer::new();
+        buf.append(b"hello").await;
+        let result = buf.find_literal_from(5, "hello").await;
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn find_literal_cursor_beyond_buffer_end() {
+        let buf = OutputBuffer::new();
+        buf.append(b"hello").await;
+        let result = buf.find_literal_from(100, "hello").await;
+        assert_eq!(result, None);
+    }
+
+    // ── OutputBuffer::find_regex_from ────────────────────────────────
+
+    #[tokio::test]
+    async fn find_regex_basic() {
+        let buf = OutputBuffer::new();
+        buf.append(b"abc 123 def").await;
+        let re = Regex::new(r"\d+").unwrap();
+        let result = buf.find_regex_from(0, &re).await;
+        let (start, end, captures) = result.unwrap();
+        assert_eq!(start, 4);
+        assert_eq!(end, 7);
+        assert_eq!(captures.get("0").unwrap(), "123");
+    }
+
+    #[tokio::test]
+    async fn find_regex_with_capture_groups() {
+        let buf = OutputBuffer::new();
+        buf.append(b"name: Alice age: 30").await;
+        let re = Regex::new(r"name: (\w+) age: (\d+)").unwrap();
+        let result = buf.find_regex_from(0, &re).await;
+        let (start, end, captures) = result.unwrap();
+        assert_eq!(start, 0);
+        assert_eq!(end, 19);
+        assert_eq!(captures.get("0").unwrap(), "name: Alice age: 30");
+        assert_eq!(captures.get("1").unwrap(), "Alice");
+        assert_eq!(captures.get("2").unwrap(), "30");
+    }
+
+    #[tokio::test]
+    async fn find_regex_cursor_past_match() {
+        let buf = OutputBuffer::new();
+        buf.append(b"abc 123 def").await;
+        let re = Regex::new(r"\d+").unwrap();
+        let result = buf.find_regex_from(8, &re).await;
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn find_regex_positions_are_absolute() {
+        let buf = OutputBuffer::new();
+        buf.append(b"aaa 123 bbb 456").await;
+        let re = Regex::new(r"\d+").unwrap();
+        let result = buf.find_regex_from(8, &re).await;
+        let (start, end, captures) = result.unwrap();
+        assert_eq!(start, 12);
+        assert_eq!(end, 15);
+        assert_eq!(captures.get("0").unwrap(), "456");
+    }
+
+    #[tokio::test]
+    async fn find_regex_not_found() {
+        let buf = OutputBuffer::new();
+        buf.append(b"hello world").await;
+        let re = Regex::new(r"\d+").unwrap();
+        let result = buf.find_regex_from(0, &re).await;
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn find_regex_cursor_beyond_buffer_end() {
+        let buf = OutputBuffer::new();
+        buf.append(b"abc 123").await;
+        let re = Regex::new(r"\d+").unwrap();
+        let result = buf.find_regex_from(100, &re).await;
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn find_regex_captures_indexed_by_string_keys() {
+        let buf = OutputBuffer::new();
+        buf.append(b"2024-01-15").await;
+        let re = Regex::new(r"(\d{4})-(\d{2})-(\d{2})").unwrap();
+        let result = buf.find_regex_from(0, &re).await;
+        let (_start, _end, captures) = result.unwrap();
+        assert_eq!(captures.len(), 4); // group 0 + 3 capture groups
+        assert_eq!(captures.get("0").unwrap(), "2024-01-15");
+        assert_eq!(captures.get("1").unwrap(), "2024");
+        assert_eq!(captures.get("2").unwrap(), "01");
+        assert_eq!(captures.get("3").unwrap(), "15");
+    }
+}

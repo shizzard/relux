@@ -202,3 +202,305 @@ pub async fn eval_pure_var_value(
     let mut vars = HashMap::new();
     eval_pure_expr(expr, &mut vars, env, code_server, ctx).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dummy_span() -> Span {
+        Span::new(0, 0..0)
+    }
+
+    fn spanned<T>(node: T) -> Spanned<T> {
+        Spanned::new(node, dummy_span())
+    }
+
+    fn empty_code_server() -> CodeServer {
+        CodeServer::new(vec![], vec![])
+    }
+
+    fn string_expr(parts: Vec<Spanned<StringPart>>) -> StringExpr {
+        StringExpr {
+            parts,
+            span: dummy_span(),
+        }
+    }
+
+    fn pure_string(parts: Vec<Spanned<StringPart>>) -> Spanned<ir::PureExpr> {
+        spanned(ir::PureExpr::String(string_expr(parts)))
+    }
+
+    fn literal(s: &str) -> Spanned<StringPart> {
+        spanned(StringPart::Literal(s.to_string()))
+    }
+
+    fn interp(name: &str) -> Spanned<StringPart> {
+        spanned(StringPart::Interp(name.to_string()))
+    }
+
+    // ─── eval_pure_expr ─────────────────────────────────────
+
+    #[tokio::test]
+    async fn eval_string_literal() {
+        let expr = pure_string(vec![literal("hello world")]);
+        let env = Arc::new(HashMap::new());
+        let cs = empty_code_server();
+        let mut ctx = SimplePureContext;
+        let mut vars = HashMap::new();
+
+        let result = eval_pure_expr(&expr, &mut vars, &env, &cs, &mut ctx)
+            .await
+            .unwrap();
+        assert_eq!(result, "hello world");
+    }
+
+    #[tokio::test]
+    async fn eval_var_lookup_from_vars() {
+        let expr = spanned(ir::PureExpr::Var("x".to_string()));
+        let env = Arc::new(HashMap::new());
+        let cs = empty_code_server();
+        let mut ctx = SimplePureContext;
+        let mut vars = HashMap::from([("x".to_string(), "from_vars".to_string())]);
+
+        let result = eval_pure_expr(&expr, &mut vars, &env, &cs, &mut ctx)
+            .await
+            .unwrap();
+        assert_eq!(result, "from_vars");
+    }
+
+    #[tokio::test]
+    async fn eval_var_lookup_falls_back_to_env() {
+        let expr = spanned(ir::PureExpr::Var("y".to_string()));
+        let env = Arc::new(HashMap::from([("y".to_string(), "from_env".to_string())]));
+        let cs = empty_code_server();
+        let mut ctx = SimplePureContext;
+        let mut vars = HashMap::new();
+
+        let result = eval_pure_expr(&expr, &mut vars, &env, &cs, &mut ctx)
+            .await
+            .unwrap();
+        assert_eq!(result, "from_env");
+    }
+
+    #[tokio::test]
+    async fn eval_missing_var_returns_empty_string() {
+        let expr = spanned(ir::PureExpr::Var("missing".to_string()));
+        let env = Arc::new(HashMap::new());
+        let cs = empty_code_server();
+        let mut ctx = SimplePureContext;
+        let mut vars = HashMap::new();
+
+        let result = eval_pure_expr(&expr, &mut vars, &env, &cs, &mut ctx)
+            .await
+            .unwrap();
+        assert_eq!(result, "");
+    }
+
+    #[tokio::test]
+    async fn eval_string_interpolation_with_vars_and_env() {
+        let expr = pure_string(vec![
+            literal("hello "),
+            interp("name"),
+            literal(" from "),
+            interp("place"),
+        ]);
+        let env = Arc::new(HashMap::from([("place".to_string(), "env".to_string())]));
+        let cs = empty_code_server();
+        let mut ctx = SimplePureContext;
+        let mut vars = HashMap::from([("name".to_string(), "world".to_string())]);
+
+        let result = eval_pure_expr(&expr, &mut vars, &env, &cs, &mut ctx)
+            .await
+            .unwrap();
+        assert_eq!(result, "hello world from env");
+    }
+
+    #[tokio::test]
+    async fn eval_escaped_dollar_sign() {
+        let expr = pure_string(vec![
+            literal("cost: "),
+            spanned(StringPart::EscapedDollar),
+            literal("100"),
+        ]);
+        let env = Arc::new(HashMap::new());
+        let cs = empty_code_server();
+        let mut ctx = SimplePureContext;
+        let mut vars = HashMap::new();
+
+        let result = eval_pure_expr(&expr, &mut vars, &env, &cs, &mut ctx)
+            .await
+            .unwrap();
+        assert_eq!(result, "cost: $100");
+    }
+
+    #[tokio::test]
+    async fn eval_call_pure_bif_upper() {
+        let expr = spanned(ir::PureExpr::Call(ir::PureFnCall {
+            name: spanned("upper".to_string()),
+            args: vec![pure_string(vec![literal("hello")])],
+        }));
+        let env = Arc::new(HashMap::new());
+        let cs = empty_code_server();
+        let mut ctx = SimplePureContext;
+        let mut vars = HashMap::new();
+
+        let result = eval_pure_expr(&expr, &mut vars, &env, &cs, &mut ctx)
+            .await
+            .unwrap();
+        assert_eq!(result, "HELLO");
+    }
+
+    #[tokio::test]
+    async fn eval_call_user_defined_pure_function() {
+        let pure_fn = ir::PureFunction {
+            name: spanned("greet".to_string()),
+            params: vec![spanned("who".to_string())],
+            body: vec![spanned(ir::PureStmt::Expr(ir::PureExpr::String(
+                string_expr(vec![literal("hi "), interp("who")]),
+            )))],
+            span: dummy_span(),
+        };
+        let cs = CodeServer::new(vec![], vec![pure_fn]);
+
+        let expr = spanned(ir::PureExpr::Call(ir::PureFnCall {
+            name: spanned("greet".to_string()),
+            args: vec![pure_string(vec![literal("alice")])],
+        }));
+        let env = Arc::new(HashMap::new());
+        let mut ctx = SimplePureContext;
+        let mut vars = HashMap::new();
+
+        let result = eval_pure_expr(&expr, &mut vars, &env, &cs, &mut ctx)
+            .await
+            .unwrap();
+        assert_eq!(result, "hi alice");
+    }
+
+    // ─── exec_pure_body ─────────────────────────────────────
+
+    #[tokio::test]
+    async fn exec_let_declaration_with_value() {
+        let body = vec![spanned(ir::PureStmt::Let(ir::PureVarDecl {
+            name: spanned("x".to_string()),
+            value: Some(pure_string(vec![literal("42")])),
+        }))];
+        let env = Arc::new(HashMap::new());
+        let cs = empty_code_server();
+        let mut ctx = SimplePureContext;
+        let mut vars = HashMap::new();
+
+        let result = exec_pure_body(&body, &mut vars, &env, &cs, &mut ctx)
+            .await
+            .unwrap();
+        assert_eq!(result, "42");
+        assert_eq!(vars.get("x").unwrap(), "42");
+    }
+
+    #[tokio::test]
+    async fn exec_let_declaration_without_value() {
+        let body = vec![spanned(ir::PureStmt::Let(ir::PureVarDecl {
+            name: spanned("x".to_string()),
+            value: None,
+        }))];
+        let env = Arc::new(HashMap::new());
+        let cs = empty_code_server();
+        let mut ctx = SimplePureContext;
+        let mut vars = HashMap::new();
+
+        let result = exec_pure_body(&body, &mut vars, &env, &cs, &mut ctx)
+            .await
+            .unwrap();
+        assert_eq!(result, "");
+        assert_eq!(vars.get("x").unwrap(), "");
+    }
+
+    #[tokio::test]
+    async fn exec_assign_to_declared_variable() {
+        let body = vec![
+            spanned(ir::PureStmt::Let(ir::PureVarDecl {
+                name: spanned("x".to_string()),
+                value: Some(pure_string(vec![literal("old")])),
+            })),
+            spanned(ir::PureStmt::Assign(ir::PureVarAssign {
+                name: spanned("x".to_string()),
+                value: pure_string(vec![literal("new")]),
+            })),
+        ];
+        let env = Arc::new(HashMap::new());
+        let cs = empty_code_server();
+        let mut ctx = SimplePureContext;
+        let mut vars = HashMap::new();
+
+        let result = exec_pure_body(&body, &mut vars, &env, &cs, &mut ctx)
+            .await
+            .unwrap();
+        assert_eq!(result, "new");
+        assert_eq!(vars.get("x").unwrap(), "new");
+    }
+
+    #[tokio::test]
+    async fn exec_assign_to_undeclared_variable_returns_error() {
+        let body = vec![spanned(ir::PureStmt::Assign(ir::PureVarAssign {
+            name: spanned("undeclared".to_string()),
+            value: pure_string(vec![literal("value")]),
+        }))];
+        let env = Arc::new(HashMap::new());
+        let cs = empty_code_server();
+        let mut ctx = SimplePureContext;
+        let mut vars = HashMap::new();
+
+        let result = exec_pure_body(&body, &mut vars, &env, &cs, &mut ctx).await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            Failure::Runtime { message, .. } => {
+                assert!(message.contains("undeclared"));
+            }
+            other => panic!("expected Runtime failure, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn exec_last_expression_is_return_value() {
+        let body = vec![
+            spanned(ir::PureStmt::Let(ir::PureVarDecl {
+                name: spanned("x".to_string()),
+                value: Some(pure_string(vec![literal("ignored")])),
+            })),
+            spanned(ir::PureStmt::Expr(ir::PureExpr::String(string_expr(vec![
+                literal("final"),
+            ])))),
+        ];
+        let env = Arc::new(HashMap::new());
+        let cs = empty_code_server();
+        let mut ctx = SimplePureContext;
+        let mut vars = HashMap::new();
+
+        let result = exec_pure_body(&body, &mut vars, &env, &cs, &mut ctx)
+            .await
+            .unwrap();
+        assert_eq!(result, "final");
+    }
+
+    // ─── eval_overlay ───────────────────────────────────────
+
+    #[tokio::test]
+    async fn eval_overlay_evaluates_entries_into_hashmap() {
+        let overlay = vec![
+            ir::OverlayEntry {
+                key: spanned("host".to_string()),
+                value: pure_string(vec![literal("localhost")]),
+            },
+            ir::OverlayEntry {
+                key: spanned("port".to_string()),
+                value: pure_string(vec![literal("8080")]),
+            },
+        ];
+        let env = Arc::new(HashMap::new());
+        let cs = empty_code_server();
+
+        let result = eval_overlay(&overlay, &env, &cs).await;
+        assert_eq!(result.get("host").unwrap(), "localhost");
+        assert_eq!(result.get("port").unwrap(), "8080");
+        assert_eq!(result.len(), 2);
+    }
+}

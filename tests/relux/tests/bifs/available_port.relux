@@ -1,0 +1,22 @@
+test "available_port returns a valid port number" {
+    """
+    Verify available_port() returns a numeric port in the valid range.
+    """
+    shell s {
+        let port = available_port()
+        > echo "${port}"
+        <? ^[0-9]+$
+    }
+}
+
+test "available_port returns unique ports" {
+    """
+    Verify successive available_port() calls produce different values.
+    """
+    shell s {
+        let a = available_port()
+        let b = available_port()
+        > test "${a}" != "${b}" && echo "unique"
+        <? ^unique$
+    }
+}

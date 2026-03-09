@@ -1,0 +1,39 @@
+test "match_exit_code with zero" {
+    """
+    Verify match_exit_code(0) succeeds for a command that exits with 0.
+    """
+    shell s {
+        > true
+        match_exit_code(0)
+    }
+}
+
+test "match_exit_code with one" {
+    """
+    Verify match_exit_code(1) succeeds for a command that exits with 1.
+    """
+    shell s {
+        > false
+        match_exit_code(1)
+    }
+}
+
+test "match_exit_code with two" {
+    """
+    Verify match_exit_code(2) succeeds for a command that exits with 2.
+    """
+    shell s {
+        > sh -c 'exit 2'
+        match_exit_code(2)
+    }
+}
+
+test "match_exit_code with 127 for missing command" {
+    """
+    Verify match_exit_code(127) succeeds for a command-not-found error.
+    """
+    shell s {
+        > relux_nonexistent_command_42
+        match_exit_code(127)
+    }
+}
