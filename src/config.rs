@@ -73,7 +73,7 @@ pub struct TimeoutConfig {
     #[serde(rename = "match", deserialize_with = "deserialize_duration")]
     pub match_timeout: Duration,
     #[serde(deserialize_with = "deserialize_optional_duration")]
-    pub case: Option<Duration>,
+    pub test: Option<Duration>,
     #[serde(deserialize_with = "deserialize_optional_duration")]
     pub suite: Option<Duration>,
 }
@@ -82,7 +82,7 @@ impl Default for TimeoutConfig {
     fn default() -> Self {
         Self {
             match_timeout: DEFAULT_TIMEOUT,
-            case: None,
+            test: None,
             suite: None,
         }
     }
@@ -163,8 +163,8 @@ pub fn out_dir(project_root: &Path) -> PathBuf {
 pub fn apply_multiplier(config: &mut ReluxConfig, multiplier: f64) {
     config.timeout.match_timeout =
         Duration::from_secs_f64(config.timeout.match_timeout.as_secs_f64() * multiplier);
-    if let Some(case) = &mut config.timeout.case {
-        *case = Duration::from_secs_f64(case.as_secs_f64() * multiplier);
+    if let Some(test) = &mut config.timeout.test {
+        *test = Duration::from_secs_f64(test.as_secs_f64() * multiplier);
     }
     if let Some(suite) = &mut config.timeout.suite {
         *suite = Duration::from_secs_f64(suite.as_secs_f64() * multiplier);
@@ -181,7 +181,7 @@ mod tests {
         assert_eq!(config.shell.command, "/bin/sh");
         assert_eq!(config.shell.prompt, "relux> ");
         assert_eq!(config.timeout.match_timeout, Duration::from_secs(5));
-        assert!(config.timeout.case.is_none());
+        assert!(config.timeout.test.is_none());
         assert!(config.timeout.suite.is_none());
     }
 
@@ -205,7 +205,7 @@ prompt = "test> "
 
 [timeout]
 match = "3s"
-case = "1m"
+test = "1m"
 suite = "30m"
 "#;
         let config: ReluxConfig = toml::from_str(toml_str).unwrap();
@@ -213,7 +213,7 @@ suite = "30m"
         assert_eq!(config.shell.command, "/bin/zsh");
         assert_eq!(config.shell.prompt, "test> ");
         assert_eq!(config.timeout.match_timeout, Duration::from_secs(3));
-        assert_eq!(config.timeout.case, Some(Duration::from_secs(60)));
+        assert_eq!(config.timeout.test, Some(Duration::from_secs(60)));
         assert_eq!(config.timeout.suite, Some(Duration::from_secs(1800)));
     }
 
@@ -227,9 +227,9 @@ suite = "30m"
     #[test]
     fn multiplier_scales_timeouts() {
         let mut config = ReluxConfig::default();
-        config.timeout.case = Some(Duration::from_secs(60));
+        config.timeout.test = Some(Duration::from_secs(60));
         apply_multiplier(&mut config, 2.0);
         assert_eq!(config.timeout.match_timeout, Duration::from_secs(10));
-        assert_eq!(config.timeout.case, Some(Duration::from_secs(120)));
+        assert_eq!(config.timeout.test, Some(Duration::from_secs(120)));
     }
 }

@@ -1,4 +1,4 @@
-test "run reports negative match failure" {
+test "run reports negative match failure" ~300ms {
     """
     Verify relux run reports when a negative match finds the unwanted pattern.
     """

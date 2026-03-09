@@ -6,5 +6,5 @@
 
 # [timeout]
 # match = "5s"
-# case = "5m"
+# test = "5m"
 # suite = "30m"

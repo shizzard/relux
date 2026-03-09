@@ -1089,8 +1089,14 @@ fn lower_test_def(
         }
     }
 
+    let timeout = def.timeout.as_ref().map(|t| {
+        let dur = parse_timeout(&t.node, file_id, &t.span, diagnostics);
+        ir::TestTimeout::Explicit(dur)
+    });
+
     ir::Test {
         name: lower_spanned(file_id, def.name.node.clone(), &def.name.span),
+        timeout,
         doc,
         conditions,
         needs,
@@ -1750,6 +1756,33 @@ mod tests {
         );
         let (_, _, diags) = loader.resolve_one("main");
         assert!(diag_names(&diags).contains(&"InvalidTimeout"));
+    }
+
+    #[test]
+    fn test_inline_test_timeout() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "main",
+            "test \"t\" ~5s {\n  shell s {\n    > echo\n  }\n}\n",
+        );
+        let (plans, _, diags) = loader.resolve_one("main");
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        assert_eq!(
+            plans[0].test.timeout,
+            Some(ir::TestTimeout::Explicit(Duration::from_secs(5)))
+        );
+    }
+
+    #[test]
+    fn test_no_inline_test_timeout() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "main",
+            "test \"t\" {\n  shell s {\n    > echo\n  }\n}\n",
+        );
+        let (plans, _, diags) = loader.resolve_one("main");
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        assert!(plans[0].test.timeout.is_none());
     }
 
     #[test]

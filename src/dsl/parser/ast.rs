@@ -56,6 +56,7 @@ pub enum EffectItem {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TestDef {
     pub name: Spanned<String>,
+    pub timeout: Option<Spanned<String>>,
     pub markers: Vec<Spanned<MarkerDecl>>,
     pub body: Vec<Spanned<TestItem>>,
 }

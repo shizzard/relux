@@ -573,8 +573,13 @@ where
     ))
     .labelled("test item");
 
+    let test_timeout = select! { Token::Timeout(s) => s.to_string() }
+        .map_with(|s, e| Spanned::new(s, sp(e.span())))
+        .or_not();
+
     let test_def = just(Token::Test)
         .ignore_then(test_name)
+        .then(test_timeout)
         .then(
             just(Token::BraceOpen)
                 .ignore_then(
@@ -587,7 +592,7 @@ where
                 .then_ignore(newlines.clone())
                 .then_ignore(just(Token::BraceClose)),
         )
-        .map_with(|(name, body), e| Spanned::new(Item::Test(TestDef { name, markers: Vec::new(), body }), sp(e.span())))
+        .map_with(|((name, timeout), body), e| Spanned::new(Item::Test(TestDef { name, timeout, markers: Vec::new(), body }), sp(e.span())))
         .labelled("test definition");
 
     // ── top-level items ──
@@ -1185,6 +1190,30 @@ mod tests {
                 assert!(matches!(&t.body[2].node, TestItem::Let(_)));
                 assert!(matches!(&t.body[3].node, TestItem::Shell(_)));
                 assert!(matches!(&t.body[4].node, TestItem::Cleanup(_)));
+            }
+            other => panic!("expected Test, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_test_def_with_timeout() {
+        let m = parse_ok("test \"fast\" ~3s {\n  shell s {\n    > hi\n  }\n}\n");
+        match &m.items[0].node {
+            Item::Test(t) => {
+                assert_eq!(t.name.node, "fast");
+                assert_eq!(t.timeout.as_ref().unwrap().node, "3s");
+            }
+            other => panic!("expected Test, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_test_def_without_timeout() {
+        let m = parse_ok("test \"no timeout\" {\n  shell s {\n    > hi\n  }\n}\n");
+        match &m.items[0].node {
+            Item::Test(t) => {
+                assert_eq!(t.name.node, "no timeout");
+                assert!(t.timeout.is_none());
             }
             other => panic!("expected Test, got {other:?}"),
         }

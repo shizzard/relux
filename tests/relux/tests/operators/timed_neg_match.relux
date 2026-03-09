@@ -1,26 +1,26 @@
-test "inline timeout on negative regex match" {
+test "inline timeout on negative regex match" ~300ms {
     """
     Verify inline timeout works with negative regex matches.
     """
     shell s {
         > echo hello
         <? ^hello$
-        <~500ms!? never_appears
+        <~100ms!? never_appears
     }
 }
 
-test "inline timeout on negative literal match" {
+test "inline timeout on negative literal match" ~300ms {
     """
     Verify inline timeout works with negative literal matches.
     """
     shell s {
         > echo hello
         <? ^hello$
-        <~500ms!= never_appears
+        <~100ms!= never_appears
     }
 }
 
-test "inline timeout on negative match is one-shot" {
+test "inline timeout on negative match is one-shot" ~300ms {
     """
     Verify the inline timeout on a negative match does not persist
     to subsequent matches.
@@ -28,7 +28,7 @@ test "inline timeout on negative match is one-shot" {
     shell s {
         > echo hello
         <? ^hello$
-        <~500ms!? absent
+        <~100ms!? absent
         > echo world
         <? ^world$
     }

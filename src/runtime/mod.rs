@@ -8,7 +8,7 @@ use daggy::petgraph::algo::toposort;
 use daggy::petgraph::visit::{EdgeRef, IntoEdgesDirected};
 use tokio::sync::Mutex;
 
-use crate::dsl::resolver::ir::{self, EffectInstance, InstanceId, Plan, SourceMap, Spanned};
+use crate::dsl::resolver::ir::{self, EffectInstance, InstanceId, Plan, SourceMap, Spanned, TestTimeout};
 use crate::runtime::event_log::{EventCollector, LogEventKind};
 use crate::runtime::progress::{ProgressEvent, ProgressTx};
 use crate::runtime::result::{Failure, Outcome, TestResult};
@@ -152,7 +152,7 @@ pub struct Runtime {
     default_timeout: Duration,
     shell_command: String,
     shell_prompt: String,
-    case_timeout: Option<Duration>,
+    test_timeout: Option<Duration>,
     suite_timeout: Option<Duration>,
     strategy: RunStrategy,
 }
@@ -165,7 +165,7 @@ pub struct RunContext {
     pub shell_command: String,
     pub shell_prompt: String,
     pub default_timeout: Duration,
-    pub case_timeout: Option<Duration>,
+    pub test_timeout: Option<Duration>,
     pub suite_timeout: Option<Duration>,
     pub strategy: RunStrategy,
 }
@@ -194,7 +194,7 @@ impl Runtime {
             default_timeout: run_context.default_timeout,
             shell_command: run_context.shell_command,
             shell_prompt: run_context.shell_prompt,
-            case_timeout: run_context.case_timeout,
+            test_timeout: run_context.test_timeout,
             suite_timeout: run_context.suite_timeout,
             strategy: run_context.strategy,
         }
@@ -237,14 +237,20 @@ impl Runtime {
     }
 
     async fn run_plan(&self, plan: Plan) -> TestResult {
-        match self.case_timeout {
+        // Inline test timeout (not affected by --multiplier) takes precedence
+        // over the inherited test timeout from config/manifest.
+        let effective_timeout = match &plan.test.timeout {
+            Some(TestTimeout::Explicit(d)) => Some(*d),
+            _ => self.test_timeout,
+        };
+        match effective_timeout {
             Some(timeout) => match tokio::time::timeout(timeout, self.run_plan_inner(plan)).await {
                 Ok(result) => result,
                 Err(_) => TestResult {
                     test_name: "(unknown)".to_string(),
                     test_path: "(unknown)".to_string(),
                     outcome: Outcome::Fail(Failure::Runtime {
-                        message: format!("case timeout ({timeout:?}) exceeded"),
+                        message: format!("test timeout ({timeout:?}) exceeded"),
                         span: None,
                         shell: None,
                     }),

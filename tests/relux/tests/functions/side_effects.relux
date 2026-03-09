@@ -10,7 +10,7 @@ fn set_fail_pattern_inside() {
     <? ^in fn$
 }
 
-test "timeout set inside function does not persist in caller" {
+test "timeout set inside function does not persist in caller" ~3s {
     """
     Verify a scoped timeout set inside a function is restored to
     the caller's timeout after the function returns.
@@ -18,12 +18,12 @@ test "timeout set inside function does not persist in caller" {
     shell s {
         ~3s
         set_timeout_inside()
-        > sh -c 'sleep 0.5 && echo delayed'
+        > sh -c 'sleep 0.1 && echo delayed'
         <? ^delayed$
     }
 }
 
-test "fail pattern set inside function does not persist in caller" {
+test "fail pattern set inside function does not persist in caller" ~3s {
     """
     Verify a fail pattern set inside a function is restored to the
     caller's fail pattern after the function returns.

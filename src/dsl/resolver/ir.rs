@@ -194,9 +194,18 @@ pub struct Effect {
 
 // ─── Test ───────────────────────────────────────────────────
 
+/// Distinguishes inline test timeouts (not affected by `--multiplier`)
+/// from inherited timeouts (from config/manifest, affected by `--multiplier`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum TestTimeout {
+    /// Set inline on the test definition: `test "name" ~5s { ... }`
+    Explicit(Duration),
+}
+
 #[derive(Debug, Clone)]
 pub struct Test {
     pub name: Spanned<String>,
+    pub timeout: Option<TestTimeout>,
     pub doc: Option<Spanned<String>>,
     pub conditions: Vec<Spanned<Condition>>,
     /// Resolved references to effect instances in the DAG.

@@ -1,4 +1,4 @@
-test "run exits 1 when a test fails" {
+test "run exits 1 when a test fails" ~300ms {
     """
     Verify relux run exits with code 1 when any test fails.
     """

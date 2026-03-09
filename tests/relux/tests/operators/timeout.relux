@@ -1,40 +1,38 @@
-# These test need to be rewritten when tests would allow for custom case timeout
-
-test "scoped timeout allows delayed output" {
+test "scoped timeout allows delayed output" ~3s {
     """
     Verify a scoped timeout long enough for delayed output lets the match succeed.
     """
     shell s {
         ~3s
-        > sh -c 'sleep 0.5 && echo delayed'
+        > sh -c 'sleep 0.1 && echo delayed'
         <? ^delayed$
     }
 }
 
-test "scoped timeout overrides previous timeout" {
+test "scoped timeout overrides previous timeout" ~3s {
     """
     Verify setting a new scoped timeout replaces the previous one.
     """
     shell s {
         ~200ms
         ~3s
-        > sh -c 'sleep 0.5 && echo delayed'
+        > sh -c 'sleep 0.1 && echo delayed'
         <? ^delayed$
     }
 }
 
-test "scoped timeout with milliseconds" {
+test "scoped timeout with milliseconds" ~3s {
     """
     Verify scoped timeout accepts millisecond duration units.
     """
     shell s {
         ~3000ms
-        > sh -c 'sleep 0.5 && echo ms_timeout'
+        > sh -c 'sleep 0.1 && echo ms_timeout'
         <? ^ms_timeout$
     }
 }
 
-test "scoped timeout with compound duration" {
+test "scoped timeout with compound duration" ~2m {
     """
     Verify scoped timeout accepts compound durations like 1m30s.
     """

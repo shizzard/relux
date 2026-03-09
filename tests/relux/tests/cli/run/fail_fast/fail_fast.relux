@@ -1,4 +1,4 @@
-test "fail-fast stops after first failure" {
+test "fail-fast stops after first failure" ~300ms {
     """
     Verify relux run --strategy fail-fast stops after the first test failure.
     """

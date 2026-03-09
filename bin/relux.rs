@@ -207,7 +207,7 @@ fn cmd_new_project() {
 
 # [timeout]
 # match = "5s"
-# case = "5m"
+# test = "5m"
 # suite = "30m"
 "#,
         command = config::DEFAULT_SHELL_COMMAND,
@@ -548,7 +548,7 @@ fn create_run_context(
                     shell_command: config.shell.command.clone(),
                     shell_prompt: config.shell.prompt.clone(),
                     default_timeout: config.timeout.match_timeout,
-                    case_timeout: config.timeout.case,
+                    test_timeout: config.timeout.test,
                     suite_timeout: config.timeout.suite,
                     strategy,
                 };

@@ -36,7 +36,7 @@ prompt = "relux> "
 
 [timeout]
 match = "5s"
-case = "5m"
+test = "5m"
 suite = "30m"
 ```
 
@@ -60,7 +60,7 @@ All durations use `humantime` format (e.g. `5s`, `1m30s`, `2h`).
 | Field     | Type             | Default | Description                                  |
 |-----------|------------------|---------|----------------------------------------------|
 | `match`   | duration         | `5s`    | Per-match timeout                            |
-| `case`    | duration or null | —       | Max wall-clock time per test case            |
+| `test`    | duration or null | —       | Max wall-clock time per test                 |
 | `suite`   | duration or null | —       | Max wall-clock time for the entire test run  |
 
 ## Project structure

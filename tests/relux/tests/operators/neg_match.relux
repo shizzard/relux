@@ -1,36 +1,34 @@
-# These test need to be rewritten when tests would allow for custom case timeout
-
-test "negative regex match succeeds when pattern absent" {
+test "negative regex match succeeds when pattern absent" ~300ms {
     """
     Verify negative regex match passes when the pattern never appears.
     """
     shell s {
-        ~500ms
+        ~100ms
         > echo hello
         <? ^hello$
         <!? never_appears
     }
 }
 
-test "negative literal match succeeds when text absent" {
+test "negative literal match succeeds when text absent" ~300ms {
     """
     Verify negative literal match passes when the text never appears.
     """
     shell s {
-        ~500ms
+        ~100ms
         > echo hello
         <? ^hello$
         <!= never_appears
     }
 }
 
-test "negative match does not advance cursor" {
+test "negative match does not advance cursor" ~300ms {
     """
     Verify a successful negative match leaves the cursor in place,
     allowing subsequent positive matches to find later output.
     """
     shell s {
-        ~500ms
+        ~100ms
         > echo first
         > echo second
         <? ^first$
@@ -39,12 +37,12 @@ test "negative match does not advance cursor" {
     }
 }
 
-test "negative regex match with variable interpolation" {
+test "negative regex match with variable interpolation" ~300ms {
     """
     Verify variables are interpolated in negative regex payloads.
     """
     shell s {
-        ~500ms
+        ~100ms
         let bad = "error_pattern"
         > echo "all good"
         <? ^all good$
@@ -52,24 +50,24 @@ test "negative regex match with variable interpolation" {
     }
 }
 
-test "negative literal match with special chars" {
+test "negative literal match with special chars" ~300ms {
     """
     Verify negative literal match treats regex metacharacters as plain text.
     """
     shell s {
-        ~500ms
+        ~100ms
         > echo "price is 10"
         <? ^price is 10$
         <!= $10.00 (USD)
     }
 }
 
-test "negative match returns empty string" {
+test "negative match returns empty string" ~300ms {
     """
     Verify capturing a negative match result yields an empty string.
     """
     shell s {
-        ~500ms
+        ~100ms
         > echo hello
         <? ^hello$
         let result = <!? absent_pattern
