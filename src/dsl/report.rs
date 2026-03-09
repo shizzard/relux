@@ -1,7 +1,7 @@
 use ariadne::{Config, IndexType, Label, Report, ReportKind, sources};
 
 use crate::dsl::resolver::Diagnostic;
-use crate::dsl::resolver::ir::{FileId, SourceMap, Span};
+use crate::dsl::resolver::ir::{SourceMap, Span};
 use crate::runtime::result::Failure;
 
 type Src = String;
@@ -10,16 +10,8 @@ fn cfg() -> Config {
     Config::default().with_index_type(IndexType::Byte)
 }
 
-fn file_path(file: FileId, source_map: &SourceMap) -> Src {
-    source_map
-        .files
-        .get(file)
-        .map(|f| f.path.display().to_string())
-        .unwrap_or_else(|| "<unknown>".into())
-}
-
 fn aspan(span: &Span, source_map: &SourceMap) -> (Src, std::ops::Range<usize>) {
-    let path = file_path(span.file, source_map);
+    let path = source_map.display_path(span.file);
     let range = &span.range;
     if range.start < range.end {
         return (path, range.clone());
@@ -47,7 +39,8 @@ fn make_cache(source_map: &SourceMap) -> impl ariadne::Cache<Src> + '_ {
     let srcs: Vec<(Src, &str)> = source_map
         .files
         .iter()
-        .map(|f| (f.path.display().to_string(), f.source.as_str()))
+        .enumerate()
+        .map(|(id, f)| (source_map.display_path(id), f.source.as_str()))
         .collect();
     sources(srcs)
 }
@@ -72,7 +65,7 @@ fn render_diagnostic(
     let cfg = cfg();
     match diag {
         Diagnostic::Parse { file, error } => {
-            let path = file_path(*file, source_map);
+            let path = source_map.display_path(*file);
             let err_span = error.span();
             let span = (path.clone(), err_span.start..err_span.end);
 
@@ -108,8 +101,42 @@ fn render_diagnostic(
         }
 
         Diagnostic::CircularImport { cycle } => {
-            eprintln!("Error: circular import detected");
-            eprintln!("  = note: cycle: {}", cycle.join(" -> "));
+            let cycle_names: Vec<&str> = cycle.iter().map(|(name, _)| name.as_str()).collect();
+            let labels: Vec<_> = cycle
+                .iter()
+                .enumerate()
+                .take(cycle.len().saturating_sub(1)) // last entry duplicates the first
+                .filter_map(|(i, (name, span))| {
+                    span.as_ref().map(|s| {
+                        let importer = if i > 0 {
+                            cycle[i - 1].0.as_str()
+                        } else {
+                            // Last unique entry (skip the closing duplicate)
+                            cycle
+                                .get(cycle.len().saturating_sub(2))
+                                .map(|(n, _)| n.as_str())
+                                .unwrap_or("?")
+                        };
+                        let (path, range) = aspan(s, source_map);
+                        Label::new((path, range))
+                            .with_message(format!("{importer} imports {name}"))
+                    })
+                })
+                .collect();
+            if let Some((_, Some(primary_span))) = cycle.last() {
+                let (path, range) = aspan(primary_span, source_map);
+                let mut builder = Report::build(ReportKind::Error, (path, range))
+                    .with_config(cfg)
+                    .with_message("circular import detected");
+                for label in labels {
+                    builder = builder.with_label(label);
+                }
+                builder = builder.with_note(format!("cycle: {}", cycle_names.join(" -> ")));
+                let _ = builder.finish().eprint(cache);
+            } else {
+                eprintln!("error: circular import detected");
+                eprintln!("  = note: cycle: {}", cycle_names.join(" -> "));
+            }
         }
 
         Diagnostic::UndefinedName {
@@ -173,8 +200,36 @@ fn render_diagnostic(
         }
 
         Diagnostic::CircularEffectDependency { cycle } => {
-            eprintln!("Error: circular effect dependency");
-            eprintln!("  = note: cycle: {}", cycle.join(" -> "));
+            let mut cycle_names: Vec<&str> = cycle.iter().map(|(name, _)| name.as_str()).collect();
+            if let Some(first) = cycle.first() {
+                cycle_names.push(first.0.as_str());
+            }
+            let labels: Vec<_> = cycle
+                .iter()
+                .enumerate()
+                .map(|(i, (name, span))| {
+                    let (path, range) = aspan(span, source_map);
+                    let next_name = cycle
+                        .get(i + 1)
+                        .map(|(n, _)| n.as_str())
+                        .unwrap_or_else(|| cycle.first().map(|(n, _)| n.as_str()).unwrap_or("?"));
+                    Label::new((path, range))
+                        .with_message(format!("{name} needs {next_name}"))
+                })
+                .collect();
+            if let Some((_, primary_span)) = cycle.last() {
+                let (path, range) = aspan(primary_span, source_map);
+                let mut builder = Report::build(ReportKind::Error, (path, range))
+                    .with_config(cfg)
+                    .with_message("circular effect dependency");
+                for label in labels {
+                    builder = builder.with_label(label);
+                }
+                builder = builder.with_note(format!("cycle: {}", cycle_names.join(" -> ")));
+                let _ = builder.finish().eprint(cache);
+            } else {
+                eprintln!("error: circular effect dependency");
+            }
         }
 
         Diagnostic::InvalidTimeout { raw, span } => {

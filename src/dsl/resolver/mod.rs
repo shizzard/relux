@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use daggy::Walker;
 use walkdir::WalkDir;
 
 use crate::Spanned as AstSpanned;
@@ -57,7 +58,7 @@ pub enum Diagnostic {
         path: String,
     },
     CircularImport {
-        cycle: Vec<String>,
+        cycle: Vec<(String, Option<Span>)>,
     },
     UndefinedName {
         name: String,
@@ -75,7 +76,7 @@ pub enum Diagnostic {
         span: Span,
     },
     CircularEffectDependency {
-        cycle: Vec<String>,
+        cycle: Vec<(String, Span)>,
     },
     InvalidTimeout {
         raw: String,
@@ -118,7 +119,7 @@ struct ModuleScope {
 struct Loader<'a> {
     source_map: SourceMap,
     asts: HashMap<String, (FileId, parser::Module)>,
-    loading_stack: Vec<String>,
+    loading_stack: Vec<(String, Option<Span>)>,
     diagnostics: Vec<Diagnostic>,
     source_loader: &'a dyn SourceLoader,
 }
@@ -139,9 +140,10 @@ impl<'a> Loader<'a> {
             return;
         }
 
-        if let Some(pos) = self.loading_stack.iter().position(|p| p == mod_path) {
-            let mut cycle: Vec<String> = self.loading_stack[pos..].to_vec();
-            cycle.push(mod_path.to_string());
+        if let Some(pos) = self.loading_stack.iter().position(|(p, _)| p == mod_path) {
+            let mut cycle: Vec<(String, Option<Span>)> =
+                self.loading_stack[pos..].iter().cloned().collect();
+            cycle.push((mod_path.to_string(), referenced_from));
             self.diagnostics.push(Diagnostic::CircularImport { cycle });
             return;
         }
@@ -174,7 +176,7 @@ impl<'a> Loader<'a> {
             None => return,
         };
 
-        self.loading_stack.push(mod_path.to_string());
+        self.loading_stack.push((mod_path.to_string(), referenced_from));
 
         let import_paths: Vec<_> = module
             .items
@@ -477,15 +479,69 @@ impl<'a> EffectGraphBuilder<'a> {
 
             let edge = ir::EffectEdge {
                 alias: ir::Spanned::new(alias_name, alias_span),
+                need_effect_span: Span::new(need_file_id, need.effect.span.clone()),
             };
             if self.dag.add_edge(node_idx, dep_node, edge).is_err() {
-                self.diagnostics.push(Diagnostic::CircularEffectDependency {
-                    cycle: vec![effect_name.clone()],
-                });
+                let closing_span = Span::new(need_file_id, need.effect.span.clone());
+                let closing_name = self.effect_name_at(dep_node);
+                let cycle =
+                    self.build_effect_cycle(dep_node, node_idx, &closing_name, closing_span);
+                self.diagnostics.push(Diagnostic::CircularEffectDependency { cycle });
             }
         }
 
         Some(node_idx)
+    }
+
+    fn effect_name_at(&self, node: daggy::NodeIndex) -> String {
+        let instance = &self.dag[node];
+        self.effects[instance.effect].name.node.clone()
+    }
+
+    fn build_effect_cycle(
+        &self,
+        from: daggy::NodeIndex,
+        to: daggy::NodeIndex,
+        closing_name: &str,
+        closing_span: Span,
+    ) -> Vec<(String, Span)> {
+        // DFS from `from` to `to` through existing edges to find the cycle path
+        let mut path = Vec::new();
+        if self.dfs_cycle(from, to, &mut path) {
+            // path contains (name, span) for each step from `from` to `to`
+            // Add the closing edge: the `need` that would create the cycle
+            path.push((closing_name.to_string(), closing_span));
+            path
+        } else {
+            // Fallback: shouldn't happen, but at least report the closing edge
+            vec![(closing_name.to_string(), closing_span)]
+        }
+    }
+
+    fn dfs_cycle(
+        &self,
+        current: daggy::NodeIndex,
+        target: daggy::NodeIndex,
+        path: &mut Vec<(String, Span)>,
+    ) -> bool {
+        // Edge B→A means "A depends on B" — the edge was created when A
+        // processed `need B`, so child_node is A (the dependent) and the
+        // edge's need_effect_span lives in A's source.
+        for child_edge in self.dag.children(current).iter(&self.dag) {
+            let (edge_idx, child_node) = child_edge;
+            let edge = &self.dag[edge_idx];
+            let child_name = self.effect_name_at(child_node);
+            let span = edge.need_effect_span.clone();
+            path.push((child_name, span));
+            if child_node == target {
+                return true;
+            }
+            if self.dfs_cycle(child_node, target, path) {
+                return true;
+            }
+            path.pop();
+        }
+        false
     }
 
     fn ensure_effect_def(
@@ -1330,7 +1386,8 @@ pub fn resolve(
         .map(|p| path_to_mod(p, project_root))
         .collect();
 
-    let (plans, source_map, mut diagnostics) = resolve_with(&mod_paths, &loader);
+    let (plans, mut source_map, mut diagnostics) = resolve_with(&mod_paths, &loader);
+    source_map.project_root = Some(project_root.to_path_buf());
     early_diagnostics.append(&mut diagnostics);
 
     // Filter out plans from lib-only modules

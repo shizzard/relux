@@ -11,6 +11,7 @@ pub type FileId = usize;
 #[derive(Debug, Clone)]
 pub struct SourceMap {
     pub files: Vec<SourceFile>,
+    pub project_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -21,13 +22,31 @@ pub struct SourceFile {
 
 impl SourceMap {
     pub fn new() -> Self {
-        Self { files: Vec::new() }
+        Self {
+            files: Vec::new(),
+            project_root: None,
+        }
     }
 
     pub fn add(&mut self, path: PathBuf, source: String) -> FileId {
         let id = self.files.len();
         self.files.push(SourceFile { path, source });
         id
+    }
+
+    pub fn display_path(&self, file: FileId) -> String {
+        self.files
+            .get(file)
+            .map(|f| match &self.project_root {
+                Some(root) => f
+                    .path
+                    .strip_prefix(root)
+                    .unwrap_or(&f.path)
+                    .display()
+                    .to_string(),
+                None => f.path.display().to_string(),
+            })
+            .unwrap_or_else(|| "<unknown>".into())
     }
 }
 
@@ -106,6 +125,8 @@ pub struct EffectInstance {
 #[derive(Debug, Clone)]
 pub struct EffectEdge {
     pub alias: Spanned<String>,
+    /// Span of the effect name in the `need` statement (for cycle diagnostics).
+    pub need_effect_span: Span,
 }
 
 // ─── Function ───────────────────────────────────────────────

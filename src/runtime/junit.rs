@@ -148,6 +148,7 @@ mod tests {
                 path: PathBuf::from("tests/auth/login.relux"),
                 source: "line1\nline2\nline3\n".to_string(),
             }],
+            project_root: None,
         }
     }
 

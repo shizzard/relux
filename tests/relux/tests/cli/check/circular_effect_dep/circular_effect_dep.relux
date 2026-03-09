@@ -5,6 +5,7 @@ test "check detects circular effect dependency" {
     shell s {
         > relux check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? circular effect dependency
+        <? cycle: B -> A -> B
         match_prompt()
         match_exit_code(1)
     }

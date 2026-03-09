@@ -135,6 +135,7 @@ mod tests {
                 // 3 lines: line 1 = bytes 0..6, line 2 = bytes 7..13, line 3 = bytes 14..20
                 source: "line 1\nline 2\nline 3\n".to_string(),
             }],
+            project_root: None,
         }
     }
 
