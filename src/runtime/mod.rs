@@ -17,6 +17,7 @@ use crate::runtime::vm::Vm;
 
 pub mod bifs;
 pub mod event_log;
+pub mod history;
 pub mod html;
 pub mod junit;
 pub mod progress;
@@ -38,6 +39,11 @@ pub fn compute_test_path(source_map: &SourceMap, project_root: &Path, plan: &Pla
         .unwrap_or(source_path)
         .display()
         .to_string()
+}
+
+/// Format a test identifier for display: `path/slugified-name`.
+pub fn test_display_id(test_path: &str, test_name: &str) -> String {
+    format!("{}/{}", test_path, slugify(test_name))
 }
 
 pub type SharedVm = Arc<Mutex<Vm>>;
@@ -344,7 +350,8 @@ impl Runtime {
         let _ = std::fs::create_dir_all(&log_dir);
         let event_collector = EventCollector::new(test_start);
 
-        eprint!("test {test_path}/\"{test_name}\": ");
+        let display_id = test_display_id(&test_path, &test_name);
+        eprint!("test {display_id}: ");
         let _ = std::io::stderr().flush();
 
         let (progress_tx, progress_rx) = progress::channel();
@@ -882,7 +889,7 @@ fn cleanup_to_shell_stmts(
         .collect()
 }
 
-fn slugify(name: &str) -> String {
+pub fn slugify(name: &str) -> String {
     name.chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() || c == '-' || c == '_' {

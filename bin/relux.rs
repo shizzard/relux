@@ -8,6 +8,7 @@ use relux::dsl::lexer::lex;
 use relux::dsl::parser::parse;
 use relux::dsl::report::print_diagnostics;
 use relux::dsl::resolver::resolve;
+use relux::runtime::history::{HistoryCommand, OutputFormat, run_history};
 use relux::runtime::html::generate_run_summary;
 use relux::runtime::result::{Outcome, Reporter};
 use relux::runtime::{RunContext, RunStrategy, Runtime};
@@ -107,6 +108,71 @@ fn cli() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("history")
+                .about("Analyze run history")
+                .group(
+                    clap::ArgGroup::new("analysis")
+                        .args(["flaky", "failures", "first-fail", "durations"])
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("flaky")
+                        .long("flaky")
+                        .help("Show flakiness rate per test")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("failures")
+                        .long("failures")
+                        .help("Show failure frequency and mode distribution")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("first-fail")
+                        .long("first-fail")
+                        .help("Show most recent pass-to-fail regression per test")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("durations")
+                        .long("durations")
+                        .help("Show duration trends and statistics")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("tests")
+                        .long("tests")
+                        .help("Filter to specific test files or directories")
+                        .num_args(1..)
+                        .value_parser(value_parser!(PathBuf)),
+                )
+                .arg(
+                    Arg::new("last")
+                        .long("last")
+                        .help("Limit analysis to the N most recent runs")
+                        .value_parser(value_parser!(usize)),
+                )
+                .arg(
+                    Arg::new("top")
+                        .long("top")
+                        .help("Show only the top N results")
+                        .value_parser(value_parser!(usize)),
+                )
+                .arg(
+                    Arg::new("format")
+                        .long("format")
+                        .help("Output format")
+                        .value_parser(["human", "toml"])
+                        .default_value("human"),
+                )
+                .arg(
+                    Arg::new("manifest")
+                        .long("manifest")
+                        .help("Path to the suite manifest file (default: auto-discover Relux.toml)")
+                        .value_parser(value_parser!(PathBuf)),
+                ),
+        )
+        .subcommand(
             Command::new("dump")
                 .about("Introspection tools")
                 .subcommand_required(true)
@@ -152,6 +218,7 @@ async fn main() {
         Some(("new", sub)) => cmd_new(sub),
         Some(("run", sub)) => cmd_run(sub).await,
         Some(("check", sub)) => cmd_check(sub),
+        Some(("history", sub)) => cmd_history(sub),
         Some(("dump", sub)) => match sub.subcommand() {
             Some(("tokens", sub)) => cmd_dump_tokens(sub),
             Some(("ast", sub)) => cmd_dump_ast(sub),
@@ -492,6 +559,35 @@ fn find_latest_run(out_root: &std::path::Path) -> PathBuf {
         eprintln!("error: no previous runs found in {}", out_root.display());
         process::exit(1);
     })
+}
+
+fn cmd_history(matches: &clap::ArgMatches) {
+    let (project_root, _config) = resolve_project(matches);
+
+    let command = if matches.get_flag("flaky") {
+        HistoryCommand::Flaky
+    } else if matches.get_flag("failures") {
+        HistoryCommand::Failures
+    } else if matches.get_flag("first-fail") {
+        HistoryCommand::FirstFail
+    } else {
+        HistoryCommand::Durations
+    };
+
+    let test_paths: Vec<PathBuf> = matches
+        .get_many::<PathBuf>("tests")
+        .map(|p| p.cloned().collect())
+        .unwrap_or_default();
+
+    let last_n: Option<usize> = matches.get_one::<usize>("last").copied();
+    let top_n: Option<usize> = matches.get_one::<usize>("top").copied();
+
+    let format = match matches.get_one::<String>("format").map(|s| s.as_str()) {
+        Some("toml") => OutputFormat::Toml,
+        _ => OutputFormat::Human,
+    };
+
+    run_history(&project_root, command, &test_paths, last_n, top_n, format);
 }
 
 fn cmd_check(matches: &clap::ArgMatches) {

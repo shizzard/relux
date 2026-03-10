@@ -26,6 +26,10 @@ e2e *ARGS:
     cargo run -- check --manifest tests/Relux.toml {{ARGS}}
     cargo run -- run --manifest tests/Relux.toml {{ARGS}}
 
+# Analyze run history
+history *ARGS:
+    cargo run -- history --manifest tests/Relux.toml {{ARGS}}
+
 # Build the IntelliJ plugin
 intellij:
     cd editors/intellij && gradle buildPlugin --info

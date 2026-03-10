@@ -4,14 +4,14 @@ test "sleep pauses execution" {
     measuring elapsed time with the date command.
     """
     shell s {
-        > T1=$$(date +%s) && sleep 0 && echo "start=$$T1"
+        > T1=$$(date +%s%3N) && sleep 0 && echo "start=$$T1"
         <? ^start=([0-9]+)$
-        let before = ${1}
-        sleep("1s")
-        > T2=$$(date +%s) && echo "elapsed=$$(( $$T2 - ${before} ))"
-        <? ^elapsed=([0-9]+)$
-        let diff = ${1}
-        > test ${diff} -ge 1 && echo "ok"
+        let before = $1
+        sleep("50ms")
+        > T2=$$(date +%s%3N) && echo "T1=$$T1; T2=$$T2; elapsed=$$(( $$T2 - ${before} ))"
+        <? elapsed=([0-9]+)$
+        let diff = $1
+        > test ${diff} -ge 50 && echo "ok"
         <? ^ok$
     }
 }
@@ -21,7 +21,7 @@ test "sleep returns empty string" {
     Verify sleep() returns an empty string as its result value.
     """
     shell s {
-        let result = sleep("100ms")
+        let result = sleep("1ms")
         > echo "result='${result}'"
         <? ^result=''$
     }

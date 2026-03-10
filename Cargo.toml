@@ -28,3 +28,5 @@ serde = { version = "~1", features = ["derive"] }
 toml = "~0.8"
 walkdir = "~2"
 colored = "~2"
+tabled = "~0.18"
+terminal_size = "~0.4"

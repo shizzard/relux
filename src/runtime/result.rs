@@ -165,9 +165,9 @@ impl Reporter {
 pub fn format_duration(d: Duration) -> String {
     let total_ms = d.as_secs_f64() * 1000.0;
     if total_ms < 1000.0 {
-        format!("{:.1}ms", total_ms)
+        format!("{:.1} ms", total_ms)
     } else {
-        format!("{:.1}s", total_ms / 1000.0)
+        format!("{:.1} s", total_ms / 1000.0)
     }
 }
 
