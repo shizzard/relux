@@ -1,0 +1,11 @@
+test "check detects impure function called from pure context" {
+    """
+    Verify relux check reports when a pure function calls an impure function.
+    """
+    shell s {
+        > relux check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? impure function cannot be called from pure context
+        match_prompt()
+        match_exit_code(1)
+    }
+}

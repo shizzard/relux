@@ -1,0 +1,11 @@
+test "skipped effect skips dependent test" {
+    """
+    Verify a test depending on a skipped effect is also skipped.
+    """
+    shell s {
+        > relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 skipped
+        match_prompt()
+        match_exit_code(0)
+    }
+}

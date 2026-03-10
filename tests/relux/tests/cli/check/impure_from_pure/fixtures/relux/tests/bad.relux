@@ -1,0 +1,19 @@
+fn impure_helper() {
+    > echo "side effect"
+    <? ^side effect$
+}
+
+pure fn bad() {
+    impure_helper()
+}
+
+test "uses bad pure fn" {
+    """
+    This test should not pass check.
+    """
+    let val = bad()
+    shell s {
+        > echo "${val}"
+        <? ^$
+    }
+}

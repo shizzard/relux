@@ -1,0 +1,15 @@
+test "run reports shell exited" {
+    """
+    Verify relux run reports when the shell process exits during a test.
+
+    The fixture sends `exit 0`, waits for the process to die, then tries
+    to send another command. The runtime detects the dead PTY on the
+    subsequent write and reports "exited unexpectedly" with the exit code.
+    """
+    shell s {
+        > relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? exited unexpectedly
+        match_prompt()
+        match_exit_code(1)
+    }
+}

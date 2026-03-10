@@ -1,0 +1,11 @@
+test "check detects impure operator in pure function" {
+    """
+    Verify relux check reports when a pure function uses a shell operator.
+    """
+    shell s {
+        > relux check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? unexpected token
+        match_prompt()
+        match_exit_code(1)
+    }
+}

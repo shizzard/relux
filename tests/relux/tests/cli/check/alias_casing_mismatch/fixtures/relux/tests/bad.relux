@@ -1,0 +1,10 @@
+import lib/helpers { helper as Helper }
+
+test "uses bad alias" {
+    """
+    This test should not pass check.
+    """
+    shell s {
+        Helper()
+    }
+}

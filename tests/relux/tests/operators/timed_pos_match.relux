@@ -1,0 +1,34 @@
+test "inline timeout on regex match" ~5s {
+    """
+    Verify inline timeout override works with positive regex match.
+    """
+    shell s {
+        ~100ms
+        > sh -c 'sleep 0.2 && echo delayed-result'
+        <~3s? ^delayed-result$
+    }
+}
+
+test "inline timeout on literal match" ~5s {
+    """
+    Verify inline timeout override works with positive literal match.
+    """
+    shell s {
+        ~100ms
+        > sh -c 'sleep 0.2 && echo delayed-literal'
+        <~3s= delayed-literal
+    }
+}
+
+test "inline timeout is one-shot for positive match" ~5s {
+    """
+    Verify inline timeout does not change the scoped timeout for subsequent matches.
+    """
+    shell s {
+        ~100ms
+        > echo fast
+        <~3s? ^fast$
+        > echo second
+        <? ^second$
+    }
+}

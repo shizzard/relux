@@ -1,0 +1,8 @@
+test "assigns to undeclared" {
+    """
+    Assign to a variable without prior let declaration.
+    """
+    shell s {
+        x = "value"
+    }
+}

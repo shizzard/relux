@@ -1,0 +1,10 @@
+test "shell exits mid test" {
+    """
+    Exit the shell then try to send another command.
+    """
+    shell s {
+        > exit 0
+        sleep("200ms")
+        > echo hello
+    }
+}

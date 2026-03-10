@@ -1,0 +1,35 @@
+test "shell retains state after switching away" {
+    """
+    Verify environment variables set in a shell persist when switching back.
+    """
+    shell a {
+        > export MY_MARKER=from_a
+        match_ok()
+    }
+    shell b {
+        > echo "in shell b"
+        <? ^in shell b$
+    }
+    shell a {
+        > echo $$MY_MARKER
+        <? ^from_a$
+    }
+}
+
+test "shell retains cursor after switching" {
+    """
+    Verify the output cursor position is preserved when switching shells.
+    """
+    shell a {
+        > echo first-output
+        <? ^first-output$
+    }
+    shell b {
+        > echo "in shell b"
+        <? ^in shell b$
+    }
+    shell a {
+        > echo second-output
+        <? ^second-output$
+    }
+}

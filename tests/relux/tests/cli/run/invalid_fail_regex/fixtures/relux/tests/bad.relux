@@ -1,0 +1,11 @@
+test "fail pattern invalid after interpolation" {
+    """
+    Set a fail pattern whose interpolated value is invalid regex.
+    """
+    shell s {
+        let pat = "("
+        !? ${pat}
+        > echo hello
+        <? ^hello$
+    }
+}

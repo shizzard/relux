@@ -1,0 +1,22 @@
+test "test with single-line doc string" {
+    """
+    Verify a single-line doc string parses and the test runs normally.
+    """
+    shell s {
+        > echo ok
+        <? ^ok$
+    }
+}
+
+test "test with multi-line doc string" {
+    """
+    Verify a multi-line doc string parses correctly.
+
+    This doc string spans multiple lines and includes
+    blank lines to test the parser.
+    """
+    shell s {
+        > echo ok
+        <? ^ok$
+    }
+}

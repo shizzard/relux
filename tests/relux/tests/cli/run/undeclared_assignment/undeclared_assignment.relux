@@ -1,0 +1,11 @@
+test "run reports assignment to undeclared variable" {
+    """
+    Verify relux run reports when code assigns to a variable not declared with let.
+    """
+    shell s {
+        > relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? assignment to undeclared variable
+        match_prompt()
+        match_exit_code(1)
+    }
+}

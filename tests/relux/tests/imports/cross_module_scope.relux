@@ -1,0 +1,11 @@
+import imports/scoped { public_caller, internal_helper }
+
+test "imported function calls sibling when both imported" {
+    """
+    Verify an imported function can call another function from its module
+    when both are explicitly imported into the caller scope.
+    """
+    shell s {
+        public_caller()
+    }
+}

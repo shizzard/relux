@@ -1,0 +1,29 @@
+effect Parent -> p {
+    shell p {
+        > export PARENT_VAR=from_parent
+        match_ok()
+        > echo "parent ready"
+        <? ^parent ready$
+    }
+}
+
+effect Child -> c {
+    need Parent as p
+    shell c {
+        > echo "parent_var='$$PARENT_VAR'"
+        <? ^parent_var=''$
+        > echo "child ready"
+        <? ^child ready$
+    }
+}
+
+test "child effect does not inherit parent environment" {
+    """
+    Verify a child effect's shell does not inherit env vars from the parent effect shell.
+    """
+    need Child
+    shell c {
+        > echo "test body"
+        <? ^test body$
+    }
+}

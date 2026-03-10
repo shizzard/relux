@@ -1,0 +1,11 @@
+test "check rejects match operator in cleanup block" {
+    """
+    Verify relux check reports a parse error for match operators in cleanup blocks.
+    """
+    shell s {
+        > relux check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? unexpected
+        match_prompt()
+        match_exit_code(1)
+    }
+}

@@ -1,0 +1,33 @@
+effect ServiceA -> svc {
+    shell svc {
+        > export SVC_ID=A
+        match_ok()
+        > echo "service A ready"
+        <? ^service A ready$
+    }
+}
+
+effect ServiceB -> svc {
+    shell svc {
+        > export SVC_ID=B
+        match_ok()
+        > echo "service B ready"
+        <? ^service B ready$
+    }
+}
+
+test "two effects with same export name both accessible via alias" {
+    """
+    Verify that needing two effects with explicit aliases works even if they export the same shell name.
+    """
+    need ServiceA as a
+    need ServiceB as b
+    shell a {
+        > echo $$SVC_ID
+        <? ^A$
+    }
+    shell b {
+        > echo $$SVC_ID
+        <? ^B$
+    }
+}

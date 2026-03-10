@@ -1,0 +1,13 @@
+test "cleanup with match op" {
+    """
+    Cleanup block should not allow match operators.
+    """
+    shell s {
+        > echo hello
+        <? ^hello$
+    }
+    cleanup {
+        > echo cleaning
+        <? ^cleaning$
+    }
+}

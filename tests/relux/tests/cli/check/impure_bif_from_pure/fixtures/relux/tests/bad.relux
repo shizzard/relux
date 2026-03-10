@@ -1,0 +1,14 @@
+pure fn bad() {
+    > echo "side effect"
+}
+
+test "uses bad pure fn" {
+    """
+    This test should not pass check.
+    """
+    let val = bad()
+    shell s {
+        > echo done
+        <? ^done$
+    }
+}

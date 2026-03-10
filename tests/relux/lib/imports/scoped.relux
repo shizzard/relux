@@ -1,0 +1,8 @@
+fn internal_helper() {
+    > echo "from-internal-helper"
+    <? ^from-internal-helper$
+}
+
+fn public_caller() {
+    internal_helper()
+}

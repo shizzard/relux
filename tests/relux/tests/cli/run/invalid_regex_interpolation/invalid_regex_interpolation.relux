@@ -1,0 +1,11 @@
+test "run reports invalid regex after interpolation" {
+    """
+    Verify relux run reports when variable interpolation produces an invalid regex.
+    """
+    shell s {
+        > relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? invalid regex
+        match_prompt()
+        match_exit_code(1)
+    }
+}

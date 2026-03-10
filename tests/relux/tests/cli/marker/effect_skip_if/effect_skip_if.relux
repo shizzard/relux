@@ -1,0 +1,25 @@
+test "conditional effect marker skips when var is set" {
+    """
+    Verify a test depending on a conditionally skipped effect is skipped
+    when the effect's skip condition is met.
+    """
+    shell s {
+        > SKIP_EFFECT=1 relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 skipped
+        match_prompt()
+        match_exit_code(0)
+    }
+}
+
+test "conditional effect marker runs when var is unset" {
+    """
+    Verify a test depending on a conditionally skipped effect runs
+    when the effect's skip condition is not met.
+    """
+    shell s {
+        > relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 passed
+        match_prompt()
+        match_exit_code(0)
+    }
+}
