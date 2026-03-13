@@ -1,9 +1,7 @@
 # Planned Features
 
 - Per-shell command override: per-shell executable override via shell block attributes (global shell command now configurable in `Relux.toml`)
-- Run history analysis: timeline visualization, flakiness detection, and runtime trend analysis across historical runs (foundation: `run_summary.toml` per run)
 - Custom scaffold templates: user-defined templates for `relux new --test` and `relux new --effect` via `Relux.toml`, replacing the built-in defaults
-- `match_not_ok(exit_code)`: arity-1 variant of `match_not_ok()` that asserts the previous command failed with a specific non-zero exit code. Matches the prompt, sends `echo ::$?::`, then verifies the exit code equals the given value *and* is not zero. Fails if the exit code is zero or does not match the expected value.
 - Two timeout types with distinct syntax: timeouts fall into two categories. **Tolerance timeouts**
   (`~`) absorb environmental latency — how long to wait for output on a slow CI machine or a loaded
   system. They are scaled by `--timeout-multiplier`. **Assertion timeouts** (`@`) are semantic
@@ -26,6 +24,44 @@
   effects but does **not** expose its shell in the test scope. This makes the intent explicit —
   "I need this effect's shell" vs "I need this effect to run but don't interact with its shell."
 
+## Flaky Tests
+
+### `cli/run/rerun/rerun.relux` — match timeout on `1 failed`
+
+The rerun e2e test (`tests/relux/tests/cli/run/rerun/rerun.relux`) times out waiting for
+`1 failed` output from the inner `relux run` invocation. The test sets `TRIGGER=error` and
+expects the nested run to fail, but intermittently the inner test passes instead (`1 passed;
+0 failed`), causing the `<? 1 failed` match to time out. Shell log from first failure:
+
+```
+[+0.001s] export PS1='relux> ' PS2='' PROMPT_COMMAND=''
+[+0.005s] relux> TRIGGER=error relux run --manifest .../fixtures/Relux.toml 2>&1
+[+0.012s]
+[+0.012s] running 1 tests
+[+0.012s] test trigger.relux/trigger-test: ok (6.5 ms)   ← should have FAILED
+[+0.019s]
+[+0.019s] test result: 1 passed; 0 failed; finished in 6.5 ms
+[+0.020s] relux>
+```
+
+The `TRIGGER=error` env var did not take effect in the inner run. Likely a race condition where
+the env var is not propagated to the nested relux process in time.
+
+### `variables/environment.relux` — shell did not produce prompt during init
+
+The `relux-run-artifacts-path-is-set` test intermittently fails with `runtime error in shell 's':
+shell did not produce prompt during init`. Shell log from first failure:
+
+```
+[+0.002s] export PS1='relux> ' PS2='' PROMPT_COMMAND=''
+[+0.007s] [?1034hsh-3.2$ export PS1='relux> ' PS2='' PROMPT_COMMAND=''
+[+0.007s] relux>
+```
+
+The log shows the prompt was produced, but the runtime did not recognise it in time. Likely a
+race between the PTY read loop and the prompt detection timeout — on a loaded system the init
+sequence completes just after the deadline expires.
+
 ## Known Bugs
 
 ### Inconsistent error for impure calls from pure context
@@ -43,20 +79,6 @@ error should be uniform. Either:
   functions") so the user understands why.
 
 
-### Imported functions cannot call siblings from their home module
-
-When a function is imported from another module via selective import, calls to sibling functions
-(defined in the same source module but not imported by the caller) fail at runtime with
-`"undefined function"` even though `relux check` passes.
-
-Example: module `lib/m.relux` defines `fn helper()` and `fn caller()` where `caller()` calls
-`helper()`. If another file does `import lib/m { caller }` and calls `caller()`, the resolver
-resolves the call to `helper()` using the home module's scope (check passes), but the reachability
-walk that builds the runtime `Plan` does not follow cross-module call edges — so `helper()` never
-makes it into the `CodeServer` and the call fails at runtime.
-
-The fix should ensure the reachability walk transitively includes all functions called from imported
-function bodies, using the home module's scope for resolution.
 
 ## Lux features not yet in Relux
 

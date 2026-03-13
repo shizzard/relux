@@ -1,0 +1,8 @@
+fn helper() {
+    > echo "sibling-helper"
+    <? ^sibling-helper$
+}
+
+fn caller() {
+    helper()
+}

@@ -1,5 +1,6 @@
 pub mod ir;
 
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -96,32 +97,154 @@ pub enum Diagnostic {
 
 // ─── Name Resolution Types ──────────────────────────────────
 
-/// Function identity: (name, arity).
-type FnKey = (String, usize);
+/// A definition paired with the file it originates from.
+#[derive(Debug, Clone)]
+struct Located<T> {
+    file: FileId,
+    def: T,
+}
+
+/// A keyed lookup table built during resolution.
+#[derive(Debug, Clone)]
+struct LookupTable<K, V>(HashMap<K, V>);
+
+impl<K, V> std::ops::Deref for LookupTable<K, V> {
+    type Target = HashMap<K, V>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<K, V> std::ops::DerefMut for LookupTable<K, V> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<K, V> LookupTable<K, V> {
+    fn new() -> Self {
+        LookupTable(HashMap::new())
+    }
+}
+
+/// Function identity: name + arity.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct FnKey {
+    name: String,
+    arity: usize,
+}
+
+/// A module path like "imports/scoped".
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ModulePath(String);
+
+impl std::ops::Deref for ModulePath {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl AsRef<str> for ModulePath {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for ModulePath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<String> for ModulePath {
+    fn from(s: String) -> Self {
+        ModulePath(s)
+    }
+}
+
+impl From<&str> for ModulePath {
+    fn from(s: &str) -> Self {
+        ModulePath(s.to_string())
+    }
+}
+
+impl Borrow<str> for ModulePath {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+/// An effect name like "StartDb" — CamelCase by convention.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct EffectName(String);
+
+impl std::ops::Deref for EffectName {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl AsRef<str> for EffectName {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for EffectName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<String> for EffectName {
+    fn from(s: String) -> Self {
+        EffectName(s)
+    }
+}
+
+impl From<&str> for EffectName {
+    fn from(s: &str) -> Self {
+        EffectName(s.to_string())
+    }
+}
+
+impl Borrow<str> for EffectName {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+// ─── Table Aliases ──────────────────────────────────────────
+
+type FnTable = LookupTable<FnKey, Located<parser::FnDef>>;
+type PureFnTable = LookupTable<FnKey, Located<parser::PureFnDef>>;
+type EffectTable = LookupTable<EffectName, Located<parser::EffectDef>>;
+type AstTable = LookupTable<ModulePath, Located<parser::Module>>;
 
 /// What a module exports: all its fn and effect definitions.
 #[derive(Debug, Clone)]
 struct ModuleExports {
-    functions: HashMap<FnKey, (FileId, parser::FnDef)>,
-    pure_functions: HashMap<FnKey, (FileId, parser::PureFnDef)>,
-    effects: HashMap<String, (FileId, parser::EffectDef)>,
+    functions: FnTable,
+    pure_functions: PureFnTable,
+    effects: EffectTable,
 }
 
 /// The resolved scope for a single module: own definitions + imports.
 #[derive(Debug)]
 struct ModuleScope {
-    functions: HashMap<FnKey, (FileId, parser::FnDef)>,
-    pure_functions: HashMap<FnKey, (FileId, parser::PureFnDef)>,
-    effects: HashMap<String, (FileId, parser::EffectDef)>,
-    imported_module_exports: HashMap<String, ModuleExports>,
+    functions: FnTable,
+    pure_functions: PureFnTable,
+    effects: EffectTable,
 }
 
 // ─── Loader ─────────────────────────────────────────────────
 
 struct Loader<'a> {
     source_map: SourceMap,
-    asts: HashMap<String, (FileId, parser::Module)>,
-    loading_stack: Vec<(String, Option<Span>)>,
+    asts: AstTable,
+    loading_stack: Vec<(ModulePath, Option<Span>)>,
     diagnostics: Vec<Diagnostic>,
     source_loader: &'a dyn SourceLoader,
 }
@@ -130,7 +253,7 @@ impl<'a> Loader<'a> {
     fn new(source_loader: &'a dyn SourceLoader) -> Self {
         Self {
             source_map: SourceMap::new(),
-            asts: HashMap::new(),
+            asts: LookupTable::new(),
             loading_stack: Vec::new(),
             diagnostics: Vec::new(),
             source_loader,
@@ -142,10 +265,12 @@ impl<'a> Loader<'a> {
             return;
         }
 
-        if let Some(pos) = self.loading_stack.iter().position(|(p, _)| p == mod_path) {
-            let mut cycle: Vec<(String, Option<Span>)> =
-                self.loading_stack[pos..].iter().cloned().collect();
-            cycle.push((mod_path.to_string(), referenced_from));
+        if let Some(pos) = self.loading_stack.iter().position(|(p, _)| p.as_ref() == mod_path) {
+            let cycle: Vec<(String, Option<Span>)> = self.loading_stack[pos..]
+                .iter()
+                .map(|(p, s)| (p.to_string(), s.clone()))
+                .chain(std::iter::once((mod_path.to_string(), referenced_from.clone())))
+                .collect();
             self.diagnostics.push(Diagnostic::CircularImport { cycle });
             return;
         }
@@ -178,7 +303,7 @@ impl<'a> Loader<'a> {
             None => return,
         };
 
-        self.loading_stack.push((mod_path.to_string(), referenced_from));
+        self.loading_stack.push((ModulePath::from(mod_path), referenced_from));
 
         let import_paths: Vec<_> = module
             .items
@@ -200,29 +325,29 @@ impl<'a> Loader<'a> {
         }
 
         self.loading_stack.pop();
-        self.asts.insert(mod_path.to_string(), (file_id, module));
+        self.asts.insert(ModulePath::from(mod_path), Located { file: file_id, def: module });
     }
 }
 
 // ─── Scope Builder ──────────────────────────────────────────
 
 fn build_module_exports(file_id: FileId, module: &parser::Module) -> ModuleExports {
-    let mut functions = HashMap::new();
-    let mut pure_functions = HashMap::new();
-    let mut effects = HashMap::new();
+    let mut functions: FnTable = LookupTable::new();
+    let mut pure_functions: PureFnTable = LookupTable::new();
+    let mut effects: EffectTable = LookupTable::new();
 
     for item in &module.items {
         match &item.node {
             parser::Item::Fn(f) => {
-                let key = (f.name.node.clone(), f.params.len());
-                functions.insert(key, (file_id, f.clone()));
+                let key = FnKey { name: f.name.node.clone(), arity: f.params.len() };
+                functions.insert(key, Located { file: file_id, def: f.clone() });
             }
             parser::Item::PureFn(f) => {
-                let key = (f.name.node.clone(), f.params.len());
-                pure_functions.insert(key, (file_id, f.clone()));
+                let key = FnKey { name: f.name.node.clone(), arity: f.params.len() };
+                pure_functions.insert(key, Located { file: file_id, def: f.clone() });
             }
             parser::Item::Effect(e) => {
-                effects.insert(e.name.node.clone(), (file_id, e.clone()));
+                effects.insert(EffectName::from(e.name.node.clone()), Located { file: file_id, def: e.clone() });
             }
             _ => {}
         }
@@ -232,10 +357,9 @@ fn build_module_exports(file_id: FileId, module: &parser::Module) -> ModuleExpor
 }
 
 fn build_module_scope(
-    _mod_path: &str,
     file_id: FileId,
     module: &parser::Module,
-    all_asts: &HashMap<String, (FileId, parser::Module)>,
+    all_asts: &AstTable,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ModuleScope {
     let own_exports = build_module_exports(file_id, module);
@@ -243,7 +367,6 @@ fn build_module_scope(
         functions: own_exports.functions.clone(),
         pure_functions: own_exports.pure_functions.clone(),
         effects: own_exports.effects.clone(),
-        imported_module_exports: HashMap::new(),
     };
 
     for item in &module.items {
@@ -253,50 +376,47 @@ fn build_module_scope(
         };
 
         let target_path = &imp.path.node;
-        let (target_file_id, target_module) = match all_asts.get(target_path.as_str()) {
-            Some(pair) => pair,
+        let Located { file: target_file_id, def: target_module } = match all_asts.get(target_path.as_str()) {
+            Some(located) => located,
             None => continue, // already reported as ModuleNotFound
         };
 
         let target_exports = build_module_exports(*target_file_id, target_module);
-        scope
-            .imported_module_exports
-            .insert(target_path.clone(), target_exports.clone());
 
         match &imp.names {
             None => {
                 // Wildcard import: bring everything in
-                for (key, val) in &target_exports.functions {
+                for (key, val) in target_exports.functions.iter() {
                     if let Some(existing) = scope.functions.get(key) {
                         diagnostics.push(Diagnostic::DuplicateDefinition {
-                            name: key.0.clone(),
-                            arity: Some(key.1),
-                            first: fn_def_span(existing.0, &existing.1),
-                            second: fn_def_span(val.0, &val.1),
+                            name: key.name.clone(),
+                            arity: Some(key.arity),
+                            first: def_span(existing.file, &existing.def.name.span),
+                            second: def_span(val.file, &val.def.name.span),
                         });
                     } else {
                         scope.functions.insert(key.clone(), val.clone());
                     }
                 }
-                for (key, val) in &target_exports.pure_functions {
+                for (key, val) in target_exports.pure_functions.iter() {
                     if let Some(existing) = scope.pure_functions.get(key) {
                         diagnostics.push(Diagnostic::DuplicateDefinition {
-                            name: key.0.clone(),
-                            arity: Some(key.1),
-                            first: pure_fn_def_span(existing.0, &existing.1),
-                            second: pure_fn_def_span(val.0, &val.1),
+                            name: key.name.clone(),
+                            arity: Some(key.arity),
+                            first: def_span(existing.file, &existing.def.name.span),
+                            second: def_span(val.file, &val.def.name.span),
                         });
                     } else {
                         scope.pure_functions.insert(key.clone(), val.clone());
                     }
                 }
-                for (name, val) in &target_exports.effects {
+                for (name, val) in target_exports.effects.iter() {
                     if let Some(existing) = scope.effects.get(name) {
                         diagnostics.push(Diagnostic::DuplicateDefinition {
-                            name: name.clone(),
+                            name: name.to_string(),
                             arity: None,
-                            first: effect_def_span(existing.0, &existing.1),
-                            second: effect_def_span(val.0, &val.1),
+                            first: def_span(existing.file, &existing.def.name.span),
+                            second: def_span(val.file, &val.def.name.span),
                         });
                     } else {
                         scope.effects.insert(name.clone(), val.clone());
@@ -319,20 +439,20 @@ fn build_module_scope(
                     let fn_matches: Vec<_> = target_exports
                         .functions
                         .iter()
-                        .filter(|((n, _), _)| n == raw_name)
+                        .filter(|(key, _)| key.name == *raw_name)
                         .collect();
-                    for ((_, arity), val) in &fn_matches {
+                    for (key, val) in &fn_matches {
                         found = true;
-                        let key = (local_name.clone(), *arity);
-                        if let Some(existing) = scope.functions.get(&key) {
+                        let new_key = FnKey { name: local_name.clone(), arity: key.arity };
+                        if let Some(existing) = scope.functions.get(&new_key) {
                             diagnostics.push(Diagnostic::DuplicateDefinition {
                                 name: local_name.clone(),
-                                arity: Some(*arity),
-                                first: fn_def_span(existing.0, &existing.1),
-                                second: fn_def_span(val.0, &val.1),
+                                arity: Some(key.arity),
+                                first: def_span(existing.file, &existing.def.name.span),
+                                second: def_span(val.file, &val.def.name.span),
                             });
                         } else {
-                            scope.functions.insert(key, (*val).clone());
+                            scope.functions.insert(new_key, (*val).clone());
                         }
                     }
 
@@ -340,35 +460,35 @@ fn build_module_scope(
                     let pure_fn_matches: Vec<_> = target_exports
                         .pure_functions
                         .iter()
-                        .filter(|((n, _), _)| n == raw_name)
+                        .filter(|(key, _)| key.name == *raw_name)
                         .collect();
-                    for ((_, arity), val) in &pure_fn_matches {
+                    for (key, val) in &pure_fn_matches {
                         found = true;
-                        let key = (local_name.clone(), *arity);
-                        if let Some(existing) = scope.pure_functions.get(&key) {
+                        let new_key = FnKey { name: local_name.clone(), arity: key.arity };
+                        if let Some(existing) = scope.pure_functions.get(&new_key) {
                             diagnostics.push(Diagnostic::DuplicateDefinition {
                                 name: local_name.clone(),
-                                arity: Some(*arity),
-                                first: pure_fn_def_span(existing.0, &existing.1),
-                                second: pure_fn_def_span(val.0, &val.1),
+                                arity: Some(key.arity),
+                                first: def_span(existing.file, &existing.def.name.span),
+                                second: def_span(val.file, &val.def.name.span),
                             });
                         } else {
-                            scope.pure_functions.insert(key, (*val).clone());
+                            scope.pure_functions.insert(new_key, (*val).clone());
                         }
                     }
 
                     // Try effects
-                    if let Some(val) = target_exports.effects.get(raw_name) {
+                    if let Some(val) = target_exports.effects.get(raw_name.as_str()) {
                         found = true;
-                        if let Some(existing) = scope.effects.get(&local_name) {
+                        if let Some(existing) = scope.effects.get(local_name.as_str()) {
                             diagnostics.push(Diagnostic::DuplicateDefinition {
                                 name: local_name.clone(),
                                 arity: None,
-                                first: effect_def_span(existing.0, &existing.1),
-                                second: effect_def_span(val.0, &val.1),
+                                first: def_span(existing.file, &existing.def.name.span),
+                                second: def_span(val.file, &val.def.name.span),
                             });
                         } else {
-                            scope.effects.insert(local_name.clone(), val.clone());
+                            scope.effects.insert(EffectName::from(local_name.clone()), val.clone());
                         }
                     }
 
@@ -387,16 +507,8 @@ fn build_module_scope(
     scope
 }
 
-fn fn_def_span(file_id: FileId, f: &parser::FnDef) -> Span {
-    Span::new(file_id, f.name.span.clone())
-}
-
-fn pure_fn_def_span(file_id: FileId, f: &parser::PureFnDef) -> Span {
-    Span::new(file_id, f.name.span.clone())
-}
-
-fn effect_def_span(file_id: FileId, e: &parser::EffectDef) -> Span {
-    Span::new(file_id, e.name.span.clone())
+fn def_span(file_id: FileId, name_span: &parser::Span) -> Span {
+    Span::new(file_id, name_span.clone())
 }
 
 // ─── Effect Graph Builder ───────────────────────────────────
@@ -404,7 +516,7 @@ fn effect_def_span(file_id: FileId, e: &parser::EffectDef) -> Span {
 /// Identity key for deduplicating effect instances.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct EffectIdentity {
-    name: String,
+    name: EffectName,
     overlay_keys: Vec<(String, String)>,
 }
 
@@ -423,7 +535,7 @@ struct EffectGraphBuilder<'a> {
     dag: daggy::Dag<ir::EffectInstance, ir::EffectEdge>,
     identity_map: HashMap<EffectIdentity, daggy::NodeIndex>,
     effects: Vec<ir::Effect>,
-    effect_id_map: HashMap<String, ir::EffectId>,
+    effect_id_map: HashMap<EffectName, ir::EffectId>,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -448,8 +560,8 @@ impl<'a> EffectGraphBuilder<'a> {
     ) -> Option<daggy::NodeIndex> {
         let effect_name = &need.effect.node;
 
-        let (effect_file_id, effect_def) = match self.scope.effects.get(effect_name) {
-            Some(pair) => pair.clone(),
+        let located = match self.scope.effects.get(effect_name.as_str()) {
+            Some(located) => located,
             None => {
                 self.diagnostics.push(Diagnostic::UndefinedName {
                     name: effect_name.clone(),
@@ -459,17 +571,19 @@ impl<'a> EffectGraphBuilder<'a> {
                 return None;
             }
         };
+        let effect_file_id = located.file;
 
         let overlay_keys = overlay_identity(&need.overlay);
         let identity = EffectIdentity {
-            name: effect_name.clone(),
+            name: EffectName::from(effect_name.clone()),
             overlay_keys,
         };
 
         let node_idx = if let Some(&existing) = self.identity_map.get(&identity) {
             existing
         } else {
-            let effect_id = self.ensure_effect_def(effect_name, effect_file_id, &effect_def);
+            let effect_def = located.def.clone();
+            let effect_id = self.ensure_effect_def(&identity.name, effect_file_id, &effect_def);
             let overlay = lower_overlay(&need.overlay, need_file_id, self.scope, &mut self.diagnostics);
             let instance = ir::EffectInstance {
                 effect: effect_id,
@@ -499,28 +613,17 @@ impl<'a> EffectGraphBuilder<'a> {
         };
 
         if let Some(dep_node) = dependent_node {
+            let located = self.scope.effects.get(effect_name.as_str()).unwrap();
             let alias_name = need
                 .alias
                 .as_ref()
                 .map(|a| a.node.clone())
-                .unwrap_or_else(|| {
-                    self.scope
-                        .effects
-                        .get(effect_name)
-                        .map(|(_, def)| def.exported_shell.node.clone())
-                        .unwrap_or_else(|| effect_name.clone())
-                });
+                .unwrap_or_else(|| located.def.exported_shell.node.clone());
             let alias_span = need
                 .alias
                 .as_ref()
                 .map(|a| Span::new(need_file_id, a.span.clone()))
-                .unwrap_or_else(|| {
-                    self.scope
-                        .effects
-                        .get(effect_name)
-                        .map(|(fid, def)| sp(*fid, &def.exported_shell.span))
-                        .unwrap_or_else(|| Span::new(need_file_id, need.effect.span.clone()))
-                });
+                .unwrap_or_else(|| sp(located.file, &located.def.exported_shell.span));
 
             let edge = ir::EffectEdge {
                 alias: ir::Spanned::new(alias_name, alias_span),
@@ -591,7 +694,7 @@ impl<'a> EffectGraphBuilder<'a> {
 
     fn ensure_effect_def(
         &mut self,
-        name: &str,
+        name: &EffectName,
         file_id: FileId,
         def: &parser::EffectDef,
     ) -> ir::EffectId {
@@ -606,7 +709,7 @@ impl<'a> EffectGraphBuilder<'a> {
             .unwrap_or(self.scope);
         let effect = lower_effect_def(file_id, def, effect_scope, &mut self.diagnostics);
         self.effects.push(effect);
-        self.effect_id_map.insert(name.to_string(), id);
+        self.effect_id_map.insert(name.clone(), id);
         id
     }
 }
@@ -688,7 +791,7 @@ fn lower_expr(
         parser::AstExpr::Var(name) => ir::Expr::Var(name.clone()),
         parser::AstExpr::Call(call) => {
             let arity = call.args.len();
-            let fn_key = (call.name.node.clone(), arity);
+            let fn_key = FnKey { name: call.name.node.clone(), arity };
             if !scope.functions.contains_key(&fn_key)
                 && !scope.pure_functions.contains_key(&fn_key)
                 && !crate::runtime::bifs::is_known(&call.name.node, arity)
@@ -697,8 +800,8 @@ fn lower_expr(
                     .functions
                     .keys()
                     .chain(scope.pure_functions.keys())
-                    .filter(|(n, _)| n == &call.name.node)
-                    .map(|(_, a)| *a)
+                    .filter(|k| k.name == call.name.node)
+                    .map(|k| k.arity)
                     .collect();
                 available.sort();
                 available.dedup();
@@ -837,10 +940,9 @@ fn lower_cleanup_stmt(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<ir::Spanned<ir::CleanupStmt>> {
     let empty_scope = ModuleScope {
-        functions: HashMap::new(),
-        pure_functions: HashMap::new(),
-        effects: HashMap::new(),
-        imported_module_exports: HashMap::new(),
+        functions: LookupTable::new(),
+        pure_functions: LookupTable::new(),
+        effects: LookupTable::new(),
     };
     let ir_stmt = match ast {
         parser::CleanupStmt::Comment(_) => return None,
@@ -889,7 +991,7 @@ fn lower_pure_expr(
         parser::PureAstExpr::Var(name) => ir::PureExpr::Var(name.clone()),
         parser::PureAstExpr::Call(call) => {
             let arity = call.args.len();
-            let fn_key = (call.name.node.clone(), arity);
+            let fn_key = FnKey { name: call.name.node.clone(), arity };
             if !scope.pure_functions.contains_key(&fn_key)
                 && !crate::runtime::bifs::is_known(&call.name.node, arity)
             {
@@ -904,8 +1006,8 @@ fn lower_pure_expr(
                     let available: Vec<usize> = scope
                         .pure_functions
                         .keys()
-                        .filter(|(n, _)| n == &call.name.node)
-                        .map(|(_, a)| *a)
+                        .filter(|k| k.name == call.name.node)
+                        .map(|k| k.arity)
                         .collect();
                     diagnostics.push(Diagnostic::UndefinedName {
                         name: format!("{}/{}", call.name.node, arity),
@@ -1268,8 +1370,8 @@ fn build_plan(
                 .unwrap_or_else(|| {
                     scope
                         .effects
-                        .get(&need.effect.node)
-                        .map(|(_, def)| def.exported_shell.node.clone())
+                        .get(need.effect.node.as_str())
+                        .map(|located| located.def.exported_shell.node.clone())
                         .unwrap_or_else(|| need.effect.node.clone())
                 });
             let alias_span = need
@@ -1279,8 +1381,8 @@ fn build_plan(
                 .unwrap_or_else(|| {
                     scope
                         .effects
-                        .get(&need.effect.node)
-                        .map(|(fid, def)| sp(*fid, &def.exported_shell.span))
+                        .get(need.effect.node.as_str())
+                        .map(|located| sp(located.file, &located.def.exported_shell.span))
                         .unwrap_or_else(|| sp(file_id, &need.effect.span))
                 });
 
@@ -1362,84 +1464,105 @@ fn collect_reachable_functions(
         }
     }
 
-    // Also walk effect shells, lets, need overlays, and markers
-    for (_, (_, effect_def)) in &scope.effects {
+    // Also walk effect shells, lets, need overlays, and markers.
+    // These calls originate from the effect's home module, so carry its FileId.
+    let mut effect_call_keys: Vec<(FnKey, Option<FileId>)> = Vec::new();
+    for (_, located) in scope.effects.iter() {
+        let effect_file = located.file;
+        let effect_def = &located.def;
+        let mut keys = Vec::new();
         for marker in &effect_def.markers {
-            collect_pure_calls_from_marker(&marker.node, &mut call_keys);
+            collect_pure_calls_from_marker(&marker.node, &mut keys);
         }
         for item in &effect_def.body {
             match &item.node {
                 parser::EffectItem::Shell(block) => {
-                    collect_calls_from_stmts(&block.stmts, &mut call_keys);
+                    collect_calls_from_stmts(&block.stmts, &mut keys);
                 }
                 parser::EffectItem::Let(l) => {
                     if let Some(v) = &l.value {
-                        collect_pure_calls_from_pure_expr(&v.node, &mut call_keys);
+                        collect_pure_calls_from_pure_expr(&v.node, &mut keys);
                     }
                 }
                 parser::EffectItem::Need(need) => {
                     for entry in &need.overlay {
-                        collect_pure_calls_from_pure_expr(&entry.node.value.node, &mut call_keys);
+                        collect_pure_calls_from_pure_expr(&entry.node.value.node, &mut keys);
                     }
                 }
                 _ => {}
             }
         }
+        effect_call_keys.extend(keys.into_iter().map(|k| (k, Some(effect_file))));
     }
 
-    // Resolve each call — check impure functions first, then pure functions
-    let mut queue = call_keys;
-    while let Some(key) = queue.pop() {
+    // Resolve each call — check impure functions first, then pure functions.
+    // Each queue entry carries an optional FileId indicating the source module
+    // whose scope should be used for resolution. None means use the test module's scope.
+    // This ensures that when an imported function calls a sibling in its home module,
+    // the sibling is resolved against the home module's scope, not the importer's.
+    let mut queue: Vec<(FnKey, Option<FileId>)> =
+        call_keys.into_iter().map(|k| (k, None)).collect();
+    queue.extend(effect_call_keys);
+    while let Some((key, source_file)) = queue.pop() {
         if seen.contains_key(&key) || seen_pure.contains_key(&key) {
             continue;
         }
-        if let Some((fn_file_id, fn_def)) = scope.functions.get(&key) {
-            let fn_id = functions.len();
-            seen.insert(key.clone(), fn_id);
+        let resolve_scope = source_file
+            .and_then(|fid| scopes_by_file.get(&fid).copied())
+            .unwrap_or(scope);
+        if let Some(located) = resolve_scope.functions.get(&key) {
+            let fn_file_id = located.file;
+            let fn_def = &located.def;
+            seen.insert(key.clone(), functions.len());
 
-            collect_calls_from_stmts(&fn_def.body, &mut queue);
+            let mut child_keys = Vec::new();
+            collect_calls_from_stmts(&fn_def.body, &mut child_keys);
+            queue.extend(child_keys.into_iter().map(|k| (k, Some(fn_file_id))));
 
-            let fn_scope = scopes_by_file.get(fn_file_id).copied().unwrap_or(scope);
+            let fn_scope = scopes_by_file.get(&fn_file_id).copied().unwrap_or(scope);
             let body = fn_def
                 .body
                 .iter()
-                .filter_map(|s| lower_stmt(*fn_file_id, &s.node, &s.span, fn_scope, diagnostics))
+                .filter_map(|s| lower_stmt(fn_file_id, &s.node, &s.span, fn_scope, diagnostics))
                 .collect();
 
             functions.push(ir::Function {
-                name: lower_spanned(*fn_file_id, key.0.clone(), &fn_def.name.span),
+                name: lower_spanned(fn_file_id, key.name.clone(), &fn_def.name.span),
                 params: fn_def
                     .params
                     .iter()
-                    .map(|p| lower_spanned(*fn_file_id, p.node.clone(), &p.span))
+                    .map(|p| lower_spanned(fn_file_id, p.node.clone(), &p.span))
                     .collect(),
                 body,
-                span: sp(*fn_file_id, &fn_def.name.span),
+                span: sp(fn_file_id, &fn_def.name.span),
             });
-        } else if let Some((fn_file_id, fn_def)) = scope.pure_functions.get(&key) {
-            let fn_id = pure_functions.len();
-            seen_pure.insert(key.clone(), fn_id);
+        } else if let Some(located) = resolve_scope.pure_functions.get(&key) {
+            let fn_file_id = located.file;
+            let fn_def = &located.def;
+            seen_pure.insert(key.clone(), pure_functions.len());
 
-            collect_pure_calls_from_pure_stmts(&fn_def.body, &mut queue);
+            let mut child_keys = Vec::new();
+            collect_pure_calls_from_pure_stmts(&fn_def.body, &mut child_keys);
+            queue.extend(child_keys.into_iter().map(|k| (k, Some(fn_file_id))));
 
-            let fn_scope = scopes_by_file.get(fn_file_id).copied().unwrap_or(scope);
+            let fn_scope = scopes_by_file.get(&fn_file_id).copied().unwrap_or(scope);
             let body = fn_def
                 .body
                 .iter()
                 .filter_map(|s| {
-                    lower_pure_stmt(*fn_file_id, &s.node, &s.span, fn_scope, diagnostics)
+                    lower_pure_stmt(fn_file_id, &s.node, &s.span, fn_scope, diagnostics)
                 })
                 .collect();
 
             pure_functions.push(ir::PureFunction {
-                name: lower_spanned(*fn_file_id, key.0.clone(), &fn_def.name.span),
+                name: lower_spanned(fn_file_id, key.name.clone(), &fn_def.name.span),
                 params: fn_def
                     .params
                     .iter()
-                    .map(|p| lower_spanned(*fn_file_id, p.node.clone(), &p.span))
+                    .map(|p| lower_spanned(fn_file_id, p.node.clone(), &p.span))
                     .collect(),
                 body,
-                span: sp(*fn_file_id, &fn_def.name.span),
+                span: sp(fn_file_id, &fn_def.name.span),
             });
         }
     }
@@ -1467,7 +1590,7 @@ fn collect_calls_from_stmts(stmts: &[AstSpanned<parser::Stmt>], keys: &mut Vec<F
 fn collect_calls_from_expr(expr: &parser::AstExpr, keys: &mut Vec<FnKey>) {
     match expr {
         parser::AstExpr::Call(call) => {
-            keys.push((call.name.node.clone(), call.args.len()));
+            keys.push(FnKey { name: call.name.node.clone(), arity: call.args.len() });
             for arg in &call.args {
                 collect_calls_from_expr(&arg.node, keys);
             }
@@ -1498,7 +1621,7 @@ fn collect_pure_calls_from_marker(marker: &parser::MarkerDecl, keys: &mut Vec<Fn
 fn collect_pure_calls_from_pure_expr(expr: &parser::PureAstExpr, keys: &mut Vec<FnKey>) {
     match expr {
         parser::PureAstExpr::Call(call) => {
-            keys.push((call.name.node.clone(), call.args.len()));
+            keys.push(FnKey { name: call.name.node.clone(), arity: call.args.len() });
             for arg in &call.args {
                 collect_pure_calls_from_pure_expr(&arg.node, keys);
             }
@@ -1644,30 +1767,28 @@ pub fn resolve_with(
     let mut diagnostics = loader.diagnostics;
 
     // Phase 2: Build scopes for all modules
-    let mut scopes: HashMap<String, ModuleScope> = HashMap::new();
-    for (mod_path, (file_id, module)) in &loader.asts {
-        let scope = build_module_scope(mod_path, *file_id, module, &loader.asts, &mut diagnostics);
+    let mut scopes: LookupTable<ModulePath, ModuleScope> = LookupTable::new();
+    for (mod_path, located) in loader.asts.iter() {
+        let scope = build_module_scope(located.file, &located.def, &loader.asts, &mut diagnostics);
         scopes.insert(mod_path.clone(), scope);
     }
 
     // Build FileId → scope lookup for cross-module resolution
-    let file_to_mod: HashMap<FileId, &str> = loader
+    let scopes_by_file: HashMap<FileId, &ModuleScope> = loader
         .asts
         .iter()
-        .map(|(path, (fid, _))| (*fid, path.as_str()))
-        .collect();
-    let scopes_by_file: HashMap<FileId, &ModuleScope> = file_to_mod
-        .iter()
-        .filter_map(|(fid, path)| scopes.get(*path).map(|s| (*fid, s)))
+        .filter_map(|(path, located)| scopes.get(path).map(|s| (located.file, s)))
         .collect();
 
     // Phase 3: For each test in root modules, build a Plan
     let mut plans = Vec::new();
     for mod_path in root_mod_paths {
-        let (file_id, module) = match loader.asts.get(mod_path.as_str()) {
-            Some(pair) => pair,
+        let located = match loader.asts.get(mod_path.as_str()) {
+            Some(located) => located,
             None => continue,
         };
+        let file_id = &located.file;
+        let module = &located.def;
         let scope = match scopes.get(mod_path.as_str()) {
             Some(s) => s,
             None => continue,
@@ -1791,6 +1912,47 @@ mod tests {
         assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
         assert_eq!(plans.len(), 1);
         assert_eq!(source_map.files.len(), 4);
+    }
+
+    #[test]
+    fn test_imported_function_calls_non_imported_sibling() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "lib/m",
+            "fn helper() {\n  > echo help\n}\n\nfn caller() {\n  helper()\n}\n",
+        );
+        loader.add(
+            "main",
+            "import lib/m { caller }\n\ntest \"t\" {\n  shell s {\n    caller()\n  }\n}\n",
+        );
+        let (plans, _, diags) = loader.resolve_one("main");
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        assert_eq!(plans.len(), 1);
+        assert_eq!(
+            plans[0].functions.len(),
+            2,
+            "both caller and its sibling helper should be reachable"
+        );
+    }
+
+    #[test]
+    fn test_imported_function_transitive_sibling_calls() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "lib/m",
+            "fn deep() {\n  > echo deep\n}\n\nfn mid() {\n  deep()\n}\n\nfn top() {\n  mid()\n}\n",
+        );
+        loader.add(
+            "main",
+            "import lib/m { top }\n\ntest \"t\" {\n  shell s {\n    top()\n  }\n}\n",
+        );
+        let (plans, _, diags) = loader.resolve_one("main");
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        assert_eq!(
+            plans[0].functions.len(),
+            3,
+            "top, mid, and deep should all be reachable"
+        );
     }
 
     #[test]

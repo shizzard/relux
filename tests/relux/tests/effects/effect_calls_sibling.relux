@@ -1,0 +1,14 @@
+import effects/setup_with_helper { SetupWithHelper }
+
+test "effect shell can call helper from its home module" {
+    """
+    When an effect's shell block calls a function defined in the same
+    module but not imported by the test, the runtime must still resolve
+    the helper via the effect's home module scope.
+    """
+    need SetupWithHelper as worker
+    shell worker {
+        > echo "test-body-ok"
+        <? ^test-body-ok$
+    }
+}

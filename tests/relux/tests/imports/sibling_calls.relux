@@ -1,0 +1,12 @@
+import imports/sibling { caller }
+
+test "imported function can call non-imported sibling" {
+    """
+    When only `caller` is imported from a module, but `caller` internally
+    calls `helper` (not imported), the runtime must still resolve `helper`
+    via the home module's scope.
+    """
+    shell s {
+        caller()
+    }
+}

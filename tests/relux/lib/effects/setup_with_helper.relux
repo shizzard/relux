@@ -1,0 +1,10 @@
+fn helper() {
+    > echo "effect-helper-ok"
+    <? ^effect-helper-ok$
+}
+
+effect SetupWithHelper -> svc {
+    shell svc {
+        helper()
+    }
+}
