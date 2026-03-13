@@ -276,6 +276,17 @@ fn render_diagnostic(
                 .finish()
                 .eprint(cache);
         }
+
+        Diagnostic::ImpureInPureContext { what, span } => {
+            let (path, range) = aspan(span, source_map);
+            let s = (path, range);
+            let _ = Report::build(ReportKind::Error, s.clone())
+                .with_config(cfg)
+                .with_message(format!("{what} cannot be used in a pure function"))
+                .with_label(Label::new(s).with_message("not allowed in pure context"))
+                .finish()
+                .eprint(cache);
+        }
     }
 }
 

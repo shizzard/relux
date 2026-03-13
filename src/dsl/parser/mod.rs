@@ -432,6 +432,8 @@ where
         .delimited_by(just(Token::ParenOpen), just(Token::ParenClose))
         .labelled("function parameters");
 
+    let stmt_for_pure = stmt.clone();
+
     let fn_def = just(Token::Fn)
         .ignore_then(ident.clone())
         .then(params.clone())
@@ -564,8 +566,17 @@ where
         .map(|spanned| Spanned::new(PureAstStmt::Expr(spanned.node), spanned.span))
         .labelled("expression");
 
-    let pure_stmt = choice((pure_let_stmt, pure_assign_stmt, pure_comment_stmt, pure_expr_stmt))
-        .labelled("pure statement");
+    let impure_fallback = stmt_for_pure
+        .map(|s| Spanned::new(PureAstStmt::ImpureViolation, s.span));
+
+    let pure_stmt = choice((
+        pure_let_stmt,
+        pure_assign_stmt,
+        pure_comment_stmt,
+        pure_expr_stmt,
+        impure_fallback,
+    ))
+    .labelled("pure statement");
 
     let pure_fn_def = just(Token::Pure)
         .ignore_then(just(Token::Fn))

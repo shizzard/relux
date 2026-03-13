@@ -199,7 +199,6 @@ pub struct CallExpr {
 }
 
 // ─── Pure Function AST Types ────────────────────────────────
-// Structurally cannot contain shell operations.
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PureFnDef {
@@ -214,6 +213,10 @@ pub enum PureAstStmt {
     Let(PureLetStmt),
     Assign(PureAssignStmt),
     Expr(PureAstExpr),
+    /// Impure statement found inside a pure fn body. The resolver emits a
+    /// diagnostic for this — the parser accepts it so that the error message
+    /// can reference purity rather than producing a generic "unexpected token".
+    ImpureViolation,
 }
 
 #[derive(Debug, Clone, PartialEq)]

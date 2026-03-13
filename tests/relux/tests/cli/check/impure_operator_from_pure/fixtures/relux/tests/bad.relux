@@ -1,5 +1,5 @@
 pure fn bad() {
-    match_prompt()
+    > echo "side effect"
 }
 
 test "uses bad pure fn" {
@@ -8,7 +8,7 @@ test "uses bad pure fn" {
     """
     let val = bad()
     shell s {
-        > echo "${val}"
-        <? ^$
+        > echo done
+        <? ^done$
     }
 }

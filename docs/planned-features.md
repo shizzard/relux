@@ -62,22 +62,6 @@ The log shows the prompt was produced, but the runtime did not recognise it in t
 race between the PTY read loop and the prompt detection timeout — on a loaded system the init
 sequence completes just after the deadline expires.
 
-## Known Bugs
-
-### Inconsistent error for impure calls from pure context
-
-Calling a user-defined impure function from a `pure fn` produces a clear resolver diagnostic:
-`"name/arity (impure function cannot be called from pure context)"`. But using a shell operator
-(`>`, `<?`, etc.) or an impure BIF (`match_prompt()`, `ctrl_c()`, etc.) inside a `pure fn` body
-hits a different code path — the parser rejects it as `"unexpected token"` because the `pure_stmt`
-grammar excludes operator tokens entirely.
-
-From the user's perspective, both cases are the same mistake: impure code in a pure context. The
-error should be uniform. Either:
-- Push the check to the resolver so all three cases produce the same diagnostic, or
-- Make the parser error message mention purity (e.g., "shell operators are not allowed in pure
-  functions") so the user understands why.
-
 
 
 ## Lux features not yet in Relux

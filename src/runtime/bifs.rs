@@ -83,6 +83,16 @@ pub fn is_known(name: &str, arity: usize) -> bool {
     lookup_pure(name, arity).is_some() || lookup_impure(name, arity).is_some()
 }
 
+/// Returns true if the BIF exists and is callable from a pure context.
+pub fn is_pure_bif(name: &str, arity: usize) -> bool {
+    lookup_pure(name, arity).is_some()
+}
+
+/// Returns true if the BIF exists but is only callable from an impure context.
+pub fn is_impure_bif(name: &str, arity: usize) -> bool {
+    lookup_impure(name, arity).is_some()
+}
+
 fn runtime_error(message: String, span: &Span) -> Failure {
     Failure::Runtime {
         message,

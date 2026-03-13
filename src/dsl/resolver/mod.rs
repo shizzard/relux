@@ -93,6 +93,10 @@ pub enum Diagnostic {
         message: String,
         span: Span,
     },
+    ImpureInPureContext {
+        what: String,
+        span: Span,
+    },
 }
 
 // ─── Name Resolution Types ──────────────────────────────────
@@ -993,14 +997,14 @@ fn lower_pure_expr(
             let arity = call.args.len();
             let fn_key = FnKey { name: call.name.node.clone(), arity };
             if !scope.pure_functions.contains_key(&fn_key)
-                && !crate::runtime::bifs::is_known(&call.name.node, arity)
+                && !crate::runtime::bifs::is_pure_bif(&call.name.node, arity)
             {
-                // Check if it's an impure function — give a better error
-                if scope.functions.contains_key(&fn_key) {
-                    diagnostics.push(Diagnostic::UndefinedName {
-                        name: format!("{}/{} (impure function cannot be called from pure context)", call.name.node, arity),
+                if scope.functions.contains_key(&fn_key)
+                    || crate::runtime::bifs::is_impure_bif(&call.name.node, arity)
+                {
+                    diagnostics.push(Diagnostic::ImpureInPureContext {
+                        what: format!("{}/{}", call.name.node, arity),
                         span: sp(file_id, &call.name.span),
-                        available_arities: Vec::new(),
                     });
                 } else {
                     let available: Vec<usize> = scope
@@ -1067,6 +1071,13 @@ fn lower_pure_stmt(
         }),
         parser::PureAstStmt::Expr(e) => {
             ir::PureStmt::Expr(lower_pure_expr(file_id, e, stmt_span, scope, diagnostics))
+        }
+        parser::PureAstStmt::ImpureViolation => {
+            diagnostics.push(Diagnostic::ImpureInPureContext {
+                what: "shell operator".to_string(),
+                span: sp(file_id, stmt_span),
+            });
+            return None;
         }
     };
     Some(ir::Spanned::new(ir_stmt, sp(file_id, stmt_span)))
@@ -1647,7 +1658,7 @@ fn collect_pure_calls_from_pure_stmts(
             parser::PureAstStmt::Expr(e) => {
                 collect_pure_calls_from_pure_expr(e, keys);
             }
-            parser::PureAstStmt::Comment(_) => {}
+            parser::PureAstStmt::Comment(_) | parser::PureAstStmt::ImpureViolation => {}
         }
     }
 }
@@ -1862,6 +1873,7 @@ mod tests {
                 Diagnostic::InvalidTimeout { .. } => "InvalidTimeout",
                 Diagnostic::ImportNotExported { .. } => "ImportNotExported",
                 Diagnostic::InvalidRegex { .. } => "InvalidRegex",
+                Diagnostic::ImpureInPureContext { .. } => "ImpureInPureContext",
             })
             .collect()
     }
