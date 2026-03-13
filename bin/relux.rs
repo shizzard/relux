@@ -363,36 +363,18 @@ fn cmd_new_module(raw_path: &str, kind: ModuleKind) {
 
     let content = match kind {
         ModuleKind::Test => format!(
-            r#"test "{name}" {{
-    shell literal {{
-        log("sending echo on shell literal")
+            r#"test {name} {{
+    shell myshell {{
         > echo hello-relux
-    }}
-
-    shell regex {{
-        log("sending echo on shell regex")
-        > echo "value=42"
-    }}
-
-    shell literal {{
-        log("matching literal on shell literal")
-        <~100ms? ^hello-relux$
-        match_ok()
-    }}
-
-    shell regex {{
-        log("matching regex on shell regex")
-        <~100ms? ^value=(\d+)$
-        annotate("matched ${{1}}")
-        match_ok()
+        <= hello-relux
     }}
 }}
 "#,
             name = last_segment.replace('_', " "),
         ),
         ModuleKind::Effect => format!(
-            r#"effect {name} -> s {{
-    shell s {{
+            r#"effect {name} -> myshell {{
+    shell myshell {{
     }}
 }}
 "#,
