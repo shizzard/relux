@@ -1,0 +1,55 @@
+test "assertion timeout in shell scope" ~3s {
+    """
+    Verify @-prefixed timeout sets a shell-scoped assertion timeout
+    that is never scaled by --timeout-multiplier.
+    """
+    shell s {
+        @2s
+        > echo hello
+        <? ^hello$
+    }
+}
+
+test "assertion timeout inline regex match" ~3s {
+    """
+    Verify @-prefixed inline timeout on a regex match works and
+    is treated as an assertion (unscaled).
+    """
+    shell s {
+        ~200ms
+        > sh -c 'sleep 0.1 && echo assert_regex'
+        <@3s? ^assert_regex$
+    }
+}
+
+test "assertion timeout inline literal match" ~5s {
+    """
+    Verify @-prefixed inline timeout on a literal match works and
+    is treated as an assertion (unscaled).
+    """
+    shell s {
+        ~200ms
+        > sh -c 'sleep 0.1 && echo assert_literal'
+        <@3s= assert_literal
+    }
+}
+
+test "assertion timeout on test level" @3s {
+    """
+    Verify @-prefixed timeout on the test definition line itself.
+    """
+    shell s {
+        > echo test_level
+        <? ^test_level$
+    }
+}
+
+test "assertion timeout inline neg match" ~3s {
+    """
+    Verify @-prefixed inline timeout on a negative regex match.
+    """
+    shell s {
+        > echo good_output
+        <@1s!? ^never_matches_this$
+    }
+}

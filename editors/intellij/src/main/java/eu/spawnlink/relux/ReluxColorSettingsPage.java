@@ -91,6 +91,8 @@ public class ReluxColorSettingsPage implements ColorSettingsPage {
                         <? 200 OK
 
                         <~5s? quick response
+                        @3s
+                        <@2s= exact literal
                         <!? FATAL
                     }
                 }

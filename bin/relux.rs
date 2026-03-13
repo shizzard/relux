@@ -7,6 +7,7 @@ use relux::config::{self, ReluxConfig};
 use relux::dsl::lexer::lex;
 use relux::dsl::parser::parse;
 use relux::dsl::report::print_diagnostics;
+use relux::dsl::resolver::ir::Timeout;
 use relux::dsl::resolver::resolve;
 use relux::runtime::history::{HistoryCommand, OutputFormat, run_history};
 use relux::runtime::html::generate_run_summary;
@@ -60,7 +61,7 @@ fn cli() -> Command {
                     Arg::new("multiplier")
                         .short('m')
                         .long("timeout-multiplier")
-                        .help("Scale all timeout values by this factor")
+                        .help("Scale tolerance (~) timeouts by this factor; assertion (@) timeouts are not scaled")
                         .value_parser(value_parser!(f64))
                         .default_value("1.0"),
                 )
@@ -406,11 +407,12 @@ fn capitalize_effect_name(segment: &str) -> String {
 }
 
 async fn cmd_run(matches: &clap::ArgMatches) {
-    let (project_root, mut relux_config) = resolve_project(matches);
+    let (project_root, relux_config) = resolve_project(matches);
 
     let multiplier: f64 = *matches.get_one("multiplier").unwrap();
-    if (multiplier - 1.0).abs() > f64::EPSILON {
-        config::apply_multiplier(&mut relux_config, multiplier);
+    if multiplier <= 0.0 || !multiplier.is_finite() {
+        eprintln!("error: --timeout-multiplier must be a positive finite number, got {multiplier}");
+        process::exit(1);
     }
 
     let strategy = match matches.get_one::<String>("strategy").map(|s| s.as_str()) {
@@ -419,7 +421,7 @@ async fn cmd_run(matches: &clap::ArgMatches) {
     };
 
     let (plans, source_map, _diagnostics) = if matches.get_flag("rerun") {
-        let (plans, source_map, diagnostics) = resolve(&project_root, None);
+        let (plans, source_map, diagnostics) = resolve(&project_root, None, multiplier);
         if !diagnostics.is_empty() {
             print_diagnostics(&diagnostics, &source_map);
             process::exit(1);
@@ -458,7 +460,7 @@ async fn cmd_run(matches: &clap::ArgMatches) {
         let paths: Option<Vec<PathBuf>> = matches
             .get_many::<PathBuf>("paths")
             .map(|p| p.cloned().collect());
-        let (plans, source_map, diagnostics) = resolve(&project_root, paths.as_deref());
+        let (plans, source_map, diagnostics) = resolve(&project_root, paths.as_deref(), multiplier);
         if !diagnostics.is_empty() {
             print_diagnostics(&diagnostics, &source_map);
             process::exit(1);
@@ -471,7 +473,7 @@ async fn cmd_run(matches: &clap::ArgMatches) {
         process::exit(0);
     }
 
-    let run_context = create_run_context(&project_root, &relux_config, strategy);
+    let run_context = create_run_context(&project_root, &relux_config, multiplier, strategy);
     let run_id = run_context.run_id.clone();
     let runtime = Runtime::new(source_map, run_context);
     let results = runtime.run(plans).await;
@@ -578,7 +580,7 @@ fn cmd_check(matches: &clap::ArgMatches) {
     let paths: Option<Vec<PathBuf>> = matches
         .get_many::<PathBuf>("paths")
         .map(|p| p.cloned().collect());
-    let (_plans, source_map, diagnostics) = resolve(&project_root, paths.as_deref());
+    let (_plans, source_map, diagnostics) = resolve(&project_root, paths.as_deref(), 1.0);
     if !diagnostics.is_empty() {
         print_diagnostics(&diagnostics, &source_map);
         process::exit(1);
@@ -626,7 +628,7 @@ fn cmd_dump_ir(matches: &clap::ArgMatches) {
         .cloned()
         .collect();
 
-    let (plans, source_map, diagnostics) = resolve(&project_root, Some(&files));
+    let (plans, source_map, diagnostics) = resolve(&project_root, Some(&files), 1.0);
 
     for (i, plan) in plans.iter().enumerate() {
         if i > 0 {
@@ -662,6 +664,7 @@ fn read_file(path: &PathBuf) -> String {
 fn create_run_context(
     project_root: &std::path::Path,
     config: &ReluxConfig,
+    multiplier: f64,
     strategy: RunStrategy,
 ) -> RunContext {
     let out_root = config::out_dir(project_root);
@@ -698,9 +701,17 @@ fn create_run_context(
                     project_root: project_root.to_path_buf(),
                     shell_command: config.shell.command.clone(),
                     shell_prompt: config.shell.prompt.clone(),
-                    default_timeout: config.timeout.match_timeout,
-                    test_timeout: config.timeout.test,
-                    suite_timeout: config.timeout.suite,
+                    default_timeout: Timeout::Tolerance {
+                        duration: config.timeout.match_timeout,
+                        multiplier,
+                    },
+                    test_timeout: config.timeout.test.map(|d| Timeout::Tolerance {
+                        duration: d,
+                        multiplier,
+                    }),
+                    suite_timeout: config.timeout.suite.map(|d| {
+                        std::time::Duration::from_secs_f64(d.as_secs_f64() * multiplier)
+                    }),
                     strategy,
                 };
             }

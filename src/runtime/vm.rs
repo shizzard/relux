@@ -397,7 +397,7 @@ impl Vm {
             .build()
             .expect("prompt regex must be valid");
 
-        tokio::time::timeout(self.scope.timeout(), async {
+        tokio::time::timeout(self.scope.timeout().resolve(), async {
             loop {
                 if let Some((_m, _snapshot)) = self
                     .output_buf
@@ -452,8 +452,8 @@ impl Vm {
                 let _ = self.fail_watcher_tx.send(None);
                 Ok(String::new())
             }
-            ShellStmt::Timeout(d) => {
-                self.scope.set_timeout(*d);
+            ShellStmt::Timeout(t) => {
+                self.scope.set_timeout(t.clone());
                 Ok(String::new())
             }
             ShellStmt::Let(decl) => {
@@ -518,7 +518,7 @@ impl Vm {
                 Ok(payload)
             }
             Expr::MatchLiteral(m) => {
-                let timeout = m.timeout_override.unwrap_or_else(|| self.scope.timeout());
+                let timeout = m.timeout_override.as_ref().unwrap_or_else(|| self.scope.timeout()).resolve();
                 let pattern = interpolate(&m.pattern, &self.scope).await;
                 self.emit_event(LogEventKind::MatchStart { pattern: pattern.clone(), is_regex: false }).await;
                 self.emit_progress(ProgressEvent::MatchStart);
@@ -529,7 +529,7 @@ impl Vm {
                 Ok(pattern)
             }
             Expr::MatchRegex(m) => {
-                let timeout = m.timeout_override.unwrap_or_else(|| self.scope.timeout());
+                let timeout = m.timeout_override.as_ref().unwrap_or_else(|| self.scope.timeout()).resolve();
                 let pattern = interpolate(&m.pattern, &self.scope).await;
                 let re = RegexBuilder::new(&pattern).multi_line(true).crlf(true).build().map_err(|e| Failure::Runtime {
                     message: format!("invalid regex: {}", regex_error_summary(&e)),
@@ -549,7 +549,7 @@ impl Vm {
                 Ok(full)
             }
             Expr::NegMatchLiteral(m) => {
-                let timeout = m.timeout_override.unwrap_or_else(|| self.scope.timeout());
+                let timeout = m.timeout_override.as_ref().unwrap_or_else(|| self.scope.timeout()).resolve();
                 let pattern = interpolate(&m.pattern, &self.scope).await;
                 self.emit_event(LogEventKind::NegMatchStart { pattern: pattern.clone(), is_regex: false }).await;
                 self.emit_progress(ProgressEvent::MatchStart);
@@ -560,7 +560,7 @@ impl Vm {
                 Ok(String::new())
             }
             Expr::NegMatchRegex(m) => {
-                let timeout = m.timeout_override.unwrap_or_else(|| self.scope.timeout());
+                let timeout = m.timeout_override.as_ref().unwrap_or_else(|| self.scope.timeout()).resolve();
                 let pattern = interpolate(&m.pattern, &self.scope).await;
                 let re = RegexBuilder::new(&pattern).multi_line(true).crlf(true).build().map_err(|e| Failure::Runtime {
                     message: format!("invalid regex: {}", regex_error_summary(&e)),
@@ -882,7 +882,7 @@ impl VmContext for Vm {
         self.emit_event(LogEventKind::MatchStart { pattern: pattern.to_string(), is_regex: false }).await;
         self.emit_progress(ProgressEvent::MatchStart);
         let match_start = Instant::now();
-        let timeout = self.scope.timeout();
+        let timeout = self.scope.timeout().resolve();
         let (mat, snapshot) = self.wait_consume_literal(pattern, timeout, span.clone()).await?;
         self.emit_event(LogEventKind::MatchDone { matched: mat.value.0.clone(), elapsed: match_start.elapsed(), buffer: snapshot }).await;
         self.emit_progress(ProgressEvent::MatchDone);

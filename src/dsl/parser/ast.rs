@@ -2,6 +2,12 @@ pub type Span = std::ops::Range<usize>;
 
 use crate::Spanned;
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum TimeoutKind {
+    Tolerance,
+    Assertion,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
     pub items: Vec<Spanned<Item>>,
@@ -57,7 +63,7 @@ pub enum EffectItem {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TestDef {
     pub name: Spanned<String>,
-    pub timeout: Option<Spanned<String>>,
+    pub timeout: Option<Spanned<(TimeoutKind, String)>>,
     pub markers: Vec<Spanned<MarkerDecl>>,
     pub body: Vec<Spanned<TestItem>>,
 }
@@ -133,7 +139,7 @@ pub enum Stmt {
     Comment(String),
     Let(LetStmt),
     Assign(AssignStmt),
-    Timeout(String),
+    Timeout(TimeoutKind, String),
     FailRegex(AstStringExpr),
     FailLiteral(AstStringExpr),
     ClearFailPattern,
@@ -172,10 +178,10 @@ pub enum AstExpr {
     MatchLiteral(AstStringExpr),
     NegMatchRegex(AstStringExpr),
     NegMatchLiteral(AstStringExpr),
-    TimedMatchRegex(String, AstStringExpr),
-    TimedMatchLiteral(String, AstStringExpr),
-    TimedNegMatchRegex(String, AstStringExpr),
-    TimedNegMatchLiteral(String, AstStringExpr),
+    TimedMatchRegex(TimeoutKind, String, AstStringExpr),
+    TimedMatchLiteral(TimeoutKind, String, AstStringExpr),
+    TimedNegMatchRegex(TimeoutKind, String, AstStringExpr),
+    TimedNegMatchLiteral(TimeoutKind, String, AstStringExpr),
     BufferReset,
 }
 

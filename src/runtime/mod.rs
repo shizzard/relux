@@ -8,7 +8,7 @@ use daggy::petgraph::algo::toposort;
 use daggy::petgraph::visit::{EdgeRef, IntoEdgesDirected};
 use tokio::sync::Mutex;
 
-use crate::dsl::resolver::ir::{self, EffectInstance, InstanceId, Plan, SourceMap, Spanned, TestTimeout};
+use crate::dsl::resolver::ir::{self, EffectInstance, InstanceId, Plan, SourceMap, Spanned, TestTimeout, Timeout};
 use crate::runtime::event_log::{EventCollector, LogEventKind};
 use crate::runtime::progress::{ProgressEvent, ProgressTx};
 use crate::runtime::result::{Failure, Outcome, TestResult};
@@ -207,10 +207,10 @@ pub struct Runtime {
     source_map: SourceMap,
     run_dir: PathBuf,
     project_root: PathBuf,
-    default_timeout: Duration,
+    default_timeout: Timeout,
     shell_command: String,
     shell_prompt: String,
-    test_timeout: Option<Duration>,
+    test_timeout: Option<Timeout>,
     suite_timeout: Option<Duration>,
     strategy: RunStrategy,
 }
@@ -222,8 +222,8 @@ pub struct RunContext {
     pub project_root: PathBuf,
     pub shell_command: String,
     pub shell_prompt: String,
-    pub default_timeout: Duration,
-    pub test_timeout: Option<Duration>,
+    pub default_timeout: Timeout,
+    pub test_timeout: Option<Timeout>,
     pub suite_timeout: Option<Duration>,
     pub strategy: RunStrategy,
 }
@@ -295,20 +295,20 @@ impl Runtime {
     }
 
     async fn run_plan(&self, plan: Plan) -> TestResult {
-        // Inline test timeout (not affected by --multiplier) takes precedence
-        // over the inherited test timeout from config/manifest.
+        // Inline test timeout takes precedence over the inherited config/manifest
+        // timeout.  The multiplier is already baked into Tolerance variants.
         let effective_timeout = match &plan.test.timeout {
-            Some(TestTimeout::Explicit(d)) => Some(*d),
-            _ => self.test_timeout,
+            Some(TestTimeout::Explicit(t)) => Some(t.clone()),
+            _ => self.test_timeout.clone(),
         };
         match effective_timeout {
-            Some(timeout) => match tokio::time::timeout(timeout, self.run_plan_inner(plan)).await {
+            Some(ref t) => match tokio::time::timeout(t.resolve(), self.run_plan_inner(plan)).await {
                 Ok(result) => result,
                 Err(_) => TestResult {
                     test_name: "(unknown)".to_string(),
                     test_path: "(unknown)".to_string(),
                     outcome: Outcome::Fail(Failure::Runtime {
-                        message: format!("test timeout ({timeout:?}) exceeded"),
+                        message: format!("test timeout ({:?}) exceeded", t.resolve()),
                         span: None,
                         shell: None,
                     }),
@@ -605,7 +605,7 @@ impl Runtime {
                             effect_scope.clone(),
                             overlay.clone(),
                             env.clone(),
-                            self.default_timeout,
+                            self.default_timeout.clone(),
                         );
                         match Vm::new(
                             scoped_name,
@@ -709,7 +709,7 @@ impl Runtime {
             } else if let Some(vm) = local_shells.get(&shell_name).cloned() {
                 vm
             } else {
-                let scope = ScopeStack::new(test_scope.clone(), HashMap::new(), env.clone(), self.default_timeout);
+                let scope = ScopeStack::new(test_scope.clone(), HashMap::new(), env.clone(), self.default_timeout.clone());
                 let vm = match Vm::new(
                     shell_name.clone(),
                     self.shell_prompt.clone(),
@@ -750,7 +750,7 @@ impl Runtime {
         if let Some(cleanup) = &plan.test.cleanup {
             let _ = progress_tx.send(ProgressEvent::Cleanup);
             let test_scope = Arc::new(Mutex::new(TestScope::new()));
-            let scope = ScopeStack::new(test_scope, HashMap::new(), env.clone(), self.default_timeout);
+            let scope = ScopeStack::new(test_scope, HashMap::new(), env.clone(), self.default_timeout.clone());
             let code_server = Arc::new(CodeServer::new(plan.functions.clone(), plan.pure_functions.clone()));
             event_collector.push("", LogEventKind::Cleanup { shell: "__cleanup".to_string() }).await;
             if let Ok(mut vm) = Vm::new(
@@ -803,7 +803,7 @@ impl Runtime {
                 let test_scope = Arc::new(Mutex::new(TestScope::new()));
                 let code_server = Arc::new(CodeServer::new(Vec::new(), Vec::new()));
                 let overlay = self.interpolate_overlay(&instance_state.info.overlay, env, &code_server).await;
-                let scope = ScopeStack::new(test_scope, overlay, env.clone(), self.default_timeout);
+                let scope = ScopeStack::new(test_scope, overlay, env.clone(), self.default_timeout.clone());
                 if let Ok(mut vm) = Vm::new(
                     cleanup_name,
                     self.shell_prompt.clone(),
@@ -881,7 +881,10 @@ fn cleanup_to_shell_stmts(
             Spanned::new(node, stmt.span.clone())
         })
         .chain(std::iter::once(Spanned::new(
-            ir::ShellStmt::Timeout(config::DEFAULT_TIMEOUT),
+            ir::ShellStmt::Timeout(Timeout::Tolerance {
+                duration: config::DEFAULT_TIMEOUT,
+                multiplier: 1.0,
+            }),
             span.clone(),
         )))
         .collect()

@@ -3,8 +3,15 @@ pub mod ast;
 use crate::Spanned;
 use crate::dsl::lexer::{
     MarkerCondBody, MarkerExpr, MarkerModifier, MarkerToken, PayloadFragment, StringFragment,
-    Token, lex,
+    TimeoutKind as LexTimeoutKind, Token, lex,
 };
+
+fn convert_timeout_kind(k: LexTimeoutKind) -> TimeoutKind {
+    match k {
+        LexTimeoutKind::Tolerance => TimeoutKind::Tolerance,
+        LexTimeoutKind::Assertion => TimeoutKind::Assertion,
+    }
+}
 use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 
@@ -220,22 +227,22 @@ where
             .map_with(|e, x| Spanned::new(e, sp(x.span())))
             .labelled("negative match literal");
     let timed_match_regex = select! {
-        Token::TimedMatchRegex((d, f)) => AstExpr::TimedMatchRegex(d.to_string(), payload_to_expr(f)),
+        Token::TimedMatchRegex((k, d, f)) => AstExpr::TimedMatchRegex(convert_timeout_kind(k), d.to_string(), payload_to_expr(f)),
     }
     .map_with(|e, x| Spanned::new(e, sp(x.span())))
     .labelled("timed match regex");
     let timed_match_literal = select! {
-        Token::TimedMatchLiteral((d, f)) => AstExpr::TimedMatchLiteral(d.to_string(), payload_to_expr(f)),
+        Token::TimedMatchLiteral((k, d, f)) => AstExpr::TimedMatchLiteral(convert_timeout_kind(k), d.to_string(), payload_to_expr(f)),
     }
     .map_with(|e, x| Spanned::new(e, sp(x.span())))
     .labelled("timed match literal");
     let timed_neg_match_regex = select! {
-        Token::TimedNegMatchRegex((d, f)) => AstExpr::TimedNegMatchRegex(d.to_string(), payload_to_expr(f)),
+        Token::TimedNegMatchRegex((k, d, f)) => AstExpr::TimedNegMatchRegex(convert_timeout_kind(k), d.to_string(), payload_to_expr(f)),
     }
     .map_with(|e, x| Spanned::new(e, sp(x.span())))
     .labelled("timed negative match regex");
     let timed_neg_match_literal = select! {
-        Token::TimedNegMatchLiteral((d, f)) => AstExpr::TimedNegMatchLiteral(d.to_string(), payload_to_expr(f)),
+        Token::TimedNegMatchLiteral((k, d, f)) => AstExpr::TimedNegMatchLiteral(convert_timeout_kind(k), d.to_string(), payload_to_expr(f)),
     }
     .map_with(|e, x| Spanned::new(e, sp(x.span())))
     .labelled("timed negative match literal");
@@ -272,7 +279,7 @@ where
         })
         .labelled("assignment");
 
-    let timeout_stmt = select! { Token::Timeout(s) => Stmt::Timeout(s.to_string()) }
+    let timeout_stmt = select! { Token::Timeout((k, s)) => Stmt::Timeout(convert_timeout_kind(k), s.to_string()) }
         .map_with(|s, e| Spanned::new(s, sp(e.span())))
         .labelled("timeout");
 
@@ -701,7 +708,7 @@ where
     ))
     .labelled("test item");
 
-    let test_timeout = select! { Token::Timeout(s) => s.to_string() }
+    let test_timeout = select! { Token::Timeout((k, s)) => (convert_timeout_kind(k), s.to_string()) }
         .map_with(|s, e| Spanned::new(s, sp(e.span())))
         .or_not();
 
@@ -1067,7 +1074,10 @@ mod tests {
         let m = parse_ok("fn f() {\n  ~10s\n}\n");
         match &m.items[0].node {
             Item::Fn(f) => match &f.body[0].node {
-                Stmt::Timeout(s) => assert_eq!(s, "10s"),
+                Stmt::Timeout(k, s) => {
+                    assert_eq!(*k, TimeoutKind::Tolerance);
+                    assert_eq!(s, "10s");
+                }
                 other => panic!("expected Timeout, got {other:?}"),
             },
             other => panic!("expected Fn, got {other:?}"),
@@ -1329,7 +1339,9 @@ mod tests {
         match &m.items[0].node {
             Item::Test(t) => {
                 assert_eq!(t.name.node, "fast");
-                assert_eq!(t.timeout.as_ref().unwrap().node, "3s");
+                let (k, s) = &t.timeout.as_ref().unwrap().node;
+                assert_eq!(*k, TimeoutKind::Tolerance);
+                assert_eq!(s, "3s");
             }
             other => panic!("expected Test, got {other:?}"),
         }
@@ -1570,7 +1582,7 @@ mod tests {
                         let timeouts: Vec<_> = sb
                             .stmts
                             .iter()
-                            .filter(|s| matches!(&s.node, Stmt::Timeout(_)))
+                            .filter(|s| matches!(&s.node, Stmt::Timeout(_, _)))
                             .collect();
                         assert_eq!(timeouts.len(), 2, "myshell has 2 timeouts");
                     }
@@ -1941,7 +1953,8 @@ mod tests {
         let m = parse_ok("fn f() {\n  <~2s? some regex\n}\n");
         match &m.items[0].node {
             Item::Fn(f) => match &f.body[0].node {
-                Stmt::Expr(AstExpr::TimedMatchRegex(dur, s)) => {
+                Stmt::Expr(AstExpr::TimedMatchRegex(k, dur, s)) => {
+                    assert_eq!(*k, TimeoutKind::Tolerance);
                     assert_eq!(dur, "2s");
                     assert_eq!(
                         s.parts,
@@ -1959,7 +1972,8 @@ mod tests {
         let m = parse_ok("fn f() {\n  <~500ms= literal text\n}\n");
         match &m.items[0].node {
             Item::Fn(f) => match &f.body[0].node {
-                Stmt::Expr(AstExpr::TimedMatchLiteral(dur, s)) => {
+                Stmt::Expr(AstExpr::TimedMatchLiteral(k, dur, s)) => {
+                    assert_eq!(*k, TimeoutKind::Tolerance);
                     assert_eq!(dur, "500ms");
                     assert_eq!(
                         s.parts,
@@ -1977,7 +1991,8 @@ mod tests {
         let m = parse_ok("fn f() {\n  <~1m30s!? error regex\n}\n");
         match &m.items[0].node {
             Item::Fn(f) => match &f.body[0].node {
-                Stmt::Expr(AstExpr::TimedNegMatchRegex(dur, s)) => {
+                Stmt::Expr(AstExpr::TimedNegMatchRegex(k, dur, s)) => {
+                    assert_eq!(*k, TimeoutKind::Tolerance);
                     assert_eq!(dur, "1m30s");
                     assert_eq!(
                         s.parts,
@@ -1995,7 +2010,8 @@ mod tests {
         let m = parse_ok("fn f() {\n  <~30s!= bad stuff\n}\n");
         match &m.items[0].node {
             Item::Fn(f) => match &f.body[0].node {
-                Stmt::Expr(AstExpr::TimedNegMatchLiteral(dur, s)) => {
+                Stmt::Expr(AstExpr::TimedNegMatchLiteral(k, dur, s)) => {
+                    assert_eq!(*k, TimeoutKind::Tolerance);
                     assert_eq!(dur, "30s");
                     assert_eq!(
                         s.parts,

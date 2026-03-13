@@ -160,17 +160,6 @@ pub fn out_dir(project_root: &Path) -> PathBuf {
     project_root.join(RELUX_DIR).join(OUT_DIR)
 }
 
-pub fn apply_multiplier(config: &mut ReluxConfig, multiplier: f64) {
-    config.timeout.match_timeout =
-        Duration::from_secs_f64(config.timeout.match_timeout.as_secs_f64() * multiplier);
-    if let Some(test) = &mut config.timeout.test {
-        *test = Duration::from_secs_f64(test.as_secs_f64() * multiplier);
-    }
-    if let Some(suite) = &mut config.timeout.suite {
-        *suite = Duration::from_secs_f64(suite.as_secs_f64() * multiplier);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,12 +213,4 @@ suite = "30m"
         assert_eq!(config.timeout.match_timeout, Duration::from_secs(5));
     }
 
-    #[test]
-    fn multiplier_scales_timeouts() {
-        let mut config = ReluxConfig::default();
-        config.timeout.test = Some(Duration::from_secs(60));
-        apply_multiplier(&mut config, 2.0);
-        assert_eq!(config.timeout.match_timeout, Duration::from_secs(10));
-        assert_eq!(config.timeout.test, Some(Duration::from_secs(120)));
-    }
 }

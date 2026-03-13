@@ -193,7 +193,7 @@
     },
 
     "op-timed-match-regex": {
-      "begin": "(<)(~[0-9][0-9a-zA-Z]*)(\\?)",
+      "begin": "(<)([~@][0-9][0-9a-zA-Z]*)(\\?)",
       "end": "$",
       "beginCaptures": {
         "1": { "name": "keyword.operator.match-regex.relux" },
@@ -207,7 +207,7 @@
     },
 
     "op-timed-match-literal": {
-      "begin": "(<)(~[0-9][0-9a-zA-Z]*)(=)",
+      "begin": "(<)([~@][0-9][0-9a-zA-Z]*)(=)",
       "end": "$",
       "beginCaptures": {
         "1": { "name": "keyword.operator.match-literal.relux" },
@@ -221,7 +221,7 @@
     },
 
     "op-timed-neg-match-regex": {
-      "begin": "(<)(~[0-9][0-9a-zA-Z]*)(\\!\\?)",
+      "begin": "(<)([~@][0-9][0-9a-zA-Z]*)(\\!\\?)",
       "end": "$",
       "beginCaptures": {
         "1": { "name": "keyword.operator.neg-match-regex.relux" },
@@ -235,7 +235,7 @@
     },
 
     "op-timed-neg-match-literal": {
-      "begin": "(<)(~[0-9][0-9a-zA-Z]*)(!=)",
+      "begin": "(<)([~@][0-9][0-9a-zA-Z]*)(!=)",
       "end": "$",
       "beginCaptures": {
         "1": { "name": "keyword.operator.neg-match-literal.relux" },
@@ -297,7 +297,7 @@
     },
 
     "timeout": {
-      "match": "(~)([0-9][0-9a-zA-Z]*)\\b",
+      "match": "([~@])([0-9][0-9a-zA-Z]*)\\b",
       "captures": {
         "1": { "name": "keyword.operator.timeout.relux" },
         "2": { "name": "constant.other.duration.relux" }

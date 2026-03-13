@@ -123,12 +123,12 @@ CONDITION_OP = [=?]
     "cleanup"                   { return ReluxTokenTypes.CLEANUP; }
 }
 
-// Operators with inline timeout: <~5s?  <~10s=  <~5s!?  <~10s!=
+// Operators with inline timeout: <~5s?  <~10s=  <~5s!?  <~10s!=  (also @-prefixed assertion timeouts)
 <YYINITIAL> {
-    "<" {LINE_SPACE} "~" {DURATION} {LINE_SPACE} "!?" { yybegin(IN_REGEX_PAYLOAD); return ReluxTokenTypes.OP_NEG_MATCH_REGEX; }
-    "<" {LINE_SPACE} "~" {DURATION} {LINE_SPACE} "!=" { yybegin(IN_OPERATOR_PAYLOAD); return ReluxTokenTypes.OP_NEG_MATCH_LITERAL; }
-    "<" {LINE_SPACE} "~" {DURATION} {LINE_SPACE} "?"  { yybegin(IN_REGEX_PAYLOAD); return ReluxTokenTypes.OP_MATCH_REGEX; }
-    "<" {LINE_SPACE} "~" {DURATION} {LINE_SPACE} "="  { yybegin(IN_OPERATOR_PAYLOAD); return ReluxTokenTypes.OP_MATCH_LITERAL; }
+    "<" {LINE_SPACE} [~@] {DURATION} {LINE_SPACE} "!?" { yybegin(IN_REGEX_PAYLOAD); return ReluxTokenTypes.OP_NEG_MATCH_REGEX; }
+    "<" {LINE_SPACE} [~@] {DURATION} {LINE_SPACE} "!=" { yybegin(IN_OPERATOR_PAYLOAD); return ReluxTokenTypes.OP_NEG_MATCH_LITERAL; }
+    "<" {LINE_SPACE} [~@] {DURATION} {LINE_SPACE} "?"  { yybegin(IN_REGEX_PAYLOAD); return ReluxTokenTypes.OP_MATCH_REGEX; }
+    "<" {LINE_SPACE} [~@] {DURATION} {LINE_SPACE} "="  { yybegin(IN_OPERATOR_PAYLOAD); return ReluxTokenTypes.OP_MATCH_LITERAL; }
 }
 
 // Shell operators (order matters for precedence)
@@ -164,7 +164,7 @@ CONDITION_OP = [=?]
 
 // Timeout
 <YYINITIAL> {
-    "~" {DURATION}              { return ReluxTokenTypes.TIMEOUT; }
+    [~@] {DURATION}             { return ReluxTokenTypes.TIMEOUT; }
 }
 
 // Other operators

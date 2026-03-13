@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 use regex::Regex;
 use tokio::sync::Mutex;
 
-use crate::dsl::resolver::ir::{Expr, Spanned, StringExpr, StringPart, VarAssign, VarDecl};
+use crate::dsl::resolver::ir::{Expr, Spanned, StringExpr, StringPart, Timeout, VarAssign, VarDecl};
 
 pub type Env = HashMap<String, String>;
 
@@ -53,7 +52,7 @@ impl TestScope {
 #[derive(Debug)]
 struct Frame {
     vars: HashMap<String, String>,
-    timeout: Duration,
+    timeout: Timeout,
     fail_pattern: Option<FailPattern>,
 }
 
@@ -71,7 +70,7 @@ impl ScopeStack {
         test_scope: Arc<Mutex<TestScope>>,
         overlay: HashMap<String, String>,
         env: Arc<Env>,
-        default_timeout: Duration,
+        default_timeout: Timeout,
     ) -> Self {
         Self {
             frames: vec![Frame {
@@ -87,7 +86,7 @@ impl ScopeStack {
     }
 
     pub fn push_frame(&mut self) {
-        let timeout = self.timeout();
+        let timeout = self.timeout().clone();
         let fail_pattern = self.fail_pattern().cloned();
         self.frames.push(Frame {
             vars: HashMap::new(),
@@ -100,7 +99,7 @@ impl ScopeStack {
     /// single isolated frame containing only the function's parameters.
     /// Returns the saved state to be passed to `exit_function()`.
     pub fn enter_function(&mut self, params: HashMap<String, String>) -> FunctionSave {
-        let timeout = self.timeout();
+        let timeout = self.timeout().clone();
         let fail_pattern = self.fail_pattern().cloned();
         let saved_frames = std::mem::replace(
             &mut self.frames,
@@ -130,12 +129,12 @@ impl ScopeStack {
         }
     }
 
-    pub fn timeout(&self) -> Duration {
-        self.frames.last().unwrap().timeout
+    pub fn timeout(&self) -> &Timeout {
+        &self.frames.last().unwrap().timeout
     }
 
-    pub fn set_timeout(&mut self, d: Duration) {
-        self.frames.last_mut().unwrap().timeout = d;
+    pub fn set_timeout(&mut self, t: Timeout) {
+        self.frames.last_mut().unwrap().timeout = t;
     }
 
     pub fn fail_pattern(&self) -> Option<&FailPattern> {
@@ -261,8 +260,13 @@ pub fn interpolate_with_lookup(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
-    fn make_scope(timeout: Duration) -> ScopeStack {
+    fn tol(secs: u64) -> Timeout {
+        Timeout::Tolerance { duration: Duration::from_secs(secs), multiplier: 1.0 }
+    }
+
+    fn make_scope(timeout: Timeout) -> ScopeStack {
         ScopeStack::new(
             Arc::new(Mutex::new(TestScope::new())),
             HashMap::new(),
@@ -273,74 +277,74 @@ mod tests {
 
     #[test]
     fn default_timeout() {
-        let scope = make_scope(Duration::from_secs(10));
-        assert_eq!(scope.timeout(), Duration::from_secs(10));
+        let scope = make_scope(tol(10));
+        assert_eq!(*scope.timeout(), tol(10));
     }
 
     #[test]
     fn set_timeout_changes_current_frame() {
-        let mut scope = make_scope(Duration::from_secs(10));
-        scope.set_timeout(Duration::from_secs(30));
-        assert_eq!(scope.timeout(), Duration::from_secs(30));
+        let mut scope = make_scope(tol(10));
+        scope.set_timeout(tol(30));
+        assert_eq!(*scope.timeout(), tol(30));
     }
 
     #[test]
     fn push_frame_inherits_timeout() {
-        let mut scope = make_scope(Duration::from_secs(10));
-        scope.set_timeout(Duration::from_secs(5));
+        let mut scope = make_scope(tol(10));
+        scope.set_timeout(tol(5));
         scope.push_frame();
-        assert_eq!(scope.timeout(), Duration::from_secs(5));
+        assert_eq!(*scope.timeout(), tol(5));
     }
 
     #[test]
     fn pop_frame_restores_timeout() {
-        let mut scope = make_scope(Duration::from_secs(10));
+        let mut scope = make_scope(tol(10));
         scope.push_frame();
-        scope.set_timeout(Duration::from_secs(99));
-        assert_eq!(scope.timeout(), Duration::from_secs(99));
+        scope.set_timeout(tol(99));
+        assert_eq!(*scope.timeout(), tol(99));
         scope.pop_frame();
-        assert_eq!(scope.timeout(), Duration::from_secs(10));
+        assert_eq!(*scope.timeout(), tol(10));
     }
 
     #[test]
     fn nested_frames_restore_correctly() {
-        let mut scope = make_scope(Duration::from_secs(10));
+        let mut scope = make_scope(tol(10));
 
         scope.push_frame();
-        scope.set_timeout(Duration::from_secs(20));
+        scope.set_timeout(tol(20));
 
         scope.push_frame();
-        scope.set_timeout(Duration::from_secs(30));
-        assert_eq!(scope.timeout(), Duration::from_secs(30));
+        scope.set_timeout(tol(30));
+        assert_eq!(*scope.timeout(), tol(30));
 
         scope.pop_frame();
-        assert_eq!(scope.timeout(), Duration::from_secs(20));
+        assert_eq!(*scope.timeout(), tol(20));
 
         scope.pop_frame();
-        assert_eq!(scope.timeout(), Duration::from_secs(10));
+        assert_eq!(*scope.timeout(), tol(10));
     }
 
     #[test]
     fn pop_frame_on_root_is_noop() {
-        let mut scope = make_scope(Duration::from_secs(10));
-        scope.set_timeout(Duration::from_secs(5));
+        let mut scope = make_scope(tol(10));
+        scope.set_timeout(tol(5));
         scope.pop_frame();
-        assert_eq!(scope.timeout(), Duration::from_secs(5));
+        assert_eq!(*scope.timeout(), tol(5));
     }
 
     #[tokio::test]
     async fn vars_scoped_independently_from_timeout() {
-        let mut scope = make_scope(Duration::from_secs(10));
+        let mut scope = make_scope(tol(10));
         scope.let_insert("x".into(), "outer".into());
 
         scope.push_frame();
-        scope.set_timeout(Duration::from_secs(99));
+        scope.set_timeout(tol(99));
         scope.let_insert("x".into(), "inner".into());
         assert_eq!(scope.lookup("x").await.unwrap(), "inner");
-        assert_eq!(scope.timeout(), Duration::from_secs(99));
+        assert_eq!(*scope.timeout(), tol(99));
 
         scope.pop_frame();
         assert_eq!(scope.lookup("x").await.unwrap(), "outer");
-        assert_eq!(scope.timeout(), Duration::from_secs(10));
+        assert_eq!(*scope.timeout(), tol(10));
     }
 }

@@ -3,7 +3,7 @@ pub mod ir;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+
 
 use daggy::Walker;
 use crate::dsl::discover_relux_files;
@@ -540,11 +540,12 @@ struct EffectGraphBuilder<'a> {
     identity_map: HashMap<EffectIdentity, daggy::NodeIndex>,
     effects: Vec<ir::Effect>,
     effect_id_map: HashMap<EffectName, ir::EffectId>,
+    multiplier: f64,
     diagnostics: Vec<Diagnostic>,
 }
 
 impl<'a> EffectGraphBuilder<'a> {
-    fn new(scope: &'a ModuleScope, scopes_by_file: &'a HashMap<FileId, &'a ModuleScope>) -> Self {
+    fn new(scope: &'a ModuleScope, scopes_by_file: &'a HashMap<FileId, &'a ModuleScope>, multiplier: f64) -> Self {
         Self {
             scope,
             scopes_by_file,
@@ -552,6 +553,7 @@ impl<'a> EffectGraphBuilder<'a> {
             identity_map: HashMap::new(),
             effects: Vec::new(),
             effect_id_map: HashMap::new(),
+            multiplier,
             diagnostics: Vec::new(),
         }
     }
@@ -703,7 +705,7 @@ impl<'a> EffectGraphBuilder<'a> {
             .get(&file_id)
             .copied()
             .unwrap_or(self.scope);
-        let effect = lower_effect_def(file_id, def, effect_scope, &mut self.diagnostics);
+        let effect = lower_effect_def(file_id, def, effect_scope, self.multiplier, &mut self.diagnostics);
         self.effects.push(effect);
         self.effect_id_map.insert(name.clone(), id);
         id
@@ -721,21 +723,37 @@ fn lower_spanned<T>(file_id: FileId, node: T, span: &parser::Span) -> ir::Spanne
 }
 
 fn parse_timeout(
+    kind: parser::TimeoutKind,
     raw: &str,
+    multiplier: f64,
     file_id: FileId,
     span: &parser::Span,
     diagnostics: &mut Vec<Diagnostic>,
-) -> Duration {
+) -> ir::Timeout {
     match humantime::parse_duration(raw.trim()) {
-        Ok(d) => d,
+        Ok(d) => match kind {
+            parser::TimeoutKind::Tolerance => ir::Timeout::Tolerance {
+                duration: d,
+                multiplier,
+            },
+            parser::TimeoutKind::Assertion => ir::Timeout::Assertion(d),
+        },
         Err(_) => {
-            // Point at the duration string (after the `~` prefix)
+            // Point at the duration string (after the `~`/`@` prefix)
             let content_span = (span.start + 1)..span.end;
             diagnostics.push(Diagnostic::InvalidTimeout {
                 raw: raw.to_string(),
                 span: Span::new(file_id, content_span),
             });
-            crate::config::DEFAULT_TIMEOUT
+            match kind {
+                parser::TimeoutKind::Tolerance => ir::Timeout::Tolerance {
+                    duration: crate::config::DEFAULT_TIMEOUT,
+                    multiplier,
+                },
+                parser::TimeoutKind::Assertion => {
+                    ir::Timeout::Assertion(crate::config::DEFAULT_TIMEOUT)
+                }
+            }
         }
     }
 }
@@ -778,6 +796,7 @@ fn lower_expr(
     ast: &parser::AstExpr,
     expr_span: &parser::Span,
     scope: &ModuleScope,
+    multiplier: f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ir::Expr {
     match ast {
@@ -813,7 +832,7 @@ fn lower_expr(
                 .map(|a| {
                     lower_spanned(
                         file_id,
-                        lower_expr(file_id, &a.node, &a.span, scope, diagnostics),
+                        lower_expr(file_id, &a.node, &a.span, scope, multiplier, diagnostics),
                         &a.span,
                     )
                 })
@@ -853,28 +872,28 @@ fn lower_expr(
                 timeout_override: None,
             })
         }
-        parser::AstExpr::TimedMatchRegex(dur, s) => {
+        parser::AstExpr::TimedMatchRegex(kind, dur, s) => {
             ir::Expr::MatchRegex(ir::MatchExpr {
                 pattern: lower_string_expr(file_id, s, expr_span, 2),
-                timeout_override: Some(parse_timeout(dur, file_id, expr_span, diagnostics)),
+                timeout_override: Some(parse_timeout(*kind, dur, multiplier, file_id, expr_span, diagnostics)),
             })
         }
-        parser::AstExpr::TimedMatchLiteral(dur, s) => {
+        parser::AstExpr::TimedMatchLiteral(kind, dur, s) => {
             ir::Expr::MatchLiteral(ir::MatchExpr {
                 pattern: lower_string_expr(file_id, s, expr_span, 2),
-                timeout_override: Some(parse_timeout(dur, file_id, expr_span, diagnostics)),
+                timeout_override: Some(parse_timeout(*kind, dur, multiplier, file_id, expr_span, diagnostics)),
             })
         }
-        parser::AstExpr::TimedNegMatchRegex(dur, s) => {
+        parser::AstExpr::TimedNegMatchRegex(kind, dur, s) => {
             ir::Expr::NegMatchRegex(ir::MatchExpr {
                 pattern: lower_string_expr(file_id, s, expr_span, 2),
-                timeout_override: Some(parse_timeout(dur, file_id, expr_span, diagnostics)),
+                timeout_override: Some(parse_timeout(*kind, dur, multiplier, file_id, expr_span, diagnostics)),
             })
         }
-        parser::AstExpr::TimedNegMatchLiteral(dur, s) => {
+        parser::AstExpr::TimedNegMatchLiteral(kind, dur, s) => {
             ir::Expr::NegMatchLiteral(ir::MatchExpr {
                 pattern: lower_string_expr(file_id, s, expr_span, 2),
-                timeout_override: Some(parse_timeout(dur, file_id, expr_span, diagnostics)),
+                timeout_override: Some(parse_timeout(*kind, dur, multiplier, file_id, expr_span, diagnostics)),
             })
         }
         parser::AstExpr::BufferReset => ir::Expr::BufferReset,
@@ -886,6 +905,7 @@ fn lower_stmt(
     ast: &parser::Stmt,
     stmt_span: &parser::Span,
     scope: &ModuleScope,
+    multiplier: f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<ir::Spanned<ir::ShellStmt>> {
     let ir_stmt = match ast {
@@ -894,7 +914,7 @@ fn lower_stmt(
             let value = l.value.as_ref().map(|v| {
                 lower_spanned(
                     file_id,
-                    lower_expr(file_id, &v.node, &v.span, scope, diagnostics),
+                    lower_expr(file_id, &v.node, &v.span, scope, multiplier, diagnostics),
                     &v.span,
                 )
             });
@@ -907,13 +927,13 @@ fn lower_stmt(
             name: lower_spanned(file_id, a.name.node.clone(), &a.name.span),
             value: lower_spanned(
                 file_id,
-                lower_expr(file_id, &a.value.node, &a.value.span, scope, diagnostics),
+                lower_expr(file_id, &a.value.node, &a.value.span, scope, multiplier, diagnostics),
                 &a.value.span,
             ),
         }),
-        parser::Stmt::Timeout(raw) => {
-            let dur = parse_timeout(raw, file_id, stmt_span, diagnostics);
-            ir::ShellStmt::Timeout(dur)
+        parser::Stmt::Timeout(kind, raw) => {
+            let t = parse_timeout(*kind, raw, multiplier, file_id, stmt_span, diagnostics);
+            ir::ShellStmt::Timeout(t)
         }
         parser::Stmt::FailRegex(s) => {
             ir::ShellStmt::FailRegex(lower_string_expr(file_id, s, stmt_span, 2))
@@ -923,7 +943,7 @@ fn lower_stmt(
         }
         parser::Stmt::ClearFailPattern => ir::ShellStmt::ClearFailPattern,
         parser::Stmt::Expr(e) => {
-            ir::ShellStmt::Expr(lower_expr(file_id, e, stmt_span, scope, diagnostics))
+            ir::ShellStmt::Expr(lower_expr(file_id, e, stmt_span, scope, multiplier, diagnostics))
         }
     };
     Some(ir::Spanned::new(ir_stmt, sp(file_id, stmt_span)))
@@ -933,6 +953,7 @@ fn lower_cleanup_stmt(
     file_id: FileId,
     ast: &parser::CleanupStmt,
     stmt_span: &parser::Span,
+    multiplier: f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<ir::Spanned<ir::CleanupStmt>> {
     let empty_scope = ModuleScope {
@@ -951,7 +972,7 @@ fn lower_cleanup_stmt(
         parser::CleanupStmt::Let(l) => {
             let value = l.value.as_ref().map(|v| {
                 ir::Spanned::new(
-                    lower_expr(file_id, &v.node, &v.span, &empty_scope, diagnostics),
+                    lower_expr(file_id, &v.node, &v.span, &empty_scope, multiplier, diagnostics),
                     sp(file_id, &v.span),
                 )
             });
@@ -963,7 +984,7 @@ fn lower_cleanup_stmt(
         parser::CleanupStmt::Assign(a) => ir::CleanupStmt::Assign(ir::VarAssign {
             name: lower_spanned(file_id, a.name.node.clone(), &a.name.span),
             value: ir::Spanned::new(
-                lower_expr(file_id, &a.value.node, &a.value.span, &empty_scope, diagnostics),
+                lower_expr(file_id, &a.value.node, &a.value.span, &empty_scope, multiplier, diagnostics),
                 sp(file_id, &a.value.span),
             ),
         }),
@@ -1080,12 +1101,13 @@ fn lower_shell_block(
     block: &parser::ShellBlock,
     block_span: &parser::Span,
     scope: &ModuleScope,
+    multiplier: f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ir::Spanned<ir::ShellBlock> {
     let stmts = block
         .stmts
         .iter()
-        .filter_map(|s| lower_stmt(file_id, &s.node, &s.span, scope, diagnostics))
+        .filter_map(|s| lower_stmt(file_id, &s.node, &s.span, scope, multiplier, diagnostics))
         .collect();
     ir::Spanned::new(
         ir::ShellBlock {
@@ -1100,12 +1122,13 @@ fn lower_cleanup_block(
     file_id: FileId,
     block: &parser::CleanupBlock,
     block_span: &parser::Span,
+    multiplier: f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ir::Spanned<ir::CleanupBlock> {
     let stmts = block
         .stmts
         .iter()
-        .filter_map(|s| lower_cleanup_stmt(file_id, &s.node, &s.span, diagnostics))
+        .filter_map(|s| lower_cleanup_stmt(file_id, &s.node, &s.span, multiplier, diagnostics))
         .collect();
     ir::Spanned::new(ir::CleanupBlock { stmts }, sp(file_id, block_span))
 }
@@ -1193,6 +1216,7 @@ fn lower_effect_def(
     file_id: FileId,
     def: &parser::EffectDef,
     scope: &ModuleScope,
+    multiplier: f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ir::Effect {
     let conditions = def
@@ -1235,11 +1259,12 @@ fn lower_effect_def(
                     block,
                     &item.span,
                     scope,
+                    multiplier,
                     diagnostics,
                 ));
             }
             parser::EffectItem::Cleanup(block) => {
-                cleanup = Some(lower_cleanup_block(file_id, block, &item.span, diagnostics));
+                cleanup = Some(lower_cleanup_block(file_id, block, &item.span, multiplier, diagnostics));
             }
         }
     }
@@ -1265,6 +1290,7 @@ fn lower_test_def(
     test_span: &parser::Span,
     scope: &ModuleScope,
     needs: Vec<ir::Spanned<ir::TestNeed>>,
+    multiplier: f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ir::Test {
     let mut doc = None;
@@ -1311,18 +1337,20 @@ fn lower_test_def(
                     block,
                     &item.span,
                     scope,
+                    multiplier,
                     diagnostics,
                 ));
             }
             parser::TestItem::Cleanup(block) => {
-                cleanup = Some(lower_cleanup_block(file_id, block, &item.span, diagnostics));
+                cleanup = Some(lower_cleanup_block(file_id, block, &item.span, multiplier, diagnostics));
             }
         }
     }
 
     let timeout = def.timeout.as_ref().map(|t| {
-        let dur = parse_timeout(&t.node, file_id, &t.span, diagnostics);
-        ir::TestTimeout::Explicit(dur)
+        let (kind, ref raw) = t.node;
+        let to = parse_timeout(kind, raw, multiplier, file_id, &t.span, diagnostics);
+        ir::TestTimeout::Explicit(to)
     });
 
     ir::Test {
@@ -1346,9 +1374,10 @@ fn build_plan(
     test_span: &parser::Span,
     scope: &ModuleScope,
     scopes_by_file: &HashMap<FileId, &ModuleScope>,
+    multiplier: f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ir::Plan {
-    let mut graph_builder = EffectGraphBuilder::new(scope, scopes_by_file);
+    let mut graph_builder = EffectGraphBuilder::new(scope, scopes_by_file, multiplier);
 
     // Resolve test-level needs
     let mut ir_needs = Vec::new();
@@ -1395,10 +1424,11 @@ fn build_plan(
         &mut seen_fns,
         &mut reachable_pure_fns,
         &mut seen_pure_fns,
+        multiplier,
         diagnostics,
     );
 
-    let test = lower_test_def(file_id, test_def, test_span, scope, ir_needs, diagnostics);
+    let test = lower_test_def(file_id, test_def, test_span, scope, ir_needs, multiplier, diagnostics);
 
     ir::Plan {
         functions: reachable_fns,
@@ -1419,6 +1449,7 @@ fn collect_reachable_functions(
     seen: &mut HashMap<FnKey, ir::FnId>,
     pure_functions: &mut Vec<ir::PureFunction>,
     seen_pure: &mut HashMap<FnKey, ir::PureFnId>,
+    multiplier: f64,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     // Walk test body to find all function calls
@@ -1507,7 +1538,7 @@ fn collect_reachable_functions(
             let body = fn_def
                 .body
                 .iter()
-                .filter_map(|s| lower_stmt(fn_file_id, &s.node, &s.span, fn_scope, diagnostics))
+                .filter_map(|s| lower_stmt(fn_file_id, &s.node, &s.span, fn_scope, multiplier, diagnostics))
                 .collect();
 
             functions.push(ir::Function {
@@ -1701,6 +1732,7 @@ fn path_to_mod(path: &Path, project_root: &Path) -> String {
 pub fn resolve(
     project_root: &Path,
     paths: Option<&[PathBuf]>,
+    multiplier: f64,
 ) -> (Vec<ir::Plan>, SourceMap, Vec<Diagnostic>) {
     let lib_dir = config::lib_dir(project_root);
     let tests_dir = config::tests_dir(project_root);
@@ -1721,7 +1753,7 @@ pub fn resolve(
         .map(|p| path_to_mod(p, project_root))
         .collect();
 
-    let (plans, mut source_map, mut diagnostics) = resolve_with(&mod_paths, &loader);
+    let (plans, mut source_map, mut diagnostics) = resolve_with(&mod_paths, &loader, multiplier);
     source_map.project_root = Some(project_root.to_path_buf());
     early_diagnostics.append(&mut diagnostics);
 
@@ -1740,6 +1772,7 @@ pub fn resolve(
 pub fn resolve_with(
     root_mod_paths: &[String],
     source_loader: &dyn SourceLoader,
+    multiplier: f64,
 ) -> (Vec<ir::Plan>, SourceMap, Vec<Diagnostic>) {
     let mut loader = Loader::new(source_loader);
 
@@ -1786,6 +1819,7 @@ pub fn resolve_with(
                     &item.span,
                     scope,
                     &scopes_by_file,
+                    multiplier,
                     &mut diagnostics,
                 );
                 plans.push(plan);
@@ -1801,6 +1835,7 @@ pub fn resolve_with(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     struct InMemoryLoader {
         modules: HashMap<String, String>,
@@ -1819,7 +1854,7 @@ mod tests {
         }
 
         fn resolve_one(&self, root: &str) -> (Vec<ir::Plan>, SourceMap, Vec<Diagnostic>) {
-            resolve_with(&[root.to_string()], self)
+            resolve_with(&[root.to_string()], self, 1.0)
         }
     }
 
@@ -2121,11 +2156,11 @@ mod tests {
         assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
         let stmts = &plans[0].test.shells[0].node.stmts;
         match &stmts[0].node {
-            ir::ShellStmt::Timeout(d) => assert_eq!(*d, Duration::from_secs(10)),
+            ir::ShellStmt::Timeout(t) => assert_eq!(*t, ir::Timeout::Tolerance { duration: Duration::from_secs(10), multiplier: 1.0 }),
             other => panic!("expected Timeout, got {other:?}"),
         }
         match &stmts[2].node {
-            ir::ShellStmt::Timeout(d) => assert_eq!(*d, Duration::from_millis(500)),
+            ir::ShellStmt::Timeout(t) => assert_eq!(*t, ir::Timeout::Tolerance { duration: Duration::from_millis(500), multiplier: 1.0 }),
             other => panic!("expected Timeout, got {other:?}"),
         }
     }
@@ -2152,7 +2187,7 @@ mod tests {
         assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
         assert_eq!(
             plans[0].test.timeout,
-            Some(ir::TestTimeout::Explicit(Duration::from_secs(5)))
+            Some(ir::TestTimeout::Explicit(ir::Timeout::Tolerance { duration: Duration::from_secs(5), multiplier: 1.0 }))
         );
     }
 
@@ -2301,13 +2336,13 @@ mod tests {
         let stmts = &plans[0].test.shells[0].node.stmts;
         match &stmts[0].node {
             ir::ShellStmt::Expr(ir::Expr::MatchRegex(m)) => {
-                assert_eq!(m.timeout_override, Some(Duration::from_secs(2)));
+                assert_eq!(m.timeout_override, Some(ir::Timeout::Tolerance { duration: Duration::from_secs(2), multiplier: 1.0 }));
             }
             other => panic!("expected MatchRegex with timeout, got {other:?}"),
         }
         match &stmts[1].node {
             ir::ShellStmt::Expr(ir::Expr::MatchLiteral(m)) => {
-                assert_eq!(m.timeout_override, Some(Duration::from_millis(500)));
+                assert_eq!(m.timeout_override, Some(ir::Timeout::Tolerance { duration: Duration::from_millis(500), multiplier: 1.0 }));
             }
             other => panic!("expected MatchLiteral with timeout, got {other:?}"),
         }
@@ -2325,13 +2360,13 @@ mod tests {
         let stmts = &plans[0].test.shells[0].node.stmts;
         match &stmts[0].node {
             ir::ShellStmt::Expr(ir::Expr::NegMatchRegex(m)) => {
-                assert_eq!(m.timeout_override, Some(Duration::from_secs(3)));
+                assert_eq!(m.timeout_override, Some(ir::Timeout::Tolerance { duration: Duration::from_secs(3), multiplier: 1.0 }));
             }
             other => panic!("expected NegMatchRegex with timeout, got {other:?}"),
         }
         match &stmts[1].node {
             ir::ShellStmt::Expr(ir::Expr::NegMatchLiteral(m)) => {
-                assert_eq!(m.timeout_override, Some(Duration::from_secs(1)));
+                assert_eq!(m.timeout_override, Some(ir::Timeout::Tolerance { duration: Duration::from_secs(1), multiplier: 1.0 }));
             }
             other => panic!("expected NegMatchLiteral with timeout, got {other:?}"),
         }
@@ -2346,6 +2381,125 @@ mod tests {
         );
         let (_, _, diags) = loader.resolve_one("main");
         assert!(diag_names(&diags).contains(&"InvalidTimeout"));
+    }
+
+    // ── Assertion timeouts ──
+
+    #[test]
+    fn test_assertion_timeout_in_shell() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "main",
+            "test \"t\" {\n  shell s {\n    @5s\n    > echo\n  }\n}\n",
+        );
+        let (plans, _, diags) = loader.resolve_one("main");
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        let stmts = &plans[0].test.shells[0].node.stmts;
+        match &stmts[0].node {
+            ir::ShellStmt::Timeout(t) => assert_eq!(*t, ir::Timeout::Assertion(Duration::from_secs(5))),
+            other => panic!("expected Timeout, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_assertion_timeout_on_test() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "main",
+            "test \"t\" @3s {\n  shell s {\n    > echo\n  }\n}\n",
+        );
+        let (plans, _, diags) = loader.resolve_one("main");
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        assert_eq!(
+            plans[0].test.timeout,
+            Some(ir::TestTimeout::Explicit(ir::Timeout::Assertion(Duration::from_secs(3))))
+        );
+    }
+
+    #[test]
+    fn test_assertion_timed_match_lowering() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "main",
+            "test \"t\" {\n  shell s {\n    <@2s? regex\n    <@500ms= literal\n  }\n}\n",
+        );
+        let (plans, _, diags) = loader.resolve_one("main");
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        let stmts = &plans[0].test.shells[0].node.stmts;
+        match &stmts[0].node {
+            ir::ShellStmt::Expr(ir::Expr::MatchRegex(m)) => {
+                assert_eq!(m.timeout_override, Some(ir::Timeout::Assertion(Duration::from_secs(2))));
+            }
+            other => panic!("expected MatchRegex with assertion timeout, got {other:?}"),
+        }
+        match &stmts[1].node {
+            ir::ShellStmt::Expr(ir::Expr::MatchLiteral(m)) => {
+                assert_eq!(m.timeout_override, Some(ir::Timeout::Assertion(Duration::from_millis(500))));
+            }
+            other => panic!("expected MatchLiteral with assertion timeout, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_assertion_timed_neg_match_lowering() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "main",
+            "test \"t\" {\n  shell s {\n    <@3s!? error\n    <@1s!= bad\n  }\n}\n",
+        );
+        let (plans, _, diags) = loader.resolve_one("main");
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        let stmts = &plans[0].test.shells[0].node.stmts;
+        match &stmts[0].node {
+            ir::ShellStmt::Expr(ir::Expr::NegMatchRegex(m)) => {
+                assert_eq!(m.timeout_override, Some(ir::Timeout::Assertion(Duration::from_secs(3))));
+            }
+            other => panic!("expected NegMatchRegex with assertion timeout, got {other:?}"),
+        }
+        match &stmts[1].node {
+            ir::ShellStmt::Expr(ir::Expr::NegMatchLiteral(m)) => {
+                assert_eq!(m.timeout_override, Some(ir::Timeout::Assertion(Duration::from_secs(1))));
+            }
+            other => panic!("expected NegMatchLiteral with assertion timeout, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_multiplier_does_not_affect_assertion_timeout() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "main",
+            "test \"t\" {\n  shell s {\n    @5s\n    > echo\n  }\n}\n",
+        );
+        let (plans, _, diags) = resolve_with(&["main".to_string()], &loader, 3.0);
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        let stmts = &plans[0].test.shells[0].node.stmts;
+        match &stmts[0].node {
+            ir::ShellStmt::Timeout(t) => {
+                assert_eq!(*t, ir::Timeout::Assertion(Duration::from_secs(5)));
+                assert_eq!(t.resolve(), Duration::from_secs(5));
+            }
+            other => panic!("expected Timeout, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_multiplier_scales_tolerance_timeout() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "main",
+            "test \"t\" {\n  shell s {\n    ~5s\n    > echo\n  }\n}\n",
+        );
+        let (plans, _, diags) = resolve_with(&["main".to_string()], &loader, 2.0);
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        let stmts = &plans[0].test.shells[0].node.stmts;
+        match &stmts[0].node {
+            ir::ShellStmt::Timeout(t) => {
+                assert_eq!(*t, ir::Timeout::Tolerance { duration: Duration::from_secs(5), multiplier: 2.0 });
+                assert_eq!(t.resolve(), Duration::from_secs(10));
+            }
+            other => panic!("expected Timeout, got {other:?}"),
+        }
     }
 
     // ── Condition markers ──

@@ -2,6 +2,32 @@ use std::ops::Range;
 use std::path::PathBuf;
 use std::time::Duration;
 
+// ─── Timeout ────────────────────────────────────────────────
+
+/// A timeout value that carries its kind for rich reporting.
+///
+/// Tolerance timeouts absorb environmental latency and are scaled by
+/// `--timeout-multiplier`.  Assertion timeouts are semantic correctness
+/// checks and are never scaled.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Timeout {
+    Tolerance { duration: Duration, multiplier: f64 },
+    Assertion(Duration),
+}
+
+impl Timeout {
+    /// Return the effective duration, applying the multiplier for tolerance
+    /// timeouts.
+    pub fn resolve(&self) -> Duration {
+        match self {
+            Timeout::Tolerance { duration, multiplier } => {
+                Duration::from_secs_f64(duration.as_secs_f64() * multiplier)
+            }
+            Timeout::Assertion(d) => *d,
+        }
+    }
+}
+
 // ─── Source Map ─────────────────────────────────────────────
 // Maps FileId to the file path and source text, needed for
 // rendering annotated error diagnostics.
@@ -201,12 +227,13 @@ pub struct Effect {
 
 // ─── Test ───────────────────────────────────────────────────
 
-/// Distinguishes inline test timeouts (not affected by `--multiplier`)
-/// from inherited timeouts (from config/manifest, affected by `--multiplier`).
+/// Distinguishes inline test timeouts from inherited config/manifest timeouts.
+/// Tolerance (`~`) variants are scaled by `--timeout-multiplier`;
+/// Assertion (`@`) variants are never scaled.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TestTimeout {
     /// Set inline on the test definition: `test "name" ~5s { ... }`
-    Explicit(Duration),
+    Explicit(Timeout),
 }
 
 #[derive(Debug, Clone)]
@@ -265,7 +292,7 @@ pub enum ShellStmt {
     /// Clear the active fail pattern, resetting it to none.
     ClearFailPattern,
     /// Set match timeout for subsequent matches in this shell.
-    Timeout(Duration),
+    Timeout(Timeout),
     /// Declare a variable, optionally with initial value.
     Let(VarDecl),
     /// Reassign an existing variable from an outer scope.
@@ -328,7 +355,7 @@ pub enum Expr {
 #[derive(Debug, Clone)]
 pub struct MatchExpr {
     pub pattern: StringExpr,
-    pub timeout_override: Option<Duration>,
+    pub timeout_override: Option<Timeout>,
 }
 
 // ─── String Expression ──────────────────────────────────────
