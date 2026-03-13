@@ -477,7 +477,7 @@ async fn cmd_run(matches: &clap::ArgMatches) {
     let run_id = run_context.run_id.clone();
     let runtime = Runtime::new(source_map, run_context);
     let results = runtime.run(plans).await;
-    Reporter::print(&results, runtime.source_map());
+    Reporter::print(&results, runtime.source_map(), runtime.run_dir());
 
     let suite_name = relux_config.name.as_deref().unwrap_or("relux");
     if matches.get_flag("tap") {

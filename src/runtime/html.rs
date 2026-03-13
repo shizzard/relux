@@ -16,13 +16,14 @@ const CSS: &str = r#"
 --row-alt:#1e1e32;--highlight:#3a3520;--hl-border:#b8860b;--tbl-border:#333;--link:#5cadff}}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:ui-monospace,"Cascadia Code","Fira Code",Menlo,Consolas,monospace;
-font-size:13px;line-height:1.5;background:var(--bg);color:var(--fg);max-width:960px;
+font-size:13px;line-height:1.5;background:var(--bg);color:var(--fg);
 margin:0 auto;padding:16px}
-h1{font-size:1.3em;margin-bottom:8px}
+h1{font-size:1.3em;margin-bottom:8px;text-align:center}
+p{text-align:center}
 h2{font-size:1.1em;margin:16px 0 6px}
 a{color:var(--link);text-decoration:none}
 a:hover{text-decoration:underline}
-table.log{width:100%;border-collapse:collapse;border:none}
+table.log{border-collapse:collapse;border:none;margin:0 auto}
 table.log td{padding:1px 6px;vertical-align:top;white-space:pre-wrap;word-break:break-all}
 table.log td.ts{white-space:nowrap;color:var(--ts-fg)}
 table.log td.ts a{color:var(--ts-fg);text-decoration:underline}
@@ -31,18 +32,19 @@ table.log td.sh{white-space:nowrap;color:var(--muted)}
 table.log td.kind{white-space:nowrap;font-weight:600}
 table.log tr:nth-child(even){background:var(--row-alt)}
 table.log tr:target{background:var(--highlight);outline:2px solid var(--hl-border);border-radius:3px}
-table.summary{border-collapse:collapse;width:100%;margin:8px 0}
+table.summary{border-collapse:collapse;max-width:960px;margin:8px auto}
 table.summary th,table.summary td{border:1px solid var(--tbl-border);padding:4px 8px;text-align:left}
 table.summary tr:nth-child(even){background:var(--row-alt)}
 .pass{color:var(--recv)}.fail{color:var(--err)}.skip{color:var(--muted)}
 .send{color:var(--send)}.recv{color:var(--recv)}.match-ev{color:var(--match)}.err{color:var(--err)}
 details{margin:4px 0}summary{cursor:pointer;color:var(--muted)}
-.hdr{margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--tbl-border)}
+.hdr{margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--tbl-border);text-align:center}
 .hdr a{margin-right:12px}
-table.log td.buf{white-space:pre-wrap;word-break:break-all}
+table.log td.data{width:80ch;min-width:80ch;max-width:80ch;overflow:hidden;text-overflow:ellipsis}
+table.log td.buf{width:80ch;min-width:80ch;max-width:80ch;white-space:pre-wrap;word-break:break-all}
 .buf-box{padding:2px 6px;border:1px solid var(--tbl-border);border-radius:3px;display:block;
 width:100%;min-height:100%;box-sizing:border-box}
-.buf-skip{color:var(--err)}.buf-match{color:var(--recv)}
+.buf-skip{color:var(--muted)}.buf-match{color:var(--recv)}
 "#;
 
 fn fmt_duration(d: &Duration) -> String {
@@ -58,26 +60,52 @@ fn html_escape(s: &str) -> String {
 
 fn event_type_class(kind: &LogEventKind) -> (&str, &str) {
     match kind {
-        LogEventKind::Send { .. } => ("send", "send"),
-        LogEventKind::Recv { .. } => ("recv", "recv"),
-        LogEventKind::MatchStart { .. } | LogEventKind::MatchDone { .. } => ("match", "match-ev"),
-        LogEventKind::Timeout { .. } => ("timeout", "err"),
-        LogEventKind::BufferReset { .. } => ("reset", "err"),
-        LogEventKind::FailPatternSet { .. } => ("fail-pat", "err"),
-        LogEventKind::FailPatternCleared => ("fail-pat", ""),
-        LogEventKind::FailPatternTriggered { .. } => ("FAIL", "err"),
-        LogEventKind::EffectSetup { .. } => ("effect+", ""),
-        LogEventKind::EffectTeardown { .. } => ("effect-", ""),
+        LogEventKind::Send { .. } => ("shell send", "send"),
+        LogEventKind::Recv { .. } => ("shell recv", "recv"),
+        LogEventKind::MatchStart { is_regex: true, .. } => ("regex match start", "match-ev"),
+        LogEventKind::MatchStart { is_regex: false, .. } => ("literal match start", "match-ev"),
+        LogEventKind::MatchDone { .. } => ("match done", "match-ev"),
+        LogEventKind::Timeout { .. } => ("match timeout", "err"),
+        LogEventKind::BufferReset { .. } => ("buffer reset", "err"),
+        LogEventKind::FailPatternSet { .. } => ("fail set", "err"),
+        LogEventKind::FailPatternCleared => ("fail clear", ""),
+        LogEventKind::FailPatternTriggered { .. } => ("fail trigger", "err"),
+        LogEventKind::EffectSetup { .. } => ("effect setup", ""),
+        LogEventKind::EffectTeardown { .. } => ("effect teardown", ""),
+        LogEventKind::EffectSkip { .. } => ("effect skip", ""),
         LogEventKind::Sleep { .. } => ("sleep", ""),
-        LogEventKind::Annotate { .. } => ("note", ""),
+        LogEventKind::Annotate { .. } => ("annotate", ""),
         LogEventKind::Log { .. } => ("log", ""),
-        LogEventKind::VarLet { .. } => ("let", ""),
-        LogEventKind::VarAssign { .. } => ("assign", ""),
-        LogEventKind::FnEnter { .. } => ("fn {", ""),
-        LogEventKind::FnExit => ("fn }", ""),
+        LogEventKind::VarLet { .. } => ("var let", ""),
+        LogEventKind::VarAssign { .. } => ("var assign", ""),
+        LogEventKind::FnEnter { .. } => ("fn enter", ""),
+        LogEventKind::FnExit { .. } => ("fn exit", ""),
         LogEventKind::Cleanup { .. } => ("cleanup", ""),
-        LogEventKind::ShellSwitch { .. } => ("shell", ""),
+        LogEventKind::ShellSwitch { .. } => ("shell switch", ""),
+        LogEventKind::ShellSpawn { .. } => ("shell spawn", ""),
+        LogEventKind::ShellReady { .. } => ("shell ready", ""),
+        LogEventKind::ShellTerminate { .. } => ("shell exit", ""),
+        LogEventKind::ShellAlias { .. } => ("shell alias", ""),
+        LogEventKind::TimeoutSet { .. } => ("timeout set", ""),
+        LogEventKind::StringEval { .. } => ("string eval", ""),
+        LogEventKind::Interpolation { .. } => ("string interp", ""),
     }
+}
+
+fn render_kv(pairs: &[(String, String)]) -> String {
+    if pairs.is_empty() {
+        return String::new();
+    }
+    let mut out = String::new();
+    for (k, v) in pairs {
+        let _ = write!(out, "<br>&nbsp;&nbsp;{} = {}", html_escape(k), html_escape(v));
+    }
+    out
+}
+
+fn render_value(label: &str, value: &str) -> String {
+    let display = if value.is_empty() { "(empty string)" } else { value };
+    format!("<br>&nbsp;&nbsp;{} = {}", label, html_escape(display))
 }
 
 fn event_data(kind: &LogEventKind) -> String {
@@ -88,8 +116,17 @@ fn event_data(kind: &LogEventKind) -> String {
             let prefix = if *is_regex { "regex " } else { "" };
             format!("{prefix}{}", html_escape(pattern))
         }
-        LogEventKind::MatchDone { matched, elapsed, .. } => {
-            format!("{} ({})", html_escape(matched), fmt_duration(elapsed))
+        LogEventKind::MatchDone { matched, elapsed, captures, .. } => {
+            let mut out = format!("{} ({})", html_escape(matched), fmt_duration(elapsed));
+            if let Some(groups) = captures {
+                let mut sorted: Vec<_> = groups.iter().collect();
+                sorted.sort_by_key(|(k, _)| k.parse::<usize>().unwrap_or(usize::MAX));
+                let pairs: Vec<(String, String)> = sorted.iter()
+                    .map(|(k, v)| (format!("${k}"), v.to_string()))
+                    .collect();
+                out.push_str(&render_kv(&pairs));
+            }
+            out
         }
         LogEventKind::BufferReset { .. } => String::new(),
         LogEventKind::Timeout { pattern, .. } => html_escape(pattern),
@@ -100,6 +137,11 @@ fn event_data(kind: &LogEventKind) -> String {
         }
         LogEventKind::EffectSetup { effect } => html_escape(effect),
         LogEventKind::EffectTeardown { effect } => html_escape(effect),
+        LogEventKind::EffectSkip { effect, reason } => {
+            let mut out = html_escape(effect);
+            out.push_str(&render_value("reason", reason));
+            out
+        }
         LogEventKind::Sleep { duration } => format!("{duration:?}"),
         LogEventKind::Annotate { text } => html_escape(text),
         LogEventKind::Log { message } => html_escape(message),
@@ -109,10 +151,43 @@ fn event_data(kind: &LogEventKind) -> String {
         LogEventKind::VarAssign { name, value } => {
             format!("{} = {}", html_escape(name), html_escape(value))
         }
-        LogEventKind::FnEnter { name } => html_escape(name),
-        LogEventKind::FnExit => String::new(),
+        LogEventKind::FnEnter { name, args } => {
+            let mut out = html_escape(name);
+            out.push_str(&render_kv(args));
+            out
+        }
+        LogEventKind::FnExit { name, return_value, restored_timeout, restored_fail_pattern } => {
+            let mut out = html_escape(name);
+            out.push_str(&render_value("return", return_value));
+            if let Some(t) = restored_timeout {
+                out.push_str(&render_value("restored timeout", t));
+            }
+            if let Some(fp) = restored_fail_pattern {
+                out.push_str(&render_value("restored fail pattern", fp));
+            }
+            out
+        }
         LogEventKind::Cleanup { shell } => html_escape(shell),
         LogEventKind::ShellSwitch { name } => html_escape(name),
+        LogEventKind::ShellSpawn { name, command } => {
+            let mut out = html_escape(name);
+            out.push_str(&render_value("command", command));
+            out
+        }
+        LogEventKind::ShellReady { name } => html_escape(name),
+        LogEventKind::ShellTerminate { name } => html_escape(name),
+        LogEventKind::ShellAlias { name, source } => {
+            format!("{} &lt;- {}", html_escape(name), html_escape(source))
+        }
+        LogEventKind::TimeoutSet { timeout, previous } => {
+            format!("{} (was {})", html_escape(timeout), html_escape(previous))
+        }
+        LogEventKind::StringEval { result } => html_escape(result),
+        LogEventKind::Interpolation { template, result, bindings } => {
+            let mut out = format!("{} -&gt; {}", html_escape(template), html_escape(result));
+            out.push_str(&render_kv(bindings));
+            out
+        }
     }
 }
 
@@ -327,10 +402,15 @@ fn generate_test_event_log(
         };
 
         let shell_cell = format!("<td class=\"sh\">{}</td>", html_escape(&event.shell));
-        let class_attr = if type_class.is_empty() {
-            String::new()
+        let kind_class = if type_class.is_empty() {
+            "kind".to_string()
         } else {
-            format!(" class=\"{type_class}\"")
+            format!("kind {type_class}")
+        };
+        let data_class = if type_class.is_empty() {
+            "data".to_string()
+        } else {
+            format!("data {type_class}")
         };
 
         let buf_html = render_buffer(&event.kind);
@@ -339,8 +419,8 @@ fn generate_test_event_log(
         let _ = writeln!(
             html,
             "<tr id=\"{anchor}\">{ts_cell}{shell_cell}\
-             <td class=\"kind\"{class_attr}>{type_label}</td>\
-             <td{class_attr}>{data}</td>{buf_cell}</tr>"
+             <td class=\"{kind_class}\">{type_label}</td>\
+             <td class=\"{data_class}\">{data}</td>{buf_cell}</tr>"
         );
     }
 
@@ -384,10 +464,15 @@ fn generate_shell_log(
             "<td class=\"ts\"><a href=\"event.html#{test_anchor}\">{ts_str}</a></td>"
         );
 
-        let class_attr = if type_class.is_empty() {
-            String::new()
+        let kind_class = if type_class.is_empty() {
+            "kind".to_string()
         } else {
-            format!(" class=\"{type_class}\"")
+            format!("kind {type_class}")
+        };
+        let data_class = if type_class.is_empty() {
+            "data".to_string()
+        } else {
+            format!("data {type_class}")
         };
 
         let buf_html = render_buffer(&event.kind);
@@ -396,8 +481,8 @@ fn generate_shell_log(
         let _ = writeln!(
             html,
             "<tr id=\"e{shell_idx}\">{ts_cell}\
-             <td class=\"kind\"{class_attr}>{type_label}</td>\
-             <td{class_attr}>{data}</td>{buf_cell}</tr>"
+             <td class=\"{kind_class}\">{type_label}</td>\
+             <td class=\"{data_class}\">{data}</td>{buf_cell}</tr>"
         );
     }
 

@@ -542,6 +542,10 @@ impl Runtime {
             if let Some(reason) =
                 evaluate_conditions(&effect.conditions, env, &code_server).await
             {
+                event_collector.push("", LogEventKind::EffectSkip {
+                    effect: effect.name.node.clone(),
+                    reason: reason.clone(),
+                }).await;
                 let reason = format!("effect {} skipped: {reason}", effect.name.node);
                 effect_state.outcome = Some(Outcome::Skipped(reason));
                 return effect_state;
@@ -590,6 +594,10 @@ impl Runtime {
                 } else {
                     String::new()
                 };
+                event_collector.push("", LogEventKind::VarLet {
+                    name: var.node.name.node.clone(),
+                    value: value.clone(),
+                }).await;
                 effect_scope
                     .lock()
                     .await
@@ -705,6 +713,10 @@ impl Runtime {
             let _ = progress_tx.send(ProgressEvent::ShellSwitch(shell_name.clone()));
             event_collector.push("", LogEventKind::ShellSwitch { name: shell_name.clone() }).await;
             let vm = if let Some(vm) = aliases.get(&shell_name).cloned() {
+                event_collector.push("", LogEventKind::ShellAlias {
+                    name: shell_name.clone(),
+                    source: shell_name.clone(),
+                }).await;
                 vm
             } else if let Some(vm) = local_shells.get(&shell_name).cloned() {
                 vm

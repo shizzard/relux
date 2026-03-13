@@ -95,7 +95,7 @@ pub enum Outcome {
 pub struct Reporter;
 
 impl Reporter {
-    pub fn print(results: &[TestResult], source_map: &SourceMap) {
+    pub fn print(results: &[TestResult], source_map: &SourceMap, run_dir: &Path) {
         let mut passed = 0usize;
         let mut failed = 0usize;
         let mut skipped = 0usize;
@@ -109,6 +109,9 @@ impl Reporter {
                     failed += 1;
                     Self::print_failure(f, source_map);
                     Self::print_shell_logs(&result.shell_logs);
+                    if let Some(log_dir) = &result.log_dir {
+                        eprintln!("  Event log: file://{}", log_dir.join("event.html").display());
+                    }
                 }
                 Outcome::Skipped(_) => skipped += 1,
             }
@@ -128,6 +131,7 @@ impl Reporter {
         }
         summary.push_str(&format!("; finished in {}\n", format_duration(total_duration)));
         eprint!("{summary}");
+        eprintln!("  Test logs: file://{}", run_dir.join("index.html").display());
         let _ = std::io::stderr().flush();
     }
 

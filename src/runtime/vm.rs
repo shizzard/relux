@@ -9,7 +9,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Child;
 use tokio::sync::{Mutex, Notify};
 
-use crate::dsl::resolver::ir::{self, Expr, ShellStmt, Span, Spanned};
+use crate::dsl::resolver::ir::{self, Expr, ShellStmt, Span, Spanned, StringExpr, StringPart};
 use crate::runtime::event_log::{BufferSnapshot, EventCollector, LogEventKind};
 use crate::runtime::result::Failure;
 use crate::runtime::shell_log::ShellLogger;
@@ -60,6 +60,20 @@ fn regex_error_summary(e: &regex::Error) -> String {
         .to_string()
 }
 
+// ─── Interpolation helpers ──────────────────────────────────────
+
+fn has_interpolation(expr: &StringExpr) -> bool {
+    expr.parts.iter().any(|p| matches!(p.node, StringPart::Interp(_)))
+}
+
+fn interpolation_template(expr: &StringExpr) -> String {
+    expr.parts.iter().map(|p| match &p.node {
+        StringPart::Literal(s) => s.clone(),
+        StringPart::Interp(name) => format!("${{{name}}}"),
+        StringPart::EscapedDollar => "$".to_string(),
+    }).collect()
+}
+
 // ─── Match Types ────────────────────────────────────────────────
 
 /// Marker trait for match payload types.
@@ -99,6 +113,7 @@ struct BufferInner {
 pub struct OutputBuffer {
     inner: Arc<Mutex<BufferInner>>,
     pub(crate) notify: Arc<Notify>,
+    recv_pending: Arc<Mutex<BytesMut>>,
 }
 
 impl OutputBuffer {
@@ -109,12 +124,23 @@ impl OutputBuffer {
                 base: 0,
             })),
             notify: Arc::new(Notify::new()),
+            recv_pending: Arc::new(Mutex::new(BytesMut::new())),
         }
     }
 
     pub async fn append(&self, bytes: &[u8]) {
         self.inner.lock().await.data.extend_from_slice(bytes);
+        self.recv_pending.lock().await.extend_from_slice(bytes);
         self.notify.notify_waiters();
+    }
+
+    pub async fn drain_recv(&self) -> Option<String> {
+        let mut pending = self.recv_pending.lock().await;
+        if pending.is_empty() {
+            return None;
+        }
+        let bytes = pending.split();
+        Some(String::from_utf8_lossy(&bytes).to_string())
     }
 
     /// Find literal, extract truncated context, drain via split_to. One lock.
@@ -436,11 +462,18 @@ impl Vm {
             event_collector,
         };
 
+        vm.emit_event(LogEventKind::ShellSpawn {
+            name: shell_name.clone(),
+            command: shell_command,
+        }).await;
+
         vm.init_prompt().await.map_err(|_| Failure::Runtime {
             message: "shell did not produce prompt during init".to_string(),
             span: None,
             shell: Some(shell_name),
         })?;
+
+        vm.emit_event(LogEventKind::ShellReady { name: vm.shell_name.clone() }).await;
 
         Ok(vm)
     }
@@ -480,14 +513,40 @@ impl Vm {
         for stmt in stmts {
             last = self.exec_stmt(stmt).await?;
         }
+        self.drain_recv_event().await;
         Ok(last)
     }
 
+    async fn drain_recv_event(&mut self) {
+        if let Some(_data) = self.output_buf.drain_recv().await {
+            // self.emit_event(LogEventKind::Recv { data }).await;
+        }
+    }
+
+    async fn emit_interpolation(&mut self, expr: &StringExpr, result: &str) {
+        if has_interpolation(expr) {
+            let mut bindings = Vec::new();
+            for part in &expr.parts {
+                if let StringPart::Interp(name) = &part.node {
+                    let value = self.scope.lookup(name).await.unwrap_or_default();
+                    bindings.push((name.clone(), value));
+                }
+            }
+            self.emit_event(LogEventKind::Interpolation {
+                template: interpolation_template(expr),
+                result: result.to_string(),
+                bindings,
+            }).await;
+        }
+    }
+
     pub async fn exec_stmt(&mut self, stmt: &Spanned<ShellStmt>) -> Result<String, Failure> {
+        self.drain_recv_event().await;
         self.check_fail(stmt.span.clone()).await?;
         match &stmt.node {
             ShellStmt::FailRegex(expr) => {
                 let pat = interpolate(expr, &self.scope).await;
+                self.emit_interpolation(expr, &pat).await;
                 self.emit_event(LogEventKind::FailPatternSet { pattern: pat.clone() }).await;
                 let re = RegexBuilder::new(&pat).multi_line(true).crlf(true).build().map_err(|e| Failure::Runtime {
                     message: format!("invalid fail regex: {}", regex_error_summary(&e)),
@@ -502,6 +561,7 @@ impl Vm {
             }
             ShellStmt::FailLiteral(expr) => {
                 let pat = interpolate(expr, &self.scope).await;
+                self.emit_interpolation(expr, &pat).await;
                 self.emit_event(LogEventKind::FailPatternSet { pattern: pat.clone() }).await;
                 let pattern = Some(FailPattern::Literal(pat));
                 self.scope.set_fail_pattern(pattern);
@@ -515,7 +575,10 @@ impl Vm {
                 Ok(String::new())
             }
             ShellStmt::Timeout(t) => {
+                let previous = format!("{:?}", self.scope.timeout());
                 self.scope.set_timeout(t.clone());
+                let timeout = format!("{:?}", self.scope.timeout());
+                self.emit_event(LogEventKind::TimeoutSet { timeout, previous }).await;
                 Ok(String::new())
             }
             ShellStmt::Let(decl) => {
@@ -561,10 +624,16 @@ impl Vm {
     async fn eval_expr(&mut self, expr: &Spanned<Expr>) -> Result<String, Failure> {
         self.check_fail(expr.span.clone()).await?;
         match &expr.node {
-            Expr::String(s) => Ok(interpolate(s, &self.scope).await),
+            Expr::String(s) => {
+                let result = interpolate(s, &self.scope).await;
+                self.emit_interpolation(s, &result).await;
+                self.emit_event(LogEventKind::StringEval { result: result.clone() }).await;
+                Ok(result)
+            }
             Expr::Var(name) => Ok(self.scope.lookup(name).await.unwrap_or_default()),
             Expr::Send(s) => {
                 let payload = interpolate(s, &self.scope).await;
+                self.emit_interpolation(s, &payload).await;
                 self.send_bytes(format!("{payload}\n").as_bytes(), expr.span.clone())
                     .await?;
                 self.emit_event(LogEventKind::Send { data: payload.clone() }).await;
@@ -573,6 +642,7 @@ impl Vm {
             }
             Expr::SendRaw(s) => {
                 let payload = interpolate(s, &self.scope).await;
+                self.emit_interpolation(s, &payload).await;
                 self.send_bytes(payload.as_bytes(), expr.span.clone())
                     .await?;
                 self.emit_event(LogEventKind::Send { data: payload.clone() }).await;
@@ -582,17 +652,19 @@ impl Vm {
             Expr::MatchLiteral(m) => {
                 let timeout = m.timeout_override.as_ref().unwrap_or_else(|| self.scope.timeout()).resolve();
                 let pattern = interpolate(&m.pattern, &self.scope).await;
+                self.emit_interpolation(&m.pattern, &pattern).await;
                 self.emit_event(LogEventKind::MatchStart { pattern: pattern.clone(), is_regex: false }).await;
                 self.emit_progress(ProgressEvent::MatchStart);
                 let match_start = Instant::now();
                 let (mat, snapshot) = self.wait_consume_literal(&pattern, timeout, expr.span.clone()).await?;
-                self.emit_event(LogEventKind::MatchDone { matched: mat.value.0.clone(), elapsed: match_start.elapsed(), buffer: snapshot }).await;
+                self.emit_event(LogEventKind::MatchDone { matched: mat.value.0.clone(), elapsed: match_start.elapsed(), buffer: snapshot, captures: None }).await;
                 self.emit_progress(ProgressEvent::MatchDone);
                 Ok(pattern)
             }
             Expr::MatchRegex(m) => {
                 let timeout = m.timeout_override.as_ref().unwrap_or_else(|| self.scope.timeout()).resolve();
                 let pattern = interpolate(&m.pattern, &self.scope).await;
+                self.emit_interpolation(&m.pattern, &pattern).await;
                 let re = RegexBuilder::new(&pattern).multi_line(true).crlf(true).build().map_err(|e| Failure::Runtime {
                     message: format!("invalid regex: {}", regex_error_summary(&e)),
                     span: Some(m.pattern.span.clone()),
@@ -605,9 +677,10 @@ impl Vm {
                     .wait_consume_regex(&pattern, &re, timeout, expr.span.clone())
                     .await?;
                 let full = mat.value.0.get("0").cloned().unwrap_or_default();
-                self.emit_event(LogEventKind::MatchDone { matched: full.clone(), elapsed: match_start.elapsed(), buffer: snapshot }).await;
+                let captures = mat.value.0.clone();
+                self.emit_event(LogEventKind::MatchDone { matched: full.clone(), elapsed: match_start.elapsed(), buffer: snapshot, captures: Some(captures.clone()) }).await;
                 self.emit_progress(ProgressEvent::MatchDone);
-                self.scope.set_captures(mat.value.0);
+                self.scope.set_captures(captures);
                 Ok(full)
             }
             Expr::BufferReset => {
@@ -653,8 +726,12 @@ impl Vm {
                     (func.params.clone(), func.body.clone())
                 };
 
-                self.emit_event(LogEventKind::FnEnter { name: call.name.node.clone() }).await;
+                let named_args: Vec<(String, String)> = params.iter().zip(evaluated_args.iter()).map(|(p, v)| (p.node.clone(), v.clone())).collect();
+                self.emit_event(LogEventKind::FnEnter { name: call.name.node.clone(), args: named_args }).await;
                 self.emit_progress(ProgressEvent::FnEnter(call.name.node.clone()));
+                // Snapshot pre-call state for FnExit reporting
+                let pre_timeout = format!("{:?}", self.scope.timeout());
+                let pre_fail = self.scope.fail_pattern().map(|p| format!("{p:?}"));
                 let mut fn_vars = HashMap::new();
                 for (param, value) in params.iter().zip(evaluated_args.into_iter()) {
                     fn_vars.insert(param.node.clone(), value);
@@ -671,7 +748,14 @@ impl Vm {
                     }
                 }
                 self.scope.exit_function(save);
-                self.emit_event(LogEventKind::FnExit).await;
+                let post_timeout = format!("{:?}", self.scope.timeout());
+                let post_fail = self.scope.fail_pattern().map(|p| format!("{p:?}"));
+                self.emit_event(LogEventKind::FnExit {
+                    name: call.name.node.clone(),
+                    return_value: last.clone(),
+                    restored_timeout: if post_timeout != pre_timeout { Some(post_timeout) } else { None },
+                    restored_fail_pattern: if post_fail != pre_fail { post_fail } else { None },
+                }).await;
                 self.emit_progress(ProgressEvent::FnExit);
                 Ok(last)
             }
@@ -686,7 +770,8 @@ impl Vm {
                     })?
                     .clone();
 
-                self.emit_event(LogEventKind::FnEnter { name: call.name.node.clone() }).await;
+                let named_args: Vec<(String, String)> = func.params.iter().zip(evaluated_args.iter()).map(|(p, v)| (p.node.clone(), v.clone())).collect();
+                self.emit_event(LogEventKind::FnEnter { name: call.name.node.clone(), args: named_args }).await;
                 self.emit_progress(ProgressEvent::FnEnter(call.name.node.clone()));
                 let mut fn_vars = HashMap::new();
                 for (param, value) in func.params.iter().zip(evaluated_args.into_iter()) {
@@ -701,15 +786,33 @@ impl Vm {
                     &cs,
                     self,
                 ).await;
-                self.emit_event(LogEventKind::FnExit).await;
+                let return_value = result.as_ref().map(|s| s.clone()).unwrap_or_default();
+                self.emit_event(LogEventKind::FnExit {
+                    name: call.name.node.clone(),
+                    return_value,
+                    restored_timeout: None,
+                    restored_fail_pattern: None,
+                }).await;
                 self.emit_progress(ProgressEvent::FnExit);
                 result
             }
             Callable::Builtin(bif) => {
-                bif.call(self, evaluated_args, span).await
+                let name = bif.name().to_string();
+                let positional_args: Vec<(String, String)> = evaluated_args.iter().enumerate().map(|(i, v)| (format!("${i}"), v.clone())).collect();
+                self.emit_event(LogEventKind::FnEnter { name: name.clone(), args: positional_args }).await;
+                let result = bif.call(self, evaluated_args, span).await;
+                let return_value = result.as_ref().map(|s| s.clone()).unwrap_or_default();
+                self.emit_event(LogEventKind::FnExit { name, return_value, restored_timeout: None, restored_fail_pattern: None }).await;
+                result
             }
             Callable::PureBuiltin(bif) => {
-                bif.call(self, evaluated_args, span).await
+                let name = bif.name().to_string();
+                let positional_args: Vec<(String, String)> = evaluated_args.iter().enumerate().map(|(i, v)| (format!("${i}"), v.clone())).collect();
+                self.emit_event(LogEventKind::FnEnter { name: name.clone(), args: positional_args }).await;
+                let result = bif.call(self, evaluated_args, span).await;
+                let return_value = result.as_ref().map(|s| s.clone()).unwrap_or_default();
+                self.emit_event(LogEventKind::FnExit { name, return_value, restored_timeout: None, restored_fail_pattern: None }).await;
+                result
             }
         }
     }
@@ -833,6 +936,7 @@ impl Vm {
     }
 
     pub async fn shutdown(mut self) {
+        self.emit_event(LogEventKind::ShellTerminate { name: self.shell_name.clone() }).await;
         let _ = self.child.kill().await;
         self.read_task.abort();
     }
@@ -867,7 +971,7 @@ impl VmContext for Vm {
         let match_start = Instant::now();
         let timeout = self.scope.timeout().resolve();
         let (mat, snapshot) = self.wait_consume_literal(pattern, timeout, span.clone()).await?;
-        self.emit_event(LogEventKind::MatchDone { matched: mat.value.0.clone(), elapsed: match_start.elapsed(), buffer: snapshot }).await;
+        self.emit_event(LogEventKind::MatchDone { matched: mat.value.0.clone(), elapsed: match_start.elapsed(), buffer: snapshot, captures: None }).await;
         self.emit_progress(ProgressEvent::MatchDone);
         Ok(pattern.to_string())
     }
