@@ -69,8 +69,8 @@ No prior experience with Expect, lux, or Relux is assumed.
 
 ### 9. Timeouts
 **File:** `09-timeouts.md`
-**Scope:** Default timeout from `Relux.toml`, the `~` operator for setting shell timeout, inline `<~` overrides for one-shot timeout on a single match, test-level timeout (`test "name" ~30s`), how timeout scoping works across function calls.
-**After reading:** The reader can control timing at every level of granularity.
+**Scope:** Default timeout from `Relux.toml`, tolerance (`~`) vs assertion (`@`) timeouts, the `--timeout-multiplier` flag, shell-scoped `~` and `@` operators, inline `<~` and `<@` overrides for one-shot timeout on a single match, test-level timeout (`test "name" ~30s` or `test "name" @3s`), how timeout scoping works across function calls.
+**After reading:** The reader can control timing at every level of granularity and choose the right timeout kind for the intent.
 
 ### 10. Fail Patterns
 **File:** `10-fail-patterns.md`
