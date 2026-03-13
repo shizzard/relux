@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use bytes::BytesMut;
 use regex::{Regex, RegexBuilder};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Child;
@@ -51,53 +52,117 @@ fn regex_error_summary(e: &regex::Error) -> String {
         .to_string()
 }
 
-#[derive(Clone, Debug, Default)]
+// ─── Match Types ────────────────────────────────────────────────
+
+/// Marker trait for match payload types.
+pub trait MatchKind {}
+
+/// Payload for a literal match.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiteralMatch(pub String);
+impl MatchKind for LiteralMatch {}
+
+/// Payload for a regex match (capture groups by index).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegexMatch(pub HashMap<String, String>);
+impl MatchKind for RegexMatch {}
+
+/// A match result with absolute byte offsets and typed payload.
+#[derive(Debug, Clone)]
+pub struct Match<T: MatchKind> {
+    /// Absolute byte offset of match start (accounts for all prior truncations).
+    pub start: usize,
+    /// Absolute byte offset of match end.
+    pub end: usize,
+    /// Bytes consumed (everything up to and including the match, relative to current buffer).
+    pub consumed: usize,
+    /// The matched content.
+    pub value: T,
+}
+
+// ─── OutputBuffer ───────────────────────────────────────────────
+
+struct BufferInner {
+    data: BytesMut,
+    base: usize,
+}
+
+#[derive(Clone)]
 pub struct OutputBuffer {
-    data: Arc<Mutex<Vec<u8>>>,
-    notify: Arc<Notify>,
+    inner: Arc<Mutex<BufferInner>>,
+    pub(crate) notify: Arc<Notify>,
 }
 
 impl OutputBuffer {
     pub fn new() -> Self {
         Self {
-            data: Arc::new(Mutex::new(Vec::new())),
+            inner: Arc::new(Mutex::new(BufferInner {
+                data: BytesMut::new(),
+                base: 0,
+            })),
             notify: Arc::new(Notify::new()),
         }
     }
 
     pub async fn append(&self, bytes: &[u8]) {
-        self.data.lock().await.extend_from_slice(bytes);
+        self.inner.lock().await.data.extend_from_slice(bytes);
         self.notify.notify_waiters();
     }
 
-    pub async fn snapshot(&self) -> Vec<u8> {
-        self.data.lock().await.clone()
-    }
-
-    pub async fn find_literal_from(&self, cursor: usize, needle: &str) -> Option<(usize, usize)> {
-        let hay = self.data.lock().await;
-        let slice = &hay[cursor.min(hay.len())..];
-        let hay_text = String::from_utf8_lossy(slice);
-        let pos_chars = hay_text.find(needle)?;
-        let pre = &hay_text[..pos_chars];
-        let start = cursor + pre.len();
-        let end = start + needle.len();
-        Some((start, end))
-    }
-
-    pub async fn find_regex_from(
+    /// Find literal, extract truncated context, drain via split_to. One lock.
+    /// Returns Match + BufferSnapshot for event emission.
+    pub async fn consume_literal(
         &self,
-        cursor: usize,
+        needle: &str,
+    ) -> Option<(Match<LiteralMatch>, BufferSnapshot)> {
+        let mut inner = self.inner.lock().await;
+        let text = String::from_utf8_lossy(&inner.data);
+        let pos = text.find(needle)?;
+        let end_pos = pos + needle.len();
+
+        let before_raw = &text[..pos];
+        let after_raw = &text[end_pos..];
+        let snapshot = BufferSnapshot::Match {
+            before: truncate_before(before_raw, BUFFER_PREFIX_LEN),
+            matched: needle.to_string(),
+            after: truncate_after(after_raw, BUFFER_SUFFIX_LEN),
+        };
+
+        let consumed = end_pos;
+        let m = Match {
+            start: inner.base + pos,
+            end: inner.base + end_pos,
+            consumed,
+            value: LiteralMatch(needle.to_string()),
+        };
+
+        drop(text);
+        let _ = inner.data.split_to(end_pos);
+        inner.base += end_pos;
+
+        Some((m, snapshot))
+    }
+
+    /// Find regex, extract truncated context, drain via split_to. One lock.
+    pub async fn consume_regex(
+        &self,
         re: &Regex,
-    ) -> Option<(usize, usize, HashMap<String, String>)> {
-        let hay = self.data.lock().await;
-        let slice = &hay[cursor.min(hay.len())..];
-        let hay_text = String::from_utf8_lossy(slice);
-        let cap = re.captures(&hay_text)?;
+    ) -> Option<(Match<RegexMatch>, BufferSnapshot)> {
+        let mut inner = self.inner.lock().await;
+        let text = String::from_utf8_lossy(&inner.data);
+        let cap = re.captures(&text)?;
         let whole = cap.get(0)?;
-        let pre = &hay_text[..whole.start()];
-        let start = cursor + pre.len();
-        let end = start + whole.as_str().len();
+        let pos = whole.start();
+        let end_pos = whole.end();
+        let matched_str = whole.as_str().to_string();
+
+        let before_raw = &text[..pos];
+        let after_raw = &text[end_pos..];
+        let snapshot = BufferSnapshot::Match {
+            before: truncate_before(before_raw, BUFFER_PREFIX_LEN),
+            matched: matched_str.clone(),
+            after: truncate_after(after_raw, BUFFER_SUFFIX_LEN),
+        };
 
         let mut captures = HashMap::new();
         for i in 0..cap.len() {
@@ -105,7 +170,109 @@ impl OutputBuffer {
                 captures.insert(i.to_string(), m.as_str().to_string());
             }
         }
-        Some((start, end, captures))
+
+        let consumed = end_pos;
+        let m = Match {
+            start: inner.base + pos,
+            end: inner.base + end_pos,
+            consumed,
+            value: RegexMatch(captures),
+        };
+
+        drop(text);
+        let _ = inner.data.split_to(end_pos);
+        inner.base += end_pos;
+
+        Some((m, snapshot))
+    }
+
+    /// Find literal, extract truncated context, NO drain. One lock.
+    pub async fn peek_literal(
+        &self,
+        needle: &str,
+    ) -> Option<(Match<LiteralMatch>, BufferSnapshot)> {
+        let inner = self.inner.lock().await;
+        let text = String::from_utf8_lossy(&inner.data);
+        let pos = text.find(needle)?;
+        let end_pos = pos + needle.len();
+
+        let before_raw = &text[..pos];
+        let after_raw = &text[end_pos..];
+        let snapshot = BufferSnapshot::Match {
+            before: truncate_before(before_raw, BUFFER_PREFIX_LEN),
+            matched: needle.to_string(),
+            after: truncate_after(after_raw, BUFFER_SUFFIX_LEN),
+        };
+
+        let m = Match {
+            start: inner.base + pos,
+            end: inner.base + end_pos,
+            consumed: end_pos,
+            value: LiteralMatch(needle.to_string()),
+        };
+
+        Some((m, snapshot))
+    }
+
+    /// Find regex, extract truncated context, NO drain. One lock.
+    pub async fn peek_regex(
+        &self,
+        re: &Regex,
+    ) -> Option<(Match<RegexMatch>, BufferSnapshot)> {
+        let inner = self.inner.lock().await;
+        let text = String::from_utf8_lossy(&inner.data);
+        let cap = re.captures(&text)?;
+        let whole = cap.get(0)?;
+        let pos = whole.start();
+        let end_pos = whole.end();
+        let matched_str = whole.as_str().to_string();
+
+        let before_raw = &text[..pos];
+        let after_raw = &text[end_pos..];
+        let snapshot = BufferSnapshot::Match {
+            before: truncate_before(before_raw, BUFFER_PREFIX_LEN),
+            matched: matched_str,
+            after: truncate_after(after_raw, BUFFER_SUFFIX_LEN),
+        };
+
+        let mut captures = HashMap::new();
+        for i in 0..cap.len() {
+            if let Some(m) = cap.get(i) {
+                captures.insert(i.to_string(), m.as_str().to_string());
+            }
+        }
+
+        let m = Match {
+            start: inner.base + pos,
+            end: inner.base + end_pos,
+            consumed: end_pos,
+            value: RegexMatch(captures),
+        };
+
+        Some((m, snapshot))
+    }
+
+    /// Drain all buffered data, advancing base.
+    pub async fn clear(&self) {
+        let mut inner = self.inner.lock().await;
+        let len = inner.data.len();
+        let _ = inner.data.split_to(len);
+        inner.base += len;
+    }
+
+    /// Return a BufferSnapshot::Tail of the current buffer (last `n` chars).
+    pub async fn snapshot_tail(&self, n: usize) -> BufferSnapshot {
+        let inner = self.inner.lock().await;
+        let text = String::from_utf8_lossy(&inner.data);
+        BufferSnapshot::Tail {
+            content: truncate_before(&text, n),
+        }
+    }
+
+    /// Return remaining buffer data (for shell_logs in TestResult).
+    pub async fn remaining(&self) -> Vec<u8> {
+        let inner = self.inner.lock().await;
+        inner.data.to_vec()
     }
 }
 
@@ -121,7 +288,6 @@ pub struct Vm {
     code_server: Arc<CodeServer>,
     shell_name: String,
     shell_prompt: String,
-    cursor: usize,
     progress_tx: Option<ProgressTx>,
     shell_log: Arc<Mutex<ShellLogger>>,
     event_collector: Option<EventCollector>,
@@ -204,7 +370,6 @@ impl Vm {
             code_server,
             shell_name: shell_name.clone(),
             shell_prompt,
-            cursor: 0,
             progress_tx,
             shell_log,
             event_collector,
@@ -234,12 +399,11 @@ impl Vm {
 
         tokio::time::timeout(self.scope.timeout(), async {
             loop {
-                if let Some((_start, end, _captures)) = self
+                if let Some((_m, _snapshot)) = self
                     .output_buf
-                    .find_regex_from(self.cursor, &prompt_re)
+                    .consume_regex(&prompt_re)
                     .await
                 {
-                    self.cursor = end;
                     break;
                 }
                 self.output_buf.notify.notified().await;
@@ -359,11 +523,9 @@ impl Vm {
                 self.emit_event(LogEventKind::MatchStart { pattern: pattern.clone(), is_regex: false }).await;
                 self.emit_progress(ProgressEvent::MatchStart);
                 let match_start = Instant::now();
-                let (start, end) = self.wait_for_literal(&pattern, timeout, expr.span.clone()).await?;
-                let buffer = self.buffer_snapshot_match(start, end).await;
-                self.emit_event(LogEventKind::MatchDone { matched: pattern.clone(), elapsed: match_start.elapsed(), buffer }).await;
+                let (mat, snapshot) = self.wait_consume_literal(&pattern, timeout, expr.span.clone()).await?;
+                self.emit_event(LogEventKind::MatchDone { matched: mat.value.0.clone(), elapsed: match_start.elapsed(), buffer: snapshot }).await;
                 self.emit_progress(ProgressEvent::MatchDone);
-                self.cursor = end.max(start);
                 Ok(pattern)
             }
             Expr::MatchRegex(m) => {
@@ -377,15 +539,13 @@ impl Vm {
                 self.emit_event(LogEventKind::MatchStart { pattern: pattern.clone(), is_regex: true }).await;
                 self.emit_progress(ProgressEvent::MatchStart);
                 let match_start = Instant::now();
-                let (start, end, captures) = self
-                    .wait_for_regex(&pattern, &re, timeout, expr.span.clone())
+                let (mat, snapshot) = self
+                    .wait_consume_regex(&pattern, &re, timeout, expr.span.clone())
                     .await?;
-                let full = captures.get("0").cloned().unwrap_or_default();
-                let buffer = self.buffer_snapshot_match(start, end).await;
-                self.emit_event(LogEventKind::MatchDone { matched: full.clone(), elapsed: match_start.elapsed(), buffer }).await;
+                let full = mat.value.0.get("0").cloned().unwrap_or_default();
+                self.emit_event(LogEventKind::MatchDone { matched: full.clone(), elapsed: match_start.elapsed(), buffer: snapshot }).await;
                 self.emit_progress(ProgressEvent::MatchDone);
-                self.cursor = end;
-                self.scope.set_captures(captures);
+                self.scope.set_captures(mat.value.0);
                 Ok(full)
             }
             Expr::NegMatchLiteral(m) => {
@@ -394,7 +554,7 @@ impl Vm {
                 self.emit_event(LogEventKind::NegMatchStart { pattern: pattern.clone(), is_regex: false }).await;
                 self.emit_progress(ProgressEvent::MatchStart);
                 let match_start = Instant::now();
-                self.wait_for_absent_literal(&pattern, timeout, expr.span.clone()).await?;
+                self.wait_absent_literal(&pattern, timeout, expr.span.clone()).await?;
                 self.emit_event(LogEventKind::NegMatchPass { pattern: pattern.clone(), elapsed: match_start.elapsed() }).await;
                 self.emit_progress(ProgressEvent::MatchDone);
                 Ok(String::new())
@@ -410,16 +570,15 @@ impl Vm {
                 self.emit_event(LogEventKind::NegMatchStart { pattern: pattern.clone(), is_regex: true }).await;
                 self.emit_progress(ProgressEvent::MatchStart);
                 let match_start = Instant::now();
-                self.wait_for_absent_regex(&pattern, &re, timeout, expr.span.clone()).await?;
+                self.wait_absent_regex(&pattern, &re, timeout, expr.span.clone()).await?;
                 self.emit_event(LogEventKind::NegMatchPass { pattern: pattern.clone(), elapsed: match_start.elapsed() }).await;
                 self.emit_progress(ProgressEvent::MatchDone);
                 Ok(String::new())
             }
             Expr::BufferReset => {
-                let buffer = self.buffer_snapshot_tail().await;
-                let data = self.output_buf.snapshot().await;
-                self.cursor = data.len();
-                self.emit_event(LogEventKind::BufferReset { buffer }).await;
+                let snapshot = self.output_buf.snapshot_tail(BUFFER_TAIL_LEN).await;
+                self.emit_event(LogEventKind::BufferReset { buffer: snapshot }).await;
+                self.output_buf.clear().await;
                 Ok(String::new())
             }
             Expr::Call(call) => self.eval_call(call, &expr.span).await,
@@ -522,21 +681,19 @@ impl Vm {
         }
     }
 
-    async fn wait_for_literal(
+    // ─── Wait + consume/peek helpers ────────────────────────────
+
+    async fn wait_consume_literal(
         &self,
         pattern: &str,
         timeout: Duration,
         span: Span,
-    ) -> Result<(usize, usize), Failure> {
+    ) -> Result<(Match<LiteralMatch>, BufferSnapshot), Failure> {
         let fut = async {
             loop {
                 self.check_fail(span.clone()).await?;
-                if let Some(r) = self
-                    .output_buf
-                    .find_literal_from(self.cursor, pattern)
-                    .await
-                {
-                    return Ok::<(usize, usize), Failure>(r);
+                if let Some(result) = self.output_buf.consume_literal(pattern).await {
+                    return Ok::<(Match<LiteralMatch>, BufferSnapshot), Failure>(result);
                 }
                 self.output_buf.notify.notified().await;
             }
@@ -546,7 +703,7 @@ impl Vm {
             Ok(result) => result,
             Err(_) => {
                 self.emit_progress(ProgressEvent::Timeout);
-                let buffer = self.buffer_snapshot_tail().await;
+                let buffer = self.output_buf.snapshot_tail(BUFFER_TAIL_LEN).await;
                 self.emit_event(LogEventKind::Timeout { pattern: pattern.to_string(), buffer }).await;
                 Err(Failure::MatchTimeout {
                     pattern: pattern.to_string(),
@@ -557,18 +714,18 @@ impl Vm {
         }
     }
 
-    async fn wait_for_regex(
+    async fn wait_consume_regex(
         &self,
         pattern: &str,
         re: &Regex,
         timeout: Duration,
         span: Span,
-    ) -> Result<(usize, usize, HashMap<String, String>), Failure> {
+    ) -> Result<(Match<RegexMatch>, BufferSnapshot), Failure> {
         let fut = async {
             loop {
                 self.check_fail(span.clone()).await?;
-                if let Some(r) = self.output_buf.find_regex_from(self.cursor, re).await {
-                    return Ok::<(usize, usize, HashMap<String, String>), Failure>(r);
+                if let Some(result) = self.output_buf.consume_regex(re).await {
+                    return Ok::<(Match<RegexMatch>, BufferSnapshot), Failure>(result);
                 }
                 self.output_buf.notify.notified().await;
             }
@@ -578,7 +735,7 @@ impl Vm {
             Ok(result) => result,
             Err(_) => {
                 self.emit_progress(ProgressEvent::Timeout);
-                let buffer = self.buffer_snapshot_tail().await;
+                let buffer = self.output_buf.snapshot_tail(BUFFER_TAIL_LEN).await;
                 self.emit_event(LogEventKind::Timeout { pattern: pattern.to_string(), buffer }).await;
                 Err(Failure::MatchTimeout {
                     pattern: pattern.to_string(),
@@ -589,7 +746,7 @@ impl Vm {
         }
     }
 
-    async fn wait_for_absent_literal(
+    async fn wait_absent_literal(
         &self,
         pattern: &str,
         timeout: Duration,
@@ -598,16 +755,11 @@ impl Vm {
         let fut = async {
             loop {
                 self.check_fail(span.clone()).await?;
-                if let Some((start, end)) = self
-                    .output_buf
-                    .find_literal_from(self.cursor, pattern)
-                    .await
-                {
-                    let buffer = self.buffer_snapshot_match(start, end).await;
+                if let Some((_m, snapshot)) = self.output_buf.peek_literal(pattern).await {
                     self.emit_event(LogEventKind::NegMatchFail {
                         pattern: pattern.to_string(),
                         matched_text: pattern.to_string(),
-                        buffer,
+                        buffer: snapshot,
                     }).await;
                     return Err(Failure::NegativeMatchFailed {
                         pattern: pattern.to_string(),
@@ -626,7 +778,7 @@ impl Vm {
         }
     }
 
-    async fn wait_for_absent_regex(
+    async fn wait_absent_regex(
         &self,
         pattern: &str,
         re: &Regex,
@@ -636,15 +788,12 @@ impl Vm {
         let fut = async {
             loop {
                 self.check_fail(span.clone()).await?;
-                if let Some((start, end, captures)) =
-                    self.output_buf.find_regex_from(self.cursor, re).await
-                {
-                    let matched_text = captures.get("0").cloned().unwrap_or_default();
-                    let buffer = self.buffer_snapshot_match(start, end).await;
+                if let Some((m, snapshot)) = self.output_buf.peek_regex(re).await {
+                    let matched_text = m.value.0.get("0").cloned().unwrap_or_default();
                     self.emit_event(LogEventKind::NegMatchFail {
                         pattern: pattern.to_string(),
                         matched_text: matched_text.clone(),
-                        buffer,
+                        buffer: snapshot,
                     }).await;
                     return Err(Failure::NegativeMatchFailed {
                         pattern: pattern.to_string(),
@@ -667,7 +816,7 @@ impl Vm {
         if self.fail_triggered.load(Ordering::Relaxed) {
             self.emit_progress(ProgressEvent::FailPattern);
             let detail = self.fail_detail.lock().await.clone().unwrap_or_default();
-            let buffer = self.buffer_snapshot_tail().await;
+            let buffer = self.output_buf.snapshot_tail(BUFFER_TAIL_LEN).await;
             self.emit_event(LogEventKind::FailPatternTriggered {
                 pattern: detail.0.clone(),
                 matched_line: detail.1.clone(),
@@ -697,16 +846,7 @@ impl Vm {
     }
 
     pub async fn output_snapshot(&self) -> Vec<u8> {
-        self.output_buf.snapshot().await
-    }
-
-    pub async fn reset_for_reuse(&mut self, timeout: Duration) {
-        self.scope.set_timeout(timeout);
-        self.scope.set_fail_pattern(None);
-        self.cursor = 0;
-        self.fail_triggered.store(false, Ordering::Relaxed);
-        *self.fail_detail.lock().await = None;
-        let _ = self.fail_watcher_tx.send(None);
+        self.output_buf.remaining().await
     }
 
     pub async fn shutdown(mut self) {
@@ -719,28 +859,6 @@ impl Vm {
     async fn emit_event(&self, kind: LogEventKind) {
         if let Some(ec) = &self.event_collector {
             ec.push(&self.shell_name, kind).await;
-        }
-    }
-
-    async fn buffer_snapshot_match(&self, start: usize, end: usize) -> BufferSnapshot {
-        let data = self.output_buf.snapshot().await;
-        let text = String::from_utf8_lossy(&data);
-        let before_raw = &text[self.cursor.min(text.len())..start.min(text.len())];
-        let matched_raw = &text[start.min(text.len())..end.min(text.len())];
-        let after_raw = &text[end.min(text.len())..];
-        BufferSnapshot::Match {
-            before: truncate_before(before_raw, BUFFER_PREFIX_LEN),
-            matched: matched_raw.to_string(),
-            after: truncate_after(after_raw, BUFFER_SUFFIX_LEN),
-        }
-    }
-
-    async fn buffer_snapshot_tail(&self) -> BufferSnapshot {
-        let data = self.output_buf.snapshot().await;
-        let text = String::from_utf8_lossy(&data);
-        let from_cursor = &text[self.cursor.min(text.len())..];
-        BufferSnapshot::Tail {
-            content: truncate_before(from_cursor, BUFFER_TAIL_LEN),
         }
     }
 }
@@ -765,11 +883,9 @@ impl VmContext for Vm {
         self.emit_progress(ProgressEvent::MatchStart);
         let match_start = Instant::now();
         let timeout = self.scope.timeout();
-        let (start, end) = self.wait_for_literal(pattern, timeout, span.clone()).await?;
-        let buffer = self.buffer_snapshot_match(start, end).await;
-        self.emit_event(LogEventKind::MatchDone { matched: pattern.to_string(), elapsed: match_start.elapsed(), buffer }).await;
+        let (mat, snapshot) = self.wait_consume_literal(pattern, timeout, span.clone()).await?;
+        self.emit_event(LogEventKind::MatchDone { matched: mat.value.0.clone(), elapsed: match_start.elapsed(), buffer: snapshot }).await;
         self.emit_progress(ProgressEvent::MatchDone);
-        self.cursor = end.max(start);
         Ok(pattern.to_string())
     }
 
@@ -800,27 +916,26 @@ fn spawn_fail_watcher(
     detail: Arc<Mutex<Option<(String, String)>>>,
 ) {
     tokio::spawn(async move {
-        let mut cursor = 0usize;
         loop {
             let current = rx.borrow().clone();
             if let Some(pattern) = current {
                 loop {
-                    let data = output.snapshot().await;
-                    let slice = &data[cursor.min(data.len())..];
-                    let text = String::from_utf8_lossy(slice);
                     let matched = match &pattern {
-                        FailPattern::Regex(re) => re
-                            .find(&text)
-                            .map(|m| (re.as_str().to_string(), m.as_str().to_string(), m.end())),
-                        FailPattern::Literal(s) => text.find(s).map(|start| {
-                            let end = start + s.len();
-                            (s.clone(), s.clone(), end)
-                        }),
+                        FailPattern::Regex(re) => {
+                            output.peek_regex(re).await.map(|(m, _snapshot)| {
+                                let matched_text = m.value.0.get("0").cloned().unwrap_or_default();
+                                (re.as_str().to_string(), matched_text)
+                            })
+                        }
+                        FailPattern::Literal(s) => {
+                            output.peek_literal(s).await.map(|(_m, _snapshot)| {
+                                (s.clone(), s.clone())
+                            })
+                        }
                     };
-                    if let Some((p, line, end)) = matched {
+                    if let Some((p, line)) = matched {
                         flag.store(true, Ordering::Relaxed);
                         *detail.lock().await = Some((p, line));
-                        cursor += end;
                         break;
                     }
 
@@ -921,162 +1036,227 @@ mod tests {
     #[tokio::test]
     async fn output_buffer_new_is_empty() {
         let buf = OutputBuffer::new();
-        assert!(buf.snapshot().await.is_empty());
+        assert!(buf.remaining().await.is_empty());
     }
 
-    // ── OutputBuffer::append + snapshot ──────────────────────────────
+    // ── OutputBuffer::append + remaining ─────────────────────────────
 
     #[tokio::test]
-    async fn output_buffer_append_and_snapshot() {
+    async fn output_buffer_append_and_remaining() {
         let buf = OutputBuffer::new();
         buf.append(b"hello ").await;
         buf.append(b"world").await;
-        assert_eq!(buf.snapshot().await, b"hello world");
+        assert_eq!(buf.remaining().await, b"hello world");
     }
 
     #[tokio::test]
     async fn output_buffer_append_empty_bytes() {
         let buf = OutputBuffer::new();
         buf.append(b"").await;
-        assert!(buf.snapshot().await.is_empty());
+        assert!(buf.remaining().await.is_empty());
     }
 
-    // ── OutputBuffer::find_literal_from ──────────────────────────────
+    // ── OutputBuffer::consume_literal ────────────────────────────────
 
     #[tokio::test]
-    async fn find_literal_basic() {
+    async fn consume_literal_basic() {
         let buf = OutputBuffer::new();
         buf.append(b"hello world").await;
-        let result = buf.find_literal_from(0, "hello").await;
-        assert_eq!(result, Some((0, 5)));
+        let (m, snapshot) = buf.consume_literal("hello").await.unwrap();
+        assert_eq!(m.start, 0);
+        assert_eq!(m.end, 5);
+        assert_eq!(m.consumed, 5);
+        assert_eq!(m.value.0, "hello");
+        assert!(matches!(snapshot, BufferSnapshot::Match { .. }));
+        // Buffer should have " world" remaining
+        assert_eq!(buf.remaining().await, b" world");
     }
 
     #[tokio::test]
-    async fn find_literal_cursor_past_match() {
+    async fn consume_literal_drains_up_to_match_end() {
+        let buf = OutputBuffer::new();
+        buf.append(b"prefix MATCH suffix").await;
+        let (m, _) = buf.consume_literal("MATCH").await.unwrap();
+        assert_eq!(m.start, 7);
+        assert_eq!(m.end, 12);
+        assert_eq!(m.consumed, 12);
+        assert_eq!(buf.remaining().await, b" suffix");
+    }
+
+    #[tokio::test]
+    async fn consume_literal_not_found() {
         let buf = OutputBuffer::new();
         buf.append(b"hello world").await;
-        let result = buf.find_literal_from(6, "hello").await;
-        assert_eq!(result, None);
+        assert!(buf.consume_literal("xyz").await.is_none());
+        // Buffer unchanged
+        assert_eq!(buf.remaining().await, b"hello world");
     }
 
     #[tokio::test]
-    async fn find_literal_cursor_before_match() {
-        let buf = OutputBuffer::new();
-        buf.append(b"hello world").await;
-        let result = buf.find_literal_from(0, "world").await;
-        assert_eq!(result, Some((6, 11)));
-    }
-
-    #[tokio::test]
-    async fn find_literal_not_found() {
-        let buf = OutputBuffer::new();
-        buf.append(b"hello world").await;
-        let result = buf.find_literal_from(0, "xyz").await;
-        assert_eq!(result, None);
-    }
-
-    #[tokio::test]
-    async fn find_literal_positions_are_absolute() {
+    async fn consume_literal_absolute_offsets_after_drain() {
         let buf = OutputBuffer::new();
         buf.append(b"aaa bbb ccc").await;
-        let result = buf.find_literal_from(4, "bbb").await;
-        assert_eq!(result, Some((4, 7)));
+        // Consume "aaa"
+        let (m1, _) = buf.consume_literal("aaa").await.unwrap();
+        assert_eq!(m1.start, 0);
+        assert_eq!(m1.end, 3);
+        // Now consume "bbb" — absolute offsets should account for drained bytes
+        let (m2, _) = buf.consume_literal("bbb").await.unwrap();
+        assert_eq!(m2.start, 4);
+        assert_eq!(m2.end, 7);
+        // Remaining should be " ccc"
+        assert_eq!(buf.remaining().await, b" ccc");
     }
 
     #[tokio::test]
-    async fn find_literal_cursor_at_buffer_end() {
+    async fn consume_literal_snapshot_has_truncated_context() {
         let buf = OutputBuffer::new();
-        buf.append(b"hello").await;
-        let result = buf.find_literal_from(5, "hello").await;
-        assert_eq!(result, None);
+        buf.append(b"before MATCH after").await;
+        let (_, snapshot) = buf.consume_literal("MATCH").await.unwrap();
+        match snapshot {
+            BufferSnapshot::Match { before, matched, after } => {
+                assert_eq!(before, "before ");
+                assert_eq!(matched, "MATCH");
+                assert_eq!(after, " after");
+            }
+            _ => panic!("expected BufferSnapshot::Match"),
+        }
     }
 
-    #[tokio::test]
-    async fn find_literal_cursor_beyond_buffer_end() {
-        let buf = OutputBuffer::new();
-        buf.append(b"hello").await;
-        let result = buf.find_literal_from(100, "hello").await;
-        assert_eq!(result, None);
-    }
-
-    // ── OutputBuffer::find_regex_from ────────────────────────────────
+    // ── OutputBuffer::consume_regex ──────────────────────────────────
 
     #[tokio::test]
-    async fn find_regex_basic() {
+    async fn consume_regex_basic() {
         let buf = OutputBuffer::new();
         buf.append(b"abc 123 def").await;
         let re = Regex::new(r"\d+").unwrap();
-        let result = buf.find_regex_from(0, &re).await;
-        let (start, end, captures) = result.unwrap();
-        assert_eq!(start, 4);
-        assert_eq!(end, 7);
-        assert_eq!(captures.get("0").unwrap(), "123");
+        let (m, _) = buf.consume_regex(&re).await.unwrap();
+        assert_eq!(m.start, 4);
+        assert_eq!(m.end, 7);
+        assert_eq!(m.value.0.get("0").unwrap(), "123");
+        assert_eq!(buf.remaining().await, b" def");
     }
 
     #[tokio::test]
-    async fn find_regex_with_capture_groups() {
+    async fn consume_regex_with_captures() {
         let buf = OutputBuffer::new();
         buf.append(b"name: Alice age: 30").await;
         let re = Regex::new(r"name: (\w+) age: (\d+)").unwrap();
-        let result = buf.find_regex_from(0, &re).await;
-        let (start, end, captures) = result.unwrap();
-        assert_eq!(start, 0);
-        assert_eq!(end, 19);
-        assert_eq!(captures.get("0").unwrap(), "name: Alice age: 30");
-        assert_eq!(captures.get("1").unwrap(), "Alice");
-        assert_eq!(captures.get("2").unwrap(), "30");
+        let (m, _) = buf.consume_regex(&re).await.unwrap();
+        assert_eq!(m.start, 0);
+        assert_eq!(m.end, 19);
+        assert_eq!(m.value.0.get("0").unwrap(), "name: Alice age: 30");
+        assert_eq!(m.value.0.get("1").unwrap(), "Alice");
+        assert_eq!(m.value.0.get("2").unwrap(), "30");
+        assert!(buf.remaining().await.is_empty());
     }
 
     #[tokio::test]
-    async fn find_regex_cursor_past_match() {
-        let buf = OutputBuffer::new();
-        buf.append(b"abc 123 def").await;
-        let re = Regex::new(r"\d+").unwrap();
-        let result = buf.find_regex_from(8, &re).await;
-        assert_eq!(result, None);
-    }
-
-    #[tokio::test]
-    async fn find_regex_positions_are_absolute() {
-        let buf = OutputBuffer::new();
-        buf.append(b"aaa 123 bbb 456").await;
-        let re = Regex::new(r"\d+").unwrap();
-        let result = buf.find_regex_from(8, &re).await;
-        let (start, end, captures) = result.unwrap();
-        assert_eq!(start, 12);
-        assert_eq!(end, 15);
-        assert_eq!(captures.get("0").unwrap(), "456");
-    }
-
-    #[tokio::test]
-    async fn find_regex_not_found() {
+    async fn consume_regex_not_found() {
         let buf = OutputBuffer::new();
         buf.append(b"hello world").await;
         let re = Regex::new(r"\d+").unwrap();
-        let result = buf.find_regex_from(0, &re).await;
-        assert_eq!(result, None);
+        assert!(buf.consume_regex(&re).await.is_none());
+        assert_eq!(buf.remaining().await, b"hello world");
     }
 
     #[tokio::test]
-    async fn find_regex_cursor_beyond_buffer_end() {
+    async fn consume_regex_absolute_offsets_after_drain() {
         let buf = OutputBuffer::new();
+        buf.append(b"aaa 123 bbb 456").await;
+        let re = Regex::new(r"\d+").unwrap();
+        let (m1, _) = buf.consume_regex(&re).await.unwrap();
+        assert_eq!(m1.start, 4);
+        assert_eq!(m1.end, 7);
+        // After consuming "aaa 123", buffer has " bbb 456"
+        let (m2, _) = buf.consume_regex(&re).await.unwrap();
+        assert_eq!(m2.start, 12);
+        assert_eq!(m2.end, 15);
+    }
+
+    // ── OutputBuffer::peek_literal ──────────────────────────────────
+
+    #[tokio::test]
+    async fn peek_literal_does_not_drain() {
+        let buf = OutputBuffer::new();
+        buf.append(b"hello world").await;
+        let (m, _) = buf.peek_literal("hello").await.unwrap();
+        assert_eq!(m.start, 0);
+        assert_eq!(m.end, 5);
+        // Buffer unchanged
+        assert_eq!(buf.remaining().await, b"hello world");
+    }
+
+    #[tokio::test]
+    async fn peek_literal_not_found() {
+        let buf = OutputBuffer::new();
+        buf.append(b"hello").await;
+        assert!(buf.peek_literal("xyz").await.is_none());
+    }
+
+    // ── OutputBuffer::peek_regex ────────────────────────────────────
+
+    #[tokio::test]
+    async fn peek_regex_does_not_drain() {
+        let buf = OutputBuffer::new();
+        buf.append(b"abc 123 def").await;
+        let re = Regex::new(r"\d+").unwrap();
+        let (m, _) = buf.peek_regex(&re).await.unwrap();
+        assert_eq!(m.start, 4);
+        assert_eq!(m.end, 7);
+        assert_eq!(m.value.0.get("0").unwrap(), "123");
+        // Buffer unchanged
+        assert_eq!(buf.remaining().await, b"abc 123 def");
+    }
+
+    // ── OutputBuffer::clear ─────────────────────────────────────────
+
+    #[tokio::test]
+    async fn clear_empties_buffer() {
+        let buf = OutputBuffer::new();
+        buf.append(b"hello world").await;
+        buf.clear().await;
+        assert!(buf.remaining().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn clear_advances_base_correctly() {
+        let buf = OutputBuffer::new();
+        buf.append(b"hello world").await;
+        buf.clear().await;
         buf.append(b"abc 123").await;
         let re = Regex::new(r"\d+").unwrap();
-        let result = buf.find_regex_from(100, &re).await;
-        assert_eq!(result, None);
+        let (m, _) = buf.consume_regex(&re).await.unwrap();
+        // base should be 11 (from clear) + 4 (from "abc ") = absolute offset 15
+        assert_eq!(m.start, 15);
+        assert_eq!(m.end, 18);
+    }
+
+    // ── OutputBuffer::snapshot_tail ─────────────────────────────────
+
+    #[tokio::test]
+    async fn snapshot_tail_returns_tail() {
+        let buf = OutputBuffer::new();
+        buf.append(b"hello world").await;
+        let snapshot = buf.snapshot_tail(5).await;
+        match snapshot {
+            BufferSnapshot::Tail { content } => {
+                assert_eq!(content, "...world");
+            }
+            _ => panic!("expected Tail"),
+        }
     }
 
     #[tokio::test]
-    async fn find_regex_captures_indexed_by_string_keys() {
+    async fn snapshot_tail_full_content_when_short() {
         let buf = OutputBuffer::new();
-        buf.append(b"2024-01-15").await;
-        let re = Regex::new(r"(\d{4})-(\d{2})-(\d{2})").unwrap();
-        let result = buf.find_regex_from(0, &re).await;
-        let (_start, _end, captures) = result.unwrap();
-        assert_eq!(captures.len(), 4); // group 0 + 3 capture groups
-        assert_eq!(captures.get("0").unwrap(), "2024-01-15");
-        assert_eq!(captures.get("1").unwrap(), "2024");
-        assert_eq!(captures.get("2").unwrap(), "01");
-        assert_eq!(captures.get("3").unwrap(), "15");
+        buf.append(b"hi").await;
+        let snapshot = buf.snapshot_tail(80).await;
+        match snapshot {
+            BufferSnapshot::Tail { content } => {
+                assert_eq!(content, "hi");
+            }
+            _ => panic!("expected Tail"),
+        }
     }
 }

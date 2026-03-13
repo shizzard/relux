@@ -438,7 +438,6 @@ impl Runtime {
 
         self.run_test_cleanup(
             &plan,
-            &effect_exec.alias_shells,
             progress_tx.clone(),
             &log_dir,
             test_start,
@@ -728,7 +727,6 @@ impl Runtime {
             };
 
             let mut guard = vm.lock().await;
-            guard.reset_for_reuse(self.default_timeout).await;
             if let Err(f) = guard.exec_stmts(&block.node.stmts).await {
                 return Outcome::Fail(f);
             }
@@ -739,7 +737,6 @@ impl Runtime {
     async fn run_test_cleanup(
         &self,
         plan: &Plan,
-        aliases: &HashMap<String, SharedVm>,
         progress_tx: ProgressTx,
         log_dir: &Path,
         test_start: Instant,
@@ -771,9 +768,6 @@ impl Runtime {
             }
         }
 
-        for vm in aliases.values() {
-            vm.lock().await.reset_for_reuse(self.default_timeout).await;
-        }
     }
 
     async fn teardown_effects(

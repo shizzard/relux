@@ -4,8 +4,10 @@ test "ctrl_c interrupts a running command" {
     """
     shell s {
         > sleep 60
+        sleep("100ms")
         ctrl_c()
         match_prompt()
+        match_exit_code(130)
     }
 }
 
@@ -27,10 +29,12 @@ test "ctrl_z suspends a process" {
     """
     shell s {
         > sleep 60
+        sleep("100ms")
         ctrl_z()
         match_prompt()
+        match_exit_code(146)
         > kill %%
-        match_prompt()
+        match_exit_code(0)
     }
 }
 
@@ -52,7 +56,9 @@ test "ctrl_backslash sends sigquit" {
     """
     shell s {
         > sleep 60
+        sleep("100ms")
         ctrl_backslash()
         match_prompt()
+        match_exit_code(131)
     }
 }

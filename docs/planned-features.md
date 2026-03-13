@@ -42,17 +42,6 @@ error should be uniform. Either:
 - Make the parser error message mention purity (e.g., "shell operators are not allowed in pure
   functions") so the user understands why.
 
-### Output buffer is never freed
-
-The `OutputBuffer` in `src/runtime/vm.rs` is an append-only `Vec<u8>` — matched and consumed
-output stays in memory for the lifetime of the shell. The cursor advances past it, making it
-invisible to future matches, but the bytes are never reclaimed.
-
-For long-running tests or tests with verbose output, this means unbounded memory growth. The buffer
-should be truncated up to the cursor position after each successful match (or at least periodically),
-since data before the cursor is never accessed again by the matching logic. The `find_literal_from`
-and `find_regex_from` methods already slice from the cursor, so truncating and rebasing the cursor
-to zero would be safe.
 
 ### Imported functions cannot call siblings from their home module
 
