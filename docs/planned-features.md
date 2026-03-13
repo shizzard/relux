@@ -15,14 +15,6 @@
   the body and test-level deadlines cover all practical cases. Currently `~` is the only prefix and
   `--timeout-multiplier` only scales config-level values. The change introduces `@` as the assertion
   prefix and makes the multiplier apply to all `~` timeouts regardless of where they appear.
-- Require explicit alias for effect shell access: currently `need StartDb` (without `as`) silently
-  binds the effect's exported shell name into the test scope. This has two problems: (1) the user
-  must read the effect source to discover the shell name, and (2) if the effect author renames the
-  exported shell, all downstream users silently break — not with a hard error, but with subtle shell
-  name collisions or missing state. The proposed change: `need Effect as alias` makes the shell
-  accessible as `shell alias`; bare `need Effect` (no `as`) still runs the effect for its side
-  effects but does **not** expose its shell in the test scope. This makes the intent explicit —
-  "I need this effect's shell" vs "I need this effect to run but don't interact with its shell."
 
 ## Flaky Tests
 

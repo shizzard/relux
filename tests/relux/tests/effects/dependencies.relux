@@ -6,7 +6,7 @@ effect SetupDb -> db {
 }
 
 effect RunMigrations -> db {
-    need SetupDb
+    need SetupDb as db
     shell db {
         > export MIG_STATUS=applied
         match_ok()
@@ -14,7 +14,7 @@ effect RunMigrations -> db {
 }
 
 effect SeedData -> db {
-    need RunMigrations
+    need RunMigrations as db
     shell db {
         > export SEED_STATUS=seeded
         match_ok()
@@ -26,7 +26,7 @@ test "effect depends on another effect" {
     Verify an effect's dependency is set up before the dependent
     effect executes, so all env vars from both are present.
     """
-    need RunMigrations
+    need RunMigrations as db
     shell db {
         > echo $$DB_STATUS
         <? ^started$
@@ -40,7 +40,7 @@ test "transitive dependencies execute in order" {
     Verify a chain of dependencies (A -> B -> C) executes in
     topological order so all env vars from the full chain are present.
     """
-    need SeedData
+    need SeedData as db
     shell db {
         > echo $$DB_STATUS
         <? ^started$

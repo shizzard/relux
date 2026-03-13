@@ -617,20 +617,12 @@ impl<'a> EffectGraphBuilder<'a> {
         };
 
         if let Some(dep_node) = dependent_node {
-            let located = self.scope.effects.get(effect_name.as_str()).unwrap();
-            let alias_name = need
-                .alias
-                .as_ref()
-                .map(|a| a.node.clone())
-                .unwrap_or_else(|| located.def.exported_shell.node.clone());
-            let alias_span = need
-                .alias
-                .as_ref()
-                .map(|a| Span::new(need_file_id, a.span.clone()))
-                .unwrap_or_else(|| sp(located.file, &located.def.exported_shell.span));
+            let alias = need.alias.as_ref().map(|a| {
+                ir::Spanned::new(a.node.clone(), Span::new(need_file_id, a.span.clone()))
+            });
 
             let edge = ir::EffectEdge {
-                alias: ir::Spanned::new(alias_name, alias_span),
+                alias,
                 need_effect_span: Span::new(need_file_id, need.effect.span.clone()),
             };
             if self.dag.add_edge(node_idx, dep_node, edge).is_err() {
@@ -1374,33 +1366,14 @@ fn build_plan(
 
     for (need, need_span) in &test_needs {
         if let Some(node_idx) = graph_builder.resolve_need(need, file_id, None) {
-            let alias_name = need
-                .alias
-                .as_ref()
-                .map(|a| a.node.clone())
-                .unwrap_or_else(|| {
-                    scope
-                        .effects
-                        .get(need.effect.node.as_str())
-                        .map(|located| located.def.exported_shell.node.clone())
-                        .unwrap_or_else(|| need.effect.node.clone())
-                });
-            let alias_span = need
-                .alias
-                .as_ref()
-                .map(|a| sp(file_id, &a.span))
-                .unwrap_or_else(|| {
-                    scope
-                        .effects
-                        .get(need.effect.node.as_str())
-                        .map(|located| sp(located.file, &located.def.exported_shell.span))
-                        .unwrap_or_else(|| sp(file_id, &need.effect.span))
-                });
+            let alias = need.alias.as_ref().map(|a| {
+                ir::Spanned::new(a.node.clone(), sp(file_id, &a.span))
+            });
 
             ir_needs.push(ir::Spanned::new(
                 ir::TestNeed {
                     instance: node_idx,
-                    alias: ir::Spanned::new(alias_name, alias_span),
+                    alias,
                 },
                 sp(file_id, need_span),
             ));
@@ -2080,7 +2053,7 @@ mod tests {
     }
 
     #[test]
-    fn test_need_without_alias_defaults_to_exported_shell_name() {
+    fn test_need_without_alias_has_no_shell_binding() {
         let mut loader = InMemoryLoader::new();
         loader.add(
             "main",
@@ -2089,10 +2062,24 @@ mod tests {
         let (plans, _, diags) = loader.resolve_one("main");
         assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
         assert_eq!(plans.len(), 1);
-        assert_eq!(
-            plans[0].test.needs[0].node.alias.node, "db",
-            "default alias should be the exported shell name, not the effect name"
+        assert!(
+            plans[0].test.needs[0].node.alias.is_none(),
+            "bare need (no `as`) should have no alias"
         );
+    }
+
+    #[test]
+    fn test_need_with_alias_has_shell_binding() {
+        let mut loader = InMemoryLoader::new();
+        loader.add(
+            "main",
+            "effect StartDb -> db {\n  shell db {\n    > start\n  }\n}\n\ntest \"t\" {\n  need StartDb as mydb\n  shell mydb {\n    > query\n  }\n}\n",
+        );
+        let (plans, _, diags) = loader.resolve_one("main");
+        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+        assert_eq!(plans.len(), 1);
+        let alias = plans[0].test.needs[0].node.alias.as_ref().expect("explicit alias should be Some");
+        assert_eq!(alias.node, "mydb");
     }
 
     #[test]

@@ -44,6 +44,7 @@ fn <name>(<param>, <param>) {
 
 ```
 effect <EffectName> -> <exported_shell> {
+    need <EffectName>
     need <EffectName> as <alias>
     need <EffectName> as <alias> { KEY = "value" }
     shell <name> { <body> }
@@ -53,6 +54,8 @@ effect <EffectName> -> <exported_shell> {
 
 - `-> <name>` declares the exported shell
 - `need` declares dependencies (one per line)
+- `need Effect` runs the dependency for side effects only — its shell is not accessible
+- `need Effect as alias` runs the dependency and makes its shell available as `shell alias`
 - `cleanup` block: only `>`, `=>`, `let`, variable reassignment allowed (no match operators)
 
 ## Tests
@@ -62,6 +65,7 @@ test "<name>" {
     """
     <doc string>
     """
+    need <EffectName>
     need <EffectName> as <alias>
     need <EffectName> as <alias> { KEY = "value" }
     let <name>

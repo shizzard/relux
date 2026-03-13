@@ -31,21 +31,29 @@ test "effect shell retains state from setup" {
     Verify state established during effect setup (environment
     variables, working directory, etc.) persists into the test.
     """
-    need PrepareEnv
+    need PrepareEnv as env
     shell env {
         > echo $$SETUP_VAR
         <? ^initialized$
     }
 }
 
-test "effect without alias exports by declared shell name" {
-    """
-    Verify that when no alias is given, the effect's exported shell
-    is accessible using the shell name from the effect header.
-    """
-    need StartService
+effect SideEffectOnly -> svc {
     shell svc {
-        > echo "using declared name"
-        <? ^using declared name$
+        > touch ${__RELUX_RUN_ARTIFACTS}/side-effect-marker
+        match_ok()
+    }
+}
+
+test "bare need runs effect but does not expose shell" {
+    """
+    Verify that need without as runs the effect for side effects
+    but the exported shell is not accessible — shell s creates
+    a fresh local shell without the effect's state.
+    """
+    need SideEffectOnly
+    shell s {
+        > test -f ${__RELUX_RUN_ARTIFACTS}/side-effect-marker && echo "effect ran"
+        <? ^effect ran$
     }
 }

@@ -10,7 +10,7 @@ test "depends on conditionally skipped effect" {
     """
     Depend on an effect with a conditional skip marker.
     """
-    need Guarded
+    need Guarded as s
     shell s {
         > echo "test body ran"
         <? ^test body ran$

@@ -10,7 +10,7 @@ test "depends on skipped effect" {
     """
     Depend on a skipped effect.
     """
-    need Skipped
+    need Skipped as s
     shell s {
         > echo "should not run"
         <? ^should not run$

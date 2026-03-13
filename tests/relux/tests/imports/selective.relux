@@ -15,7 +15,7 @@ test "selective import of effect" {
     """
     Verify a selectively imported effect can be used with need.
     """
-    need StartService
+    need StartService as svc
     shell svc {
         > echo $$SVC_STATUS
         <? ^running$

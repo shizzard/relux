@@ -19,7 +19,7 @@ effect StepA -> a {
 }
 
 effect StepB -> a {
-    need StepA
+    need StepA as a
     shell a {
         > echo "b setup"
         <? ^b setup$
@@ -34,7 +34,7 @@ test "cleanup block runs after test" {
     Verify the cleanup block executes after the test body completes,
     removing artifacts created during setup.
     """
-    need WithCleanup
+    need WithCleanup as svc
     shell svc {
         > test -f ${__RELUX_RUN_ARTIFACTS}/cleanup-test-marker && echo "exists"
         <? ^exists$
@@ -46,7 +46,7 @@ test "cleanup runs in reverse dependency order" {
     Verify cleanup blocks run in reverse topological order: the
     dependent (StepB) cleans up before the dependency (StepA).
     """
-    need StepB
+    need StepB as a
     shell a {
         > echo "test done"
         <? ^test done$

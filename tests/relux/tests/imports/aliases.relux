@@ -27,7 +27,7 @@ test "aliased effect import" {
     Verify an effect imported with an alias can be used with need
     via the alias name.
     """
-    need Svc
+    need Svc as svc
     shell svc {
         > echo $$SVC_STATUS
         <? ^running$

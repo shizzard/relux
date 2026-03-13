@@ -559,12 +559,14 @@ impl Runtime {
                 .dag
                 .edges_directed(instance_id, daggy::petgraph::Direction::Incoming)
             {
-                let dep_id = incoming.source();
-                if let Some(dep) = effect_state.instances.get(&dep_id) {
-                    shells.insert(
-                        incoming.weight().alias.node.clone(),
-                        dep.exported_vm.clone(),
-                    );
+                if let Some(alias) = &incoming.weight().alias {
+                    let dep_id = incoming.source();
+                    if let Some(dep) = effect_state.instances.get(&dep_id) {
+                        shells.insert(
+                            alias.node.clone(),
+                            dep.exported_vm.clone(),
+                        );
+                    }
                 }
             }
 
@@ -673,10 +675,12 @@ impl Runtime {
         }
 
         for need in &plan.test.needs {
-            if let Some(state) = effect_state.instances.get(&need.node.instance) {
-                effect_state
-                    .alias_shells
-                    .insert(need.node.alias.node.clone(), state.exported_vm.clone());
+            if let Some(alias) = &need.node.alias {
+                if let Some(state) = effect_state.instances.get(&need.node.instance) {
+                    effect_state
+                        .alias_shells
+                        .insert(alias.node.clone(), state.exported_vm.clone());
+                }
             }
         }
 
@@ -907,7 +911,8 @@ fn compute_scope_prefixes(plan: &Plan) -> HashMap<InstanceId, String> {
         let instance_id = need.node.instance;
         if let Some(instance) = plan.effect_graph.dag.node_weight(instance_id) {
             let effect = &plan.effects[instance.effect];
-            let prefix = format!("{}.{}", effect.name.node, need.node.alias.node);
+            let alias_str = need.node.alias.as_ref().map(|a| a.node.as_str()).unwrap_or(&effect.name.node);
+            let prefix = format!("{}.{}", effect.name.node, alias_str);
             prefixes.insert(instance_id, prefix);
         }
     }
@@ -928,8 +933,9 @@ fn compute_scope_prefixes(plan: &Plan) -> HashMap<InstanceId, String> {
                 {
                     let target = edge.target();
                     if let Some(p) = prefixes.get(&target) {
-                        parent_prefix =
-                            Some(format!("{}.{}.{}", p, effect.name.node, edge.weight().alias.node));
+                        let edge_alias = edge.weight().alias.as_ref().map(|a| a.node.as_str()).unwrap_or(&effect.name.node);
+                    parent_prefix =
+                            Some(format!("{}.{}.{}", p, effect.name.node, edge_alias));
                         break;
                     }
                 }

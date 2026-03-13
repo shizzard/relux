@@ -127,9 +127,11 @@ pub struct EffectInstance {
 
 /// Edge in the effect DAG. Carries the alias that the
 /// dependent uses to refer to the dependency's exported shell.
+/// When `alias` is `None`, the effect runs for side effects only
+/// and its shell is not exposed to the dependent.
 #[derive(Debug, Clone)]
 pub struct EffectEdge {
-    pub alias: Spanned<String>,
+    pub alias: Option<Spanned<String>>,
     /// Span of the effect name in the `need` statement (for cycle diagnostics).
     pub need_effect_span: Span,
 }
@@ -227,7 +229,9 @@ pub struct TestNeed {
     /// Node in the effect DAG.
     pub instance: InstanceId,
     /// Local alias for the instance's exported shell.
-    pub alias: Spanned<String>,
+    /// `None` when bare `need Effect` is used — the effect runs
+    /// but its shell is not exposed to the test.
+    pub alias: Option<Spanned<String>>,
 }
 
 // ─── Overlay ────────────────────────────────────────────────
