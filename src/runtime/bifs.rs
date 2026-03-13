@@ -68,6 +68,7 @@ pub fn lookup_impure(name: &str, arity: usize) -> Option<Box<dyn Bif>> {
         ("match_exit_code", 1) => Some(Box::new(MatchExitCode)),
         ("match_ok", 0) => Some(Box::new(MatchOk)),
         ("match_not_ok", 0) => Some(Box::new(MatchNotOk)),
+        ("match_not_ok", 1) => Some(Box::new(MatchNotOkWithCode)),
         ("ctrl_c", 0) => Some(Box::new(CtrlChar { name: "ctrl_c", byte: 0x03 })),
         ("ctrl_d", 0) => Some(Box::new(CtrlChar { name: "ctrl_d", byte: 0x04 })),
         ("ctrl_z", 0) => Some(Box::new(CtrlChar { name: "ctrl_z", byte: 0x1A })),
@@ -401,6 +402,25 @@ impl Bif for MatchNotOk {
     }
 }
 
+pub struct MatchNotOkWithCode;
+
+#[async_trait]
+impl Bif for MatchNotOkWithCode {
+    fn name(&self) -> &str { "match_not_ok" }
+    fn arity(&self) -> usize { 1 }
+
+    async fn call(&self, vm: &mut dyn VmContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
+        let prompt = vm.shell_prompt().to_string();
+        vm.match_literal(&prompt, span).await?;
+        vm.send_line(
+            "__RE=$(echo ::$?::) && test \"${__RE}\" != '::0::' && echo ${__RE}",
+            span,
+        ).await?;
+        vm.match_literal(&format!("::{}::", args[0]), span).await?;
+        vm.match_literal(&prompt, span).await
+    }
+}
+
 pub struct CtrlChar {
     name: &'static str,
     byte: u8,
@@ -626,6 +646,13 @@ mod tests {
     async fn test_match_not_ok() {
         let mut vm = DummyVm;
         let r = MatchNotOk.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        assert_eq!(r, "test> ");
+    }
+
+    #[tokio::test]
+    async fn test_match_not_ok_with_code() {
+        let mut vm = DummyVm;
+        let r = MatchNotOkWithCode.call(&mut vm, vec!["2".into()], &dummy_span()).await.unwrap();
         assert_eq!(r, "test> ");
     }
 
