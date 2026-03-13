@@ -80,15 +80,6 @@ fn format_failure_detail(failure: &Failure, source_map: &SourceMap) -> String {
             let loc = source_location(span, source_map);
             format!("shell: {shell}\npattern: {pattern}\nmatched: {matched_line}\n{loc}")
         }
-        Failure::NegativeMatchFailed {
-            pattern,
-            matched_text,
-            span,
-            shell,
-        } => {
-            let loc = source_location(span, source_map);
-            format!("shell: {shell}\npattern: {pattern}\nmatched: {matched_text}\n{loc}")
-        }
         Failure::ShellExited {
             shell,
             exit_code,

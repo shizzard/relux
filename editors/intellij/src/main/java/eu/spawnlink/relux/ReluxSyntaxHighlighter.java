@@ -114,8 +114,6 @@ public class ReluxSyntaxHighlighter extends SyntaxHighlighterBase {
             tokenType.equals(ReluxTokenTypes.OP_SEND_RAW) ||
             tokenType.equals(ReluxTokenTypes.OP_MATCH_REGEX) ||
             tokenType.equals(ReluxTokenTypes.OP_MATCH_LITERAL) ||
-            tokenType.equals(ReluxTokenTypes.OP_NEG_MATCH_REGEX) ||
-            tokenType.equals(ReluxTokenTypes.OP_NEG_MATCH_LITERAL) ||
             tokenType.equals(ReluxTokenTypes.OP_FAIL_REGEX) ||
             tokenType.equals(ReluxTokenTypes.OP_FAIL_LITERAL) ||
             tokenType.equals(ReluxTokenTypes.OP_ARROW) ||

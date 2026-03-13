@@ -159,26 +159,6 @@ fn lex_timed_match_literal<'s>(
     Some((kind, dur, payload))
 }
 
-fn lex_timed_neg_match_regex<'s>(
-    lex: &mut logos::Lexer<'s, Token<'s>>,
-) -> Option<(TimeoutKind, &'s str, Vec<PayloadFragment<'s>>)> {
-    let matched = lex.slice();
-    let kind = timeout_kind(matched.as_bytes()[1]);
-    let dur = &matched[2..matched.len() - 2];
-    let payload = lex_payload(lex)?;
-    Some((kind, dur, payload))
-}
-
-fn lex_timed_neg_match_literal<'s>(
-    lex: &mut logos::Lexer<'s, Token<'s>>,
-) -> Option<(TimeoutKind, &'s str, Vec<PayloadFragment<'s>>)> {
-    let matched = lex.slice();
-    let kind = timeout_kind(matched.as_bytes()[1]);
-    let dur = &matched[2..matched.len() - 2];
-    let payload = lex_payload(lex)?;
-    Some((kind, dur, payload))
-}
-
 fn lex_docstring<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option<Vec<&'s str>> {
     let mut sub = lex.clone().morph::<DocStringMode<'s>>();
     let mut parts = Vec::new();
@@ -991,30 +971,6 @@ mod tests {
     }
 
     #[test]
-    fn test_neg_match_regex() {
-        let input = "<!? error pattern\n";
-        let toks = tokens(input);
-        assert_eq!(
-            toks,
-            vec![Token::NegMatchRegex(vec![PayloadFragment::Text(" error pattern")])]
-        );
-        let sp = spans(input);
-        assert_eq!(sp[0], 0..input.len());
-    }
-
-    #[test]
-    fn test_neg_match_literal() {
-        let input = "<!= some literal\n";
-        let toks = tokens(input);
-        assert_eq!(
-            toks,
-            vec![Token::NegMatchLiteral(vec![PayloadFragment::Text(" some literal")])]
-        );
-        let sp = spans(input);
-        assert_eq!(sp[0], 0..input.len());
-    }
-
-    #[test]
     fn test_timed_match_regex() {
         let input = "<~2s? regex pattern\n";
         let toks = tokens(input);
@@ -1033,30 +989,6 @@ mod tests {
         assert_eq!(
             toks,
             vec![Token::TimedMatchLiteral((TimeoutKind::Tolerance, "500ms", vec![PayloadFragment::Text(" literal text")]))]
-        );
-        let sp = spans(input);
-        assert_eq!(sp[0], 0..input.len());
-    }
-
-    #[test]
-    fn test_timed_neg_match_regex() {
-        let input = "<~1m30s!? error regex\n";
-        let toks = tokens(input);
-        assert_eq!(
-            toks,
-            vec![Token::TimedNegMatchRegex((TimeoutKind::Tolerance, "1m30s", vec![PayloadFragment::Text(" error regex")]))]
-        );
-        let sp = spans(input);
-        assert_eq!(sp[0], 0..input.len());
-    }
-
-    #[test]
-    fn test_timed_neg_match_literal() {
-        let input = "<~30s!= error literal\n";
-        let toks = tokens(input);
-        assert_eq!(
-            toks,
-            vec![Token::TimedNegMatchLiteral((TimeoutKind::Tolerance, "30s", vec![PayloadFragment::Text(" error literal")]))]
         );
         let sp = spans(input);
         assert_eq!(sp[0], 0..input.len());
@@ -1092,26 +1024,6 @@ mod tests {
         assert_eq!(
             toks,
             vec![Token::TimedMatchLiteral((TimeoutKind::Assertion, "500ms", vec![PayloadFragment::Text(" literal text")]))]
-        );
-    }
-
-    #[test]
-    fn test_assertion_timed_neg_match_regex() {
-        let input = "<@3s!? error regex\n";
-        let toks = tokens(input);
-        assert_eq!(
-            toks,
-            vec![Token::TimedNegMatchRegex((TimeoutKind::Assertion, "3s", vec![PayloadFragment::Text(" error regex")]))]
-        );
-    }
-
-    #[test]
-    fn test_assertion_timed_neg_match_literal() {
-        let input = "<@2s!= bad stuff\n";
-        let toks = tokens(input);
-        assert_eq!(
-            toks,
-            vec![Token::TimedNegMatchLiteral((TimeoutKind::Assertion, "2s", vec![PayloadFragment::Text(" bad stuff")]))]
         );
     }
 

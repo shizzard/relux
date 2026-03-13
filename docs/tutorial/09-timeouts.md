@@ -275,4 +275,4 @@ Run the test, then try lowering the shell timeout below the sleep duration to se
 
 ---
 
-Next: [Negative Matching](10-negative-matching.md) — assert that output does *not* appear, with `<!?` and `<!=`
+Next: [Fail Patterns](10-fail-patterns.md) — continuous monitoring for errors with `!?` and `!=`

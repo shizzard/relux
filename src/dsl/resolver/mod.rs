@@ -860,18 +860,6 @@ fn lower_expr(
                 timeout_override: None,
             })
         }
-        parser::AstExpr::NegMatchRegex(s) => {
-            ir::Expr::NegMatchRegex(ir::MatchExpr {
-                pattern: lower_string_expr(file_id, s, expr_span, 2),
-                timeout_override: None,
-            })
-        }
-        parser::AstExpr::NegMatchLiteral(s) => {
-            ir::Expr::NegMatchLiteral(ir::MatchExpr {
-                pattern: lower_string_expr(file_id, s, expr_span, 2),
-                timeout_override: None,
-            })
-        }
         parser::AstExpr::TimedMatchRegex(kind, dur, s) => {
             ir::Expr::MatchRegex(ir::MatchExpr {
                 pattern: lower_string_expr(file_id, s, expr_span, 2),
@@ -880,18 +868,6 @@ fn lower_expr(
         }
         parser::AstExpr::TimedMatchLiteral(kind, dur, s) => {
             ir::Expr::MatchLiteral(ir::MatchExpr {
-                pattern: lower_string_expr(file_id, s, expr_span, 2),
-                timeout_override: Some(parse_timeout(*kind, dur, multiplier, file_id, expr_span, diagnostics)),
-            })
-        }
-        parser::AstExpr::TimedNegMatchRegex(kind, dur, s) => {
-            ir::Expr::NegMatchRegex(ir::MatchExpr {
-                pattern: lower_string_expr(file_id, s, expr_span, 2),
-                timeout_override: Some(parse_timeout(*kind, dur, multiplier, file_id, expr_span, diagnostics)),
-            })
-        }
-        parser::AstExpr::TimedNegMatchLiteral(kind, dur, s) => {
-            ir::Expr::NegMatchLiteral(ir::MatchExpr {
                 pattern: lower_string_expr(file_id, s, expr_span, 2),
                 timeout_override: Some(parse_timeout(*kind, dur, multiplier, file_id, expr_span, diagnostics)),
             })
@@ -2301,30 +2277,6 @@ mod tests {
     }
 
     #[test]
-    fn test_neg_match_lowering() {
-        let mut loader = InMemoryLoader::new();
-        loader.add(
-            "main",
-            "test \"t\" {\n  shell s {\n    <!? error\n    <!= bad stuff\n  }\n}\n",
-        );
-        let (plans, _, diags) = loader.resolve_one("main");
-        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
-        let stmts = &plans[0].test.shells[0].node.stmts;
-        match &stmts[0].node {
-            ir::ShellStmt::Expr(ir::Expr::NegMatchRegex(m)) => {
-                assert!(m.timeout_override.is_none());
-            }
-            other => panic!("expected NegMatchRegex, got {other:?}"),
-        }
-        match &stmts[1].node {
-            ir::ShellStmt::Expr(ir::Expr::NegMatchLiteral(m)) => {
-                assert!(m.timeout_override.is_none());
-            }
-            other => panic!("expected NegMatchLiteral, got {other:?}"),
-        }
-    }
-
-    #[test]
     fn test_timed_match_lowering() {
         let mut loader = InMemoryLoader::new();
         loader.add(
@@ -2345,30 +2297,6 @@ mod tests {
                 assert_eq!(m.timeout_override, Some(ir::Timeout::Tolerance { duration: Duration::from_millis(500), multiplier: 1.0 }));
             }
             other => panic!("expected MatchLiteral with timeout, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn test_timed_neg_match_lowering() {
-        let mut loader = InMemoryLoader::new();
-        loader.add(
-            "main",
-            "test \"t\" {\n  shell s {\n    <~3s!? error\n    <~1s!= bad\n  }\n}\n",
-        );
-        let (plans, _, diags) = loader.resolve_one("main");
-        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
-        let stmts = &plans[0].test.shells[0].node.stmts;
-        match &stmts[0].node {
-            ir::ShellStmt::Expr(ir::Expr::NegMatchRegex(m)) => {
-                assert_eq!(m.timeout_override, Some(ir::Timeout::Tolerance { duration: Duration::from_secs(3), multiplier: 1.0 }));
-            }
-            other => panic!("expected NegMatchRegex with timeout, got {other:?}"),
-        }
-        match &stmts[1].node {
-            ir::ShellStmt::Expr(ir::Expr::NegMatchLiteral(m)) => {
-                assert_eq!(m.timeout_override, Some(ir::Timeout::Tolerance { duration: Duration::from_secs(1), multiplier: 1.0 }));
-            }
-            other => panic!("expected NegMatchLiteral with timeout, got {other:?}"),
         }
     }
 
@@ -2437,30 +2365,6 @@ mod tests {
                 assert_eq!(m.timeout_override, Some(ir::Timeout::Assertion(Duration::from_millis(500))));
             }
             other => panic!("expected MatchLiteral with assertion timeout, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn test_assertion_timed_neg_match_lowering() {
-        let mut loader = InMemoryLoader::new();
-        loader.add(
-            "main",
-            "test \"t\" {\n  shell s {\n    <@3s!? error\n    <@1s!= bad\n  }\n}\n",
-        );
-        let (plans, _, diags) = loader.resolve_one("main");
-        assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
-        let stmts = &plans[0].test.shells[0].node.stmts;
-        match &stmts[0].node {
-            ir::ShellStmt::Expr(ir::Expr::NegMatchRegex(m)) => {
-                assert_eq!(m.timeout_override, Some(ir::Timeout::Assertion(Duration::from_secs(3))));
-            }
-            other => panic!("expected NegMatchRegex with assertion timeout, got {other:?}"),
-        }
-        match &stmts[1].node {
-            ir::ShellStmt::Expr(ir::Expr::NegMatchLiteral(m)) => {
-                assert_eq!(m.timeout_override, Some(ir::Timeout::Assertion(Duration::from_secs(1))));
-            }
-            other => panic!("expected NegMatchLiteral with assertion timeout, got {other:?}"),
         }
     }
 

@@ -1,14 +1,13 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use bytes::BytesMut;
 use regex::{Regex, RegexBuilder};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Child;
-use tokio::sync::{Mutex, Notify, watch};
+use tokio::sync::{Mutex, Notify};
 
 use crate::dsl::resolver::ir::{self, Expr, ShellStmt, Span, Spanned};
 use crate::runtime::event_log::{BufferSnapshot, EventCollector, LogEventKind};
@@ -18,6 +17,15 @@ use crate::runtime::vars::{FailPattern, ScopeStack, interpolate};
 use crate::runtime::bifs::{PureContext, VmContext};
 use crate::runtime::progress::{ProgressEvent, ProgressTx};
 use crate::runtime::{Callable, CodeServer};
+
+/// A fail pattern matched in the output buffer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FailPatternHit {
+    /// The pattern string that was being watched for (regex source or literal).
+    pattern: String,
+    /// The actual text in the buffer that matched.
+    matched_text: String,
+}
 
 const BUFFER_PREFIX_LEN: usize = 40;
 const BUFFER_SUFFIX_LEN: usize = 40;
@@ -186,14 +194,27 @@ impl OutputBuffer {
         Some((m, snapshot))
     }
 
-    /// Find literal, extract truncated context, NO drain. One lock.
-    pub async fn peek_literal(
+    /// Check fail pattern against buffer, then try to consume literal — under one lock.
+    /// Returns Err if fail pattern found, Ok(Some) if literal consumed, Ok(None) if not found.
+    pub async fn fail_check_consume_literal(
         &self,
         needle: &str,
-    ) -> Option<(Match<LiteralMatch>, BufferSnapshot)> {
-        let inner = self.inner.lock().await;
+        fail_pattern: Option<&FailPattern>,
+    ) -> Result<Option<(Match<LiteralMatch>, BufferSnapshot)>, FailPatternHit> {
+        let mut inner = self.inner.lock().await;
         let text = String::from_utf8_lossy(&inner.data);
-        let pos = text.find(needle)?;
+
+        // Check fail pattern first
+        if let Some(fp) = fail_pattern {
+            if let Some(hit) = check_fail_in_buffer(&text, fp) {
+                return Err(hit);
+            }
+        }
+
+        // Try to consume the literal
+        let Some(pos) = text.find(needle) else {
+            return Ok(None);
+        };
         let end_pos = pos + needle.len();
 
         let before_raw = &text[..pos];
@@ -204,25 +225,45 @@ impl OutputBuffer {
             after: truncate_after(after_raw, BUFFER_SUFFIX_LEN),
         };
 
+        let consumed = end_pos;
         let m = Match {
             start: inner.base + pos,
             end: inner.base + end_pos,
-            consumed: end_pos,
+            consumed,
             value: LiteralMatch(needle.to_string()),
         };
 
-        Some((m, snapshot))
+        drop(text);
+        let _ = inner.data.split_to(end_pos);
+        inner.base += end_pos;
+
+        Ok(Some((m, snapshot)))
     }
 
-    /// Find regex, extract truncated context, NO drain. One lock.
-    pub async fn peek_regex(
+    /// Check fail pattern against buffer, then try to consume regex — under one lock.
+    /// Returns Err if fail pattern found, Ok(Some) if regex consumed, Ok(None) if not found.
+    pub async fn fail_check_consume_regex(
         &self,
         re: &Regex,
-    ) -> Option<(Match<RegexMatch>, BufferSnapshot)> {
-        let inner = self.inner.lock().await;
+        fail_pattern: Option<&FailPattern>,
+    ) -> Result<Option<(Match<RegexMatch>, BufferSnapshot)>, FailPatternHit> {
+        let mut inner = self.inner.lock().await;
         let text = String::from_utf8_lossy(&inner.data);
-        let cap = re.captures(&text)?;
-        let whole = cap.get(0)?;
+
+        // Check fail pattern first
+        if let Some(fp) = fail_pattern {
+            if let Some(hit) = check_fail_in_buffer(&text, fp) {
+                return Err(hit);
+            }
+        }
+
+        // Try to consume the regex
+        let Some(cap) = re.captures(&text) else {
+            return Ok(None);
+        };
+        let Some(whole) = cap.get(0) else {
+            return Ok(None);
+        };
         let pos = whole.start();
         let end_pos = whole.end();
         let matched_str = whole.as_str().to_string();
@@ -231,7 +272,7 @@ impl OutputBuffer {
         let after_raw = &text[end_pos..];
         let snapshot = BufferSnapshot::Match {
             before: truncate_before(before_raw, BUFFER_PREFIX_LEN),
-            matched: matched_str,
+            matched: matched_str.clone(),
             after: truncate_after(after_raw, BUFFER_SUFFIX_LEN),
         };
 
@@ -242,14 +283,30 @@ impl OutputBuffer {
             }
         }
 
+        let consumed = end_pos;
         let m = Match {
             start: inner.base + pos,
             end: inner.base + end_pos,
-            consumed: end_pos,
+            consumed,
             value: RegexMatch(captures),
         };
 
-        Some((m, snapshot))
+        drop(text);
+        let _ = inner.data.split_to(end_pos);
+        inner.base += end_pos;
+
+        Ok(Some((m, snapshot)))
+    }
+
+    /// Check fail pattern against current buffer (peek only, no drain).
+    pub async fn check_fail_pattern(
+        &self,
+        fail_pattern: Option<&FailPattern>,
+    ) -> Option<FailPatternHit> {
+        let fp = fail_pattern?;
+        let inner = self.inner.lock().await;
+        let text = String::from_utf8_lossy(&inner.data);
+        check_fail_in_buffer(&text, fp)
     }
 
     /// Drain all buffered data, advancing base.
@@ -276,14 +333,31 @@ impl OutputBuffer {
     }
 }
 
+/// Check if a fail pattern matches in the given text. Returns (pattern_str, matched_text).
+fn check_fail_in_buffer(text: &str, pattern: &FailPattern) -> Option<FailPatternHit> {
+    match pattern {
+        FailPattern::Regex(re) => {
+            let m = re.find(text)?;
+            Some(FailPatternHit {
+                pattern: re.as_str().to_string(),
+                matched_text: m.as_str().to_string(),
+            })
+        }
+        FailPattern::Literal(s) => {
+            text.find(s.as_str())?;
+            Some(FailPatternHit {
+                pattern: s.clone(),
+                matched_text: s.clone(),
+            })
+        }
+    }
+}
+
 pub struct Vm {
     writer: pty_process::OwnedWritePty,
     child: Child,
     output_buf: OutputBuffer,
     read_task: tokio::task::JoinHandle<()>,
-    fail_watcher_tx: watch::Sender<Option<FailPattern>>,
-    fail_triggered: Arc<AtomicBool>,
-    fail_detail: Arc<Mutex<Option<(String, String)>>>,
     scope: ScopeStack,
     code_server: Arc<CodeServer>,
     shell_name: String,
@@ -348,24 +422,11 @@ impl Vm {
             }
         });
 
-        let (fail_watcher_tx, fail_watcher_rx) = watch::channel(None);
-        let fail_triggered = Arc::new(AtomicBool::new(false));
-        let fail_detail = Arc::new(Mutex::new(None));
-        spawn_fail_watcher(
-            output_buf.clone(),
-            fail_watcher_rx,
-            fail_triggered.clone(),
-            fail_detail.clone(),
-        );
-
         let mut vm = Self {
             writer,
             child,
             output_buf,
             read_task,
-            fail_watcher_tx,
-            fail_triggered,
-            fail_detail,
             scope,
             code_server,
             shell_name: shell_name.clone(),
@@ -434,22 +495,23 @@ impl Vm {
                     shell: Some(self.shell_name.clone()),
                 })?;
                 let pattern = Some(FailPattern::Regex(re));
-                self.scope.set_fail_pattern(pattern.clone());
-                let _ = self.fail_watcher_tx.send(pattern);
+                self.scope.set_fail_pattern(pattern);
+                // Immediately rescan buffer for the new pattern
+                self.check_fail(stmt.span.clone()).await?;
                 Ok(String::new())
             }
             ShellStmt::FailLiteral(expr) => {
                 let pat = interpolate(expr, &self.scope).await;
                 self.emit_event(LogEventKind::FailPatternSet { pattern: pat.clone() }).await;
                 let pattern = Some(FailPattern::Literal(pat));
-                self.scope.set_fail_pattern(pattern.clone());
-                let _ = self.fail_watcher_tx.send(pattern);
+                self.scope.set_fail_pattern(pattern);
+                // Immediately rescan buffer for the new pattern
+                self.check_fail(stmt.span.clone()).await?;
                 Ok(String::new())
             }
             ShellStmt::ClearFailPattern => {
                 self.emit_event(LogEventKind::FailPatternCleared).await;
                 self.scope.set_fail_pattern(None);
-                let _ = self.fail_watcher_tx.send(None);
                 Ok(String::new())
             }
             ShellStmt::Timeout(t) => {
@@ -548,33 +610,6 @@ impl Vm {
                 self.scope.set_captures(mat.value.0);
                 Ok(full)
             }
-            Expr::NegMatchLiteral(m) => {
-                let timeout = m.timeout_override.as_ref().unwrap_or_else(|| self.scope.timeout()).resolve();
-                let pattern = interpolate(&m.pattern, &self.scope).await;
-                self.emit_event(LogEventKind::NegMatchStart { pattern: pattern.clone(), is_regex: false }).await;
-                self.emit_progress(ProgressEvent::MatchStart);
-                let match_start = Instant::now();
-                self.wait_absent_literal(&pattern, timeout, expr.span.clone()).await?;
-                self.emit_event(LogEventKind::NegMatchPass { pattern: pattern.clone(), elapsed: match_start.elapsed() }).await;
-                self.emit_progress(ProgressEvent::MatchDone);
-                Ok(String::new())
-            }
-            Expr::NegMatchRegex(m) => {
-                let timeout = m.timeout_override.as_ref().unwrap_or_else(|| self.scope.timeout()).resolve();
-                let pattern = interpolate(&m.pattern, &self.scope).await;
-                let re = RegexBuilder::new(&pattern).multi_line(true).crlf(true).build().map_err(|e| Failure::Runtime {
-                    message: format!("invalid regex: {}", regex_error_summary(&e)),
-                    span: Some(m.pattern.span.clone()),
-                    shell: Some(self.shell_name.clone()),
-                })?;
-                self.emit_event(LogEventKind::NegMatchStart { pattern: pattern.clone(), is_regex: true }).await;
-                self.emit_progress(ProgressEvent::MatchStart);
-                let match_start = Instant::now();
-                self.wait_absent_regex(&pattern, &re, timeout, expr.span.clone()).await?;
-                self.emit_event(LogEventKind::NegMatchPass { pattern: pattern.clone(), elapsed: match_start.elapsed() }).await;
-                self.emit_progress(ProgressEvent::MatchDone);
-                Ok(String::new())
-            }
             Expr::BufferReset => {
                 let snapshot = self.output_buf.snapshot_tail(BUFFER_TAIL_LEN).await;
                 self.emit_event(LogEventKind::BufferReset { buffer: snapshot }).await;
@@ -631,13 +666,11 @@ impl Vm {
                         Ok(v) => last = v,
                         Err(e) => {
                             self.scope.exit_function(save);
-                            let _ = self.fail_watcher_tx.send(self.scope.fail_pattern().cloned());
                             return Err(e);
                         }
                     }
                 }
                 self.scope.exit_function(save);
-                let _ = self.fail_watcher_tx.send(self.scope.fail_pattern().cloned());
                 self.emit_event(LogEventKind::FnExit).await;
                 self.emit_progress(ProgressEvent::FnExit);
                 Ok(last)
@@ -691,9 +724,15 @@ impl Vm {
     ) -> Result<(Match<LiteralMatch>, BufferSnapshot), Failure> {
         let fut = async {
             loop {
-                self.check_fail(span.clone()).await?;
-                if let Some(result) = self.output_buf.consume_literal(pattern).await {
-                    return Ok::<(Match<LiteralMatch>, BufferSnapshot), Failure>(result);
+                let fail_pat = self.scope.fail_pattern();
+                match self.output_buf.fail_check_consume_literal(pattern, fail_pat).await {
+                    Err(hit) => {
+                        return Err(self.make_fail_pattern_error(hit, span.clone()).await);
+                    }
+                    Ok(Some(result)) => {
+                        return Ok::<(Match<LiteralMatch>, BufferSnapshot), Failure>(result);
+                    }
+                    Ok(None) => {}
                 }
                 self.output_buf.notify.notified().await;
             }
@@ -723,9 +762,15 @@ impl Vm {
     ) -> Result<(Match<RegexMatch>, BufferSnapshot), Failure> {
         let fut = async {
             loop {
-                self.check_fail(span.clone()).await?;
-                if let Some(result) = self.output_buf.consume_regex(re).await {
-                    return Ok::<(Match<RegexMatch>, BufferSnapshot), Failure>(result);
+                let fail_pat = self.scope.fail_pattern();
+                match self.output_buf.fail_check_consume_regex(re, fail_pat).await {
+                    Err(hit) => {
+                        return Err(self.make_fail_pattern_error(hit, span.clone()).await);
+                    }
+                    Ok(Some(result)) => {
+                        return Ok::<(Match<RegexMatch>, BufferSnapshot), Failure>(result);
+                    }
+                    Ok(None) => {}
                 }
                 self.output_buf.notify.notified().await;
             }
@@ -746,90 +791,28 @@ impl Vm {
         }
     }
 
-    async fn wait_absent_literal(
-        &self,
-        pattern: &str,
-        timeout: Duration,
-        span: Span,
-    ) -> Result<(), Failure> {
-        let fut = async {
-            loop {
-                self.check_fail(span.clone()).await?;
-                if let Some((_m, snapshot)) = self.output_buf.peek_literal(pattern).await {
-                    self.emit_event(LogEventKind::NegMatchFail {
-                        pattern: pattern.to_string(),
-                        matched_text: pattern.to_string(),
-                        buffer: snapshot,
-                    }).await;
-                    return Err(Failure::NegativeMatchFailed {
-                        pattern: pattern.to_string(),
-                        matched_text: pattern.to_string(),
-                        span,
-                        shell: self.shell_name.clone(),
-                    });
-                }
-                self.output_buf.notify.notified().await;
-            }
-        };
-
-        match tokio::time::timeout(timeout, fut).await {
-            Ok(result) => result,
-            Err(_) => Ok(()),
-        }
-    }
-
-    async fn wait_absent_regex(
-        &self,
-        pattern: &str,
-        re: &Regex,
-        timeout: Duration,
-        span: Span,
-    ) -> Result<(), Failure> {
-        let fut = async {
-            loop {
-                self.check_fail(span.clone()).await?;
-                if let Some((m, snapshot)) = self.output_buf.peek_regex(re).await {
-                    let matched_text = m.value.0.get("0").cloned().unwrap_or_default();
-                    self.emit_event(LogEventKind::NegMatchFail {
-                        pattern: pattern.to_string(),
-                        matched_text: matched_text.clone(),
-                        buffer: snapshot,
-                    }).await;
-                    return Err(Failure::NegativeMatchFailed {
-                        pattern: pattern.to_string(),
-                        matched_text,
-                        span,
-                        shell: self.shell_name.clone(),
-                    });
-                }
-                self.output_buf.notify.notified().await;
-            }
-        };
-
-        match tokio::time::timeout(timeout, fut).await {
-            Ok(result) => result,
-            Err(_) => Ok(()),
-        }
-    }
-
     async fn check_fail(&self, span: Span) -> Result<(), Failure> {
-        if self.fail_triggered.load(Ordering::Relaxed) {
-            self.emit_progress(ProgressEvent::FailPattern);
-            let detail = self.fail_detail.lock().await.clone().unwrap_or_default();
-            let buffer = self.output_buf.snapshot_tail(BUFFER_TAIL_LEN).await;
-            self.emit_event(LogEventKind::FailPatternTriggered {
-                pattern: detail.0.clone(),
-                matched_line: detail.1.clone(),
-                buffer,
-            }).await;
-            return Err(Failure::FailPatternMatched {
-                pattern: detail.0,
-                matched_line: detail.1,
-                span,
-                shell: self.shell_name.clone(),
-            });
+        let fail_pat = self.scope.fail_pattern();
+        if let Some(hit) = self.output_buf.check_fail_pattern(fail_pat).await {
+            return Err(self.make_fail_pattern_error(hit, span).await);
         }
         Ok(())
+    }
+
+    async fn make_fail_pattern_error(&self, hit: FailPatternHit, span: Span) -> Failure {
+        self.emit_progress(ProgressEvent::FailPattern);
+        let buffer = self.output_buf.snapshot_tail(BUFFER_TAIL_LEN).await;
+        self.emit_event(LogEventKind::FailPatternTriggered {
+            pattern: hit.pattern.clone(),
+            matched_line: hit.matched_text.clone(),
+            buffer,
+        }).await;
+        Failure::FailPatternMatched {
+            pattern: hit.pattern,
+            matched_line: hit.matched_text,
+            span,
+            shell: self.shell_name.clone(),
+        }
     }
 
     async fn send_bytes(&mut self, data: &[u8], span: Span) -> Result<(), Failure> {
@@ -907,53 +890,6 @@ impl VmContext for Vm {
     fn shell_prompt(&self) -> &str {
         &self.shell_prompt
     }
-}
-
-fn spawn_fail_watcher(
-    output: OutputBuffer,
-    mut rx: watch::Receiver<Option<FailPattern>>,
-    flag: Arc<AtomicBool>,
-    detail: Arc<Mutex<Option<(String, String)>>>,
-) {
-    tokio::spawn(async move {
-        loop {
-            let current = rx.borrow().clone();
-            if let Some(pattern) = current {
-                loop {
-                    let matched = match &pattern {
-                        FailPattern::Regex(re) => {
-                            output.peek_regex(re).await.map(|(m, _snapshot)| {
-                                let matched_text = m.value.0.get("0").cloned().unwrap_or_default();
-                                (re.as_str().to_string(), matched_text)
-                            })
-                        }
-                        FailPattern::Literal(s) => {
-                            output.peek_literal(s).await.map(|(_m, _snapshot)| {
-                                (s.clone(), s.clone())
-                            })
-                        }
-                    };
-                    if let Some((p, line)) = matched {
-                        flag.store(true, Ordering::Relaxed);
-                        *detail.lock().await = Some((p, line));
-                        break;
-                    }
-
-                    tokio::select! {
-                        _ = output.notify.notified() => {},
-                        changed = rx.changed() => {
-                            if changed.is_err() {
-                                return;
-                            }
-                            break;
-                        }
-                    }
-                }
-            } else if rx.changed().await.is_err() {
-                return;
-            }
-        }
-    });
 }
 
 #[cfg(test)]
@@ -1174,41 +1110,6 @@ mod tests {
         assert_eq!(m2.end, 15);
     }
 
-    // ── OutputBuffer::peek_literal ──────────────────────────────────
-
-    #[tokio::test]
-    async fn peek_literal_does_not_drain() {
-        let buf = OutputBuffer::new();
-        buf.append(b"hello world").await;
-        let (m, _) = buf.peek_literal("hello").await.unwrap();
-        assert_eq!(m.start, 0);
-        assert_eq!(m.end, 5);
-        // Buffer unchanged
-        assert_eq!(buf.remaining().await, b"hello world");
-    }
-
-    #[tokio::test]
-    async fn peek_literal_not_found() {
-        let buf = OutputBuffer::new();
-        buf.append(b"hello").await;
-        assert!(buf.peek_literal("xyz").await.is_none());
-    }
-
-    // ── OutputBuffer::peek_regex ────────────────────────────────────
-
-    #[tokio::test]
-    async fn peek_regex_does_not_drain() {
-        let buf = OutputBuffer::new();
-        buf.append(b"abc 123 def").await;
-        let re = Regex::new(r"\d+").unwrap();
-        let (m, _) = buf.peek_regex(&re).await.unwrap();
-        assert_eq!(m.start, 4);
-        assert_eq!(m.end, 7);
-        assert_eq!(m.value.0.get("0").unwrap(), "123");
-        // Buffer unchanged
-        assert_eq!(buf.remaining().await, b"abc 123 def");
-    }
-
     // ── OutputBuffer::clear ─────────────────────────────────────────
 
     #[tokio::test]
@@ -1258,5 +1159,139 @@ mod tests {
             }
             _ => panic!("expected Tail"),
         }
+    }
+
+    // ── check_fail_in_buffer ────────────────────────────────────────
+
+    #[test]
+    fn check_fail_in_buffer_regex_match() {
+        let fp = FailPattern::Regex(Regex::new(r"ERROR").unwrap());
+        let hit = check_fail_in_buffer("some ERROR here", &fp).unwrap();
+        assert_eq!(hit.pattern, "ERROR");
+        assert_eq!(hit.matched_text, "ERROR");
+    }
+
+    #[test]
+    fn check_fail_in_buffer_regex_no_match() {
+        let fp = FailPattern::Regex(Regex::new(r"ERROR").unwrap());
+        assert!(check_fail_in_buffer("all good", &fp).is_none());
+    }
+
+    #[test]
+    fn check_fail_in_buffer_literal_match() {
+        let fp = FailPattern::Literal("FATAL".to_string());
+        let hit = check_fail_in_buffer("got FATAL crash", &fp).unwrap();
+        assert_eq!(hit.pattern, "FATAL");
+        assert_eq!(hit.matched_text, "FATAL");
+    }
+
+    #[test]
+    fn check_fail_in_buffer_literal_no_match() {
+        let fp = FailPattern::Literal("FATAL".to_string());
+        assert!(check_fail_in_buffer("all good", &fp).is_none());
+    }
+
+    // ── OutputBuffer::fail_check_consume_literal ────────────────────
+
+    #[tokio::test]
+    async fn fail_check_consume_literal_no_fail_pattern() {
+        let buf = OutputBuffer::new();
+        buf.append(b"hello world").await;
+        let result = buf.fail_check_consume_literal("hello", None).await;
+        let (m, _) = result.unwrap().unwrap();
+        assert_eq!(m.value.0, "hello");
+    }
+
+    #[tokio::test]
+    async fn fail_check_consume_literal_fail_pattern_not_matched() {
+        let buf = OutputBuffer::new();
+        buf.append(b"hello world").await;
+        let fp = FailPattern::Regex(Regex::new(r"ERROR").unwrap());
+        let result = buf.fail_check_consume_literal("hello", Some(&fp)).await;
+        let (m, _) = result.unwrap().unwrap();
+        assert_eq!(m.value.0, "hello");
+    }
+
+    #[tokio::test]
+    async fn fail_check_consume_literal_fail_pattern_triggers() {
+        let buf = OutputBuffer::new();
+        buf.append(b"ERROR: something broke").await;
+        let fp = FailPattern::Regex(Regex::new(r"ERROR").unwrap());
+        let result = buf.fail_check_consume_literal("broke", Some(&fp)).await;
+        let hit = result.unwrap_err();
+        assert_eq!(hit.pattern, "ERROR");
+        assert_eq!(hit.matched_text, "ERROR");
+        // Buffer unchanged — fail pattern short-circuits before consume
+        assert_eq!(buf.remaining().await, b"ERROR: something broke");
+    }
+
+    #[tokio::test]
+    async fn fail_check_consume_literal_target_not_found() {
+        let buf = OutputBuffer::new();
+        buf.append(b"hello world").await;
+        let result = buf.fail_check_consume_literal("xyz", None).await;
+        assert!(result.unwrap().is_none());
+    }
+
+    // ── OutputBuffer::fail_check_consume_regex ──────────────────────
+
+    #[tokio::test]
+    async fn fail_check_consume_regex_no_fail_pattern() {
+        let buf = OutputBuffer::new();
+        buf.append(b"abc 123 def").await;
+        let re = Regex::new(r"\d+").unwrap();
+        let result = buf.fail_check_consume_regex(&re, None).await;
+        let (m, _) = result.unwrap().unwrap();
+        assert_eq!(m.value.0.get("0").unwrap(), "123");
+    }
+
+    #[tokio::test]
+    async fn fail_check_consume_regex_fail_pattern_triggers() {
+        let buf = OutputBuffer::new();
+        buf.append(b"FATAL: abc 123").await;
+        let fp = FailPattern::Literal("FATAL".to_string());
+        let re = Regex::new(r"\d+").unwrap();
+        let result = buf.fail_check_consume_regex(&re, Some(&fp)).await;
+        let hit = result.unwrap_err();
+        assert_eq!(hit.pattern, "FATAL");
+        assert_eq!(hit.matched_text, "FATAL");
+        // Buffer unchanged
+        assert_eq!(buf.remaining().await, b"FATAL: abc 123");
+    }
+
+    #[tokio::test]
+    async fn fail_check_consume_regex_target_not_found() {
+        let buf = OutputBuffer::new();
+        buf.append(b"hello world").await;
+        let re = Regex::new(r"\d+").unwrap();
+        let result = buf.fail_check_consume_regex(&re, None).await;
+        assert!(result.unwrap().is_none());
+    }
+
+    // ── OutputBuffer::check_fail_pattern ─────────────────────────────
+
+    #[tokio::test]
+    async fn check_fail_pattern_none() {
+        let buf = OutputBuffer::new();
+        buf.append(b"ERROR here").await;
+        assert!(buf.check_fail_pattern(None).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn check_fail_pattern_found() {
+        let buf = OutputBuffer::new();
+        buf.append(b"got ERROR output").await;
+        let fp = FailPattern::Regex(Regex::new(r"ERROR").unwrap());
+        let hit = buf.check_fail_pattern(Some(&fp)).await.unwrap();
+        assert_eq!(hit.pattern, "ERROR");
+        assert_eq!(hit.matched_text, "ERROR");
+    }
+
+    #[tokio::test]
+    async fn check_fail_pattern_not_found() {
+        let buf = OutputBuffer::new();
+        buf.append(b"all good").await;
+        let fp = FailPattern::Regex(Regex::new(r"ERROR").unwrap());
+        assert!(buf.check_fail_pattern(Some(&fp)).await.is_none());
     }
 }

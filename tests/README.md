@@ -19,9 +19,7 @@ Core interaction primitives: sending input and matching output.
 - `send.relux` — `>` and `=>` operators, interpolation, escaping
 - `match_regex.relux` — `<?` regex matching, capture groups, cursor advancement
 - `match_literal.relux` — `<=` literal matching, substring, special chars
-- `neg_match.relux` — `<!?` and `<!=` negative match assertions
 - `timed_match.relux` — `<~dur?` and `<~dur=` inline timeout overrides
-- `timed_neg_match.relux` — `<~dur!?` and `<~dur!=` inline timeout on negative matches
 - `fail_pattern.relux` — `!?` and `!=` fail pattern operators
 - `clear_fail_pattern.relux` — bare `!?` and `!=` to clear active fail patterns
 - `buffer_reset.relux` — bare `<?` and `<=` to discard unmatched output and advance cursor
@@ -93,7 +91,6 @@ that invokes the `relux` binary and verifies its output or exit code.
 - `exit_code_fail/` — exits with code 1 when any test fails
 - `match_timeout/` — reports match timeout when a pattern is never found
 - `fail_pattern/` — reports when a fail pattern matches output
-- `negative_match_failed/` — reports when a negative match finds the unwanted pattern
 - `fail_fast/` — stops after the first test failure with `--strategy fail-fast`
 - `file_not_found/` — reports a clear error for non-existent test file paths
 - `tap_output/` — generates valid TAP14 results file with `--tap`

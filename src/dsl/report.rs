@@ -311,27 +311,6 @@ fn render_failure(failure: &Failure, source_map: &SourceMap, cache: &mut impl ar
                 .eprint(cache);
         }
 
-        Failure::NegativeMatchFailed {
-            pattern,
-            matched_text,
-            span,
-            shell,
-        } => {
-            let (path, range) = aspan(span, source_map);
-            let s = (path, range);
-            let _ = Report::build(ReportKind::Error, s.clone())
-                .with_config(cfg)
-                .with_message(format!("negative match failed in shell `{shell}`"))
-                .with_label(
-                    Label::new(s).with_message(format!(
-                        "pattern `{pattern}` was found but should be absent"
-                    )),
-                )
-                .with_note(format!("matched output: {matched_text}"))
-                .finish()
-                .eprint(cache);
-        }
-
         Failure::FailPatternMatched {
             pattern,
             matched_line,

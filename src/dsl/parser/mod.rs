@@ -218,14 +218,6 @@ where
         })
         .map_with(|e, x| Spanned::new(e, sp(x.span())))
         .labelled("match literal");
-    let neg_match_regex =
-        select! { Token::NegMatchRegex(f) => AstExpr::NegMatchRegex(payload_to_expr(f)) }
-            .map_with(|e, x| Spanned::new(e, sp(x.span())))
-            .labelled("negative match regex");
-    let neg_match_literal =
-        select! { Token::NegMatchLiteral(f) => AstExpr::NegMatchLiteral(payload_to_expr(f)) }
-            .map_with(|e, x| Spanned::new(e, sp(x.span())))
-            .labelled("negative match literal");
     let timed_match_regex = select! {
         Token::TimedMatchRegex((k, d, f)) => AstExpr::TimedMatchRegex(convert_timeout_kind(k), d.to_string(), payload_to_expr(f)),
     }
@@ -236,28 +228,13 @@ where
     }
     .map_with(|e, x| Spanned::new(e, sp(x.span())))
     .labelled("timed match literal");
-    let timed_neg_match_regex = select! {
-        Token::TimedNegMatchRegex((k, d, f)) => AstExpr::TimedNegMatchRegex(convert_timeout_kind(k), d.to_string(), payload_to_expr(f)),
-    }
-    .map_with(|e, x| Spanned::new(e, sp(x.span())))
-    .labelled("timed negative match regex");
-    let timed_neg_match_literal = select! {
-        Token::TimedNegMatchLiteral((k, d, f)) => AstExpr::TimedNegMatchLiteral(convert_timeout_kind(k), d.to_string(), payload_to_expr(f)),
-    }
-    .map_with(|e, x| Spanned::new(e, sp(x.span())))
-    .labelled("timed negative match literal");
-
     let expr = choice((
         send.clone(),
         send_raw.clone(),
         match_regex,
         match_literal,
-        neg_match_regex,
-        neg_match_literal,
         timed_match_regex,
         timed_match_literal,
-        timed_neg_match_regex,
-        timed_neg_match_literal,
         arg_expr.clone(),
     ))
     .labelled("expression");
@@ -1912,41 +1889,7 @@ mod tests {
         );
     }
 
-    // ── Negative match and timed match expressions ──
-
-    #[test]
-    fn test_neg_match_regex() {
-        let m = parse_ok("fn f() {\n  <!? error|FATAL\n}\n");
-        match &m.items[0].node {
-            Item::Fn(f) => match &f.body[0].node {
-                Stmt::Expr(AstExpr::NegMatchRegex(s)) => {
-                    assert_eq!(
-                        s.parts,
-                        vec![AstStringPart::Literal("error|FATAL".into())]
-                    );
-                }
-                other => panic!("expected NegMatchRegex, got {other:?}"),
-            },
-            other => panic!("expected Fn, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn test_neg_match_literal() {
-        let m = parse_ok("fn f() {\n  <!= error text\n}\n");
-        match &m.items[0].node {
-            Item::Fn(f) => match &f.body[0].node {
-                Stmt::Expr(AstExpr::NegMatchLiteral(s)) => {
-                    assert_eq!(
-                        s.parts,
-                        vec![AstStringPart::Literal("error text".into())]
-                    );
-                }
-                other => panic!("expected NegMatchLiteral, got {other:?}"),
-            },
-            other => panic!("expected Fn, got {other:?}"),
-        }
-    }
+    // ── Timed match expressions ──
 
     #[test]
     fn test_timed_match_regex() {
@@ -1981,44 +1924,6 @@ mod tests {
                     );
                 }
                 other => panic!("expected TimedMatchLiteral, got {other:?}"),
-            },
-            other => panic!("expected Fn, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn test_timed_neg_match_regex() {
-        let m = parse_ok("fn f() {\n  <~1m30s!? error regex\n}\n");
-        match &m.items[0].node {
-            Item::Fn(f) => match &f.body[0].node {
-                Stmt::Expr(AstExpr::TimedNegMatchRegex(k, dur, s)) => {
-                    assert_eq!(*k, TimeoutKind::Tolerance);
-                    assert_eq!(dur, "1m30s");
-                    assert_eq!(
-                        s.parts,
-                        vec![AstStringPart::Literal("error regex".into())]
-                    );
-                }
-                other => panic!("expected TimedNegMatchRegex, got {other:?}"),
-            },
-            other => panic!("expected Fn, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn test_timed_neg_match_literal() {
-        let m = parse_ok("fn f() {\n  <~30s!= bad stuff\n}\n");
-        match &m.items[0].node {
-            Item::Fn(f) => match &f.body[0].node {
-                Stmt::Expr(AstExpr::TimedNegMatchLiteral(k, dur, s)) => {
-                    assert_eq!(*k, TimeoutKind::Tolerance);
-                    assert_eq!(dur, "30s");
-                    assert_eq!(
-                        s.parts,
-                        vec![AstStringPart::Literal("bad stuff".into())]
-                    );
-                }
-                other => panic!("expected TimedNegMatchLiteral, got {other:?}"),
             },
             other => panic!("expected Fn, got {other:?}"),
         }

@@ -172,18 +172,10 @@ All operators are followed by a space, then payload to end of line.
 |----------|---------|-------|
 | `<? `    | regex to EOL | full match (`$0`) |
 | `<= `    | literal to EOL | matched text |
-| `<!? `   | regex to EOL | empty string |
-| `<!= `   | literal to EOL | empty string |
 
 - `<?` matches regex against shell output; sets `${1}`, `${2}`, etc. for capture groups
 - `<=` matches literal with variable substitution
 - Both block until match or timeout
-- `<!?` and `<!=` are negative matches: assert pattern does NOT appear within the timeout
-  - Runs for the full timeout duration
-  - Succeeds if timeout expires without finding the pattern
-  - Fails if the pattern is found
-  - Does NOT advance the output cursor
-  - Returns empty string
 
 ### Inline Timeout Override
 
@@ -192,13 +184,11 @@ Any match operator can be prefixed with `~<duration>` to set a one-shot timeout:
 ```
 <~2s? regex pattern       # regex match with 2s timeout
 <~500ms= literal text     # literal match with 500ms timeout
-<~30s!? error regex       # negative regex match with 30s timeout
-<~1m30s!= bad stuff       # negative literal match with 1m30s timeout
 ```
 
 - Duration uses compact humantime format (no spaces): `2s`, `500ms`, `1m30s`
 - Applies only to that single operation — does not affect the scoped timeout
-- Works with all four match operators: `?`, `=`, `!?`, `!=`
+- Works with both match operators: `?`, `=`
 
 ### Fail Pattern
 
@@ -234,12 +224,8 @@ Every expression produces a string value:
 | `> <text>` / `=> <text>` | sent string |
 | `<? <regex>` | full match (`$0`) |
 | `<= <literal>` | matched text |
-| `<!? <regex>` | empty string (negative match) |
-| `<!= <literal>` | empty string (negative match) |
 | `<~dur? <regex>` | full match with timeout override |
 | `<~dur= <literal>` | matched text with timeout override |
-| `<~dur!? <regex>` | empty string (neg match with timeout override) |
-| `<~dur!= <literal>` | empty string (neg match with timeout override) |
 | `let x = <expr>` | assigned value |
 
 Last expression in a function body is the return value.

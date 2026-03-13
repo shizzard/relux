@@ -13,7 +13,6 @@ test "bare match regex resets buffer" {
         sleep("10ms")
         <?
         > echo signal
-        <~100ms!= garbage1
         <? ^signal$
     }
 }
@@ -29,7 +28,6 @@ test "bare match literal resets buffer" {
         sleep("10ms")
         <=
         > echo signal
-        <~100ms!= garbage1
         <? ^signal$
     }
 }

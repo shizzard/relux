@@ -16,7 +16,7 @@ pure fn format_url(host, port) {
 }
 ```
 
-The `pure` keyword before `fn` is the only syntactic addition. The body accepts `let`, assignment, string literals, variable references, and calls to pure functions/BIFs. Shell operators (`>`, `=>`, `<=`, `<?`, `<!`, `~`, `!=`, `!?`) are forbidden — this is enforced at parse time, not just at resolve time.
+The `pure` keyword before `fn` is the only syntactic addition. The body accepts `let`, assignment, string literals, variable references, and calls to pure functions/BIFs. Shell operators (`>`, `=>`, `<=`, `<?`, `~`, `!=`, `!?`) are forbidden — this is enforced at parse time, not just at resolve time.
 
 ## Call sites
 
@@ -43,7 +43,7 @@ Arguments evaluate at the call site and arrive as plain strings. The pure functi
 
 ## Type-level enforcement
 
-Pure functions use a separate type hierarchy in both the AST and IR. The `PureExpr` enum lacks `Send`, `Match`, `NegMatch`, and `TimedMatch` variants — a pure function body containing shell operations cannot be constructed at the type level.
+Pure functions use a separate type hierarchy in both the AST and IR. The `PureExpr` enum lacks `Send`, `Match`, and `TimedMatch` variants — a pure function body containing shell operations cannot be constructed at the type level.
 
 Duplicated types (small, structurally identical to their impure counterparts but parameterized over `PureExpr`):
 

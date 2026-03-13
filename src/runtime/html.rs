@@ -61,8 +61,6 @@ fn event_type_class(kind: &LogEventKind) -> (&str, &str) {
         LogEventKind::Send { .. } => ("send", "send"),
         LogEventKind::Recv { .. } => ("recv", "recv"),
         LogEventKind::MatchStart { .. } | LogEventKind::MatchDone { .. } => ("match", "match-ev"),
-        LogEventKind::NegMatchStart { .. } | LogEventKind::NegMatchPass { .. } => ("neg-match", "match-ev"),
-        LogEventKind::NegMatchFail { .. } => ("neg-match", "err"),
         LogEventKind::Timeout { .. } => ("timeout", "err"),
         LogEventKind::BufferReset { .. } => ("reset", "err"),
         LogEventKind::FailPatternSet { .. } => ("fail-pat", "err"),
@@ -93,16 +91,6 @@ fn event_data(kind: &LogEventKind) -> String {
         LogEventKind::MatchDone { matched, elapsed, .. } => {
             format!("{} ({})", html_escape(matched), fmt_duration(elapsed))
         }
-        LogEventKind::NegMatchStart { pattern, is_regex } => {
-            let prefix = if *is_regex { "regex " } else { "" };
-            format!("!{prefix}{}", html_escape(pattern))
-        }
-        LogEventKind::NegMatchPass { pattern, elapsed } => {
-            format!("!{} (pass, {})", html_escape(pattern), fmt_duration(elapsed))
-        }
-        LogEventKind::NegMatchFail { pattern, matched_text, .. } => {
-            format!("!{} found: {}", html_escape(pattern), html_escape(matched_text))
-        }
         LogEventKind::BufferReset { .. } => String::new(),
         LogEventKind::Timeout { pattern, .. } => html_escape(pattern),
         LogEventKind::FailPatternSet { pattern } => html_escape(pattern),
@@ -132,7 +120,6 @@ fn event_buffer(kind: &LogEventKind) -> Option<&BufferSnapshot> {
     match kind {
         LogEventKind::MatchDone { buffer, .. } => Some(buffer),
         LogEventKind::Timeout { buffer, .. } => Some(buffer),
-        LogEventKind::NegMatchFail { buffer, .. } => Some(buffer),
         LogEventKind::FailPatternTriggered { buffer, .. } => Some(buffer),
         LogEventKind::BufferReset { buffer } => Some(buffer),
         _ => None,
@@ -147,7 +134,7 @@ fn render_buffer(kind: &LogEventKind) -> String {
         BufferSnapshot::Match { before, matched, after } => {
             let is_neg = matches!(
                 kind,
-                LogEventKind::NegMatchFail { .. } | LogEventKind::FailPatternTriggered { .. }
+                LogEventKind::FailPatternTriggered { .. }
             );
             let match_class = if is_neg { "buf-skip" } else { "buf-match" };
             let before_class = if is_neg { "" } else { " class=\"buf-skip\"" };

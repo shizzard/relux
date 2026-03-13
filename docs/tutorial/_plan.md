@@ -72,14 +72,9 @@ No prior experience with Expect, lux, or Relux is assumed.
 **Scope:** Default timeout from `Relux.toml`, the `~` operator for setting shell timeout, inline `<~` overrides for one-shot timeout on a single match, test-level timeout (`test "name" ~30s`), how timeout scoping works across function calls.
 **After reading:** The reader can control timing at every level of granularity.
 
-### 10. Negative Matching
-**File:** `10-negative-matching.md`
-**Scope:** Negative regex match (`<!?`) and negative literal match (`<!=`). Asserting that output does NOT appear. Semantics: runs for the full timeout duration, does not advance the cursor.
-**After reading:** The reader can assert the absence of unwanted output.
-
-### 11. Fail Patterns
-**File:** `11-fail-patterns.md`
-**Scope:** Fail pattern operators (`!?` for regex, `!=` for literal). Continuous background monitoring — the pattern is checked against all subsequent output. One active pattern per shell, persistence across function calls, clearing fail patterns.
+### 10. Fail Patterns
+**File:** `10-fail-patterns.md`
+**Scope:** Fail pattern operators (`!?` for regex, `!=` for literal). Fail patterns are checked inline during match operations and at statement boundaries. One active pattern per shell, persistence across function calls, clearing fail patterns. Setting a fail pattern immediately rescans the buffer.
 **After reading:** The reader can set up continuous error monitoring that catches problems anywhere in the test.
 
 ### 12. Effects and Dependencies

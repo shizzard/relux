@@ -23,8 +23,9 @@ test "shells have independent working directories" {
         <? ^/tmp$
     }
     shell b {
+        !? ^/tmp$
         > pwd
-        <~100ms!? ^/tmp$
+        match_ok()
     }
 }
 

@@ -44,12 +44,3 @@ test "assertion timeout on test level" @3s {
     }
 }
 
-test "assertion timeout inline neg match" ~3s {
-    """
-    Verify @-prefixed inline timeout on a negative regex match.
-    """
-    shell s {
-        > echo good_output
-        <@1s!? ^never_matches_this$
-    }
-}

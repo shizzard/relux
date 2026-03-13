@@ -67,8 +67,7 @@ The example above uses just two operators (`>` and `<=`), but the Relux DSL has 
 - **Regex matching** (`<?`) — match output with regular expressions and capture groups
 - **Variables** (`let`, `${var}`) — capture and reuse values
 - **Timeouts** (`~5s`, `<~2s?`) — control how long to wait for output
-- **Negative matching** (`<!?`, `<!=`) — assert that output does *not* appear
-- **Fail patterns** (`!?`, `!=`) — continuous background monitoring for errors
+- **Fail patterns** (`!?`, `!=`) — continuous monitoring for errors
 - **Functions** (`fn`) — extract reusable test logic
 - **Effects** (`effect`, `need`) — shared setup/teardown infrastructure
 - **Multiple shells** — test client/server interactions, concurrent processes

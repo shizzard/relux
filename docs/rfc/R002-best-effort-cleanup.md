@@ -19,7 +19,7 @@ Cleanup blocks become regular shell blocks with best-effort semantics. All opera
 |--------------------------------------------|-----------|----------|
 | Send (`>`, `=>`)                           | Allowed   | Allowed  |
 | `let` / assignment                         | Allowed   | Allowed  |
-| Match operators (`<?`, `<=`, `<!?`, `<!=`) | Forbidden | Allowed  |
+| Match operators (`<?`, `<=`)               | Forbidden | Allowed  |
 | Fail patterns (`!?`, `!=`)                 | Forbidden | Allowed  |
 | Timeout (`~`)                              | Forbidden | Allowed  |
 | Function calls (impure)                    | Forbidden | Allowed  |

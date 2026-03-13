@@ -340,12 +340,6 @@ pub enum Expr {
     /// Match literal against shell output. Value: matched text.
     /// Blocks until match or timeout.
     MatchLiteral(MatchExpr),
-    /// Assert regex does NOT appear in output within timeout.
-    /// Succeeds if timeout expires without match. Value: empty string.
-    NegMatchRegex(MatchExpr),
-    /// Assert literal does NOT appear in output within timeout.
-    /// Succeeds if timeout expires without match. Value: empty string.
-    NegMatchLiteral(MatchExpr),
     /// Reset (drop) the output buffer by advancing the cursor to the end.
     /// Discards all unmatched output. Value: empty string.
     BufferReset,

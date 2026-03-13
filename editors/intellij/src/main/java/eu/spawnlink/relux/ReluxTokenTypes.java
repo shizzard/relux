@@ -29,8 +29,6 @@ public interface ReluxTokenTypes {
     IElementType OP_SEND_RAW = new ReluxElementType("OP_SEND_RAW");               // =>
     IElementType OP_MATCH_REGEX = new ReluxElementType("OP_MATCH_REGEX");         // <?
     IElementType OP_MATCH_LITERAL = new ReluxElementType("OP_MATCH_LITERAL");     // <=
-    IElementType OP_NEG_MATCH_REGEX = new ReluxElementType("OP_NEG_MATCH_REGEX"); // <!?
-    IElementType OP_NEG_MATCH_LITERAL = new ReluxElementType("OP_NEG_MATCH_LITERAL"); // <!=
     IElementType OP_FAIL_REGEX = new ReluxElementType("OP_FAIL_REGEX");           // !?
     IElementType OP_FAIL_LITERAL = new ReluxElementType("OP_FAIL_LITERAL");       // !=
     IElementType OP_ARROW = new ReluxElementType("OP_ARROW");                     // ->

@@ -23,7 +23,6 @@ fn failure_span(failure: &Failure) -> Option<&Span> {
     match failure {
         Failure::MatchTimeout { span, .. }
         | Failure::FailPatternMatched { span, .. }
-        | Failure::NegativeMatchFailed { span, .. }
         | Failure::ShellExited { span, .. } => Some(span),
         Failure::Runtime { span, .. } => span.as_ref(),
     }
@@ -34,7 +33,6 @@ fn failure_shell(failure: &Failure) -> Option<&str> {
     match failure {
         Failure::MatchTimeout { shell, .. }
         | Failure::FailPatternMatched { shell, .. }
-        | Failure::NegativeMatchFailed { shell, .. }
         | Failure::ShellExited { shell, .. } => Some(shell),
         Failure::Runtime { shell, .. } => shell.as_deref(),
     }
@@ -44,8 +42,7 @@ fn failure_shell(failure: &Failure) -> Option<&str> {
 fn failure_pattern(failure: &Failure) -> Option<&str> {
     match failure {
         Failure::MatchTimeout { pattern, .. }
-        | Failure::FailPatternMatched { pattern, .. }
-        | Failure::NegativeMatchFailed { pattern, .. } => Some(pattern),
+        | Failure::FailPatternMatched { pattern, .. } => Some(pattern),
         _ => None,
     }
 }

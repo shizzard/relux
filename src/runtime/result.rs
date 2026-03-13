@@ -20,12 +20,6 @@ pub enum Failure {
         span: Span,
         shell: String,
     },
-    NegativeMatchFailed {
-        pattern: String,
-        matched_text: String,
-        span: Span,
-        shell: String,
-    },
     ShellExited {
         shell: String,
         exit_code: Option<i32>,
@@ -49,11 +43,6 @@ impl Failure {
                     "fail pattern matched in shell '{shell}': pattern {pattern} triggered, matched: \"{matched_line}\""
                 )
             }
-            Failure::NegativeMatchFailed { pattern, matched_text, shell, .. } => {
-                format!(
-                    "negative match failed in shell '{shell}': pattern {pattern} was found, matched: \"{matched_text}\""
-                )
-            }
             Failure::ShellExited { shell, exit_code: Some(code), .. } => {
                 format!("shell '{shell}' exited unexpectedly with exit code {code}")
             }
@@ -73,7 +62,6 @@ impl Failure {
         match self {
             Failure::MatchTimeout { .. } => "MatchTimeout",
             Failure::FailPatternMatched { .. } => "FailPatternMatched",
-            Failure::NegativeMatchFailed { .. } => "NegativeMatchFailed",
             Failure::ShellExited { .. } => "ShellExited",
             Failure::Runtime { .. } => "Runtime",
         }
@@ -204,20 +192,6 @@ mod tests {
         assert_eq!(
             f.summary(),
             "fail pattern matched in shell 'default': pattern /error/ triggered, matched: \"error: connection refused\""
-        );
-    }
-
-    #[test]
-    fn summary_negative_match_failed() {
-        let f = Failure::NegativeMatchFailed {
-            pattern: "/warning/".into(),
-            matched_text: "warning: deprecated".into(),
-            shell: "default".into(),
-            span: dummy_span(),
-        };
-        assert_eq!(
-            f.summary(),
-            "negative match failed in shell 'default': pattern /warning/ was found, matched: \"warning: deprecated\""
         );
     }
 

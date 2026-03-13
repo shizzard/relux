@@ -176,12 +176,8 @@ pub enum AstExpr {
     SendRaw(AstStringExpr),
     MatchRegex(AstStringExpr),
     MatchLiteral(AstStringExpr),
-    NegMatchRegex(AstStringExpr),
-    NegMatchLiteral(AstStringExpr),
     TimedMatchRegex(TimeoutKind, String, AstStringExpr),
     TimedMatchLiteral(TimeoutKind, String, AstStringExpr),
-    TimedNegMatchRegex(TimeoutKind, String, AstStringExpr),
-    TimedNegMatchLiteral(TimeoutKind, String, AstStringExpr),
     BufferReset,
 }
 
