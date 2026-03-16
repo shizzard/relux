@@ -77,10 +77,15 @@ No prior experience with Expect, lux, or Relux is assumed.
 **Scope:** Fail pattern operators (`!?` for regex, `!=` for literal). Fail patterns are checked inline during match operations and at statement boundaries. One active pattern per shell, persistence across function calls, clearing fail patterns. Setting a fail pattern immediately rescans the buffer.
 **After reading:** The reader can set up continuous error monitoring that catches problems anywhere in the test.
 
-### 12. Effects and Dependencies
-**File:** `12-effects-and-dependencies.md`
-**Scope:** Effect definitions (`effect ... -> shell`), the `need` keyword for declaring dependencies, overlay variables (`{ KEY = "value" }`), effect identity and deduplication, dependency graph and topological execution order. Cleanup blocks for both effects and tests.
-**After reading:** The reader can create reusable test infrastructure with effects and proper cleanup.
+### 11. Effects and Dependencies
+**File:** `11-effects-and-dependencies.md`
+**Scope:** Effect definitions (`effect ... -> shell`), the `need` keyword for declaring dependencies, bare `need` for side-effect-only effects, overlay variables (`{ KEY = "value" }`), effect identity and deduplication, dependency graph and topological execution order.
+**After reading:** The reader can create reusable test infrastructure with effects, dependencies, and parameterized overlays.
+
+### 12. Cleanup
+**File:** `12-cleanup.md`
+**Scope:** Cleanup blocks for effects and tests. Fresh implicit shell, restricted operations (send/let/assign only — no matches, no function calls). Effect cleanup runs in reverse dependency order. Test-level cleanup blocks.
+**After reading:** The reader can add proper teardown to effects and tests.
 
 ### 13. Condition Markers
 **File:** `13-condition-markers.md`
