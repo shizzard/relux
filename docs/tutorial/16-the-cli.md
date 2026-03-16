@@ -265,4 +265,4 @@ When a test starts failing intermittently, run `relux history --flaky` before di
 
 ---
 
-Next: Appendix A1 — Patterns and Recipes, a practical cookbook for common testing scenarios
+Next: [Appendix A1 — Best Practices](A1-best-practices.md) — all best-practices guidelines from the series in one place

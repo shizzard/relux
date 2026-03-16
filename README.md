@@ -10,7 +10,7 @@ Working prototype — tests can be authored and executed end-to-end.
 
 ## Relux DSL (`.relux` files)
 
-See [docs/semantics.md] and [docs/syntax.md]
+See [Semantics](docs/semantics.md) and [Syntax](docs/syntax.md)
 
 A hands-on guide to writing integration tests with Relux, from first test to full test suite.
 
@@ -31,7 +31,8 @@ A hands-on guide to writing integration tests with Relux, from first test to ful
 14. [Modules and Imports](docs/tutorial/14-modules-and-imports.md) — organizing a multi-file test suite with shared effects and functions
 15. [Condition Markers](docs/tutorial/15-condition-markers.md) — conditionally skipping or running tests based on environment
 16. [The CLI](docs/tutorial/16-the-cli.md) — complete coverage of `relux new`, `check`, `run`, and `history`
-A1. Patterns and Recipes — practical cookbook for common testing scenarios
+
+A1. [Best Practices](docs/tutorial/A1-best-practices.md) — all best-practices guidelines from the series in one place
 
 ## Planned Features
 
