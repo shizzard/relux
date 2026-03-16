@@ -25,10 +25,10 @@ A hands-on guide to writing integration tests with Relux, from first test to ful
 8. [Functions](docs/tutorial/08-functions.md) — defining reusable test logic with parameters and arity-based dispatch
 9. [Timeouts](docs/tutorial/09-timeouts.md) — controlling timing at every level with tolerance and assertion timeouts
 10. [Fail Patterns](docs/tutorial/10-fail-patterns.md) — continuous error monitoring that catches problems anywhere in the test
-11. Modules and Imports — organizing a multi-file test suite with shared effects and functions
-12. [Effects and Dependencies](docs/tutorial/12-effects-and-dependencies.md) — reusable test infrastructure with dependency graphs and overlay variables
-13. [Pure Functions](docs/tutorial/13-pure-functions.md) — functions that compute values without touching a shell
-14. [Cleanup](docs/tutorial/14-cleanup.md) — teardown blocks for removing files, collecting artifacts, and undoing side effects
+11. [Effects and Dependencies](docs/tutorial/11-effects-and-dependencies.md) — reusable test infrastructure with dependency graphs and overlay variables
+12. [Pure Functions](docs/tutorial/12-pure-functions.md) — functions that compute values without touching a shell
+13. [Cleanup](docs/tutorial/13-cleanup.md) — teardown blocks for removing files, collecting artifacts, and undoing side effects
+14. [Modules and Imports](docs/tutorial/14-modules-and-imports.md) — organizing a multi-file test suite with shared effects and functions
 15. Condition Markers — conditionally skipping or running tests based on environment
 16. The CLI — complete coverage of `relux run`, `check`, `dump`, `new`, and `history`
 17. Patterns and Recipes — practical cookbook for common testing scenarios

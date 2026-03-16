@@ -77,25 +77,25 @@ No prior experience with Expect, lux, or Relux is assumed.
 **Scope:** Fail pattern operators (`!?` for regex, `!=` for literal). Fail patterns are checked inline during match operations and at statement boundaries. One active pattern per shell, persistence across function calls, clearing fail patterns. Setting a fail pattern immediately rescans the buffer.
 **After reading:** The reader can set up continuous error monitoring that catches problems anywhere in the test.
 
-### 11. Modules and Imports
-**File:** `11-modules-and-imports.md`
-**Scope:** The module system: every `.relux` file is a module, paths mirror filesystem from project root. Selective imports, wildcard imports, aliases. Resolution rules. Organizing a project with shared effects and functions.
-**After reading:** The reader can organize a multi-file test suite.
-
-### 12. Effects and Dependencies
-**File:** `12-effects-and-dependencies.md`
+### 11. Effects and Dependencies
+**File:** `11-effects-and-dependencies.md`
 **Scope:** Effect definitions (`effect ... -> shell`), the `need` keyword for declaring dependencies, bare `need` for side-effect-only effects, overlay variables (`{ KEY = "value" }`), effect identity and deduplication, dependency graph and topological execution order.
 **After reading:** The reader can create reusable test infrastructure with effects, dependencies, and parameterized overlays.
 
-### 13. Pure Functions
-**File:** `13-pure-functions.md`
+### 12. Pure Functions
+**File:** `12-pure-functions.md`
 **Scope:** Pure functions that compute values without touching a shell. The `pure fn` declaration, restrictions (no send, no match, no shell interaction), use cases for string building, path construction, and configuration assembly. How pure functions differ from regular functions.
 **After reading:** The reader can define functions that compute and return values without side effects.
 
-### 14. Cleanup
-**File:** `14-cleanup.md`
+### 13. Cleanup
+**File:** `13-cleanup.md`
 **Scope:** Cleanup blocks for effects and tests. Fresh implicit shell, restricted operations (send/let/assign only — no matches, no function calls). Effect cleanup runs in reverse dependency order. Test-level cleanup blocks.
 **After reading:** The reader can add proper teardown to effects and tests.
+
+### 14. Modules and Imports
+**File:** `14-modules-and-imports.md`
+**Scope:** The module system: every `.relux` file is a module, paths mirror filesystem from project root. Selective imports, wildcard imports, aliases. Resolution rules. Organizing a project with shared effects and functions.
+**After reading:** The reader can organize a multi-file test suite.
 
 ### 15. Condition Markers
 **File:** `15-condition-markers.md`

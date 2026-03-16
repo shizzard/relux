@@ -227,4 +227,4 @@ Write a test that starts a simulated service and monitors it for errors:
 
 ---
 
-Next: [Modules and Imports](11-modules-and-imports.md) — organizing a multi-file test suite with shared effects and functions
+Next: [Effects and Dependencies](11-effects-and-dependencies.md) — reusable test infrastructure with dependency graphs and overlay variables

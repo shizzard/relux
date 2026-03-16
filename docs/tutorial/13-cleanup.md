@@ -1,8 +1,8 @@
 # Cleanup
 
-[Previous: Pure Functions](13-pure-functions.md)
+[Previous: Pure Functions](12-pure-functions.md)
 
-The [effects article](12-effects-and-dependencies.md) introduced effects as reusable infrastructure — start a database, launch a service, tail a log file. Relux handles the lifecycle of those services automatically: when a test ends, it terminates all effect shells, which kills any processes running in them. You do not need to stop services yourself.
+The [effects article](11-effects-and-dependencies.md) introduced effects as reusable infrastructure — start a database, launch a service, tail a log file. Relux handles the lifecycle of those services automatically: when a test ends, it terminates all effect shells, which kills any processes running in them. You do not need to stop services yourself.
 
 But services are not the only thing effects and tests create. A database effect might generate a data directory. A build effect might produce temporary files. A test might create artifacts that should not survive past the run. These leftovers are not tied to any shell — killing the shell does not clean them up.
 
@@ -64,7 +64,7 @@ Here, the effect creates a marker file during setup and removes it during cleanu
 
 Cleanup does not run in the effect's shell, or the test shell. Relux spawns a **new, implicit shell** dedicated to cleanup. This is a deliberate design choice: by the time cleanup runs, the original shells have already been terminated. Even if they were still around, they might be in an unpredictable state — a command may have crashed, a prompt may be missing, the buffer may contain unexpected output. A fresh shell sidesteps all of that. Cleanup starts from a clean slate every time.
 
-This means you cannot rely on working directory changes or any shell-level state from the original shells. However, cleanup **does** have access to variables declared at the effect or test level with `let`, [overlay variables](12-effects-and-dependencies.md#overlay-variables) (for effects), and environment variables. If cleanup needs to know a path or a port number, declare it as a top-level `let` variable so both the shell blocks and the cleanup block can reference it.
+This means you cannot rely on working directory changes or any shell-level state from the original shells. However, cleanup **does** have access to variables declared at the effect or test level with `let`, [overlay variables](11-effects-and-dependencies.md#overlay-variables) (for effects), and environment variables. If cleanup needs to know a path or a port number, declare it as a top-level `let` variable so both the shell blocks and the cleanup block can reference it.
 
 ## Allowed operations
 
@@ -211,7 +211,7 @@ Write cleanup commands defensively. Assume nothing about what actually happened 
 
 ## Try it yourself
 
-Take the two-effect dependency chain from the [previous article's challenge](12-effects-and-dependencies.md#try-it-yourself) and add cleanup:
+Take the two-effect dependency chain from the [previous article's challenge](11-effects-and-dependencies.md#try-it-yourself) and add cleanup:
 
 1. Add a cleanup block to `StartDb` that removes the data directory it created during setup
 2. Add a cleanup block to `Migrate` that removes any migration log files
@@ -220,4 +220,4 @@ Take the two-effect dependency chain from the [previous article's challenge](12-
 
 ---
 
-Next: [Condition Markers](15-condition-markers.md) — conditionally skip or run tests based on environment
+Next: [Modules and Imports](14-modules-and-imports.md) — organizing a multi-file test suite with shared effects and functions
