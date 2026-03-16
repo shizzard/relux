@@ -77,20 +77,20 @@ No prior experience with Expect, lux, or Relux is assumed.
 **Scope:** Fail pattern operators (`!?` for regex, `!=` for literal). Fail patterns are checked inline during match operations and at statement boundaries. One active pattern per shell, persistence across function calls, clearing fail patterns. Setting a fail pattern immediately rescans the buffer.
 **After reading:** The reader can set up continuous error monitoring that catches problems anywhere in the test.
 
-### 11. Pure Functions
-**File:** `11-pure-functions.md`
-**Scope:** Pure functions that compute values without touching a shell. The `pure fn` declaration, restrictions (no send, no match, no shell interaction), use cases for string building, path construction, and configuration assembly. How pure functions differ from regular functions.
-**After reading:** The reader can define functions that compute and return values without side effects.
-
-### 12. Modules and Imports
-**File:** `12-modules-and-imports.md`
+### 11. Modules and Imports
+**File:** `11-modules-and-imports.md`
 **Scope:** The module system: every `.relux` file is a module, paths mirror filesystem from project root. Selective imports, wildcard imports, aliases. Resolution rules. Organizing a project with shared effects and functions.
 **After reading:** The reader can organize a multi-file test suite.
 
-### 13. Effects and Dependencies
-**File:** `13-effects-and-dependencies.md`
+### 12. Effects and Dependencies
+**File:** `12-effects-and-dependencies.md`
 **Scope:** Effect definitions (`effect ... -> shell`), the `need` keyword for declaring dependencies, bare `need` for side-effect-only effects, overlay variables (`{ KEY = "value" }`), effect identity and deduplication, dependency graph and topological execution order.
 **After reading:** The reader can create reusable test infrastructure with effects, dependencies, and parameterized overlays.
+
+### 13. Pure Functions
+**File:** `13-pure-functions.md`
+**Scope:** Pure functions that compute values without touching a shell. The `pure fn` declaration, restrictions (no send, no match, no shell interaction), use cases for string building, path construction, and configuration assembly. How pure functions differ from regular functions.
+**After reading:** The reader can define functions that compute and return values without side effects.
 
 ### 14. Cleanup
 **File:** `14-cleanup.md`

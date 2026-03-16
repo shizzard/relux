@@ -25,13 +25,28 @@ A hands-on guide to writing integration tests with Relux, from first test to ful
 8. [Functions](docs/tutorial/08-functions.md) — defining reusable test logic with parameters and arity-based dispatch
 9. [Timeouts](docs/tutorial/09-timeouts.md) — controlling timing at every level with tolerance and assertion timeouts
 10. [Fail Patterns](docs/tutorial/10-fail-patterns.md) — continuous error monitoring that catches problems anywhere in the test
-11. Pure Functions — functions that compute values without touching a shell
-12. Modules and Imports — organizing a multi-file test suite with shared effects and functions
-13. [Effects and Dependencies](docs/tutorial/13-effects-and-dependencies.md) — reusable test infrastructure with dependency graphs and overlay variables
+11. Modules and Imports — organizing a multi-file test suite with shared effects and functions
+12. [Effects and Dependencies](docs/tutorial/12-effects-and-dependencies.md) — reusable test infrastructure with dependency graphs and overlay variables
+13. [Pure Functions](docs/tutorial/13-pure-functions.md) — functions that compute values without touching a shell
 14. [Cleanup](docs/tutorial/14-cleanup.md) — teardown blocks for removing files, collecting artifacts, and undoing side effects
 15. Condition Markers — conditionally skipping or running tests based on environment
 16. The CLI — complete coverage of `relux run`, `check`, `dump`, `new`, and `history`
 17. Patterns and Recipes — practical cookbook for common testing scenarios
+
+## Planned Features
+
+- Per-shell command override: per-shell executable override via shell block attributes (global shell command now configurable in `Relux.toml`)
+- Custom scaffold templates: user-defined templates for `relux new --test` and `relux new --effect` via `Relux.toml`, replacing the built-in defaults
+- Make `sleep`, `log`, and `annotate` impure BIFs: these have observable side effects (time delay, output) and don't belong in pure context — move them from `lookup_pure` to `lookup` so they require a shell context
+
+## Planned RFCs
+
+- Interactive debugger: step through test scripts interactively with breakpoints
+
+## Known Bugs
+
+- Cleanup ordering: all test and effect shells should be terminated before any cleanup block runs. Currently cleanup runs interleaved with shell termination. The correct order is: terminate all test shells, terminate all effect shells, then run cleanup blocks (test cleanup first, then effect cleanup in reverse topological order).
+- Cleanup variable scope: test-level and effect-level `let` variables should be available in their respective cleanup blocks. Currently cleanup blocks get a fresh empty scope and can only see overlay variables (for effects) and environment variables.
 
 ## Tech Stack
 

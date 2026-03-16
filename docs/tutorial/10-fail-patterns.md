@@ -227,4 +227,4 @@ Write a test that starts a simulated service and monitors it for errors:
 
 ---
 
-Next: [Pure Functions](11-pure-functions.md) — functions that compute values without touching a shell
+Next: [Modules and Imports](11-modules-and-imports.md) — organizing a multi-file test suite with shared effects and functions

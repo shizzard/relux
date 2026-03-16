@@ -245,9 +245,26 @@ test "ctrl_z suspends a process" {
 
 The `sleep 60` command is suspended by `ctrl_z()`, returning control to the shell. Then `kill %%` terminates the suspended job (the `%%` is shell syntax for "the most recent background job"). `match_ok()` confirms the kill succeeded.
 
-## Logging and annotation
+## Utility functions
 
-Beyond interacting with the shell, Relux provides two built-in functions that help you leave breadcrumbs in your test output: `log` and `annotate`. Both take a single string argument.
+Beyond matching and control characters, Relux provides three utility built-in functions: `sleep`, `log`, and `annotate`.
+
+**`sleep(duration)`** pauses execution for the given duration. The argument is a string like `"1s"`, `"500ms"`, or `"2m"`:
+
+```relux
+test "wait for service startup" {
+    shell s {
+        > start-my-service &
+        match_prompt()
+        sleep("2s")
+        > curl http://localhost:8080/health
+        <= healthy
+        match_ok()
+    }
+}
+```
+
+The test starts a service in the background, waits two seconds for it to initialize, then checks its health endpoint.
 
 **`log(message)`** writes a message to the test's event log — the same log you see in the HTML report at `relux/out/latest/`. It appears as a log event row in the event timeline, timestamped alongside sends and matches. This is useful for marking phases of a complex test, recording diagnostic information, or leaving notes for whoever reads the report after a failure.
 
@@ -269,7 +286,7 @@ test my_test.relux/server-startup: |...[setup complete]....[server ready].. ok (
 
 The annotation text appears between the dots, marking the point in the test where it was called.
 
-The distinction between the two is where the output goes: `log` writes to the persistent HTML report, `annotate` writes to the live terminal progress line.
+The distinction between `log` and `annotate` is where the output goes: `log` writes to the persistent HTML report, `annotate` writes to the live terminal progress line.
 
 ---
 
