@@ -324,4 +324,4 @@ Putting a marker on an effect skips every test that depends on it. This is power
 
 ---
 
-Next: The CLI — complete coverage of `relux run`, `check`, `dump`, `new`, and `history`
+Next: [The CLI](16-the-cli.md) — complete coverage of `relux new`, `check`, `run`, and `history`
