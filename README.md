@@ -29,7 +29,7 @@ A hands-on guide to writing integration tests with Relux, from first test to ful
 12. [Pure Functions](docs/tutorial/12-pure-functions.md) — functions that compute values without touching a shell
 13. [Cleanup](docs/tutorial/13-cleanup.md) — teardown blocks for removing files, collecting artifacts, and undoing side effects
 14. [Modules and Imports](docs/tutorial/14-modules-and-imports.md) — organizing a multi-file test suite with shared effects and functions
-15. Condition Markers — conditionally skipping or running tests based on environment
+15. [Condition Markers](docs/tutorial/15-condition-markers.md) — conditionally skipping or running tests based on environment
 16. The CLI — complete coverage of `relux run`, `check`, `dump`, `new`, and `history`
 17. Patterns and Recipes — practical cookbook for common testing scenarios
 
@@ -42,6 +42,7 @@ A hands-on guide to writing integration tests with Relux, from first test to ful
 ## Planned RFCs
 
 - Interactive debugger: step through test scripts interactively with breakpoints
+- Multiple marker semantics: define AND/OR combination semantics when multiple condition markers are stacked on a single test or effect
 
 ## Known Bugs
 
