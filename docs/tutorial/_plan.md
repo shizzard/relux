@@ -77,32 +77,37 @@ No prior experience with Expect, lux, or Relux is assumed.
 **Scope:** Fail pattern operators (`!?` for regex, `!=` for literal). Fail patterns are checked inline during match operations and at statement boundaries. One active pattern per shell, persistence across function calls, clearing fail patterns. Setting a fail pattern immediately rescans the buffer.
 **After reading:** The reader can set up continuous error monitoring that catches problems anywhere in the test.
 
-### 11. Effects and Dependencies
-**File:** `11-effects-and-dependencies.md`
-**Scope:** Effect definitions (`effect ... -> shell`), the `need` keyword for declaring dependencies, bare `need` for side-effect-only effects, overlay variables (`{ KEY = "value" }`), effect identity and deduplication, dependency graph and topological execution order.
-**After reading:** The reader can create reusable test infrastructure with effects, dependencies, and parameterized overlays.
+### 11. Pure Functions
+**File:** `11-pure-functions.md`
+**Scope:** Pure functions that compute values without touching a shell. The `pure fn` declaration, restrictions (no send, no match, no shell interaction), use cases for string building, path construction, and configuration assembly. How pure functions differ from regular functions.
+**After reading:** The reader can define functions that compute and return values without side effects.
 
-### 12. Cleanup
-**File:** `12-cleanup.md`
-**Scope:** Cleanup blocks for effects and tests. Fresh implicit shell, restricted operations (send/let/assign only — no matches, no function calls). Effect cleanup runs in reverse dependency order. Test-level cleanup blocks.
-**After reading:** The reader can add proper teardown to effects and tests.
-
-### 13. Condition Markers
-**File:** `13-condition-markers.md`
-**Scope:** `[skip]`, `[run]`, `[flaky]` markers. Conditional forms: `if`/`unless` with truthiness checks, equality comparisons, regex matching. Multiple markers (AND semantics). Environment-only variable lookup.
-**After reading:** The reader can conditionally skip or run tests based on environment.
-
-### 14. Modules and Imports
-**File:** `14-modules-and-imports.md`
+### 12. Modules and Imports
+**File:** `12-modules-and-imports.md`
 **Scope:** The module system: every `.relux` file is a module, paths mirror filesystem from project root. Selective imports, wildcard imports, aliases. Resolution rules. Organizing a project with shared effects and functions.
 **After reading:** The reader can organize a multi-file test suite.
 
-### 15. The CLI
-**File:** `15-the-cli.md`
+### 13. Effects and Dependencies
+**File:** `13-effects-and-dependencies.md`
+**Scope:** Effect definitions (`effect ... -> shell`), the `need` keyword for declaring dependencies, bare `need` for side-effect-only effects, overlay variables (`{ KEY = "value" }`), effect identity and deduplication, dependency graph and topological execution order.
+**After reading:** The reader can create reusable test infrastructure with effects, dependencies, and parameterized overlays.
+
+### 14. Cleanup
+**File:** `14-cleanup.md`
+**Scope:** Cleanup blocks for effects and tests. Fresh implicit shell, restricted operations (send/let/assign only — no matches, no function calls). Effect cleanup runs in reverse dependency order. Test-level cleanup blocks.
+**After reading:** The reader can add proper teardown to effects and tests.
+
+### 15. Condition Markers
+**File:** `15-condition-markers.md`
+**Scope:** `[skip]`, `[run]`, `[flaky]` markers. Conditional forms: `if`/`unless` with truthiness checks, equality comparisons, regex matching. Multiple markers (AND semantics). Environment-only variable lookup.
+**After reading:** The reader can conditionally skip or run tests based on environment.
+
+### 16. The CLI
+**File:** `16-the-cli.md`
 **Scope:** Complete coverage of the `relux` CLI: `run` (filtering, strategies, `--rerun`, TAP/JUnit), `check`, `dump`, `new`, `history`.
 **After reading:** The reader can use every CLI feature effectively.
 
-### 16. Patterns and Recipes
-**File:** `16-patterns-and-recipes.md`
+### 17. Patterns and Recipes
+**File:** `17-patterns-and-recipes.md`
 **Scope:** Practical cookbook: waiting for services, testing exit codes, temporary resources, multi-shell coordination, timeout strategies, capture pipelines, environment-based configuration.
 **After reading:** The reader has proven patterns to adapt to their own test suites.

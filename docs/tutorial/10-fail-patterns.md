@@ -227,4 +227,4 @@ Write a test that starts a simulated service and monitors it for errors:
 
 ---
 
-Next: [Effects and Dependencies](11-effects-and-dependencies.md) — reusable test infrastructure with shared setup and teardown
+Next: [Pure Functions](11-pure-functions.md) — functions that compute values without touching a shell

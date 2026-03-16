@@ -1,6 +1,6 @@
 # Effects and Dependencies
 
-[Previous: Fail Patterns](10-fail-patterns.md)
+[Previous: Modules and Imports](12-modules-and-imports.md)
 
 The previous articles covered everything you need to test a single program in a single shell: [sending commands](03-send-match-and-logs.md), [matching output](07-regex-matching.md), [reusable functions](08-functions.md), [timeouts](09-timeouts.md), and [fail patterns](10-fail-patterns.md). For a self-contained CLI tool, that is enough. But most real systems do not run in isolation.
 
@@ -411,4 +411,4 @@ Write a two-effect dependency chain that simulates a database setup:
 
 ---
 
-Next: [Cleanup](12-cleanup.md) — teardown blocks for effects and tests
+Next: [Cleanup](14-cleanup.md) — teardown blocks for effects and tests
