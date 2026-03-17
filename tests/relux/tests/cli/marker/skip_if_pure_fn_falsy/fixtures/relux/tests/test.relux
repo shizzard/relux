@@ -2,7 +2,7 @@ pure fn always_empty() {
     ""
 }
 
-[skip if always_empty()]
+# skip if always_empty()
 test "conditional" {
     """
     Do not skip when the pure function returns an empty (falsy) value.

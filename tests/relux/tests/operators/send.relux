@@ -59,7 +59,7 @@ test "send with dollar escape" {
     """
     shell s {
         > echo '$$HOME'
-        <? ^\$$HOME$
+        <? ^\$HOME$
     }
 }
 

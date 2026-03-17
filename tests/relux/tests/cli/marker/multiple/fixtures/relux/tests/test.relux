@@ -1,5 +1,5 @@
-[skip unless "${CI}"]
-[skip if "${SKIP_ME}"]
+# skip unless CI
+# skip if SKIP_ME
 test "conditional" {
     shell s {
         > echo hello

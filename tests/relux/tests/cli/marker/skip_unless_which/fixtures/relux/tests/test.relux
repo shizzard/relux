@@ -1,4 +1,4 @@
-[skip unless which("${EXECUTABLE}")]
+# skip unless which(EXECUTABLE)
 test "conditional" {
     """
     Skip unless the executable is found on PATH.

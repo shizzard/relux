@@ -8,12 +8,51 @@ use daggy::petgraph::algo::toposort;
 use daggy::petgraph::visit::{EdgeRef, IntoEdgesDirected};
 use tokio::sync::Mutex;
 
-use crate::dsl::resolver::ir::{self, EffectInstance, InstanceId, Plan, SourceMap, Spanned, TestTimeout, Timeout};
+use crate::dsl::resolver::ir::{
+    self, EffectInstance, InstanceId, Plan, SourceMap, Spanned, Timeout,
+};
 use crate::runtime::event_log::{EventCollector, LogEventKind};
 use crate::runtime::progress::{ProgressEvent, ProgressTx};
 use crate::runtime::result::{Failure, Outcome, TestResult};
 use crate::runtime::vars::{Env, ScopeStack, TestScope, interpolate_with_lookup};
 use crate::runtime::vm::Vm;
+
+/// Shared context for test execution phases (setup, body, teardown).
+struct TestRunContext<'a> {
+    progress_tx: ProgressTx,
+    log_dir: &'a Path,
+    test_start: Instant,
+    event_collector: &'a EventCollector,
+    env: &'a Arc<Env>,
+}
+
+impl TestRunContext<'_> {
+    fn emit(&self, event: ProgressEvent) {
+        let _ = self.progress_tx.send(event);
+    }
+
+    async fn spawn_vm(
+        &self,
+        shell_name: String,
+        shell_prompt: String,
+        shell_command: String,
+        scope: ScopeStack,
+        code_server: Arc<CodeServer>,
+    ) -> Result<Vm, Failure> {
+        Vm::new(
+            shell_name,
+            shell_prompt,
+            shell_command,
+            scope,
+            code_server,
+            Some(self.progress_tx.clone()),
+            self.log_dir,
+            self.test_start,
+            Some(self.event_collector.clone()),
+        )
+        .await
+    }
+}
 
 pub mod bifs;
 pub mod event_log;
@@ -25,8 +64,8 @@ pub mod pure;
 pub mod result;
 pub mod run_summary;
 pub mod shell_log;
-pub mod vars;
 pub mod tap;
+pub mod vars;
 pub mod vm;
 
 use crate::config;
@@ -49,30 +88,38 @@ pub fn test_display_id(test_path: &str, test_name: &str) -> String {
 pub type SharedVm = Arc<Mutex<Vm>>;
 
 pub enum Callable {
-    UserDefined(usize),
-    UserDefinedPure(usize),
+    UserDefined(ir::FnId),
+    UserDefinedPure(ir::PureFnId),
     Builtin(Box<dyn bifs::Bif>),
     PureBuiltin(Box<dyn bifs::PureBif>),
 }
 
 pub struct CodeServer {
-    functions: Vec<ir::Function>,
-    index: HashMap<(String, usize), usize>,
-    pure_functions: Vec<ir::PureFunction>,
-    pure_index: HashMap<(String, usize), usize>,
+    functions: ir::IndexVec<ir::FnId, ir::Function>,
+    index: HashMap<(String, usize), ir::FnId>,
+    pure_functions: ir::IndexVec<ir::PureFnId, ir::PureFunction>,
+    pure_index: HashMap<(String, usize), ir::PureFnId>,
 }
 
 impl CodeServer {
-    pub fn new(functions: Vec<ir::Function>, pure_functions: Vec<ir::PureFunction>) -> Self {
+    pub fn new(
+        functions: ir::IndexVec<ir::FnId, ir::Function>,
+        pure_functions: ir::IndexVec<ir::PureFnId, ir::PureFunction>,
+    ) -> Self {
         let mut index = HashMap::new();
         for (i, f) in functions.iter().enumerate() {
-            index.insert((f.name.node.clone(), f.params.len()), i);
+            index.insert((f.name.node.clone(), f.params.len()), ir::FnId::from(i));
         }
         let mut pure_index = HashMap::new();
         for (i, f) in pure_functions.iter().enumerate() {
-            pure_index.insert((f.name.node.clone(), f.params.len()), i);
+            pure_index.insert((f.name.node.clone(), f.params.len()), ir::PureFnId::from(i));
         }
-        Self { functions, index, pure_functions, pure_index }
+        Self {
+            functions,
+            index,
+            pure_functions,
+            pure_index,
+        }
     }
 
     pub fn lookup(&self, name: &str, arity: usize) -> Option<Callable> {
@@ -98,16 +145,16 @@ impl CodeServer {
         }
     }
 
-    pub fn get(&self, fn_id: usize) -> Option<&ir::Function> {
+    pub fn get(&self, fn_id: ir::FnId) -> Option<&ir::Function> {
         self.functions.get(fn_id)
     }
 
-    pub fn get_pure(&self, fn_id: usize) -> Option<&ir::PureFunction> {
+    pub fn get_pure(&self, fn_id: ir::PureFnId) -> Option<&ir::PureFunction> {
         self.pure_functions.get(fn_id)
     }
 }
 
-fn eval_marker_string_expr(expr: &ir::StringExpr, env: &Env) -> String {
+fn eval_marker_string_expr(expr: &ir::Interpolation, env: &Env) -> String {
     interpolate_with_lookup(expr, |name| env.get(name).cloned())
 }
 
@@ -116,11 +163,17 @@ async fn eval_marker_pure_expr(
     env: &Arc<Env>,
     code_server: &CodeServer,
 ) -> String {
-    let spanned = Spanned::new(expr.clone(), ir::Span::new(0, 0..0));
+    let spanned = Spanned::new(expr.clone(), ir::Span::new(ir::FileId::from(0), 0..0));
     let mut vars = std::collections::HashMap::new();
-    pure::eval_pure_expr(&spanned, &mut vars, env, code_server, &mut pure::SimplePureContext)
-        .await
-        .unwrap_or_default()
+    pure::eval_pure_expr(
+        &spanned,
+        &mut vars,
+        env,
+        code_server,
+        &mut pure::SimplePureContext,
+    )
+    .await
+    .unwrap_or_default()
 }
 
 async fn evaluate_conditions(
@@ -143,11 +196,7 @@ async fn evaluate_conditions(
             ir::CondBody::Eq(lhs, rhs) => {
                 let lval = eval_marker_pure_expr(lhs, env, code_server).await;
                 let rval = eval_marker_pure_expr(rhs, env, code_server).await;
-                if lval == rval {
-                    lval
-                } else {
-                    String::new()
-                }
+                if lval == rval { lval } else { String::new() }
             }
             ir::CondBody::Regex(lhs, pat) => {
                 let lval = eval_marker_pure_expr(lhs, env, code_server).await;
@@ -298,11 +347,12 @@ impl Runtime {
         // Inline test timeout takes precedence over the inherited config/manifest
         // timeout.  The multiplier is already baked into Tolerance variants.
         let effective_timeout = match &plan.test.timeout {
-            Some(TestTimeout::Explicit(t)) => Some(t.clone()),
-            _ => self.test_timeout.clone(),
+            Some(t) => Some(t.clone()),
+            None => self.test_timeout.clone(),
         };
         match effective_timeout {
-            Some(ref t) => match tokio::time::timeout(t.resolve(), self.run_plan_inner(plan)).await {
+            Some(ref t) => match tokio::time::timeout(t.resolve(), self.run_plan_inner(plan)).await
+            {
                 Ok(result) => result,
                 Err(_) => TestResult {
                     test_name: "(unknown)".to_string(),
@@ -313,7 +363,6 @@ impl Runtime {
                         shell: None,
                     }),
                     duration: Duration::ZERO,
-                    shell_logs: HashMap::new(),
                     progress: String::new(),
                     log_dir: None,
                 },
@@ -330,10 +379,7 @@ impl Runtime {
         let mut env = (*self.env).clone();
         let test_file = &self.source_map.files[plan.test.span.file].path;
         if let Some(dir) = test_file.parent() {
-            env.insert(
-                "__RELUX_TEST_ROOT".to_string(),
-                dir.display().to_string(),
-            );
+            env.insert("__RELUX_TEST_ROOT".to_string(), dir.display().to_string());
         }
         Arc::new(env)
     }
@@ -342,8 +388,10 @@ impl Runtime {
         let test_start = Instant::now();
         let test_name = plan.test.name.node.clone();
         let test_path = self.compute_test_path(&plan);
-        let code_server = Arc::new(CodeServer::new(plan.functions.clone(), plan.pure_functions.clone()));
-        let mut shell_logs = HashMap::new();
+        let code_server = Arc::new(CodeServer::new(
+            plan.functions.clone(),
+            plan.pure_functions.clone(),
+        ));
         let env = self.plan_env(&plan);
 
         let log_dir = self.compute_test_log_dir(&plan);
@@ -357,9 +405,7 @@ impl Runtime {
         let (progress_tx, progress_rx) = progress::channel();
         let printer_handle = progress::spawn_printer(progress_rx);
 
-        if let Some(reason) =
-            evaluate_conditions(&plan.test.conditions, &env, &code_server).await
-        {
+        if let Some(reason) = evaluate_conditions(&plan.test.conditions, &env, &code_server).await {
             drop(progress_tx);
             let progress_string = printer_handle.await.unwrap_or_default();
             let duration = test_start.elapsed();
@@ -368,34 +414,27 @@ impl Runtime {
                 eprintln!("{} ({})", "skipped".yellow(), reason);
             }
             let events = event_collector.take().await;
-            crate::runtime::html::generate_html_logs(
-                &log_dir,
-                &test_name,
-                &events,
-                &self.run_dir,
-            );
+            crate::runtime::html::generate_html_logs(&log_dir, &test_name, &events, &self.run_dir);
             return TestResult {
                 test_name,
                 test_path,
                 outcome: Outcome::Skipped(reason),
                 duration,
-                shell_logs,
                 progress: progress_string,
                 log_dir: Some(log_dir),
             };
         }
 
+        let rctx = TestRunContext {
+            progress_tx: progress_tx.clone(),
+            log_dir: &log_dir,
+            test_start,
+            event_collector: &event_collector,
+            env: &env,
+        };
+
         let mut effect_exec = self
-            .execute_effects(
-                &plan,
-                code_server.clone(),
-                &mut shell_logs,
-                progress_tx.clone(),
-                &log_dir,
-                test_start,
-                &event_collector,
-                &env,
-            )
+            .execute_effects(&plan, code_server.clone(), &rctx)
             .await;
 
         let outcome = match effect_exec.outcome.take() {
@@ -426,57 +465,32 @@ impl Runtime {
                     test_scope,
                     code_server,
                     &mut effect_exec.alias_shells,
-                    progress_tx.clone(),
-                    &log_dir,
-                    test_start,
-                    &event_collector,
-                    &env,
+                    &rctx,
                 )
                 .await
             }
         };
 
-        self.run_test_cleanup(
-            &plan,
-            progress_tx.clone(),
-            &log_dir,
-            test_start,
-            &event_collector,
-            &env,
-        )
-        .await;
+        self.run_test_cleanup(&plan, &rctx).await;
         // Drop alias references before teardown so Arc::try_unwrap
         // can succeed when shutting down effect shells.
         effect_exec.alias_shells.clear();
-        self.teardown_effects(
-            &plan,
-            &mut effect_exec,
-            progress_tx.clone(),
-            &log_dir,
-            test_start,
-            &event_collector,
-            &env,
-        )
-        .await;
+        self.teardown_effects(&plan, &mut effect_exec, &rctx).await;
 
+        drop(rctx);
         drop(progress_tx);
         let progress_string = printer_handle.await.unwrap_or_default();
         let duration = test_start.elapsed();
 
         {
-            use colored::Colorize;
             use crate::runtime::result::format_duration;
+            use colored::Colorize;
             let suffix = match &outcome {
                 Outcome::Pass => format!(" {} ({})", "ok".green(), format_duration(duration)),
                 Outcome::Fail(_) => format!(" {} ({})", "FAILED".red(), format_duration(duration)),
                 Outcome::Skipped(reason) => format!(" {} ({})", "skipped".yellow(), reason),
             };
             eprintln!("{suffix}");
-        }
-
-        for (name, vm) in &effect_exec.alias_shells {
-            let out = vm.lock().await.output_snapshot().await;
-            shell_logs.insert(name.clone(), out);
         }
 
         let events = event_collector.take().await;
@@ -487,7 +501,6 @@ impl Runtime {
             test_path,
             outcome,
             duration,
-            shell_logs,
             progress: progress_string,
             log_dir: Some(log_dir),
         }
@@ -508,12 +521,7 @@ impl Runtime {
         &self,
         plan: &Plan,
         code_server: Arc<CodeServer>,
-        shell_logs: &mut HashMap<String, Vec<u8>>,
-        progress_tx: ProgressTx,
-        log_dir: &Path,
-        test_start: Instant,
-        event_collector: &EventCollector,
-        env: &Arc<Env>,
+        rctx: &TestRunContext<'_>,
     ) -> EffectExecution {
         let mut effect_state = EffectExecution::default();
         let order = match toposort(&plan.effect_graph.dag, None) {
@@ -534,18 +542,32 @@ impl Runtime {
             let Some(instance) = plan.effect_graph.dag.node_weight(instance_id).cloned() else {
                 continue;
             };
-            let overlay = self.interpolate_overlay(&instance.overlay, env, &code_server).await;
+            let overlay = self
+                .interpolate_overlay(&instance.overlay, rctx.env, &code_server)
+                .await;
             let effect = &plan.effects[instance.effect];
-            let _ = progress_tx.send(ProgressEvent::EffectSetup(effect.name.node.clone()));
-            event_collector.push("", LogEventKind::EffectSetup { effect: effect.name.node.clone() }).await;
+            rctx.emit(ProgressEvent::EffectSetup(effect.name.node.clone()));
+            rctx.event_collector
+                .push(
+                    "",
+                    LogEventKind::EffectSetup {
+                        effect: effect.name.node.clone(),
+                    },
+                )
+                .await;
 
             if let Some(reason) =
-                evaluate_conditions(&effect.conditions, env, &code_server).await
+                evaluate_conditions(&effect.conditions, rctx.env, &code_server).await
             {
-                event_collector.push("", LogEventKind::EffectSkip {
-                    effect: effect.name.node.clone(),
-                    reason: reason.clone(),
-                }).await;
+                rctx.event_collector
+                    .push(
+                        "",
+                        LogEventKind::EffectSkip {
+                            effect: effect.name.node.clone(),
+                            reason: reason.clone(),
+                        },
+                    )
+                    .await;
                 let reason = format!("effect {} skipped: {reason}", effect.name.node);
                 effect_state.outcome = Some(Outcome::Skipped(reason));
                 return effect_state;
@@ -566,10 +588,7 @@ impl Runtime {
                 if let Some(alias) = &incoming.weight().alias {
                     let dep_id = incoming.source();
                     if let Some(dep) = effect_state.instances.get(&dep_id) {
-                        shells.insert(
-                            alias.node.clone(),
-                            dep.exported_vm.clone(),
-                        );
+                        shells.insert(alias.node.clone(), dep.exported_vm.clone());
                     }
                 }
             }
@@ -579,7 +598,7 @@ impl Runtime {
                 let value = if let Some(expr) = &var.node.value {
                     match pure::eval_pure_var_value(
                         expr,
-                        env,
+                        rctx.env,
                         &code_server,
                         &mut pure::SimplePureContext,
                     )
@@ -594,10 +613,15 @@ impl Runtime {
                 } else {
                     String::new()
                 };
-                event_collector.push("", LogEventKind::VarLet {
-                    name: var.node.name.node.clone(),
-                    value: value.clone(),
-                }).await;
+                rctx.event_collector
+                    .push(
+                        "",
+                        LogEventKind::VarLet {
+                            name: var.node.name.node.clone(),
+                            value: value.clone(),
+                        },
+                    )
+                    .await;
                 effect_scope
                     .lock()
                     .await
@@ -612,21 +636,18 @@ impl Runtime {
                         let scope = ScopeStack::new(
                             effect_scope.clone(),
                             overlay.clone(),
-                            env.clone(),
+                            rctx.env.clone(),
                             self.default_timeout.clone(),
                         );
-                        match Vm::new(
-                            scoped_name,
-                            self.shell_prompt.clone(),
-                            self.shell_command.clone(),
-                            scope,
-                            code_server.clone(),
-                            Some(progress_tx.clone()),
-                            log_dir,
-                            test_start,
-                            Some(event_collector.clone()),
-                        )
-                        .await
+                        match rctx
+                            .spawn_vm(
+                                scoped_name,
+                                self.shell_prompt.clone(),
+                                self.shell_command.clone(),
+                                scope,
+                                code_server.clone(),
+                            )
+                            .await
                         {
                             Ok(vm) => {
                                 shells.insert(shell_name.clone(), Arc::new(Mutex::new(vm)));
@@ -650,10 +671,6 @@ impl Runtime {
             if let Some(failure) = setup_failed {
                 let reason = format!("effect setup failed: {failure:?}");
                 effect_state.outcome = Some(Outcome::Skipped(reason));
-                for vm in shells.values() {
-                    let out = vm.lock().await.output_snapshot().await;
-                    shell_logs.insert(format!("effect:{}", effect.name.node), out);
-                }
                 effect_state.failures.push(failure);
                 break;
             }
@@ -683,12 +700,12 @@ impl Runtime {
         }
 
         for need in &plan.test.needs {
-            if let Some(alias) = &need.node.alias {
-                if let Some(state) = effect_state.instances.get(&need.node.instance) {
-                    effect_state
-                        .alias_shells
-                        .insert(alias.node.clone(), state.exported_vm.clone());
-                }
+            if let Some(alias) = &need.node.alias
+                && let Some(state) = effect_state.instances.get(&need.node.instance)
+            {
+                effect_state
+                    .alias_shells
+                    .insert(alias.node.clone(), state.exported_vm.clone());
             }
         }
 
@@ -701,39 +718,49 @@ impl Runtime {
         test_scope: Arc<Mutex<TestScope>>,
         code_server: Arc<CodeServer>,
         aliases: &mut HashMap<String, SharedVm>,
-        progress_tx: ProgressTx,
-        log_dir: &Path,
-        test_start: Instant,
-        event_collector: &EventCollector,
-        env: &Arc<Env>,
+        rctx: &TestRunContext<'_>,
     ) -> Outcome {
         let mut local_shells: HashMap<String, SharedVm> = HashMap::new();
         for block in &plan.test.shells {
             let shell_name = block.node.name.node.clone();
-            let _ = progress_tx.send(ProgressEvent::ShellSwitch(shell_name.clone()));
-            event_collector.push("", LogEventKind::ShellSwitch { name: shell_name.clone() }).await;
+            rctx.emit(ProgressEvent::ShellSwitch(shell_name.clone()));
+            rctx.event_collector
+                .push(
+                    "",
+                    LogEventKind::ShellSwitch {
+                        name: shell_name.clone(),
+                    },
+                )
+                .await;
             let vm = if let Some(vm) = aliases.get(&shell_name).cloned() {
-                event_collector.push("", LogEventKind::ShellAlias {
-                    name: shell_name.clone(),
-                    source: shell_name.clone(),
-                }).await;
+                rctx.event_collector
+                    .push(
+                        "",
+                        LogEventKind::ShellAlias {
+                            name: shell_name.clone(),
+                            source: shell_name.clone(),
+                        },
+                    )
+                    .await;
                 vm
             } else if let Some(vm) = local_shells.get(&shell_name).cloned() {
                 vm
             } else {
-                let scope = ScopeStack::new(test_scope.clone(), HashMap::new(), env.clone(), self.default_timeout.clone());
-                let vm = match Vm::new(
-                    shell_name.clone(),
-                    self.shell_prompt.clone(),
-                    self.shell_command.clone(),
-                    scope,
-                    code_server.clone(),
-                    Some(progress_tx.clone()),
-                    log_dir,
-                    test_start,
-                    Some(event_collector.clone()),
-                )
-                .await
+                let scope = ScopeStack::new(
+                    test_scope.clone(),
+                    HashMap::new(),
+                    rctx.env.clone(),
+                    self.default_timeout.clone(),
+                );
+                let vm = match rctx
+                    .spawn_vm(
+                        shell_name.clone(),
+                        self.shell_prompt.clone(),
+                        self.shell_command.clone(),
+                        scope,
+                        code_server.clone(),
+                    )
+                    .await
                 {
                     Ok(vm) => Arc::new(Mutex::new(vm)),
                     Err(f) => return Outcome::Fail(f),
@@ -750,51 +777,50 @@ impl Runtime {
         Outcome::Pass
     }
 
-    async fn run_test_cleanup(
-        &self,
-        plan: &Plan,
-        progress_tx: ProgressTx,
-        log_dir: &Path,
-        test_start: Instant,
-        event_collector: &EventCollector,
-        env: &Arc<Env>,
-    ) {
+    async fn run_test_cleanup(&self, plan: &Plan, rctx: &TestRunContext<'_>) {
         if let Some(cleanup) = &plan.test.cleanup {
-            let _ = progress_tx.send(ProgressEvent::Cleanup);
+            rctx.emit(ProgressEvent::Cleanup);
             let test_scope = Arc::new(Mutex::new(TestScope::new()));
-            let scope = ScopeStack::new(test_scope, HashMap::new(), env.clone(), self.default_timeout.clone());
-            let code_server = Arc::new(CodeServer::new(plan.functions.clone(), plan.pure_functions.clone()));
-            event_collector.push("", LogEventKind::Cleanup { shell: "__cleanup".to_string() }).await;
-            if let Ok(mut vm) = Vm::new(
-                "__cleanup".to_string(),
-                self.shell_prompt.clone(),
-                self.shell_command.clone(),
-                scope,
-                code_server,
-                Some(progress_tx),
-                log_dir,
-                test_start,
-                Some(event_collector.clone()),
-            )
-            .await
+            let scope = ScopeStack::new(
+                test_scope,
+                HashMap::new(),
+                rctx.env.clone(),
+                self.default_timeout.clone(),
+            );
+            let code_server = Arc::new(CodeServer::new(
+                plan.functions.clone(),
+                plan.pure_functions.clone(),
+            ));
+            rctx.event_collector
+                .push(
+                    "",
+                    LogEventKind::Cleanup {
+                        shell: "__cleanup".to_string(),
+                    },
+                )
+                .await;
+            if let Ok(mut vm) = rctx
+                .spawn_vm(
+                    "__cleanup".to_string(),
+                    self.shell_prompt.clone(),
+                    self.shell_command.clone(),
+                    scope,
+                    code_server,
+                )
+                .await
             {
                 let converted = cleanup_to_shell_stmts(&cleanup.node.stmts, &cleanup.span);
                 let _ = vm.exec_stmts(&converted).await;
                 vm.shutdown().await;
             }
         }
-
     }
 
     async fn teardown_effects(
         &self,
         plan: &Plan,
         state: &mut EffectExecution,
-        progress_tx: ProgressTx,
-        log_dir: &Path,
-        test_start: Instant,
-        event_collector: &EventCollector,
-        env: &Arc<Env>,
+        rctx: &TestRunContext<'_>,
     ) {
         let mut order = match toposort(&plan.effect_graph.dag, None) {
             Ok(v) => v,
@@ -808,26 +834,45 @@ impl Runtime {
             };
             let effect = &plan.effects[instance_state.info.effect];
             if let Some(cleanup) = &effect.cleanup {
-                let _ = progress_tx.send(ProgressEvent::Cleanup);
+                rctx.emit(ProgressEvent::Cleanup);
                 let cleanup_name = format!("{}.__cleanup", instance_state.scope_prefix);
-                event_collector.push("", LogEventKind::EffectTeardown { effect: effect.name.node.clone() }).await;
-                event_collector.push("", LogEventKind::Cleanup { shell: cleanup_name.clone() }).await;
+                rctx.event_collector
+                    .push(
+                        "",
+                        LogEventKind::EffectTeardown {
+                            effect: effect.name.node.clone(),
+                        },
+                    )
+                    .await;
+                rctx.event_collector
+                    .push(
+                        "",
+                        LogEventKind::Cleanup {
+                            shell: cleanup_name.clone(),
+                        },
+                    )
+                    .await;
                 let test_scope = Arc::new(Mutex::new(TestScope::new()));
-                let code_server = Arc::new(CodeServer::new(Vec::new(), Vec::new()));
-                let overlay = self.interpolate_overlay(&instance_state.info.overlay, env, &code_server).await;
-                let scope = ScopeStack::new(test_scope, overlay, env.clone(), self.default_timeout.clone());
-                if let Ok(mut vm) = Vm::new(
-                    cleanup_name,
-                    self.shell_prompt.clone(),
-                    self.shell_command.clone(),
-                    scope,
-                    code_server,
-                    Some(progress_tx.clone()),
-                    log_dir,
-                    test_start,
-                    Some(event_collector.clone()),
-                )
-                .await
+                let code_server =
+                    Arc::new(CodeServer::new(ir::IndexVec::new(), ir::IndexVec::new()));
+                let overlay = self
+                    .interpolate_overlay(&instance_state.info.overlay, rctx.env, &code_server)
+                    .await;
+                let scope = ScopeStack::new(
+                    test_scope,
+                    overlay,
+                    rctx.env.clone(),
+                    self.default_timeout.clone(),
+                );
+                if let Ok(mut vm) = rctx
+                    .spawn_vm(
+                        cleanup_name,
+                        self.shell_prompt.clone(),
+                        self.shell_command.clone(),
+                        scope,
+                        code_server,
+                    )
+                    .await
                 {
                     let converted = cleanup_to_shell_stmts(&cleanup.node.stmts, &cleanup.span);
                     let _ = vm.exec_stmts(&converted).await;
@@ -850,7 +895,6 @@ impl Runtime {
     ) -> HashMap<String, String> {
         pure::eval_overlay(overlay, env, code_server).await
     }
-
 }
 
 #[derive(Default)]
@@ -926,7 +970,12 @@ fn compute_scope_prefixes(plan: &Plan) -> HashMap<InstanceId, String> {
         let instance_id = need.node.instance;
         if let Some(instance) = plan.effect_graph.dag.node_weight(instance_id) {
             let effect = &plan.effects[instance.effect];
-            let alias_str = need.node.alias.as_ref().map(|a| a.node.as_str()).unwrap_or(&effect.name.node);
+            let alias_str = need
+                .node
+                .alias
+                .as_ref()
+                .map(|a| a.node.as_str())
+                .unwrap_or(&effect.name.node);
             let prefix = format!("{}.{}", effect.name.node, alias_str);
             prefixes.insert(instance_id, prefix);
         }
@@ -948,9 +997,13 @@ fn compute_scope_prefixes(plan: &Plan) -> HashMap<InstanceId, String> {
                 {
                     let target = edge.target();
                     if let Some(p) = prefixes.get(&target) {
-                        let edge_alias = edge.weight().alias.as_ref().map(|a| a.node.as_str()).unwrap_or(&effect.name.node);
-                    parent_prefix =
-                            Some(format!("{}.{}.{}", p, effect.name.node, edge_alias));
+                        let edge_alias = edge
+                            .weight()
+                            .alias
+                            .as_ref()
+                            .map(|a| a.node.as_str())
+                            .unwrap_or(&effect.name.node);
+                        parent_prefix = Some(format!("{}.{}.{}", p, effect.name.node, edge_alias));
                         break;
                     }
                 }
@@ -969,13 +1022,13 @@ mod tests {
     use super::*;
     use crate::dsl::resolver::ir::{self, Span};
 
-    fn make_str_expr(s: &str) -> ir::StringExpr {
-        ir::StringExpr {
+    fn make_str_expr(s: &str) -> ir::Interpolation {
+        ir::Interpolation {
             parts: vec![ir::Spanned::new(
                 ir::StringPart::Literal(s.to_string()),
-                Span::new(0, 0..0),
+                Span::new(ir::FileId::from(0), 0..0),
             )],
-            span: Span::new(0, 0..0),
+            span: Span::new(ir::FileId::from(0), 0..0),
         }
     }
 
@@ -999,21 +1052,20 @@ mod tests {
                 modifier,
                 body: ir::CondBody::Bare(make_var_pure_expr(var_name)),
             }),
-            (Some(modifier), Some(var_name), Some(CondTest::Eq(val))) => {
-                Some(ir::CondExpr {
-                    modifier,
-                    body: ir::CondBody::Eq(make_var_pure_expr(var_name), make_str_pure_expr(&val)),
-                })
-            }
-            (Some(modifier), Some(var_name), Some(CondTest::Regex(pat))) => {
-                Some(ir::CondExpr {
-                    modifier,
-                    body: ir::CondBody::Regex(make_var_pure_expr(var_name), make_str_expr(&pat)),
-                })
-            }
+            (Some(modifier), Some(var_name), Some(CondTest::Eq(val))) => Some(ir::CondExpr {
+                modifier,
+                body: ir::CondBody::Eq(make_var_pure_expr(var_name), make_str_pure_expr(&val)),
+            }),
+            (Some(modifier), Some(var_name), Some(CondTest::Regex(pat))) => Some(ir::CondExpr {
+                modifier,
+                body: ir::CondBody::Regex(make_var_pure_expr(var_name), make_str_expr(&pat)),
+            }),
             _ => unreachable!(),
         };
-        Spanned::new(ir::Condition { kind, cond }, Span::new(0, 0..0))
+        Spanned::new(
+            ir::Condition { kind, cond },
+            Span::new(ir::FileId::from(0), 0..0),
+        )
     }
 
     // Keep CondTest as a local helper enum for test compatibility
@@ -1023,7 +1075,7 @@ mod tests {
     }
 
     fn empty_code_server() -> Arc<CodeServer> {
-        Arc::new(CodeServer::new(Vec::new(), Vec::new()))
+        Arc::new(CodeServer::new(ir::IndexVec::new(), ir::IndexVec::new()))
     }
 
     #[tokio::test]
@@ -1051,7 +1103,11 @@ mod tests {
         let mut env = Env::new();
         env.insert("CI".into(), "true".into());
         let env = Arc::new(env);
-        assert!(evaluate_conditions(&conds, &env, &empty_code_server()).await.is_none());
+        assert!(
+            evaluate_conditions(&conds, &env, &empty_code_server())
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -1081,7 +1137,11 @@ mod tests {
         let mut env = Env::new();
         env.insert("OS".into(), "linux".into());
         let env = Arc::new(env);
-        assert!(evaluate_conditions(&conds, &env, &empty_code_server()).await.is_none());
+        assert!(
+            evaluate_conditions(&conds, &env, &empty_code_server())
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -1111,7 +1171,11 @@ mod tests {
         let mut env = Env::new();
         env.insert("ARCH".into(), "x86_64".into());
         let env = Arc::new(env);
-        assert!(evaluate_conditions(&conds, &env, &empty_code_server()).await.is_none());
+        assert!(
+            evaluate_conditions(&conds, &env, &empty_code_server())
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -1132,7 +1196,12 @@ mod tests {
     #[tokio::test]
     async fn multiple_conditions_all_pass() {
         let conds = vec![
-            make_cond(ir::CondKind::Skip, Some(ir::CondModifier::Unless), Some("CI"), None),
+            make_cond(
+                ir::CondKind::Skip,
+                Some(ir::CondModifier::Unless),
+                Some("CI"),
+                None,
+            ),
             make_cond(
                 ir::CondKind::Run,
                 Some(ir::CondModifier::If),
@@ -1144,13 +1213,22 @@ mod tests {
         env.insert("CI".into(), "1".into());
         env.insert("OS".into(), "linux".into());
         let env = Arc::new(env);
-        assert!(evaluate_conditions(&conds, &env, &empty_code_server()).await.is_none());
+        assert!(
+            evaluate_conditions(&conds, &env, &empty_code_server())
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
     async fn multiple_conditions_second_fails() {
         let conds = vec![
-            make_cond(ir::CondKind::Skip, Some(ir::CondModifier::Unless), Some("CI"), None),
+            make_cond(
+                ir::CondKind::Skip,
+                Some(ir::CondModifier::Unless),
+                Some("CI"),
+                None,
+            ),
             make_cond(
                 ir::CondKind::Run,
                 Some(ir::CondModifier::If),
@@ -1195,7 +1273,11 @@ mod tests {
     async fn bare_run_is_noop() {
         let conds = vec![make_cond(ir::CondKind::Run, None, None, None)];
         let env = Arc::new(Env::new());
-        assert!(evaluate_conditions(&conds, &env, &empty_code_server()).await.is_none());
+        assert!(
+            evaluate_conditions(&conds, &env, &empty_code_server())
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -1211,6 +1293,10 @@ mod tests {
     async fn empty_conditions_pass() {
         let conds: Vec<Spanned<ir::Condition>> = vec![];
         let env = Arc::new(Env::new());
-        assert!(evaluate_conditions(&conds, &env, &empty_code_server()).await.is_none());
+        assert!(
+            evaluate_conditions(&conds, &env, &empty_code_server())
+                .await
+                .is_none()
+        );
     }
 }

@@ -1,4 +1,4 @@
-[run if "${MY_VAR}"]
+# run if MY_VAR
 test "conditional" {
     shell s {
         > echo hello

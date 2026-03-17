@@ -10,9 +10,21 @@ build:
 release:
     cargo build --release
 
-# Run cargo check
-check:
-    cargo check
+# Run all checks: cargo check + clippy + fmt
+check: check-clippy check-fmt
+
+# Run clippy check (includes cargo check)
+check-clippy:
+    cargo clippy --all-targets -- -D warnings
+
+# Run formatter check
+check-fmt:
+    rustup run nightly cargo fmt -- --check
+
+# Fix clippy warnings and format code
+fix:
+    cargo clippy --all-targets --fix --allow-dirty --allow-staged -- -D warnings
+    rustup run nightly cargo fmt
 
 # Run all tests (unit + e2e)
 test: unit e2e

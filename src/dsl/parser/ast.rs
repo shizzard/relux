@@ -1,247 +1,471 @@
-pub type Span = std::ops::Range<usize>;
+use crate::{Span, Spanned};
 
-use crate::Spanned;
+// ─── Trait + Macros ─────────────────────────────────────────
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum TimeoutKind {
-    Tolerance,
-    Assertion,
+pub trait AstNode {
+    fn span(&self) -> &Span;
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Module {
-    pub items: Vec<Spanned<Item>>,
+macro_rules! impl_ast_node_struct {
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl AstNode for $ty {
+                fn span(&self) -> &Span {
+                    &self.span
+                }
+            }
+        )*
+    };
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Item {
-    Comment(String),
-    Import(Import),
-    Fn(FnDef),
-    PureFn(PureFnDef),
-    Effect(EffectDef),
-    Test(TestDef),
-    Marker(MarkerDecl),
+macro_rules! impl_ast_node_enum {
+    ($ty:ty { $($variant:ident),* $(,)? }) => {
+        impl AstNode for $ty {
+            fn span(&self) -> &Span {
+                match self {
+                    $(Self::$variant { span, .. } => span,)*
+                }
+            }
+        }
+    };
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Import {
-    pub path: Spanned<String>,
-    pub names: Option<Vec<Spanned<ImportName>>>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ImportName {
-    pub name: Spanned<String>,
-    pub alias: Option<Spanned<String>>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct FnDef {
-    pub name: Spanned<String>,
-    pub params: Vec<Spanned<String>>,
-    pub body: Vec<Spanned<Stmt>>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct EffectDef {
-    pub name: Spanned<String>,
-    pub exported_shell: Spanned<String>,
-    pub markers: Vec<Spanned<MarkerDecl>>,
-    pub body: Vec<Spanned<EffectItem>>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum EffectItem {
-    Comment(String),
-    Need(NeedDecl),
-    Let(PureLetStmt),
-    Shell(ShellBlock),
-    Cleanup(CleanupBlock),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct TestDef {
-    pub name: Spanned<String>,
-    pub timeout: Option<Spanned<(TimeoutKind, String)>>,
-    pub markers: Vec<Spanned<MarkerDecl>>,
-    pub body: Vec<Spanned<TestItem>>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum TestItem {
-    Comment(String),
-    DocString(String),
-    Need(NeedDecl),
-    Let(PureLetStmt),
-    Shell(ShellBlock),
-    Cleanup(CleanupBlock),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct MarkerDecl {
-    pub kind: MarkerKind,
-    pub condition: Option<AstMarkerCond>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum MarkerKind {
-    Skip,
-    Run,
-    Flaky,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum CondModifier {
-    If,
-    Unless,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AstMarkerCond {
-    pub modifier: CondModifier,
-    pub body: AstMarkerCondBody,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum AstMarkerCondBody {
-    Bare(PureAstExpr),
-    Eq(PureAstExpr, PureAstExpr),
-    Regex(PureAstExpr, AstStringExpr),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct NeedDecl {
-    pub effect: Spanned<String>,
-    pub alias: Option<Spanned<String>>,
-    pub overlay: Vec<Spanned<OverlayEntry>>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct OverlayEntry {
-    pub key: Spanned<String>,
-    pub value: Spanned<PureAstExpr>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ShellBlock {
-    pub name: Spanned<String>,
-    pub stmts: Vec<Spanned<Stmt>>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct CleanupBlock {
-    pub stmts: Vec<Spanned<CleanupStmt>>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Stmt {
-    Comment(String),
-    Let(LetStmt),
-    Assign(AssignStmt),
-    Timeout(TimeoutKind, String),
-    FailRegex(AstStringExpr),
-    FailLiteral(AstStringExpr),
-    ClearFailPattern,
-    Expr(AstExpr),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum CleanupStmt {
-    Comment(String),
-    Send(AstStringExpr),
-    SendRaw(AstStringExpr),
-    Let(LetStmt),
-    Assign(AssignStmt),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct LetStmt {
-    pub name: Spanned<String>,
-    pub value: Option<Spanned<AstExpr>>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AssignStmt {
-    pub name: Spanned<String>,
-    pub value: Spanned<AstExpr>,
-}
+// ─── Expressions ─────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstExpr {
-    String(AstStringExpr),
-    Var(String),
-    Call(CallExpr),
-    Send(AstStringExpr),
-    SendRaw(AstStringExpr),
-    MatchRegex(AstStringExpr),
-    MatchLiteral(AstStringExpr),
-    TimedMatchRegex(TimeoutKind, String, AstStringExpr),
-    TimedMatchLiteral(TimeoutKind, String, AstStringExpr),
-    BufferReset,
+    String {
+        interp: AstInterpolation,
+        span: Span,
+    },
+    Var {
+        name: String,
+        span: Span,
+    },
+    Call {
+        call: AstCallExpr,
+        span: Span,
+    },
+    CaptureRef {
+        index: usize,
+        span: Span,
+    },
 }
 
+impl_ast_node_enum!(AstExpr {
+    String,
+    Var,
+    Call,
+    CaptureRef
+});
+
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstStringExpr {
+pub struct AstInterpolation {
     pub parts: Vec<AstStringPart>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstStringPart {
-    Literal(String),
-    Interp(String),
-    Escape(String),
+    Literal { value: String, span: Span },
+    VarRef { name: String, span: Span },
+    EscapedDollar { span: Span },
+    CaptureRef { index: usize, span: Span },
+}
+
+impl_ast_node_enum!(AstStringPart {
+    Literal,
+    VarRef,
     EscapedDollar,
+    CaptureRef
+});
+
+impl AstExpr {
+    /// Deterministic, span-independent string representation.
+    /// Two structurally identical expressions at different source positions
+    /// produce the same string. Used for overlay deduplication.
+    pub fn canonical(&self) -> String {
+        match self {
+            AstExpr::String { interp, .. } => format!("S:{}", interp.canonical()),
+            AstExpr::Var { name, .. } => format!("V:{name}"),
+            AstExpr::Call { call, .. } => {
+                let args: Vec<String> = call.args.iter().map(|a| a.node.canonical()).collect();
+                format!("C:{}({})", call.name.node, args.join(","))
+            }
+            AstExpr::CaptureRef { index, .. } => format!("cap:{index}"),
+        }
+    }
+}
+
+impl AstInterpolation {
+    pub(crate) fn canonical(&self) -> String {
+        let mut out = String::new();
+        for part in &self.parts {
+            match part {
+                AstStringPart::Literal { value, .. } => {
+                    out.push_str("L:");
+                    out.push_str(value);
+                }
+                AstStringPart::VarRef { name, .. } => {
+                    out.push_str("V:");
+                    out.push_str(name);
+                }
+                AstStringPart::EscapedDollar { .. } => out.push('D'),
+                AstStringPart::CaptureRef { index, .. } => {
+                    out.push_str("cap:");
+                    out.push_str(&index.to_string());
+                }
+            }
+        }
+        out
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct CallExpr {
+pub struct AstCallExpr {
     pub name: Spanned<String>,
     pub args: Vec<Spanned<AstExpr>>,
+    pub span: Span,
 }
 
-// ─── Pure Function AST Types ────────────────────────────────
+// ─── Statements ──────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct PureFnDef {
+pub enum AstStmt {
+    Comment {
+        text: String,
+        span: Span,
+    },
+    Let {
+        stmt: AstLetStmt,
+        span: Span,
+    },
+    Assign {
+        stmt: AstAssignStmt,
+        span: Span,
+    },
+    Timeout {
+        kind: AstTimeoutKind,
+        duration: String,
+        span: Span,
+    },
+    FailRegex {
+        pattern: AstInterpolation,
+        span: Span,
+    },
+    FailLiteral {
+        pattern: AstInterpolation,
+        span: Span,
+    },
+    ClearFailPattern {
+        span: Span,
+    },
+    Send {
+        payload: AstInterpolation,
+        span: Span,
+    },
+    SendRaw {
+        payload: AstInterpolation,
+        span: Span,
+    },
+    MatchRegex {
+        pattern: AstInterpolation,
+        span: Span,
+    },
+    MatchLiteral {
+        pattern: AstInterpolation,
+        span: Span,
+    },
+    TimedMatchRegex {
+        timeout_kind: AstTimeoutKind,
+        duration: String,
+        pattern: Spanned<AstInterpolation>,
+        span: Span,
+    },
+    TimedMatchLiteral {
+        timeout_kind: AstTimeoutKind,
+        duration: String,
+        pattern: Spanned<AstInterpolation>,
+        span: Span,
+    },
+    BufferReset {
+        span: Span,
+    },
+    Expr {
+        expr: AstExpr,
+        span: Span,
+    },
+}
+
+impl_ast_node_enum!(AstStmt {
+    Comment,
+    Let,
+    Assign,
+    Timeout,
+    FailRegex,
+    FailLiteral,
+    ClearFailPattern,
+    Send,
+    SendRaw,
+    MatchRegex,
+    MatchLiteral,
+    TimedMatchRegex,
+    TimedMatchLiteral,
+    BufferReset,
+    Expr,
+});
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstLetStmt {
+    pub name: Spanned<String>,
+    pub value: Option<Spanned<AstExpr>>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstAssignStmt {
+    pub name: Spanned<String>,
+    pub value: Spanned<AstExpr>,
+    pub span: Span,
+}
+
+// ─── Blocks ──────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstShellBlock {
+    pub name: Spanned<String>,
+    pub stmts: Vec<Spanned<AstStmt>>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstCleanupBlock {
+    pub stmts: Vec<Spanned<AstStmt>>,
+    pub span: Span,
+}
+
+// ─── Markers ─────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstMarkerDecl {
+    pub kind: AstMarkerKind,
+    pub condition: Option<AstMarkerCond>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstMarkerKind {
+    Skip { span: Span },
+    Run { span: Span },
+    Flaky { span: Span },
+}
+
+impl_ast_node_enum!(AstMarkerKind { Skip, Run, Flaky });
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstCondModifier {
+    If { span: Span },
+    Unless { span: Span },
+}
+
+impl_ast_node_enum!(AstCondModifier { If, Unless });
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstMarkerCond {
+    pub modifier: AstCondModifier,
+    pub body: AstMarkerCondBody,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstMarkerCondBody {
+    Bare {
+        expr: AstExpr,
+        span: Span,
+    },
+    Eq {
+        lhs: AstExpr,
+        rhs: AstExpr,
+        span: Span,
+    },
+    Regex {
+        expr: AstExpr,
+        pattern: AstInterpolation,
+        span: Span,
+    },
+}
+
+impl_ast_node_enum!(AstMarkerCondBody { Bare, Eq, Regex });
+
+// ─── Imports ─────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstImport {
+    pub path: Spanned<String>,
+    pub names: Option<Vec<Spanned<AstImportName>>>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstImportName {
+    pub name: Spanned<String>,
+    pub alias: Option<Spanned<String>>,
+    pub span: Span,
+}
+
+// ─── Need ────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstNeedDecl {
+    pub effect: Spanned<String>,
+    pub alias: Option<Spanned<String>>,
+    pub overlay: Vec<Spanned<AstOverlayEntry>>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstOverlayEntry {
+    pub key: Spanned<String>,
+    pub value: Spanned<AstExpr>,
+    pub span: Span,
+}
+
+// ─── Function Definitions ───────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstFnDef {
     pub name: Spanned<String>,
     pub params: Vec<Spanned<String>>,
-    pub body: Vec<Spanned<PureAstStmt>>,
+    pub markers: Vec<Spanned<AstMarkerDecl>>,
+    pub body: Vec<Spanned<AstStmt>>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum PureAstStmt {
-    Comment(String),
-    Let(PureLetStmt),
-    Assign(PureAssignStmt),
-    Expr(PureAstExpr),
-    /// Impure statement found inside a pure fn body. The resolver emits a
-    /// diagnostic for this — the parser accepts it so that the error message
-    /// can reference purity rather than producing a generic "unexpected token".
-    ImpureViolation,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct PureLetStmt {
+pub struct AstPureFnDef {
     pub name: Spanned<String>,
-    pub value: Option<Spanned<PureAstExpr>>,
+    pub params: Vec<Spanned<String>>,
+    pub markers: Vec<Spanned<AstMarkerDecl>>,
+    pub body: Vec<Spanned<AstStmt>>,
+    pub span: Span,
 }
 
+// ─── Effect Definition ──────────────────────────────────────
+
 #[derive(Debug, Clone, PartialEq)]
-pub struct PureAssignStmt {
+pub struct AstEffectDef {
     pub name: Spanned<String>,
-    pub value: Spanned<PureAstExpr>,
+    pub exported_shell: Spanned<String>,
+    pub markers: Vec<Spanned<AstMarkerDecl>>,
+    pub body: Vec<Spanned<AstEffectItem>>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum PureAstExpr {
-    String(AstStringExpr),
-    Var(String),
-    Call(PureCallExpr),
+pub enum AstEffectItem {
+    Comment { text: String, span: Span },
+    Need { decl: AstNeedDecl, span: Span },
+    Let { stmt: AstLetStmt, span: Span },
+    Shell { block: AstShellBlock, span: Span },
+    Cleanup { block: AstCleanupBlock, span: Span },
 }
 
+impl_ast_node_enum!(AstEffectItem {
+    Comment,
+    Need,
+    Let,
+    Shell,
+    Cleanup
+});
+
+// ─── Test Definition ────────────────────────────────────────
+
 #[derive(Debug, Clone, PartialEq)]
-pub struct PureCallExpr {
+pub struct AstTestDef {
     pub name: Spanned<String>,
-    pub args: Vec<Spanned<PureAstExpr>>,
+    pub timeout: Option<Spanned<(AstTimeoutKind, String)>>,
+    pub markers: Vec<Spanned<AstMarkerDecl>>,
+    pub body: Vec<Spanned<AstTestItem>>,
+    pub span: Span,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstTestItem {
+    Comment { text: String, span: Span },
+    DocString { text: String, span: Span },
+    Need { decl: AstNeedDecl, span: Span },
+    Let { stmt: AstLetStmt, span: Span },
+    Shell { block: AstShellBlock, span: Span },
+    Cleanup { block: AstCleanupBlock, span: Span },
+}
+
+impl_ast_node_enum!(AstTestItem {
+    Comment,
+    DocString,
+    Need,
+    Let,
+    Shell,
+    Cleanup
+});
+
+// ─── Module ─────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstModule {
+    pub items: Vec<crate::Spanned<AstItem>>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstItem {
+    Comment { text: String, span: Span },
+    Import { import: AstImport, span: Span },
+    Fn { def: AstFnDef, span: Span },
+    PureFn { def: AstPureFnDef, span: Span },
+    Effect { def: AstEffectDef, span: Span },
+    Test { def: AstTestDef, span: Span },
+}
+
+impl_ast_node_enum!(AstItem {
+    Comment,
+    Import,
+    Fn,
+    PureFn,
+    Effect,
+    Test
+});
+
+// ─── Timeout Kind ───────────────────────────────────────────
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum AstTimeoutKind {
+    Tolerance { span: Span },
+    Assertion { span: Span },
+}
+
+impl_ast_node_enum!(AstTimeoutKind {
+    Tolerance,
+    Assertion
+});
+
+// ─── Macro Impls ────────────────────────────────────────────
+
+impl_ast_node_struct!(
+    AstInterpolation,
+    AstCallExpr,
+    AstLetStmt,
+    AstAssignStmt,
+    AstShellBlock,
+    AstCleanupBlock,
+    AstMarkerDecl,
+    AstMarkerCond,
+    AstImport,
+    AstImportName,
+    AstNeedDecl,
+    AstOverlayEntry,
+    AstFnDef,
+    AstPureFnDef,
+    AstEffectDef,
+    AstTestDef,
+    AstModule,
+);

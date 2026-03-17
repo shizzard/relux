@@ -63,7 +63,9 @@ fn event_type_class(kind: &LogEventKind) -> (&str, &str) {
         LogEventKind::Send { .. } => ("shell send", "send"),
         LogEventKind::Recv { .. } => ("shell recv", "recv"),
         LogEventKind::MatchStart { is_regex: true, .. } => ("regex match start", "match-ev"),
-        LogEventKind::MatchStart { is_regex: false, .. } => ("literal match start", "match-ev"),
+        LogEventKind::MatchStart {
+            is_regex: false, ..
+        } => ("literal match start", "match-ev"),
         LogEventKind::MatchDone { .. } => ("match done", "match-ev"),
         LogEventKind::Timeout { .. } => ("match timeout", "err"),
         LogEventKind::BufferReset { .. } => ("buffer reset", "err"),
@@ -98,13 +100,22 @@ fn render_kv(pairs: &[(String, String)]) -> String {
     }
     let mut out = String::new();
     for (k, v) in pairs {
-        let _ = write!(out, "<br>&nbsp;&nbsp;{} = {}", html_escape(k), html_escape(v));
+        let _ = write!(
+            out,
+            "<br>&nbsp;&nbsp;{} = {}",
+            html_escape(k),
+            html_escape(v)
+        );
     }
     out
 }
 
 fn render_value(label: &str, value: &str) -> String {
-    let display = if value.is_empty() { "(empty string)" } else { value };
+    let display = if value.is_empty() {
+        "(empty string)"
+    } else {
+        value
+    };
     format!("<br>&nbsp;&nbsp;{} = {}", label, html_escape(display))
 }
 
@@ -116,12 +127,18 @@ fn event_data(kind: &LogEventKind) -> String {
             let prefix = if *is_regex { "regex " } else { "" };
             format!("{prefix}{}", html_escape(pattern))
         }
-        LogEventKind::MatchDone { matched, elapsed, captures, .. } => {
+        LogEventKind::MatchDone {
+            matched,
+            elapsed,
+            captures,
+            ..
+        } => {
             let mut out = format!("{} ({})", html_escape(matched), fmt_duration(elapsed));
             if let Some(groups) = captures {
                 let mut sorted: Vec<_> = groups.iter().collect();
                 sorted.sort_by_key(|(k, _)| k.parse::<usize>().unwrap_or(usize::MAX));
-                let pairs: Vec<(String, String)> = sorted.iter()
+                let pairs: Vec<(String, String)> = sorted
+                    .iter()
                     .map(|(k, v)| (format!("${k}"), v.to_string()))
                     .collect();
                 out.push_str(&render_kv(&pairs));
@@ -132,8 +149,16 @@ fn event_data(kind: &LogEventKind) -> String {
         LogEventKind::Timeout { pattern, .. } => html_escape(pattern),
         LogEventKind::FailPatternSet { pattern } => html_escape(pattern),
         LogEventKind::FailPatternCleared => "(cleared)".to_string(),
-        LogEventKind::FailPatternTriggered { pattern, matched_line, .. } => {
-            format!("{} matched: {}", html_escape(pattern), html_escape(matched_line))
+        LogEventKind::FailPatternTriggered {
+            pattern,
+            matched_line,
+            ..
+        } => {
+            format!(
+                "{} matched: {}",
+                html_escape(pattern),
+                html_escape(matched_line)
+            )
         }
         LogEventKind::EffectSetup { effect } => html_escape(effect),
         LogEventKind::EffectTeardown { effect } => html_escape(effect),
@@ -156,7 +181,12 @@ fn event_data(kind: &LogEventKind) -> String {
             out.push_str(&render_kv(args));
             out
         }
-        LogEventKind::FnExit { name, return_value, restored_timeout, restored_fail_pattern } => {
+        LogEventKind::FnExit {
+            name,
+            return_value,
+            restored_timeout,
+            restored_fail_pattern,
+        } => {
             let mut out = html_escape(name);
             out.push_str(&render_value("return", return_value));
             if let Some(t) = restored_timeout {
@@ -183,7 +213,11 @@ fn event_data(kind: &LogEventKind) -> String {
             format!("{} (was {})", html_escape(timeout), html_escape(previous))
         }
         LogEventKind::StringEval { result } => html_escape(result),
-        LogEventKind::Interpolation { template, result, bindings } => {
+        LogEventKind::Interpolation {
+            template,
+            result,
+            bindings,
+        } => {
             let mut out = format!("{} -&gt; {}", html_escape(template), html_escape(result));
             out.push_str(&render_kv(bindings));
             out
@@ -206,11 +240,12 @@ fn render_buffer(kind: &LogEventKind) -> String {
         return String::new();
     };
     let inner = match snapshot {
-        BufferSnapshot::Match { before, matched, after } => {
-            let is_neg = matches!(
-                kind,
-                LogEventKind::FailPatternTriggered { .. }
-            );
+        BufferSnapshot::Match {
+            before,
+            matched,
+            after,
+        } => {
+            let is_neg = matches!(kind, LogEventKind::FailPatternTriggered { .. });
             let match_class = if is_neg { "buf-skip" } else { "buf-match" };
             let before_class = if is_neg { "" } else { " class=\"buf-skip\"" };
             let mut buf = String::new();
@@ -218,7 +253,11 @@ fn render_buffer(kind: &LogEventKind) -> String {
                 let _ = write!(buf, "<span{before_class}>{}</span>", html_escape(before));
             }
             if !matched.is_empty() {
-                let _ = write!(buf, "<span class=\"{match_class}\">{}</span>", html_escape(matched));
+                let _ = write!(
+                    buf,
+                    "<span class=\"{match_class}\">{}</span>",
+                    html_escape(matched)
+                );
             }
             if !after.is_empty() {
                 buf.push_str(&html_escape(after));
@@ -253,15 +292,21 @@ const HTML_FOOTER: &str = "</body></html>\n";
 
 pub fn generate_run_summary(run_dir: &Path, results: &[TestResult]) {
     let mut html = html_header("relux run summary", "");
-    let run_name = run_dir
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy();
+    let run_name = run_dir.file_name().unwrap_or_default().to_string_lossy();
     let _ = writeln!(html, "<h1>Run: {}</h1>", html_escape(&run_name));
 
-    let passed = results.iter().filter(|r| matches!(r.outcome, Outcome::Pass)).count();
-    let failed = results.iter().filter(|r| matches!(r.outcome, Outcome::Fail(_))).count();
-    let skipped = results.iter().filter(|r| matches!(r.outcome, Outcome::Skipped(_))).count();
+    let passed = results
+        .iter()
+        .filter(|r| matches!(r.outcome, Outcome::Pass))
+        .count();
+    let failed = results
+        .iter()
+        .filter(|r| matches!(r.outcome, Outcome::Fail(_)))
+        .count();
+    let skipped = results
+        .iter()
+        .filter(|r| matches!(r.outcome, Outcome::Skipped(_)))
+        .count();
     let _ = writeln!(
         html,
         "<p>{passed} passed, {failed} failed, {skipped} skipped</p>"
@@ -279,7 +324,10 @@ pub fn generate_run_summary(run_dir: &Path, results: &[TestResult]) {
     }
 
     let _ = writeln!(html, "<table class=\"summary\">");
-    let _ = writeln!(html, "<tr><th>Test</th><th>Result</th><th>Duration</th><th>Progress</th></tr>");
+    let _ = writeln!(
+        html,
+        "<tr><th>Test</th><th>Result</th><th>Duration</th><th>Progress</th></tr>"
+    );
     for result in results {
         let (class, label) = match &result.outcome {
             Outcome::Pass => ("pass", "PASS".to_string()),
@@ -287,9 +335,7 @@ pub fn generate_run_summary(run_dir: &Path, results: &[TestResult]) {
             Outcome::Skipped(r) => ("skip", format!("SKIP: {r}")),
         };
         let link = if let Some(log_dir) = &result.log_dir {
-            let rel = log_dir
-                .strip_prefix(run_dir)
-                .unwrap_or(log_dir);
+            let rel = log_dir.strip_prefix(run_dir).unwrap_or(log_dir);
             format!(
                 "<a href=\"{}/event.html\">{}</a>",
                 rel.display(),
@@ -315,12 +361,7 @@ pub fn generate_run_summary(run_dir: &Path, results: &[TestResult]) {
 
 // ─── Per-test HTML logs ─────────────────────────────────────
 
-pub fn generate_html_logs(
-    log_dir: &Path,
-    test_name: &str,
-    events: &[LogEvent],
-    _run_dir: &Path,
-) {
+pub fn generate_html_logs(log_dir: &Path, test_name: &str, events: &[LogEvent], _run_dir: &Path) {
     let shells = collect_shells(events);
     let shell_event_indices = build_shell_event_indices(events, &shells);
 
@@ -346,10 +387,7 @@ fn collect_shells(events: &[LogEvent]) -> Vec<String> {
 /// For each event, compute the per-shell event counter.
 /// Returns a Vec parallel to `events` with (shell_event_index).
 /// Also populates a map of shell -> next counter.
-fn build_shell_event_indices(
-    events: &[LogEvent],
-    shells: &[String],
-) -> Vec<usize> {
+fn build_shell_event_indices(events: &[LogEvent], shells: &[String]) -> Vec<usize> {
     let mut counters: HashMap<&str, usize> = HashMap::new();
     for s in shells {
         counters.insert(s.as_str(), 0);
@@ -440,11 +478,7 @@ fn generate_shell_log(
 
     let _ = writeln!(html, "<div class=\"hdr\">");
     for ext in &["stdin.raw", "stdin.log", "stdout.raw", "stdout.log"] {
-        let _ = write!(
-            html,
-            "<a href=\"{}.{ext}\">{ext}</a>",
-            html_escape(shell)
-        );
+        let _ = write!(html, "<a href=\"{}.{ext}\">{ext}</a>", html_escape(shell));
     }
     let _ = writeln!(html, "</div>");
 
@@ -460,9 +494,8 @@ fn generate_shell_log(
 
         let ts_str = fmt_duration(&event.timestamp);
         let test_anchor = format!("{shell}-e{shell_idx}");
-        let ts_cell = format!(
-            "<td class=\"ts\"><a href=\"event.html#{test_anchor}\">{ts_str}</a></td>"
-        );
+        let ts_cell =
+            format!("<td class=\"ts\"><a href=\"event.html#{test_anchor}\">{ts_str}</a></td>");
 
         let kind_class = if type_class.is_empty() {
             "kind".to_string()

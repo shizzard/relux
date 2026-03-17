@@ -100,7 +100,9 @@ pub fn filter_summaries(runs: &mut [LoadedRun], test_paths: &[String]) {
     }
     let filter_set: HashSet<&str> = test_paths.iter().map(|s| s.as_str()).collect();
     for run in runs.iter_mut() {
-        run.summary.tests.retain(|t| filter_set.contains(t.path.as_str()));
+        run.summary
+            .tests
+            .retain(|t| filter_set.contains(t.path.as_str()));
     }
 }
 
@@ -310,7 +312,15 @@ impl Preaggregate for FlakyPreaggregate {
                     0.0
                 };
 
-                Some((key.clone(), FlakyRecord { flips, pass, fail, rate }))
+                Some((
+                    key.clone(),
+                    FlakyRecord {
+                        flips,
+                        pass,
+                        fail,
+                        rate,
+                    },
+                ))
             })
             .collect()
     }
@@ -368,7 +378,9 @@ pub fn format_flaky_toml(
     }
 
     let report = FlakyReport {
-        meta: ReportMeta { runs: coll.run_count() },
+        meta: ReportMeta {
+            runs: coll.run_count(),
+        },
         tests: entries
             .iter()
             .map(|(k, r)| FlakyEntryOut {
@@ -437,7 +449,14 @@ impl Preaggregate for FailurePreaggregate {
                     return None;
                 }
                 let rate = (fails as f64 / total as f64) * 100.0;
-                Some((key.clone(), FailureRecord { fails, runs: total, rate }))
+                Some((
+                    key.clone(),
+                    FailureRecord {
+                        fails,
+                        runs: total,
+                        rate,
+                    },
+                ))
             })
             .collect()
     }
@@ -447,10 +466,10 @@ pub fn compute_failure_modes(coll: &LoadedRunsCollection) -> Vec<FailureModeEntr
     let mut mode_counts: HashMap<String, usize> = HashMap::new();
     for runs_map in coll.tests.values() {
         for meta in runs_map.values() {
-            if meta.outcome == "fail" {
-                if let Some(ft) = &meta.failure_type {
-                    *mode_counts.entry(ft.clone()).or_insert(0) += 1;
-                }
+            if meta.outcome == "fail"
+                && let Some(ft) = &meta.failure_type
+            {
+                *mode_counts.entry(ft.clone()).or_insert(0) += 1;
             }
         }
     }
@@ -464,7 +483,11 @@ pub fn compute_failure_modes(coll: &LoadedRunsCollection) -> Vec<FailureModeEntr
             } else {
                 0.0
             };
-            FailureModeEntry { failure_type, count, percentage }
+            FailureModeEntry {
+                failure_type,
+                count,
+                percentage,
+            }
         })
         .collect();
 
@@ -546,7 +569,9 @@ pub fn format_failures_toml(
     }
 
     let report = FailureReport {
-        meta: ReportMeta { runs: coll.run_count() },
+        meta: ReportMeta {
+            runs: coll.run_count(),
+        },
         tests: entries
             .iter()
             .map(|(k, r)| FailureEntryOut {
@@ -634,7 +659,11 @@ impl Preaggregate for FirstFailPreaggregate {
                     if meta.outcome != "skipped" {
                         prev_outcome.insert(
                             key,
-                            if meta.outcome == "pass" { "pass" } else { "fail" },
+                            if meta.outcome == "pass" {
+                                "pass"
+                            } else {
+                                "fail"
+                            },
                         );
                     }
                 }
@@ -692,7 +721,9 @@ pub fn format_first_fail_toml(
     }
 
     let report = FirstFailReport {
-        meta: ReportMeta { runs: coll.run_count() },
+        meta: ReportMeta {
+            runs: coll.run_count(),
+        },
         tests: entries
             .iter()
             .map(|(k, r)| FirstFailEntryOut {
@@ -803,11 +834,11 @@ impl Aggregate for DurationAggregate {
                 let mut total: u64 = 0;
                 let mut found = false;
                 for runs_map in coll.tests.values() {
-                    if let Some(meta) = runs_map.get(rid) {
-                        if meta.outcome != "skipped" {
-                            total += meta.duration_ms;
-                            found = true;
-                        }
+                    if let Some(meta) = runs_map.get(rid)
+                        && meta.outcome != "skipped"
+                    {
+                        total += meta.duration_ms;
+                        found = true;
                     }
                 }
                 found.then_some(total)
@@ -895,7 +926,9 @@ pub fn format_durations_toml(
     }
 
     let report = DurationReport {
-        meta: ReportMeta { runs: coll.run_count() },
+        meta: ReportMeta {
+            runs: coll.run_count(),
+        },
         tests: entries
             .iter()
             .map(|(k, r)| DurationEntryOut {
@@ -1015,7 +1048,11 @@ fn compute_stats(values: &[u64]) -> DurationStats {
     let sum: f64 = values.iter().map(|&v| v as f64).sum();
     let mean = sum / n;
 
-    let variance = values.iter().map(|&v| (v as f64 - mean).powi(2)).sum::<f64>() / n;
+    let variance = values
+        .iter()
+        .map(|&v| (v as f64 - mean).powi(2))
+        .sum::<f64>()
+        / n;
     let stddev = variance.sqrt();
 
     let min = *values.iter().min().unwrap();
@@ -1181,7 +1218,7 @@ mod tests {
 
     fn make_test(path: &str, outcome: &str, duration_ms: u64) -> TestEntry {
         TestEntry {
-            name: path.split('/').last().unwrap_or(path).to_string(),
+            name: path.split('/').next_back().unwrap_or(path).to_string(),
             path: path.to_string(),
             outcome: outcome.to_string(),
             duration_ms,
@@ -1205,33 +1242,46 @@ mod tests {
 
     fn sample_runs() -> Vec<LoadedRun> {
         vec![
-            make_run("run1", "2026-03-01T00:00:00Z", vec![
-                make_test("a.relux", "pass", 100),
-                make_test("b.relux", "pass", 200),
-                make_test("c.relux", "fail", 300),
-            ]),
-            make_run("run2", "2026-03-02T00:00:00Z", vec![
-                make_test("a.relux", "fail", 110),
-                make_test("b.relux", "pass", 210),
-                make_test("c.relux", "fail", 310),
-            ]),
-            make_run("run3", "2026-03-03T00:00:00Z", vec![
-                make_test("a.relux", "pass", 120),
-                make_test("b.relux", "fail", 220),
-                make_test("c.relux", "pass", 320),
-            ]),
-            make_run("run4", "2026-03-04T00:00:00Z", vec![
-                make_test("a.relux", "pass", 130),
-                make_test("b.relux", "pass", 230),
-                make_test("c.relux", "fail", 330),
-            ]),
+            make_run(
+                "run1",
+                "2026-03-01T00:00:00Z",
+                vec![
+                    make_test("a.relux", "pass", 100),
+                    make_test("b.relux", "pass", 200),
+                    make_test("c.relux", "fail", 300),
+                ],
+            ),
+            make_run(
+                "run2",
+                "2026-03-02T00:00:00Z",
+                vec![
+                    make_test("a.relux", "fail", 110),
+                    make_test("b.relux", "pass", 210),
+                    make_test("c.relux", "fail", 310),
+                ],
+            ),
+            make_run(
+                "run3",
+                "2026-03-03T00:00:00Z",
+                vec![
+                    make_test("a.relux", "pass", 120),
+                    make_test("b.relux", "fail", 220),
+                    make_test("c.relux", "pass", 320),
+                ],
+            ),
+            make_run(
+                "run4",
+                "2026-03-04T00:00:00Z",
+                vec![
+                    make_test("a.relux", "pass", 130),
+                    make_test("b.relux", "pass", 230),
+                    make_test("c.relux", "fail", 330),
+                ],
+            ),
         ]
     }
 
-    fn find_entry<'a, T>(
-        entries: &'a [(TestKey, T)],
-        path: &str,
-    ) -> Option<(&'a TestKey, &'a T)> {
+    fn find_entry<'a, T>(entries: &'a [(TestKey, T)], path: &str) -> Option<(&'a TestKey, &'a T)> {
         entries
             .iter()
             .find(|(k, _)| k.to_string() == path)
@@ -1262,12 +1312,16 @@ mod tests {
     #[test]
     fn flaky_excludes_stable_tests() {
         let runs = vec![
-            make_run("run1", "2026-03-01T00:00:00Z", vec![
-                make_test("stable.relux", "pass", 100),
-            ]),
-            make_run("run2", "2026-03-02T00:00:00Z", vec![
-                make_test("stable.relux", "pass", 100),
-            ]),
+            make_run(
+                "run1",
+                "2026-03-01T00:00:00Z",
+                vec![make_test("stable.relux", "pass", 100)],
+            ),
+            make_run(
+                "run2",
+                "2026-03-02T00:00:00Z",
+                vec![make_test("stable.relux", "pass", 100)],
+            ),
         ];
 
         let mut coll = LoadedRunsCollection::new(runs);
@@ -1397,7 +1451,11 @@ mod tests {
 
     #[test]
     fn build_file_index_assigns_sequential_numbers() {
-        let ids = vec!["foo/bar.relux/test-one", "foo/bar.relux/test-two", "baz.relux/test-three"];
+        let ids = vec![
+            "foo/bar.relux/test-one",
+            "foo/bar.relux/test-two",
+            "baz.relux/test-three",
+        ];
         let (idx, legend) = build_file_index(&ids);
         assert_eq!(idx["foo/bar.relux"], 1);
         assert_eq!(idx["baz.relux"], 2);

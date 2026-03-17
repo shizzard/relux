@@ -9,13 +9,13 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Child;
 use tokio::sync::{Mutex, Notify};
 
-use crate::dsl::resolver::ir::{self, Expr, ShellStmt, Span, Spanned, StringExpr, StringPart};
+use crate::dsl::resolver::ir::{self, Expr, Interpolation, ShellStmt, Span, Spanned, StringPart};
+use crate::runtime::bifs::{PureContext, VmContext};
 use crate::runtime::event_log::{BufferSnapshot, EventCollector, LogEventKind};
+use crate::runtime::progress::{ProgressEvent, ProgressTx};
 use crate::runtime::result::Failure;
 use crate::runtime::shell_log::ShellLogger;
 use crate::runtime::vars::{FailPattern, ScopeStack, interpolate};
-use crate::runtime::bifs::{PureContext, VmContext};
-use crate::runtime::progress::{ProgressEvent, ProgressTx};
 use crate::runtime::{Callable, CodeServer};
 
 /// A fail pattern matched in the output buffer.
@@ -62,16 +62,22 @@ fn regex_error_summary(e: &regex::Error) -> String {
 
 // ─── Interpolation helpers ──────────────────────────────────────
 
-fn has_interpolation(expr: &StringExpr) -> bool {
-    expr.parts.iter().any(|p| matches!(p.node, StringPart::Interp(_)))
+fn has_interpolation(expr: &Interpolation) -> bool {
+    expr.parts
+        .iter()
+        .any(|p| matches!(p.node, StringPart::VarRef(_) | StringPart::CaptureRef(_)))
 }
 
-fn interpolation_template(expr: &StringExpr) -> String {
-    expr.parts.iter().map(|p| match &p.node {
-        StringPart::Literal(s) => s.clone(),
-        StringPart::Interp(name) => format!("${{{name}}}"),
-        StringPart::EscapedDollar => "$".to_string(),
-    }).collect()
+fn interpolation_template(expr: &Interpolation) -> String {
+    expr.parts
+        .iter()
+        .map(|p| match &p.node {
+            StringPart::Literal(s) => s.clone(),
+            StringPart::VarRef(name) => format!("${{{name}}}"),
+            StringPart::EscapedDollar => "$".to_string(),
+            StringPart::CaptureRef(i) => format!("${{{i}}}"),
+        })
+        .collect()
 }
 
 // ─── Match Types ────────────────────────────────────────────────
@@ -114,6 +120,12 @@ pub struct OutputBuffer {
     inner: Arc<Mutex<BufferInner>>,
     pub(crate) notify: Arc<Notify>,
     recv_pending: Arc<Mutex<BytesMut>>,
+}
+
+impl Default for OutputBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl OutputBuffer {
@@ -178,10 +190,7 @@ impl OutputBuffer {
     }
 
     /// Find regex, extract truncated context, drain via split_to. One lock.
-    pub async fn consume_regex(
-        &self,
-        re: &Regex,
-    ) -> Option<(Match<RegexMatch>, BufferSnapshot)> {
+    pub async fn consume_regex(&self, re: &Regex) -> Option<(Match<RegexMatch>, BufferSnapshot)> {
         let mut inner = self.inner.lock().await;
         let text = String::from_utf8_lossy(&inner.data);
         let cap = re.captures(&text)?;
@@ -231,10 +240,10 @@ impl OutputBuffer {
         let text = String::from_utf8_lossy(&inner.data);
 
         // Check fail pattern first
-        if let Some(fp) = fail_pattern {
-            if let Some(hit) = check_fail_in_buffer(&text, fp) {
-                return Err(hit);
-            }
+        if let Some(fp) = fail_pattern
+            && let Some(hit) = check_fail_in_buffer(&text, fp)
+        {
+            return Err(hit);
         }
 
         // Try to consume the literal
@@ -277,10 +286,10 @@ impl OutputBuffer {
         let text = String::from_utf8_lossy(&inner.data);
 
         // Check fail pattern first
-        if let Some(fp) = fail_pattern {
-            if let Some(hit) = check_fail_in_buffer(&text, fp) {
-                return Err(hit);
-            }
+        if let Some(fp) = fail_pattern
+            && let Some(hit) = check_fail_in_buffer(&text, fp)
+        {
+            return Err(hit);
         }
 
         // Try to consume the regex
@@ -352,7 +361,7 @@ impl OutputBuffer {
         }
     }
 
-    /// Return remaining buffer data (for shell_logs in TestResult).
+    /// Return remaining unmatched buffer data.
     pub async fn remaining(&self) -> Vec<u8> {
         let inner = self.inner.lock().await;
         inner.data.to_vec()
@@ -465,7 +474,8 @@ impl Vm {
         vm.emit_event(LogEventKind::ShellSpawn {
             name: shell_name.clone(),
             command: shell_command,
-        }).await;
+        })
+        .await;
 
         vm.init_prompt().await.map_err(|_| Failure::Runtime {
             message: "shell did not produce prompt during init".to_string(),
@@ -473,7 +483,10 @@ impl Vm {
             shell: Some(shell_name),
         })?;
 
-        vm.emit_event(LogEventKind::ShellReady { name: vm.shell_name.clone() }).await;
+        vm.emit_event(LogEventKind::ShellReady {
+            name: vm.shell_name.clone(),
+        })
+        .await;
 
         Ok(vm)
     }
@@ -493,11 +506,7 @@ impl Vm {
 
         tokio::time::timeout(self.scope.timeout().resolve(), async {
             loop {
-                if let Some((_m, _snapshot)) = self
-                    .output_buf
-                    .consume_regex(&prompt_re)
-                    .await
-                {
+                if let Some((_m, _snapshot)) = self.output_buf.consume_regex(&prompt_re).await {
                     break;
                 }
                 self.output_buf.notify.notified().await;
@@ -523,20 +532,29 @@ impl Vm {
         }
     }
 
-    async fn emit_interpolation(&mut self, expr: &StringExpr, result: &str) {
+    async fn emit_interpolation(&mut self, expr: &Interpolation, result: &str) {
         if has_interpolation(expr) {
             let mut bindings = Vec::new();
             for part in &expr.parts {
-                if let StringPart::Interp(name) = &part.node {
-                    let value = self.scope.lookup(name).await.unwrap_or_default();
-                    bindings.push((name.clone(), value));
+                match &part.node {
+                    StringPart::VarRef(name) => {
+                        let value = self.scope.lookup(name).await.unwrap_or_default();
+                        bindings.push((name.clone(), value));
+                    }
+                    StringPart::CaptureRef(i) => {
+                        let name = i.to_string();
+                        let value = self.scope.lookup(&name).await.unwrap_or_default();
+                        bindings.push((name, value));
+                    }
+                    _ => {}
                 }
             }
             self.emit_event(LogEventKind::Interpolation {
                 template: interpolation_template(expr),
                 result: result.to_string(),
                 bindings,
-            }).await;
+            })
+            .await;
         }
     }
 
@@ -547,12 +565,19 @@ impl Vm {
             ShellStmt::FailRegex(expr) => {
                 let pat = interpolate(expr, &self.scope).await;
                 self.emit_interpolation(expr, &pat).await;
-                self.emit_event(LogEventKind::FailPatternSet { pattern: pat.clone() }).await;
-                let re = RegexBuilder::new(&pat).multi_line(true).crlf(true).build().map_err(|e| Failure::Runtime {
-                    message: format!("invalid fail regex: {}", regex_error_summary(&e)),
-                    span: Some(expr.span.clone()),
-                    shell: Some(self.shell_name.clone()),
-                })?;
+                self.emit_event(LogEventKind::FailPatternSet {
+                    pattern: pat.clone(),
+                })
+                .await;
+                let re = RegexBuilder::new(&pat)
+                    .multi_line(true)
+                    .crlf(true)
+                    .build()
+                    .map_err(|e| Failure::Runtime {
+                        message: format!("invalid fail regex: {}", regex_error_summary(&e)),
+                        span: Some(expr.span.clone()),
+                        shell: Some(self.shell_name.clone()),
+                    })?;
                 let pattern = Some(FailPattern::Regex(re));
                 self.scope.set_fail_pattern(pattern);
                 // Immediately rescan buffer for the new pattern
@@ -562,7 +587,10 @@ impl Vm {
             ShellStmt::FailLiteral(expr) => {
                 let pat = interpolate(expr, &self.scope).await;
                 self.emit_interpolation(expr, &pat).await;
-                self.emit_event(LogEventKind::FailPatternSet { pattern: pat.clone() }).await;
+                self.emit_event(LogEventKind::FailPatternSet {
+                    pattern: pat.clone(),
+                })
+                .await;
                 let pattern = Some(FailPattern::Literal(pat));
                 self.scope.set_fail_pattern(pattern);
                 // Immediately rescan buffer for the new pattern
@@ -578,7 +606,8 @@ impl Vm {
                 let previous = format!("{:?}", self.scope.timeout());
                 self.scope.set_timeout(t.clone());
                 let timeout = format!("{:?}", self.scope.timeout());
-                self.emit_event(LogEventKind::TimeoutSet { timeout, previous }).await;
+                self.emit_event(LogEventKind::TimeoutSet { timeout, previous })
+                    .await;
                 Ok(String::new())
             }
             ShellStmt::Let(decl) => {
@@ -590,7 +619,8 @@ impl Vm {
                 self.emit_event(LogEventKind::VarLet {
                     name: decl.name.node.clone(),
                     value: value.clone(),
-                }).await;
+                })
+                .await;
                 self.scope.let_insert(decl.name.node.clone(), value.clone());
                 Ok(value)
             }
@@ -610,7 +640,8 @@ impl Vm {
                 self.emit_event(LogEventKind::VarAssign {
                     name: assign.name.node.clone(),
                     value: value.clone(),
-                }).await;
+                })
+                .await;
                 Ok(value)
             }
             ShellStmt::Expr(expr) => {
@@ -627,7 +658,10 @@ impl Vm {
             Expr::String(s) => {
                 let result = interpolate(s, &self.scope).await;
                 self.emit_interpolation(s, &result).await;
-                self.emit_event(LogEventKind::StringEval { result: result.clone() }).await;
+                self.emit_event(LogEventKind::StringEval {
+                    result: result.clone(),
+                })
+                .await;
                 Ok(result)
             }
             Expr::Var(name) => Ok(self.scope.lookup(name).await.unwrap_or_default()),
@@ -636,7 +670,10 @@ impl Vm {
                 self.emit_interpolation(s, &payload).await;
                 self.send_bytes(format!("{payload}\n").as_bytes(), expr.span.clone())
                     .await?;
-                self.emit_event(LogEventKind::Send { data: payload.clone() }).await;
+                self.emit_event(LogEventKind::Send {
+                    data: payload.clone(),
+                })
+                .await;
                 self.emit_progress(ProgressEvent::Send);
                 Ok(payload)
             }
@@ -645,32 +682,63 @@ impl Vm {
                 self.emit_interpolation(s, &payload).await;
                 self.send_bytes(payload.as_bytes(), expr.span.clone())
                     .await?;
-                self.emit_event(LogEventKind::Send { data: payload.clone() }).await;
+                self.emit_event(LogEventKind::Send {
+                    data: payload.clone(),
+                })
+                .await;
                 self.emit_progress(ProgressEvent::Send);
                 Ok(payload)
             }
             Expr::MatchLiteral(m) => {
-                let timeout = m.timeout_override.as_ref().unwrap_or_else(|| self.scope.timeout()).resolve();
+                let timeout = m
+                    .timeout_override
+                    .as_ref()
+                    .unwrap_or_else(|| self.scope.timeout())
+                    .resolve();
                 let pattern = interpolate(&m.pattern, &self.scope).await;
                 self.emit_interpolation(&m.pattern, &pattern).await;
-                self.emit_event(LogEventKind::MatchStart { pattern: pattern.clone(), is_regex: false }).await;
+                self.emit_event(LogEventKind::MatchStart {
+                    pattern: pattern.clone(),
+                    is_regex: false,
+                })
+                .await;
                 self.emit_progress(ProgressEvent::MatchStart);
                 let match_start = Instant::now();
-                let (mat, snapshot) = self.wait_consume_literal(&pattern, timeout, expr.span.clone()).await?;
-                self.emit_event(LogEventKind::MatchDone { matched: mat.value.0.clone(), elapsed: match_start.elapsed(), buffer: snapshot, captures: None }).await;
+                let (mat, snapshot) = self
+                    .wait_consume_literal(&pattern, timeout, expr.span.clone())
+                    .await?;
+                self.emit_event(LogEventKind::MatchDone {
+                    matched: mat.value.0.clone(),
+                    elapsed: match_start.elapsed(),
+                    buffer: snapshot,
+                    captures: None,
+                })
+                .await;
                 self.emit_progress(ProgressEvent::MatchDone);
                 Ok(pattern)
             }
             Expr::MatchRegex(m) => {
-                let timeout = m.timeout_override.as_ref().unwrap_or_else(|| self.scope.timeout()).resolve();
+                let timeout = m
+                    .timeout_override
+                    .as_ref()
+                    .unwrap_or_else(|| self.scope.timeout())
+                    .resolve();
                 let pattern = interpolate(&m.pattern, &self.scope).await;
                 self.emit_interpolation(&m.pattern, &pattern).await;
-                let re = RegexBuilder::new(&pattern).multi_line(true).crlf(true).build().map_err(|e| Failure::Runtime {
-                    message: format!("invalid regex: {}", regex_error_summary(&e)),
-                    span: Some(m.pattern.span.clone()),
-                    shell: Some(self.shell_name.clone()),
-                })?;
-                self.emit_event(LogEventKind::MatchStart { pattern: pattern.clone(), is_regex: true }).await;
+                let re = RegexBuilder::new(&pattern)
+                    .multi_line(true)
+                    .crlf(true)
+                    .build()
+                    .map_err(|e| Failure::Runtime {
+                        message: format!("invalid regex: {}", regex_error_summary(&e)),
+                        span: Some(m.pattern.span.clone()),
+                        shell: Some(self.shell_name.clone()),
+                    })?;
+                self.emit_event(LogEventKind::MatchStart {
+                    pattern: pattern.clone(),
+                    is_regex: true,
+                })
+                .await;
                 self.emit_progress(ProgressEvent::MatchStart);
                 let match_start = Instant::now();
                 let (mat, snapshot) = self
@@ -678,14 +746,21 @@ impl Vm {
                     .await?;
                 let full = mat.value.0.get("0").cloned().unwrap_or_default();
                 let captures = mat.value.0.clone();
-                self.emit_event(LogEventKind::MatchDone { matched: full.clone(), elapsed: match_start.elapsed(), buffer: snapshot, captures: Some(captures.clone()) }).await;
+                self.emit_event(LogEventKind::MatchDone {
+                    matched: full.clone(),
+                    elapsed: match_start.elapsed(),
+                    buffer: snapshot,
+                    captures: Some(captures.clone()),
+                })
+                .await;
                 self.emit_progress(ProgressEvent::MatchDone);
                 self.scope.set_captures(captures);
                 Ok(full)
             }
             Expr::BufferReset => {
                 let snapshot = self.output_buf.snapshot_tail(BUFFER_TAIL_LEN).await;
-                self.emit_event(LogEventKind::BufferReset { buffer: snapshot }).await;
+                self.emit_event(LogEventKind::BufferReset { buffer: snapshot })
+                    .await;
                 self.output_buf.clear().await;
                 Ok(String::new())
             }
@@ -719,15 +794,23 @@ impl Vm {
                         .code_server
                         .get(fn_id)
                         .ok_or_else(|| Failure::Runtime {
-                            message: format!("invalid function id {fn_id}"),
+                            message: format!("invalid function id {fn_id:?}"),
                             span: Some(span.clone()),
                             shell: Some(self.shell_name.clone()),
                         })?;
                     (func.params.clone(), func.body.clone())
                 };
 
-                let named_args: Vec<(String, String)> = params.iter().zip(evaluated_args.iter()).map(|(p, v)| (p.node.clone(), v.clone())).collect();
-                self.emit_event(LogEventKind::FnEnter { name: call.name.node.clone(), args: named_args }).await;
+                let named_args: Vec<(String, String)> = params
+                    .iter()
+                    .zip(evaluated_args.iter())
+                    .map(|(p, v)| (p.node.clone(), v.clone()))
+                    .collect();
+                self.emit_event(LogEventKind::FnEnter {
+                    name: call.name.node.clone(),
+                    args: named_args,
+                })
+                .await;
                 self.emit_progress(ProgressEvent::FnEnter(call.name.node.clone()));
                 // Snapshot pre-call state for FnExit reporting
                 let pre_timeout = format!("{:?}", self.scope.timeout());
@@ -753,9 +836,18 @@ impl Vm {
                 self.emit_event(LogEventKind::FnExit {
                     name: call.name.node.clone(),
                     return_value: last.clone(),
-                    restored_timeout: if post_timeout != pre_timeout { Some(post_timeout) } else { None },
-                    restored_fail_pattern: if post_fail != pre_fail { post_fail } else { None },
-                }).await;
+                    restored_timeout: if post_timeout != pre_timeout {
+                        Some(post_timeout)
+                    } else {
+                        None
+                    },
+                    restored_fail_pattern: if post_fail != pre_fail {
+                        post_fail
+                    } else {
+                        None
+                    },
+                })
+                .await;
                 self.emit_progress(ProgressEvent::FnExit);
                 Ok(last)
             }
@@ -764,14 +856,23 @@ impl Vm {
                     .code_server
                     .get_pure(fn_id)
                     .ok_or_else(|| Failure::Runtime {
-                        message: format!("invalid pure function id {fn_id}"),
+                        message: format!("invalid pure function id {fn_id:?}"),
                         span: Some(span.clone()),
                         shell: Some(self.shell_name.clone()),
                     })?
                     .clone();
 
-                let named_args: Vec<(String, String)> = func.params.iter().zip(evaluated_args.iter()).map(|(p, v)| (p.node.clone(), v.clone())).collect();
-                self.emit_event(LogEventKind::FnEnter { name: call.name.node.clone(), args: named_args }).await;
+                let named_args: Vec<(String, String)> = func
+                    .params
+                    .iter()
+                    .zip(evaluated_args.iter())
+                    .map(|(p, v)| (p.node.clone(), v.clone()))
+                    .collect();
+                self.emit_event(LogEventKind::FnEnter {
+                    name: call.name.node.clone(),
+                    args: named_args,
+                })
+                .await;
                 self.emit_progress(ProgressEvent::FnEnter(call.name.node.clone()));
                 let mut fn_vars = HashMap::new();
                 for (param, value) in func.params.iter().zip(evaluated_args.into_iter()) {
@@ -779,39 +880,64 @@ impl Vm {
                 }
                 let env = self.scope.env();
                 let cs = self.code_server.clone();
-                let result = crate::runtime::pure::exec_pure_body(
-                    &func.body,
-                    &mut fn_vars,
-                    &env,
-                    &cs,
-                    self,
-                ).await;
-                let return_value = result.as_ref().map(|s| s.clone()).unwrap_or_default();
+                let result =
+                    crate::runtime::pure::exec_pure_body(&func.body, &mut fn_vars, &env, &cs, self)
+                        .await;
+                let return_value = result.clone().unwrap_or_default();
                 self.emit_event(LogEventKind::FnExit {
                     name: call.name.node.clone(),
                     return_value,
                     restored_timeout: None,
                     restored_fail_pattern: None,
-                }).await;
+                })
+                .await;
                 self.emit_progress(ProgressEvent::FnExit);
                 result
             }
             Callable::Builtin(bif) => {
                 let name = bif.name().to_string();
-                let positional_args: Vec<(String, String)> = evaluated_args.iter().enumerate().map(|(i, v)| (format!("${i}"), v.clone())).collect();
-                self.emit_event(LogEventKind::FnEnter { name: name.clone(), args: positional_args }).await;
+                let positional_args: Vec<(String, String)> = evaluated_args
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| (format!("${i}"), v.clone()))
+                    .collect();
+                self.emit_event(LogEventKind::FnEnter {
+                    name: name.clone(),
+                    args: positional_args,
+                })
+                .await;
                 let result = bif.call(self, evaluated_args, span).await;
-                let return_value = result.as_ref().map(|s| s.clone()).unwrap_or_default();
-                self.emit_event(LogEventKind::FnExit { name, return_value, restored_timeout: None, restored_fail_pattern: None }).await;
+                let return_value = result.clone().unwrap_or_default();
+                self.emit_event(LogEventKind::FnExit {
+                    name,
+                    return_value,
+                    restored_timeout: None,
+                    restored_fail_pattern: None,
+                })
+                .await;
                 result
             }
             Callable::PureBuiltin(bif) => {
                 let name = bif.name().to_string();
-                let positional_args: Vec<(String, String)> = evaluated_args.iter().enumerate().map(|(i, v)| (format!("${i}"), v.clone())).collect();
-                self.emit_event(LogEventKind::FnEnter { name: name.clone(), args: positional_args }).await;
+                let positional_args: Vec<(String, String)> = evaluated_args
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| (format!("${i}"), v.clone()))
+                    .collect();
+                self.emit_event(LogEventKind::FnEnter {
+                    name: name.clone(),
+                    args: positional_args,
+                })
+                .await;
                 let result = bif.call(self, evaluated_args, span).await;
-                let return_value = result.as_ref().map(|s| s.clone()).unwrap_or_default();
-                self.emit_event(LogEventKind::FnExit { name, return_value, restored_timeout: None, restored_fail_pattern: None }).await;
+                let return_value = result.clone().unwrap_or_default();
+                self.emit_event(LogEventKind::FnExit {
+                    name,
+                    return_value,
+                    restored_timeout: None,
+                    restored_fail_pattern: None,
+                })
+                .await;
                 result
             }
         }
@@ -828,7 +954,11 @@ impl Vm {
         let fut = async {
             loop {
                 let fail_pat = self.scope.fail_pattern();
-                match self.output_buf.fail_check_consume_literal(pattern, fail_pat).await {
+                match self
+                    .output_buf
+                    .fail_check_consume_literal(pattern, fail_pat)
+                    .await
+                {
                     Err(hit) => {
                         return Err(self.make_fail_pattern_error(hit, span.clone()).await);
                     }
@@ -846,7 +976,11 @@ impl Vm {
             Err(_) => {
                 self.emit_progress(ProgressEvent::Timeout);
                 let buffer = self.output_buf.snapshot_tail(BUFFER_TAIL_LEN).await;
-                self.emit_event(LogEventKind::Timeout { pattern: pattern.to_string(), buffer }).await;
+                self.emit_event(LogEventKind::Timeout {
+                    pattern: pattern.to_string(),
+                    buffer,
+                })
+                .await;
                 Err(Failure::MatchTimeout {
                     pattern: pattern.to_string(),
                     span,
@@ -884,7 +1018,11 @@ impl Vm {
             Err(_) => {
                 self.emit_progress(ProgressEvent::Timeout);
                 let buffer = self.output_buf.snapshot_tail(BUFFER_TAIL_LEN).await;
-                self.emit_event(LogEventKind::Timeout { pattern: pattern.to_string(), buffer }).await;
+                self.emit_event(LogEventKind::Timeout {
+                    pattern: pattern.to_string(),
+                    buffer,
+                })
+                .await;
                 Err(Failure::MatchTimeout {
                     pattern: pattern.to_string(),
                     span,
@@ -909,7 +1047,8 @@ impl Vm {
             pattern: hit.pattern.clone(),
             matched_line: hit.matched_text.clone(),
             buffer,
-        }).await;
+        })
+        .await;
         Failure::FailPatternMatched {
             pattern: hit.pattern,
             matched_line: hit.matched_text,
@@ -931,12 +1070,11 @@ impl Vm {
         Ok(())
     }
 
-    pub async fn output_snapshot(&self) -> Vec<u8> {
-        self.output_buf.remaining().await
-    }
-
     pub async fn shutdown(mut self) {
-        self.emit_event(LogEventKind::ShellTerminate { name: self.shell_name.clone() }).await;
+        self.emit_event(LogEventKind::ShellTerminate {
+            name: self.shell_name.clone(),
+        })
+        .await;
         let _ = self.child.kill().await;
         self.read_task.abort();
     }
@@ -966,26 +1104,45 @@ impl PureContext for Vm {
 #[async_trait::async_trait]
 impl VmContext for Vm {
     async fn match_literal(&mut self, pattern: &str, span: &Span) -> Result<String, Failure> {
-        self.emit_event(LogEventKind::MatchStart { pattern: pattern.to_string(), is_regex: false }).await;
+        self.emit_event(LogEventKind::MatchStart {
+            pattern: pattern.to_string(),
+            is_regex: false,
+        })
+        .await;
         self.emit_progress(ProgressEvent::MatchStart);
         let match_start = Instant::now();
         let timeout = self.scope.timeout().resolve();
-        let (mat, snapshot) = self.wait_consume_literal(pattern, timeout, span.clone()).await?;
-        self.emit_event(LogEventKind::MatchDone { matched: mat.value.0.clone(), elapsed: match_start.elapsed(), buffer: snapshot, captures: None }).await;
+        let (mat, snapshot) = self
+            .wait_consume_literal(pattern, timeout, span.clone())
+            .await?;
+        self.emit_event(LogEventKind::MatchDone {
+            matched: mat.value.0.clone(),
+            elapsed: match_start.elapsed(),
+            buffer: snapshot,
+            captures: None,
+        })
+        .await;
         self.emit_progress(ProgressEvent::MatchDone);
         Ok(pattern.to_string())
     }
 
     async fn send_line(&mut self, line: &str, span: &Span) -> Result<(), Failure> {
-        self.send_bytes(format!("{line}\n").as_bytes(), span.clone()).await?;
-        self.emit_event(LogEventKind::Send { data: line.to_string() }).await;
+        self.send_bytes(format!("{line}\n").as_bytes(), span.clone())
+            .await?;
+        self.emit_event(LogEventKind::Send {
+            data: line.to_string(),
+        })
+        .await;
         self.emit_progress(ProgressEvent::Send);
         Ok(())
     }
 
     async fn send_raw(&mut self, data: &[u8], span: &Span) -> Result<(), Failure> {
         self.send_bytes(data, span.clone()).await?;
-        let display = data.iter().map(|b| format!("\\x{b:02x}")).collect::<String>();
+        let display = data
+            .iter()
+            .map(|b| format!("\\x{b:02x}"))
+            .collect::<String>();
         self.emit_event(LogEventKind::Send { data: display }).await;
         self.emit_progress(ProgressEvent::Send);
         Ok(())
@@ -1057,6 +1214,7 @@ mod tests {
     // ── regex_error_summary ──────────────────────────────────────────
 
     #[test]
+    #[allow(clippy::invalid_regex)]
     fn regex_error_summary_extracts_last_line() {
         let err = Regex::new("(unclosed").unwrap_err();
         let summary = regex_error_summary(&err);
@@ -1065,6 +1223,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::invalid_regex)]
     fn regex_error_summary_strips_error_prefix() {
         let err = Regex::new("[invalid").unwrap_err();
         let summary = regex_error_summary(&err);
@@ -1154,7 +1313,11 @@ mod tests {
         buf.append(b"before MATCH after").await;
         let (_, snapshot) = buf.consume_literal("MATCH").await.unwrap();
         match snapshot {
-            BufferSnapshot::Match { before, matched, after } => {
+            BufferSnapshot::Match {
+                before,
+                matched,
+                after,
+            } => {
                 assert_eq!(before, "before ");
                 assert_eq!(matched, "MATCH");
                 assert_eq!(after, " after");

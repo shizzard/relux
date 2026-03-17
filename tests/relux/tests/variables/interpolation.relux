@@ -50,7 +50,7 @@ test "dollar escape produces literal dollar sign" {
     """
     shell s {
         > echo '$$HOME'
-        <? ^\$$HOME$
+        <? ^\$HOME$
     }
 }
 

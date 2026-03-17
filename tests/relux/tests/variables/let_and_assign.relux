@@ -34,18 +34,6 @@ test "reassignment updates value" {
     }
 }
 
-test "let from match expression" {
-    """
-    Verify let captures the full match from a regex match expression.
-    """
-    shell s {
-        > echo "num=42"
-        let val = <? num=(\d+)
-        > echo "got ${val}"
-        <? ^got num=42$
-    }
-}
-
 test "let with self-referencing interpolation" {
     """
     Verify let evaluates the right-hand side using the current value

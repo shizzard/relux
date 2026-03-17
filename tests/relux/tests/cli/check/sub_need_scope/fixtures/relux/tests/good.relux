@@ -1,0 +1,8 @@
+import composite { Composite }
+
+test "sub-need resolves in effect home scope" {
+    need Composite as c
+    shell c {
+        > echo test
+    }
+}

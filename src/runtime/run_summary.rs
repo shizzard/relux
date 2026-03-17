@@ -48,10 +48,9 @@ pub fn write_run_summary(
 
 pub fn read_run_summary(run_dir: &Path) -> Result<RunSummary, String> {
     let path = run_dir.join("run_summary.toml");
-    let content = fs::read_to_string(&path)
-        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-    toml::from_str(&content)
-        .map_err(|e| format!("cannot parse {}: {e}", path.display()))
+    let content =
+        fs::read_to_string(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    toml::from_str(&content).map_err(|e| format!("cannot parse {}: {e}", path.display()))
 }
 
 /// Returns `(path, name)` pairs for all failed tests.
@@ -76,33 +75,33 @@ fn build_summary(run_id: &str, results: &[TestResult], total_duration: Duration)
         hostname,
     };
 
-    let tests = results.iter().map(|r| {
-        let (outcome, failure_type, failure_summary, skip_reason) = match &r.outcome {
-            Outcome::Pass => ("pass".to_string(), None, None, None),
-            Outcome::Fail(f) => (
-                "fail".to_string(),
-                Some(f.failure_type().to_string()),
-                Some(f.summary()),
-                None,
-            ),
-            Outcome::Skipped(reason) => (
-                "skipped".to_string(),
-                None,
-                None,
-                Some(reason.clone()),
-            ),
-        };
+    let tests = results
+        .iter()
+        .map(|r| {
+            let (outcome, failure_type, failure_summary, skip_reason) = match &r.outcome {
+                Outcome::Pass => ("pass".to_string(), None, None, None),
+                Outcome::Fail(f) => (
+                    "fail".to_string(),
+                    Some(f.failure_type().to_string()),
+                    Some(f.summary()),
+                    None,
+                ),
+                Outcome::Skipped(reason) => {
+                    ("skipped".to_string(), None, None, Some(reason.clone()))
+                }
+            };
 
-        TestEntry {
-            name: r.test_name.clone(),
-            path: r.test_path.clone(),
-            outcome,
-            duration_ms: r.duration.as_millis() as u64,
-            failure_type,
-            failure_summary,
-            skip_reason,
-        }
-    }).collect();
+            TestEntry {
+                name: r.test_name.clone(),
+                path: r.test_path.clone(),
+                outcome,
+                duration_ms: r.duration.as_millis() as u64,
+                failure_type,
+                failure_summary,
+                skip_reason,
+            }
+        })
+        .collect();
 
     RunSummary { run, tests }
 }
@@ -110,8 +109,7 @@ fn build_summary(run_id: &str, results: &[TestResult], total_duration: Duration)
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
-    use crate::dsl::resolver::ir::Span;
+    use crate::dsl::resolver::ir::{self, Span};
     use crate::runtime::result::Failure;
 
     fn make_result(name: &str, path: &str, outcome: Outcome) -> TestResult {
@@ -120,7 +118,7 @@ mod tests {
             test_path: path.into(),
             outcome,
             duration: Duration::from_millis(100),
-            shell_logs: HashMap::new(),
+
             progress: String::new(),
             log_dir: None,
         }
@@ -130,14 +128,20 @@ mod tests {
     fn round_trip_serialization() {
         let results = vec![
             make_result("passes", "basic/pass.relux", Outcome::Pass),
-            make_result("fails", "basic/fail.relux", Outcome::Fail(
-                Failure::MatchTimeout {
+            make_result(
+                "fails",
+                "basic/fail.relux",
+                Outcome::Fail(Failure::MatchTimeout {
                     pattern: "/ready/".into(),
                     shell: "default".into(),
-                    span: Span::new(0, 0..1),
-                },
-            )),
-            make_result("skipped", "basic/skip.relux", Outcome::Skipped("os:linux".into())),
+                    span: Span::new(ir::FileId::from(0), 0..1),
+                }),
+            ),
+            make_result(
+                "skipped",
+                "basic/skip.relux",
+                Outcome::Skipped("os:linux".into()),
+            ),
         ];
 
         let summary = build_summary("test-run-id", &results, Duration::from_secs(1));
@@ -152,7 +156,10 @@ mod tests {
         assert!(parsed.tests[0].failure_type.is_none());
 
         assert_eq!(parsed.tests[1].outcome, "fail");
-        assert_eq!(parsed.tests[1].failure_type.as_deref(), Some("MatchTimeout"));
+        assert_eq!(
+            parsed.tests[1].failure_type.as_deref(),
+            Some("MatchTimeout")
+        );
         assert!(parsed.tests[1].failure_summary.is_some());
 
         assert_eq!(parsed.tests[2].outcome, "skipped");
@@ -163,21 +170,29 @@ mod tests {
     fn failed_test_ids_filters_correctly() {
         let results = vec![
             make_result("passes", "basic/pass.relux", Outcome::Pass),
-            make_result("fails", "basic/fail.relux", Outcome::Fail(
-                Failure::Runtime {
+            make_result(
+                "fails",
+                "basic/fail.relux",
+                Outcome::Fail(Failure::Runtime {
                     message: "boom".into(),
                     span: None,
                     shell: None,
-                },
-            )),
-            make_result("also fails", "basic/fail2.relux", Outcome::Fail(
-                Failure::Runtime {
+                }),
+            ),
+            make_result(
+                "also fails",
+                "basic/fail2.relux",
+                Outcome::Fail(Failure::Runtime {
                     message: "boom2".into(),
                     span: None,
                     shell: None,
-                },
-            )),
-            make_result("skipped", "basic/skip.relux", Outcome::Skipped("reason".into())),
+                }),
+            ),
+            make_result(
+                "skipped",
+                "basic/skip.relux",
+                Outcome::Skipped("reason".into()),
+            ),
         ];
 
         let summary = build_summary("run-1", &results, Duration::from_secs(2));

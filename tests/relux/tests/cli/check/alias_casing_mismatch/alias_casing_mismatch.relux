@@ -4,7 +4,7 @@ test "check detects alias casing mismatch" {
     """
     shell s {
         > relux check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
-        <? unexpected
+        <? expected function name
         match_prompt()
         match_exit_code(1)
     }

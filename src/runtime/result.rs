@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -6,6 +5,7 @@ use std::time::Duration;
 use colored::Colorize;
 
 use crate::dsl::resolver::ir::{SourceMap, Span};
+use crate::error::DiagnosticReport;
 
 #[derive(Debug, Clone)]
 pub enum Failure {
@@ -38,21 +38,42 @@ impl Failure {
             Failure::MatchTimeout { pattern, shell, .. } => {
                 format!("match timeout in shell '{shell}': timed out waiting for {pattern}")
             }
-            Failure::FailPatternMatched { pattern, matched_line, shell, .. } => {
+            Failure::FailPatternMatched {
+                pattern,
+                matched_line,
+                shell,
+                ..
+            } => {
                 format!(
                     "fail pattern matched in shell '{shell}': pattern {pattern} triggered, matched: \"{matched_line}\""
                 )
             }
-            Failure::ShellExited { shell, exit_code: Some(code), .. } => {
+            Failure::ShellExited {
+                shell,
+                exit_code: Some(code),
+                ..
+            } => {
                 format!("shell '{shell}' exited unexpectedly with exit code {code}")
             }
-            Failure::ShellExited { shell, exit_code: None, .. } => {
+            Failure::ShellExited {
+                shell,
+                exit_code: None,
+                ..
+            } => {
                 format!("shell '{shell}' exited unexpectedly without an exit code")
             }
-            Failure::Runtime { message, shell: Some(shell), .. } => {
+            Failure::Runtime {
+                message,
+                shell: Some(shell),
+                ..
+            } => {
                 format!("runtime error in shell '{shell}': {message}")
             }
-            Failure::Runtime { message, shell: None, .. } => {
+            Failure::Runtime {
+                message,
+                shell: None,
+                ..
+            } => {
                 format!("runtime error: {message}")
             }
         }
@@ -64,6 +85,90 @@ impl Failure {
             Failure::FailPatternMatched { .. } => "FailPatternMatched",
             Failure::ShellExited { .. } => "ShellExited",
             Failure::Runtime { .. } => "Runtime",
+        }
+    }
+}
+
+impl From<&Failure> for crate::error::DiagnosticReport {
+    fn from(failure: &Failure) -> Self {
+        use crate::error::{DiagnosticReport, Severity};
+        match failure {
+            Failure::MatchTimeout {
+                pattern,
+                span,
+                shell,
+            } => DiagnosticReport {
+                severity: Severity::Error,
+                message: format!("match timeout in shell `{shell}`"),
+                labels: vec![(span.clone(), format!("timed out waiting for `{pattern}`")).into()],
+                help: None,
+                note: None,
+            },
+            Failure::FailPatternMatched {
+                pattern,
+                matched_line,
+                span,
+                shell,
+            } => DiagnosticReport {
+                severity: Severity::Error,
+                message: format!("fail pattern matched in shell `{shell}`"),
+                labels: vec![(span.clone(), format!("pattern `{pattern}` triggered here")).into()],
+                help: None,
+                note: Some(format!("matched output: {matched_line}")),
+            },
+            Failure::ShellExited {
+                shell,
+                exit_code,
+                span,
+            } => {
+                let code_msg = match exit_code {
+                    Some(c) => format!("with exit code {c}"),
+                    None => "without an exit code".to_string(),
+                };
+                DiagnosticReport {
+                    severity: Severity::Error,
+                    message: format!("shell `{shell}` exited unexpectedly"),
+                    labels: vec![(span.clone(), code_msg).into()],
+                    help: None,
+                    note: None,
+                }
+            }
+            Failure::Runtime {
+                message,
+                span,
+                shell,
+            } => {
+                let msg = match shell {
+                    Some(s) => format!("runtime error in shell `{s}`"),
+                    None => "runtime error".to_string(),
+                };
+                let first_line = message.lines().next().unwrap_or(message);
+                let has_detail = message.contains('\n');
+                match span {
+                    Some(span) => DiagnosticReport {
+                        severity: Severity::Error,
+                        message: msg,
+                        labels: vec![(span.clone(), first_line.to_string()).into()],
+                        help: None,
+                        note: if has_detail {
+                            Some(message.clone())
+                        } else {
+                            None
+                        },
+                    },
+                    None => DiagnosticReport {
+                        severity: Severity::Error,
+                        message: format!("{msg}: {first_line}"),
+                        labels: vec![],
+                        help: None,
+                        note: if has_detail {
+                            Some(message.clone())
+                        } else {
+                            None
+                        },
+                    },
+                }
+            }
         }
     }
 }
@@ -80,7 +185,6 @@ pub struct TestResult {
     pub test_path: String,
     pub outcome: Outcome,
     pub duration: Duration,
-    pub shell_logs: HashMap<String, Vec<u8>>,
     pub progress: String,
     pub log_dir: Option<PathBuf>,
 }
@@ -92,25 +196,33 @@ pub enum Outcome {
     Skipped(String),
 }
 
-pub struct Reporter;
+// ─── Run Report ─────────────────────────────────────────────
 
-impl Reporter {
-    pub fn print(results: &[TestResult], source_map: &SourceMap, run_dir: &Path) {
+pub struct RunReport<'a> {
+    pub results: &'a [TestResult],
+    pub source_map: &'a SourceMap,
+    pub run_dir: &'a Path,
+}
+
+impl RunReport<'_> {
+    pub fn eprint(&self) {
         let mut passed = 0usize;
         let mut failed = 0usize;
         let mut skipped = 0usize;
         let mut total_duration = Duration::ZERO;
 
-        for result in results {
+        for result in self.results {
             total_duration += result.duration;
             match &result.outcome {
                 Outcome::Pass => passed += 1,
                 Outcome::Fail(f) => {
                     failed += 1;
-                    Self::print_failure(f, source_map);
-                    Self::print_shell_logs(&result.shell_logs);
+                    DiagnosticReport::from(f).eprint(self.source_map);
                     if let Some(log_dir) = &result.log_dir {
-                        eprintln!("  Event log: file://{}", log_dir.join("event.html").display());
+                        eprintln!(
+                            "  Event log: file://{}",
+                            log_dir.join("event.html").display()
+                        );
                     }
                 }
                 Outcome::Skipped(_) => skipped += 1,
@@ -123,34 +235,20 @@ impl Reporter {
             "ok".green().to_string()
         };
 
-        let mut summary = format!(
-            "\ntest result: {status}. {passed} passed; {failed} failed",
-        );
+        let mut summary = format!("\ntest result: {status}. {passed} passed; {failed} failed");
         if skipped > 0 {
             summary.push_str(&format!("; {skipped} skipped"));
         }
-        summary.push_str(&format!("; finished in {}\n", format_duration(total_duration)));
+        summary.push_str(&format!(
+            "; finished in {}\n",
+            format_duration(total_duration)
+        ));
         eprint!("{summary}");
-        eprintln!("  Test logs: file://{}", run_dir.join("index.html").display());
+        eprintln!(
+            "  Test logs: file://{}",
+            self.run_dir.join("index.html").display()
+        );
         let _ = std::io::stderr().flush();
-    }
-
-    fn print_failure(failure: &Failure, source_map: &SourceMap) {
-        crate::dsl::report::print_failure(failure, source_map);
-    }
-
-    fn print_shell_logs(shell_logs: &HashMap<String, Vec<u8>>) {
-        if shell_logs.is_empty() {
-            return;
-        }
-        eprintln!("  shell logs:");
-        for (shell, bytes) in shell_logs {
-            eprintln!("  --- {shell} ---");
-            let text = String::from_utf8_lossy(bytes);
-            for line in text.lines() {
-                eprintln!("    {line}");
-            }
-        }
     }
 }
 
@@ -166,10 +264,11 @@ pub fn format_duration(d: Duration) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dsl::resolver::ir;
     use std::path::Path;
 
     fn dummy_span() -> Span {
-        Span::new(0, 0..1)
+        Span::new(ir::FileId::from(0), 0..1)
     }
 
     #[test]
@@ -256,7 +355,7 @@ mod tests {
             test_path: "tests/my_test.relux".into(),
             outcome: Outcome::Pass,
             duration: Duration::from_millis(100),
-            shell_logs: HashMap::new(),
+
             progress: String::new(),
             log_dir: Some(PathBuf::from("/tmp/runs/run-001/my_test")),
         };
@@ -274,7 +373,7 @@ mod tests {
             test_path: "tests/my_test.relux".into(),
             outcome: Outcome::Pass,
             duration: Duration::from_millis(100),
-            shell_logs: HashMap::new(),
+
             progress: String::new(),
             log_dir: None,
         };

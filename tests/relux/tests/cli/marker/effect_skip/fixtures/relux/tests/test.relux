@@ -1,4 +1,4 @@
-[skip]
+# skip
 effect Skipped -> s {
     shell s {
         > echo "effect ran"

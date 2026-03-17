@@ -1,4 +1,4 @@
-[skip unless "${SOME_VAR}" ? *invalid]
+# skip unless SOME_VAR ? *invalid
 test "bad regex" {
     shell s {
         > echo hello

@@ -1,0 +1,5 @@
+effect Base -> s {
+    shell s {
+        > echo base
+    }
+}

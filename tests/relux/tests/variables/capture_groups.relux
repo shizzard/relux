@@ -71,23 +71,10 @@ test "capture into variable" {
     shell s {
         > echo "key=alpha"
         <? ^key=(\w+)$
-        let saved = ${1}
+        let saved = $1
         > echo "other=beta"
         <? ^other=(\w+)$
         > echo "saved=${saved} current=${1}"
         <? ^saved=alpha current=beta$
-    }
-}
-
-test "let from match expression captures full match" {
-    """
-    Verify let from a match expression stores the full match text,
-    not just the first capture group.
-    """
-    shell s {
-        > echo "code=42"
-        let result = <? code=(\d+)
-        > echo "result='${result}' group='${1}'"
-        <? ^result='code=42' group='42'$
     }
 }

@@ -31,6 +31,41 @@ test "same effect needed twice shares one instance" {
     }
 }
 
+pure fn tag() {
+    let t = "v1"
+}
+
+effect SetupOnce -> s {
+    shell s {
+        > MARKER="${__RELUX_RUN_ARTIFACTS}/dedup-marker"
+        match_ok()
+        > if [ -f "$$MARKER" ]; then echo "DUPLICATE"; else touch "$$MARKER" && echo "FIRST"; fi
+        <? ^FIRST$
+        match_ok()
+    }
+}
+
+test "call-expression overlays at different positions deduplicate" {
+    """
+    Verify two needs with identical call-expression overlay values
+    deduplicate to a single instance, even though the call sites
+    appear at different source positions. If two instances are created
+    instead of one, the second setup will find the marker file and
+    print DUPLICATE, failing the FIRST match.
+    """
+    need SetupOnce as s1 {
+        TAG = tag()
+    }
+    need SetupOnce as s2 {
+        TAG = tag()
+    }
+    shell s1 {
+        > echo ok
+        <? ^ok$
+        match_ok()
+    }
+}
+
 test "different overlays create separate instances" {
     """
     Verify two needs for the same effect with different overlay values

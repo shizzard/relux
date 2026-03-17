@@ -18,8 +18,8 @@ test "inline timeout overrides scoped timeout for literal" ~3s {
     shell s {
         ~200ms
         > sh -c 'sleep 0.1 && echo delayed_literal'
-        # advance cursor past the command echo so the timed
-        # literal match below hits the actual output line
+        // advance cursor past the command echo so the timed
+        // literal match below hits the actual output line
         <= delayed_literal
         <~3s= delayed_literal
     }

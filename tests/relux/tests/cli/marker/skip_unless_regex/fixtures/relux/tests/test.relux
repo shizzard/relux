@@ -1,4 +1,4 @@
-[skip unless "${MY_VAR}" ? ^(yes|true)$]
+# skip unless MY_VAR ? ^(yes|true)$
 test "conditional" {
     shell s {
         > echo hello

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::dsl::resolver::ir::{self, Span, Spanned, StringExpr, StringPart};
+use crate::dsl::resolver::ir::{self, Interpolation, Span, Spanned, StringPart};
 use async_trait::async_trait;
 
 use crate::runtime::bifs::PureContext;
@@ -26,17 +26,23 @@ impl PureContext for SimplePureContext {
 // Pure-context interpolation: looks up variables in local vars,
 // then env. No test scope, no captures, no overlay.
 
-fn interpolate_pure(expr: &StringExpr, vars: &HashMap<String, String>, env: &Env) -> String {
+fn interpolate_pure(expr: &Interpolation, vars: &HashMap<String, String>, env: &Env) -> String {
     let mut out = String::new();
     for part in &expr.parts {
         match &part.node {
             StringPart::Literal(s) => out.push_str(s),
-            StringPart::Interp(name) => {
+            StringPart::VarRef(name) => {
                 if let Some(v) = vars.get(name).or_else(|| env.get(name)) {
                     out.push_str(v);
                 }
             }
             StringPart::EscapedDollar => out.push('$'),
+            StringPart::CaptureRef(i) => {
+                let name = i.to_string();
+                if let Some(v) = vars.get(&name).or_else(|| env.get(&name)) {
+                    out.push_str(v);
+                }
+            }
         }
     }
     out
@@ -54,9 +60,11 @@ pub async fn eval_pure_expr(
 ) -> Result<String, Failure> {
     match &expr.node {
         ir::PureExpr::String(s) => Ok(interpolate_pure(s, vars, env)),
-        ir::PureExpr::Var(name) => {
-            Ok(vars.get(name).or_else(|| env.get(name)).cloned().unwrap_or_default())
-        }
+        ir::PureExpr::Var(name) => Ok(vars
+            .get(name)
+            .or_else(|| env.get(name))
+            .cloned()
+            .unwrap_or_default()),
         ir::PureExpr::Call(call) => {
             eval_pure_call(call, &expr.span, vars, env, code_server, ctx).await
         }
@@ -90,11 +98,14 @@ async fn eval_pure_call(
 
     match callable {
         Callable::UserDefinedPure(fn_id) => {
-            let func = code_server.get_pure(fn_id).ok_or_else(|| Failure::Runtime {
-                message: format!("invalid pure function id {fn_id}"),
-                span: Some(span.clone()),
-                shell: None,
-            })?.clone();
+            let func = code_server
+                .get_pure(fn_id)
+                .ok_or_else(|| Failure::Runtime {
+                    message: format!("invalid pure function id {fn_id:?}"),
+                    span: Some(span.clone()),
+                    shell: None,
+                })?
+                .clone();
 
             let mut fn_vars = HashMap::new();
             for (param, value) in func.params.iter().zip(evaluated_args.into_iter()) {
@@ -102,9 +113,7 @@ async fn eval_pure_call(
             }
             exec_pure_body(&func.body, &mut fn_vars, env, code_server, ctx).await
         }
-        Callable::PureBuiltin(bif) => {
-            bif.call(ctx, evaluated_args, span).await
-        }
+        Callable::PureBuiltin(bif) => bif.call(ctx, evaluated_args, span).await,
         _ => Err(Failure::Runtime {
             message: format!(
                 "cannot call impure function `{}` from pure context",
@@ -142,17 +151,21 @@ async fn exec_pure_stmt(
                 Ok(value)
             } else {
                 Err(Failure::Runtime {
-                    message: format!(
-                        "assignment to undeclared variable `{}`",
-                        assign.name.node
-                    ),
+                    message: format!("assignment to undeclared variable `{}`", assign.name.node),
                     span: Some(assign.name.span.clone()),
                     shell: None,
                 })
             }
         }
         ir::PureStmt::Expr(expr) => {
-            eval_pure_expr(&Spanned::new(expr.clone(), stmt.span.clone()), vars, env, code_server, ctx).await
+            eval_pure_expr(
+                &Spanned::new(expr.clone(), stmt.span.clone()),
+                vars,
+                env,
+                code_server,
+                ctx,
+            )
+            .await
         }
     }
 }
@@ -208,7 +221,7 @@ mod tests {
     use super::*;
 
     fn dummy_span() -> Span {
-        Span::new(0, 0..0)
+        Span::new(ir::FileId::from(0), 0..0)
     }
 
     fn spanned<T>(node: T) -> Spanned<T> {
@@ -216,11 +229,11 @@ mod tests {
     }
 
     fn empty_code_server() -> CodeServer {
-        CodeServer::new(vec![], vec![])
+        CodeServer::new(ir::IndexVec::new(), ir::IndexVec::new())
     }
 
-    fn string_expr(parts: Vec<Spanned<StringPart>>) -> StringExpr {
-        StringExpr {
+    fn string_expr(parts: Vec<Spanned<StringPart>>) -> Interpolation {
+        Interpolation {
             parts,
             span: dummy_span(),
         }
@@ -235,7 +248,7 @@ mod tests {
     }
 
     fn interp(name: &str) -> Spanned<StringPart> {
-        spanned(StringPart::Interp(name.to_string()))
+        spanned(StringPart::VarRef(name.to_string()))
     }
 
     // ─── eval_pure_expr ─────────────────────────────────────
@@ -360,7 +373,9 @@ mod tests {
             )))],
             span: dummy_span(),
         };
-        let cs = CodeServer::new(vec![], vec![pure_fn]);
+        let mut pure_fns = ir::IndexVec::new();
+        pure_fns.push(pure_fn);
+        let cs = CodeServer::new(ir::IndexVec::new(), pure_fns);
 
         let expr = spanned(ir::PureExpr::Call(ir::PureFnCall {
             name: spanned("greet".to_string()),

@@ -34,16 +34,24 @@ impl ShellLogger {
     pub fn log_stdin(&mut self, data: &[u8]) {
         let _ = self.stdin_raw.write_all(data);
         let _ = self.stdin_raw.flush();
-        self.stdin_at_line_start =
-            write_timestamped(&mut self.stdin_log, data, self.stdin_at_line_start, &self.test_start);
+        self.stdin_at_line_start = write_timestamped(
+            &mut self.stdin_log,
+            data,
+            self.stdin_at_line_start,
+            &self.test_start,
+        );
         let _ = self.stdin_log.flush();
     }
 
     pub fn log_stdout(&mut self, data: &[u8]) {
         let _ = self.stdout_raw.write_all(data);
         let _ = self.stdout_raw.flush();
-        self.stdout_at_line_start =
-            write_timestamped(&mut self.stdout_log, data, self.stdout_at_line_start, &self.test_start);
+        self.stdout_at_line_start = write_timestamped(
+            &mut self.stdout_log,
+            data,
+            self.stdout_at_line_start,
+            &self.test_start,
+        );
         let _ = self.stdout_log.flush();
     }
 }

@@ -1,4 +1,4 @@
-[run unless "${MY_VAR}"]
+# run unless MY_VAR
 test "conditional" {
     shell s {
         > echo hello

@@ -41,8 +41,9 @@ fn failure_shell(failure: &Failure) -> Option<&str> {
 /// Extract the pattern from a Failure, if present.
 fn failure_pattern(failure: &Failure) -> Option<&str> {
     match failure {
-        Failure::MatchTimeout { pattern, .. }
-        | Failure::FailPatternMatched { pattern, .. } => Some(pattern),
+        Failure::MatchTimeout { pattern, .. } | Failure::FailPatternMatched { pattern, .. } => {
+            Some(pattern)
+        }
         _ => None,
     }
 }
@@ -86,8 +87,12 @@ fn render_tap(
                 if let Some(span) = failure_span(failure) {
                     let file = &source_map.files[span.file];
                     writeln!(out, "  file: {}", file.path.display()).unwrap();
-                    writeln!(out, "  line: {}", line_number(&file.source, span.range.start))
-                        .unwrap();
+                    writeln!(
+                        out,
+                        "  line: {}",
+                        line_number(&file.source, span.range.start)
+                    )
+                    .unwrap();
                 }
                 writeln!(out, "  duration_ms: {}", result.duration.as_millis()).unwrap();
                 if let Some(link) = log_link(run_dir, result) {
@@ -119,21 +124,19 @@ pub fn generate_tap(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::resolver::ir::{SourceFile, SourceMap, Span};
+    use crate::dsl::resolver::ir::{self, SourceMap, Span};
     use crate::runtime::result::{Failure, Outcome, TestResult};
-    use std::collections::HashMap;
     use std::path::{Path, PathBuf};
     use std::time::Duration;
 
     fn make_source_map() -> SourceMap {
-        SourceMap {
-            files: vec![SourceFile {
-                path: PathBuf::from("tests/auth/login.relux"),
-                // 3 lines: line 1 = bytes 0..6, line 2 = bytes 7..13, line 3 = bytes 14..20
-                source: "line 1\nline 2\nline 3\n".to_string(),
-            }],
-            project_root: None,
-        }
+        let mut sm = SourceMap::new();
+        // 3 lines: line 1 = bytes 0..6, line 2 = bytes 7..13, line 3 = bytes 14..20
+        sm.add(
+            PathBuf::from("tests/auth/login.relux"),
+            "line 1\nline 2\nline 3\n".to_string(),
+        );
+        sm
     }
 
     fn run_dir() -> &'static Path {
@@ -146,9 +149,9 @@ mod tests {
             test_path: format!("tests/{name}.relux"),
             outcome: Outcome::Pass,
             duration: Duration::from_millis(ms),
-            shell_logs: HashMap::new(),
+
             progress: String::new(),
-            log_dir: log_dir.map(|d| PathBuf::from(d)),
+            log_dir: log_dir.map(PathBuf::from),
         }
     }
 
@@ -158,9 +161,9 @@ mod tests {
             test_path: format!("tests/{name}.relux"),
             outcome: Outcome::Fail(failure),
             duration: Duration::from_millis(ms),
-            shell_logs: HashMap::new(),
+
             progress: String::new(),
-            log_dir: log_dir.map(|d| PathBuf::from(d)),
+            log_dir: log_dir.map(PathBuf::from),
         }
     }
 
@@ -170,7 +173,7 @@ mod tests {
             test_path: format!("tests/{name}.relux"),
             outcome: Outcome::Skipped(reason.into()),
             duration: Duration::ZERO,
-            shell_logs: HashMap::new(),
+
             progress: String::new(),
             log_dir: None,
         }
@@ -219,7 +222,7 @@ mod tests {
         // span at byte 14 = start of line 3
         let failure = Failure::MatchTimeout {
             pattern: "/ready/".into(),
-            span: Span::new(0, 14..20),
+            span: Span::new(ir::FileId::from(0), 14..20),
             shell: "default".into(),
         };
         let results = vec![fail_result(
@@ -279,7 +282,7 @@ mod tests {
         let failure = Failure::ShellExited {
             shell: "main".into(),
             exit_code: Some(1),
-            span: Span::new(0, 0..5),
+            span: Span::new(ir::FileId::from(0), 0..5),
         };
         let results = vec![
             pass_result("test-a", 100, None),
@@ -300,7 +303,7 @@ mod tests {
         let failure = Failure::FailPatternMatched {
             pattern: "/error/".into(),
             matched_line: "got \"error\" here".into(),
-            span: Span::new(0, 0..5),
+            span: Span::new(ir::FileId::from(0), 0..5),
             shell: "default".into(),
         };
         let results = vec![fail_result("quote-test", 100, failure, None)];

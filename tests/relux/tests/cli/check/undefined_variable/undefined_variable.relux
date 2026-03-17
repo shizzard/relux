@@ -1,4 +1,4 @@
-[skip]
+# skip
 test "check detects undefined variable" {
     """
     Verify relux check reports use of an undefined variable.

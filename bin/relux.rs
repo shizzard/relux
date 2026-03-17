@@ -4,14 +4,13 @@ use std::{fs, process};
 use clap::{Arg, ArgAction, Command, value_parser};
 
 use relux::config::{self, ReluxConfig};
-use relux::dsl::lexer::lex;
+use relux::dsl::lexer::{lex, normalize};
 use relux::dsl::parser::parse;
-use relux::dsl::report::print_diagnostics;
 use relux::dsl::resolver::ir::Timeout;
-use relux::dsl::resolver::resolve;
+use relux::dsl::resolver::{PlanResult, resolve};
 use relux::runtime::history::{HistoryCommand, OutputFormat, run_history};
 use relux::runtime::html::generate_run_summary;
-use relux::runtime::result::{Outcome, Reporter};
+use relux::runtime::result::{Outcome, RunReport};
 use relux::runtime::{RunContext, RunStrategy, Runtime};
 
 fn cli() -> Command {
@@ -312,9 +311,7 @@ fn validate_module_path(raw: &str) -> Result<String, String> {
         if segment.is_empty() {
             return Err("module path contains empty segment".to_string());
         }
-        if !segment.chars().next().unwrap().is_ascii_lowercase()
-            && segment.chars().next().unwrap() != '_'
-        {
+        if !segment.chars().next().unwrap().is_ascii_lowercase() && !segment.starts_with('_') {
             return Err(format!(
                 "segment `{segment}` must start with a lowercase letter or underscore"
             ));
@@ -420,30 +417,29 @@ async fn cmd_run(matches: &clap::ArgMatches) {
         _ => RunStrategy::All,
     };
 
-    let (plans, source_map, _diagnostics) = if matches.get_flag("rerun") {
-        let (plans, source_map, diagnostics) = resolve(&project_root, None, multiplier);
-        if !diagnostics.is_empty() {
-            print_diagnostics(&diagnostics, &source_map);
+    let (mut plans, source_map) = if matches.get_flag("rerun") {
+        let suite = resolve(&project_root, None, multiplier).unwrap_or_else(|e| {
+            e.eprint();
             process::exit(1);
-        }
+        });
 
         let out_root = config::out_dir(&project_root);
         let latest = find_latest_run(&out_root);
-        let summary = relux::runtime::run_summary::read_run_summary(&latest)
-            .unwrap_or_else(|e| {
-                eprintln!("error: {e}");
-                process::exit(1);
-            });
+        let summary = relux::runtime::run_summary::read_run_summary(&latest).unwrap_or_else(|e| {
+            eprintln!("error: {e}");
+            process::exit(1);
+        });
         let failed_ids = relux::runtime::run_summary::failed_test_ids(&summary);
         if failed_ids.is_empty() {
             eprintln!("no failed tests in the latest run");
             process::exit(0);
         }
 
+        let plans = extract_plans(suite.plan_results);
         let filtered: Vec<_> = plans
             .into_iter()
             .filter(|plan| {
-                let tp = relux::runtime::compute_test_path(&source_map, &project_root, plan);
+                let tp = relux::runtime::compute_test_path(&suite.source_map, &project_root, plan);
                 let tn = &plan.test.name.node;
                 failed_ids.iter().any(|&(p, n)| p == tp && n == tn)
             })
@@ -455,17 +451,17 @@ async fn cmd_run(matches: &clap::ArgMatches) {
         }
 
         eprintln!("re-running {} failed test(s)", filtered.len());
-        (filtered, source_map, vec![])
+        (filtered, suite.source_map)
     } else {
         let paths: Option<Vec<PathBuf>> = matches
             .get_many::<PathBuf>("paths")
             .map(|p| p.cloned().collect());
-        let (plans, source_map, diagnostics) = resolve(&project_root, paths.as_deref(), multiplier);
-        if !diagnostics.is_empty() {
-            print_diagnostics(&diagnostics, &source_map);
+        let suite = resolve(&project_root, paths.as_deref(), multiplier).unwrap_or_else(|e| {
+            e.eprint();
             process::exit(1);
-        }
-        (plans, source_map, diagnostics)
+        });
+        let plans = extract_plans(suite.plan_results);
+        (plans, suite.source_map)
     };
 
     if plans.is_empty() {
@@ -475,9 +471,15 @@ async fn cmd_run(matches: &clap::ArgMatches) {
 
     let run_context = create_run_context(&project_root, &relux_config, multiplier, strategy);
     let run_id = run_context.run_id.clone();
+    let plans = std::mem::take(&mut plans);
     let runtime = Runtime::new(source_map, run_context);
     let results = runtime.run(plans).await;
-    Reporter::print(&results, runtime.source_map(), runtime.run_dir());
+    RunReport {
+        results: &results,
+        source_map: runtime.source_map(),
+        run_dir: runtime.run_dir(),
+    }
+    .eprint();
 
     let suite_name = relux_config.name.as_deref().unwrap_or("relux");
     if matches.get_flag("tap") {
@@ -524,7 +526,10 @@ fn find_latest_run(out_root: &std::path::Path) -> PathBuf {
     // Fallback: find the most recent run-* directory by name (timestamps sort lexicographically)
     let mut run_dirs: Vec<_> = fs::read_dir(out_root)
         .unwrap_or_else(|e| {
-            eprintln!("error: cannot read output directory {}: {e}", out_root.display());
+            eprintln!(
+                "error: cannot read output directory {}: {e}",
+                out_root.display()
+            );
             process::exit(1);
         })
         .filter_map(|entry| {
@@ -580,10 +585,37 @@ fn cmd_check(matches: &clap::ArgMatches) {
     let paths: Option<Vec<PathBuf>> = matches
         .get_many::<PathBuf>("paths")
         .map(|p| p.cloned().collect());
-    let (_plans, source_map, diagnostics) = resolve(&project_root, paths.as_deref(), 1.0);
-    if !diagnostics.is_empty() {
-        print_diagnostics(&diagnostics, &source_map);
+    let suite = resolve(&project_root, paths.as_deref(), 1.0).unwrap_or_else(|e| {
+        e.eprint();
         process::exit(1);
+    });
+
+    // Collect all errors and warnings from plan results
+    use relux::error::{DiagnosticReport, DiagnosticReports};
+    let mut errors = Vec::new();
+    let mut warnings: Vec<DiagnosticReport> =
+        suite.warnings.iter().map(DiagnosticReport::from).collect();
+    for pr in &suite.plan_results {
+        if let PlanResult::Err {
+            errors: errs,
+            warnings: warns,
+        } = pr
+        {
+            errors.extend(errs.iter().map(DiagnosticReport::from));
+            warnings.extend(warns.iter().map(DiagnosticReport::from));
+        }
+    }
+
+    if !errors.is_empty() || !warnings.is_empty() {
+        let reports = DiagnosticReports {
+            errors,
+            warnings,
+            source_map: suite.source_map,
+        };
+        reports.eprint();
+        if reports.has_errors() {
+            process::exit(1);
+        }
     }
 
     eprintln!("check passed");
@@ -592,7 +624,8 @@ fn cmd_check(matches: &clap::ArgMatches) {
 fn cmd_dump_tokens(matches: &clap::ArgMatches) {
     let path: &PathBuf = matches.get_one("file").unwrap();
     let source = read_file(path);
-    for spanned in lex(&source) {
+    let normalized = normalize(&source);
+    for spanned in lex(&normalized) {
         print!("{:?} ", spanned.node);
     }
     println!();
@@ -601,18 +634,12 @@ fn cmd_dump_tokens(matches: &clap::ArgMatches) {
 fn cmd_dump_ast(matches: &clap::ArgMatches) {
     let path: &PathBuf = matches.get_one("file").unwrap();
     let source = read_file(path);
-    let (module, errors) = parse(&source);
-
-    if let Some(module) = module {
-        println!("{module:#?}");
-    }
-
-    if !errors.is_empty() {
-        eprintln!("\n--- errors ---");
-        for e in &errors {
-            eprintln!("  {e}");
+    match parse(&source) {
+        Ok(module) => println!("{module:#?}"),
+        Err(error) => {
+            eprintln!("error: {error}");
+            process::exit(1);
         }
-        process::exit(1);
     }
 }
 
@@ -628,19 +655,28 @@ fn cmd_dump_ir(matches: &clap::ArgMatches) {
         .cloned()
         .collect();
 
-    let (plans, source_map, diagnostics) = resolve(&project_root, Some(&files), 1.0);
+    let suite = resolve(&project_root, Some(&files), 1.0).unwrap_or_else(|e| {
+        e.eprint();
+        process::exit(1);
+    });
 
+    let plans = extract_plans(suite.plan_results);
     for (i, plan) in plans.iter().enumerate() {
         if i > 0 {
             println!("\n{}", "─".repeat(60));
         }
         println!("{plan:#?}");
     }
+}
 
-    if !diagnostics.is_empty() {
-        print_diagnostics(&diagnostics, &source_map);
-        process::exit(1);
-    }
+fn extract_plans(plan_results: Vec<PlanResult>) -> Vec<relux::dsl::resolver::ir::Plan> {
+    plan_results
+        .into_iter()
+        .filter_map(|pr| match pr {
+            PlanResult::Ok { plan, .. } => Some(*plan),
+            PlanResult::Err { .. } => None,
+        })
+        .collect()
 }
 
 fn resolve_project(matches: &clap::ArgMatches) -> (PathBuf, ReluxConfig) {
@@ -709,9 +745,10 @@ fn create_run_context(
                         duration: d,
                         multiplier,
                     }),
-                    suite_timeout: config.timeout.suite.map(|d| {
-                        std::time::Duration::from_secs_f64(d.as_secs_f64() * multiplier)
-                    }),
+                    suite_timeout: config
+                        .timeout
+                        .suite
+                        .map(|d| std::time::Duration::from_secs_f64(d.as_secs_f64() * multiplier)),
                     strategy,
                 };
             }

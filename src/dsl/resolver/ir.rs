@@ -1,6 +1,172 @@
-use std::ops::Range;
+use std::marker::PhantomData;
+use std::ops::{Index, IndexMut, Range};
 use std::path::PathBuf;
 use std::time::Duration;
+
+use crate::dsl::parser;
+use thiserror::Error;
+
+// ─── Typed Index Infrastructure ────────────────────────────
+// Newtype indices and a typed vector that only accepts the
+// matching index type. Indices have a private inner field so
+// they can only be created by `IndexVec::push`.
+
+macro_rules! define_index {
+    ($(#[$meta:meta])* $vis:vis struct $Name:ident;) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        $vis struct $Name(u32);
+
+        impl From<usize> for $Name {
+            fn from(v: usize) -> Self { Self(v as u32) }
+        }
+
+        impl $Name {
+            /// Raw index value, for display/debugging only.
+            pub fn to_usize(self) -> usize { self.0 as usize }
+        }
+    };
+}
+
+define_index! {
+    /// Index into `SourceMap::files`.
+    pub struct FileId;
+}
+
+define_index! {
+    /// Index into `Plan::effects` (effect definitions).
+    pub struct EffectId;
+}
+
+define_index! {
+    /// Index into `Plan::functions`. Identifies a specific (name, arity) pair.
+    pub struct FnId;
+}
+
+define_index! {
+    /// Index into `Plan::pure_functions`.
+    pub struct PureFnId;
+}
+
+/// A typed vector that can only be indexed by its associated index type `I`.
+/// Indices are created exclusively by `push`, making out-of-bounds access
+/// impossible when the index and collection travel together.
+#[derive(Debug, Clone)]
+pub struct IndexVec<I, T> {
+    raw: Vec<T>,
+    _marker: PhantomData<fn(I) -> I>,
+}
+
+impl<I: From<usize>, T> IndexVec<I, T> {
+    pub fn new() -> Self {
+        Self {
+            raw: Vec::new(),
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn from_elem(value: T, count: usize) -> Self
+    where
+        T: Clone,
+    {
+        Self {
+            raw: vec![value; count],
+            _marker: PhantomData,
+        }
+    }
+
+    /// Insert a value, returning its typed index.
+    pub fn push(&mut self, value: T) -> I {
+        let id = I::from(self.raw.len());
+        self.raw.push(value);
+        id
+    }
+
+    pub fn len(&self) -> usize {
+        self.raw.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.raw.is_empty()
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, T> {
+        self.raw.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> {
+        self.raw.iter_mut()
+    }
+
+    pub fn get(&self, index: I) -> Option<&T>
+    where
+        I: HasIndex,
+    {
+        self.raw.get(index.to_usize())
+    }
+}
+
+impl<I: From<usize>, T> Default for IndexVec<I, T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Trait for typed indices that can be converted to `usize` for collection access.
+/// Sealed to this module — external code cannot implement it.
+pub trait HasIndex {
+    fn to_usize(self) -> usize;
+}
+
+impl HasIndex for FileId {
+    fn to_usize(self) -> usize {
+        self.0 as usize
+    }
+}
+impl HasIndex for EffectId {
+    fn to_usize(self) -> usize {
+        self.0 as usize
+    }
+}
+impl HasIndex for FnId {
+    fn to_usize(self) -> usize {
+        self.0 as usize
+    }
+}
+impl HasIndex for PureFnId {
+    fn to_usize(self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl<I: HasIndex, T> Index<I> for IndexVec<I, T> {
+    type Output = T;
+    fn index(&self, idx: I) -> &T {
+        &self.raw[idx.to_usize()]
+    }
+}
+
+impl<I: HasIndex, T> IndexMut<I> for IndexVec<I, T> {
+    fn index_mut(&mut self, idx: I) -> &mut T {
+        &mut self.raw[idx.to_usize()]
+    }
+}
+
+impl<I, T> IntoIterator for IndexVec<I, T> {
+    type Item = T;
+    type IntoIter = std::vec::IntoIter<T>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.raw.into_iter()
+    }
+}
+
+impl<'a, I, T> IntoIterator for &'a IndexVec<I, T> {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.raw.iter()
+    }
+}
 
 // ─── Timeout ────────────────────────────────────────────────
 
@@ -20,9 +186,10 @@ impl Timeout {
     /// timeouts.
     pub fn resolve(&self) -> Duration {
         match self {
-            Timeout::Tolerance { duration, multiplier } => {
-                Duration::from_secs_f64(duration.as_secs_f64() * multiplier)
-            }
+            Timeout::Tolerance {
+                duration,
+                multiplier,
+            } => Duration::from_secs_f64(duration.as_secs_f64() * multiplier),
             Timeout::Assertion(d) => *d,
         }
     }
@@ -32,11 +199,9 @@ impl Timeout {
 // Maps FileId to the file path and source text, needed for
 // rendering annotated error diagnostics.
 
-pub type FileId = usize;
-
 #[derive(Debug, Clone)]
 pub struct SourceMap {
-    pub files: Vec<SourceFile>,
+    pub files: IndexVec<FileId, SourceFile>,
     pub project_root: Option<PathBuf>,
 }
 
@@ -46,18 +211,22 @@ pub struct SourceFile {
     pub source: String,
 }
 
+impl Default for SourceMap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SourceMap {
     pub fn new() -> Self {
         Self {
-            files: Vec::new(),
+            files: IndexVec::new(),
             project_root: None,
         }
     }
 
     pub fn add(&mut self, path: PathBuf, source: String) -> FileId {
-        let id = self.files.len();
-        self.files.push(SourceFile { path, source });
-        id
+        self.files.push(SourceFile { path, source })
     }
 
     pub fn display_path(&self, file: FileId) -> String {
@@ -95,15 +264,6 @@ pub type Spanned<T> = crate::Spanned<T, Span>;
 
 // ─── Resolved Indices ───────────────────────────────────────
 
-/// Index into `Plan::effects` (effect definitions).
-pub type EffectId = usize;
-
-/// Index into `Plan::functions`. Identifies a specific (name, arity) pair.
-pub type FnId = usize;
-
-/// Index into `Plan::pure_functions`.
-pub type PureFnId = usize;
-
 /// Node in the effect instance DAG.
 pub type InstanceId = daggy::NodeIndex;
 
@@ -115,11 +275,11 @@ pub type InstanceId = daggy::NodeIndex;
 #[derive(Debug, Clone)]
 pub struct Plan {
     /// Impure functions reachable from this test (directly or via effects).
-    pub functions: Vec<Function>,
+    pub functions: IndexVec<FnId, Function>,
     /// Pure functions reachable from this test.
-    pub pure_functions: Vec<PureFunction>,
+    pub pure_functions: IndexVec<PureFnId, PureFunction>,
     /// Effect definitions (templates). Referenced by EffectId.
-    pub effects: Vec<Effect>,
+    pub effects: IndexVec<EffectId, Effect>,
     /// Instantiated, deduplicated effect dependency graph.
     /// Nodes are effect instances, edges encode dependencies
     /// and the alias used by the dependent.
@@ -184,10 +344,29 @@ pub enum CondKind {
     Flaky,
 }
 
+impl From<parser::AstMarkerKind> for CondKind {
+    fn from(k: parser::AstMarkerKind) -> Self {
+        match k {
+            parser::AstMarkerKind::Skip { .. } => CondKind::Skip,
+            parser::AstMarkerKind::Run { .. } => CondKind::Run,
+            parser::AstMarkerKind::Flaky { .. } => CondKind::Flaky,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum CondModifier {
     If,
     Unless,
+}
+
+impl From<parser::AstCondModifier> for CondModifier {
+    fn from(m: parser::AstCondModifier) -> Self {
+        match m {
+            parser::AstCondModifier::If { .. } => CondModifier::If,
+            parser::AstCondModifier::Unless { .. } => CondModifier::Unless,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -206,7 +385,7 @@ pub struct CondExpr {
 pub enum CondBody {
     Bare(PureExpr),
     Eq(PureExpr, PureExpr),
-    Regex(PureExpr, StringExpr),
+    Regex(PureExpr, Interpolation),
 }
 
 // ─── Effect Definition ──────────────────────────────────────
@@ -227,19 +406,12 @@ pub struct Effect {
 
 // ─── Test ───────────────────────────────────────────────────
 
-/// Distinguishes inline test timeouts from inherited config/manifest timeouts.
-/// Tolerance (`~`) variants are scaled by `--timeout-multiplier`;
-/// Assertion (`@`) variants are never scaled.
-#[derive(Debug, Clone, PartialEq)]
-pub enum TestTimeout {
-    /// Set inline on the test definition: `test "name" ~5s { ... }`
-    Explicit(Timeout),
-}
-
 #[derive(Debug, Clone)]
 pub struct Test {
     pub name: Spanned<String>,
-    pub timeout: Option<TestTimeout>,
+    /// Inline timeout from the test definition: `test "name" ~5s { ... }`.
+    /// `None` means inherit from config/manifest.
+    pub timeout: Option<Timeout>,
     pub doc: Option<Spanned<String>>,
     pub conditions: Vec<Spanned<Condition>>,
     /// Resolved references to effect instances in the DAG.
@@ -286,9 +458,9 @@ pub struct ShellBlock {
 #[derive(Debug, Clone)]
 pub enum ShellStmt {
     /// Set fail pattern (regex). Replaces any previous fail pattern.
-    FailRegex(StringExpr),
+    FailRegex(Interpolation),
     /// Set fail pattern (literal). Replaces any previous fail pattern.
-    FailLiteral(StringExpr),
+    FailLiteral(Interpolation),
     /// Clear the active fail pattern, resetting it to none.
     ClearFailPattern,
     /// Set match timeout for subsequent matches in this shell.
@@ -313,8 +485,8 @@ pub struct CleanupBlock {
 
 #[derive(Debug, Clone)]
 pub enum CleanupStmt {
-    Send(StringExpr),
-    SendRaw(StringExpr),
+    Send(Interpolation),
+    SendRaw(Interpolation),
     Let(VarDecl),
     Assign(VarAssign),
 }
@@ -325,15 +497,15 @@ pub enum CleanupStmt {
 #[derive(Debug, Clone)]
 pub enum Expr {
     /// Quoted string, possibly with interpolation.
-    String(StringExpr),
+    String(Interpolation),
     /// Variable or capture group reference (e.g. "name" or "1").
     Var(String),
     /// Function call. Value: last expression in the function body.
     Call(FnCall),
     /// Send with newline. Value: the sent string.
-    Send(StringExpr),
+    Send(Interpolation),
     /// Send without newline. Value: the sent string.
-    SendRaw(StringExpr),
+    SendRaw(Interpolation),
     /// Match regex against shell output. Value: full match ($0).
     /// Blocks until match or timeout. Sets capture groups.
     MatchRegex(MatchExpr),
@@ -348,7 +520,7 @@ pub enum Expr {
 /// Unified match expression carrying a pattern and optional one-shot timeout.
 #[derive(Debug, Clone)]
 pub struct MatchExpr {
-    pub pattern: StringExpr,
+    pub pattern: Interpolation,
     pub timeout_override: Option<Timeout>,
 }
 
@@ -358,7 +530,7 @@ pub struct MatchExpr {
 // overlay values.
 
 #[derive(Debug, Clone)]
-pub struct StringExpr {
+pub struct Interpolation {
     pub parts: Vec<Spanned<StringPart>>,
     pub span: Span,
 }
@@ -368,9 +540,11 @@ pub enum StringPart {
     /// Literal text segment.
     Literal(String),
     /// Variable interpolation. Stripped name (e.g. "name" not "${name}").
-    Interp(String),
+    VarRef(String),
     /// Escaped dollar sign — resolves to literal "$".
     EscapedDollar,
+    /// Capture group reference (e.g. `${1}`).
+    CaptureRef(usize),
 }
 
 // ─── Variable Operations ────────────────────────────────────
@@ -427,7 +601,7 @@ pub struct PureVarAssign {
 
 #[derive(Debug, Clone)]
 pub enum PureExpr {
-    String(StringExpr),
+    String(Interpolation),
     Var(String),
     Call(PureFnCall),
 }
@@ -436,4 +610,120 @@ pub enum PureExpr {
 pub struct PureFnCall {
     pub name: Spanned<String>,
     pub args: Vec<Spanned<PureExpr>>,
+}
+
+// ─── Purity Validation ──────────────────────────────────────
+
+#[derive(Debug, Clone, Error)]
+#[error("{what} cannot be used in a pure context")]
+pub struct IrPurityError {
+    pub what: String,
+    pub span: Span,
+}
+
+impl TryFrom<Spanned<Expr>> for Spanned<PureExpr> {
+    type Error = IrPurityError;
+    fn try_from(spanned: Spanned<Expr>) -> Result<Self, IrPurityError> {
+        let span = spanned.span.clone();
+        let pure = match spanned.node {
+            Expr::String(s) => PureExpr::String(s),
+            Expr::Var(name) => PureExpr::Var(name),
+            Expr::Call(call) => {
+                let pure_args = call
+                    .args
+                    .into_iter()
+                    .map(Spanned::<PureExpr>::try_from)
+                    .collect::<Result<Vec<_>, IrPurityError>>()?;
+                PureExpr::Call(PureFnCall {
+                    name: call.name,
+                    args: pure_args,
+                })
+            }
+            Expr::Send(_) => {
+                return Err(IrPurityError {
+                    what: "send operator".into(),
+                    span,
+                });
+            }
+            Expr::SendRaw(_) => {
+                return Err(IrPurityError {
+                    what: "send raw operator".into(),
+                    span,
+                });
+            }
+            Expr::MatchRegex(_) | Expr::MatchLiteral(_) => {
+                return Err(IrPurityError {
+                    what: "match operator".into(),
+                    span,
+                });
+            }
+            Expr::BufferReset => {
+                return Err(IrPurityError {
+                    what: "buffer reset".into(),
+                    span,
+                });
+            }
+        };
+        Ok(Spanned::new(pure, span))
+    }
+}
+
+impl TryFrom<Spanned<ShellStmt>> for Spanned<PureStmt> {
+    type Error = IrPurityError;
+    fn try_from(spanned: Spanned<ShellStmt>) -> Result<Self, IrPurityError> {
+        let span = spanned.span.clone();
+        let pure = match spanned.node {
+            ShellStmt::Let(decl) => {
+                let value = decl.value.map(Spanned::<PureExpr>::try_from).transpose()?;
+                PureStmt::Let(PureVarDecl {
+                    name: decl.name,
+                    value,
+                })
+            }
+            ShellStmt::Assign(assign) => {
+                let pure_val = Spanned::<PureExpr>::try_from(assign.value)?;
+                PureStmt::Assign(PureVarAssign {
+                    name: assign.name,
+                    value: pure_val,
+                })
+            }
+            ShellStmt::Expr(e) => {
+                let s = Spanned::new(e, span.clone());
+                PureStmt::Expr(Spanned::<PureExpr>::try_from(s)?.node)
+            }
+            ShellStmt::Timeout(_) => {
+                return Err(IrPurityError {
+                    what: "timeout".into(),
+                    span,
+                });
+            }
+            ShellStmt::FailRegex(_) => {
+                return Err(IrPurityError {
+                    what: "fail pattern".into(),
+                    span,
+                });
+            }
+            ShellStmt::FailLiteral(_) => {
+                return Err(IrPurityError {
+                    what: "fail pattern".into(),
+                    span,
+                });
+            }
+            ShellStmt::ClearFailPattern => {
+                return Err(IrPurityError {
+                    what: "clear fail pattern".into(),
+                    span,
+                });
+            }
+        };
+        Ok(Spanned::new(pure, span))
+    }
+}
+
+// ─── Test Suite ─────────────────────────────────────────────
+
+pub struct TestSuite {
+    pub plan_results: Vec<crate::dsl::resolver::PlanResult>,
+    pub source_map: SourceMap,
+    pub warnings: Vec<crate::dsl::resolver::DiagnosticWarning>,
 }

@@ -1,0 +1,13 @@
+test "check passes when sub-need resolves in effect home scope" {
+    """
+    Verify that an effect's sub-needs resolve in the effect's home module,
+    not in the test module that uses the effect. The test file imports only
+    Composite, which internally needs Base — Base is imported in
+    lib/composite but NOT in the test file.
+    """
+    shell s {
+        > relux check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? check passed
+        match_ok()
+    }
+}

@@ -3,7 +3,7 @@ use std::path::Path;
 use quick_junit::{NonSuccessKind, Property, Report, TestCase, TestCaseStatus, TestSuite};
 
 use crate::dsl::resolver::ir::{SourceMap, Span};
-use crate::runtime::result::{log_link, Failure, Outcome, TestResult};
+use crate::runtime::result::{Failure, Outcome, TestResult, log_link};
 
 pub fn generate_junit(
     run_dir: &Path,
@@ -127,20 +127,18 @@ fn line_number(source: &str, offset: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::resolver::ir::{SourceFile, SourceMap, Span};
+    use crate::dsl::resolver::ir::{self, SourceMap, Span};
     use crate::runtime::result::{Failure, Outcome, TestResult};
-    use std::collections::HashMap;
     use std::path::PathBuf;
     use std::time::Duration;
 
     fn test_source_map() -> SourceMap {
-        SourceMap {
-            files: vec![SourceFile {
-                path: PathBuf::from("tests/auth/login.relux"),
-                source: "line1\nline2\nline3\n".to_string(),
-            }],
-            project_root: None,
-        }
+        let mut sm = SourceMap::new();
+        sm.add(
+            PathBuf::from("tests/auth/login.relux"),
+            "line1\nline2\nline3\n".to_string(),
+        );
+        sm
     }
 
     fn make_result(
@@ -155,7 +153,7 @@ mod tests {
             test_path: path.to_string(),
             outcome,
             duration,
-            shell_logs: HashMap::new(),
+
             progress: String::new(),
             log_dir,
         }
@@ -192,7 +190,7 @@ mod tests {
         // Span pointing to line 3 (offset 12 is after two newlines)
         let failure = Failure::MatchTimeout {
             pattern: "/ready/".to_string(),
-            span: Span::new(0, 12..17),
+            span: Span::new(ir::FileId::from(0), 12..17),
             shell: "default".to_string(),
         };
         let results = vec![make_result(

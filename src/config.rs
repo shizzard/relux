@@ -33,7 +33,7 @@ where
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct ReluxConfig {
     pub name: Option<String>,
     #[serde(default)]
@@ -88,27 +88,16 @@ impl Default for TimeoutConfig {
     }
 }
 
-impl Default for ReluxConfig {
-    fn default() -> Self {
-        Self {
-            name: None,
-            shell: ShellConfig::default(),
-            timeout: TimeoutConfig::default(),
-        }
-    }
-}
-
 pub fn discover_project_root() -> Result<(PathBuf, ReluxConfig), String> {
-    let cwd = std::env::current_dir().map_err(|e| format!("cannot determine current directory: {e}"))?;
+    let cwd =
+        std::env::current_dir().map_err(|e| format!("cannot determine current directory: {e}"))?;
     let mut dir = cwd.as_path();
     loop {
         let candidate = dir.join(CONFIG_FILE);
         if candidate.is_file() {
             let mut config = load_config(&candidate)?;
             if config.name.is_none() {
-                config.name = dir
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned());
+                config.name = dir.file_name().map(|n| n.to_string_lossy().into_owned());
             }
             return Ok((dir.to_path_buf(), config));
         }
@@ -126,8 +115,8 @@ pub fn discover_project_root() -> Result<(PathBuf, ReluxConfig), String> {
 }
 
 pub fn load_config(path: &Path) -> Result<ReluxConfig, String> {
-    let contents =
-        std::fs::read_to_string(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let contents = std::fs::read_to_string(path)
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     toml::from_str(&contents).map_err(|e| format!("invalid {}: {e}", path.display()))
 }
 
@@ -212,5 +201,4 @@ suite = "30m"
         assert_eq!(config.shell.command, "/bin/sh");
         assert_eq!(config.timeout.match_timeout, Duration::from_secs(5));
     }
-
 }

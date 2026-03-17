@@ -30,14 +30,24 @@ pub trait VmContext: PureContext {
 pub trait PureBif: Send + Sync {
     fn name(&self) -> &str;
     fn arity(&self) -> usize;
-    async fn call(&self, ctx: &mut dyn PureContext, args: Vec<String>, span: &Span) -> Result<String, Failure>;
+    async fn call(
+        &self,
+        ctx: &mut dyn PureContext,
+        args: Vec<String>,
+        span: &Span,
+    ) -> Result<String, Failure>;
 }
 
 #[async_trait]
 pub trait Bif: Send + Sync {
     fn name(&self) -> &str;
     fn arity(&self) -> usize;
-    async fn call(&self, vm: &mut dyn VmContext, args: Vec<String>, span: &Span) -> Result<String, Failure>;
+    async fn call(
+        &self,
+        vm: &mut dyn VmContext,
+        args: Vec<String>,
+        span: &Span,
+    ) -> Result<String, Failure>;
 }
 
 // ─── Lookup ─────────────────────────────────────────────────
@@ -69,11 +79,26 @@ pub fn lookup_impure(name: &str, arity: usize) -> Option<Box<dyn Bif>> {
         ("match_ok", 0) => Some(Box::new(MatchOk)),
         ("match_not_ok", 0) => Some(Box::new(MatchNotOk)),
         ("match_not_ok", 1) => Some(Box::new(MatchNotOkWithCode)),
-        ("ctrl_c", 0) => Some(Box::new(CtrlChar { name: "ctrl_c", byte: 0x03 })),
-        ("ctrl_d", 0) => Some(Box::new(CtrlChar { name: "ctrl_d", byte: 0x04 })),
-        ("ctrl_z", 0) => Some(Box::new(CtrlChar { name: "ctrl_z", byte: 0x1A })),
-        ("ctrl_l", 0) => Some(Box::new(CtrlChar { name: "ctrl_l", byte: 0x0C })),
-        ("ctrl_backslash", 0) => Some(Box::new(CtrlChar { name: "ctrl_backslash", byte: 0x1C })),
+        ("ctrl_c", 0) => Some(Box::new(CtrlChar {
+            name: "ctrl_c",
+            byte: 0x03,
+        })),
+        ("ctrl_d", 0) => Some(Box::new(CtrlChar {
+            name: "ctrl_d",
+            byte: 0x04,
+        })),
+        ("ctrl_z", 0) => Some(Box::new(CtrlChar {
+            name: "ctrl_z",
+            byte: 0x1A,
+        })),
+        ("ctrl_l", 0) => Some(Box::new(CtrlChar {
+            name: "ctrl_l",
+            byte: 0x0C,
+        })),
+        ("ctrl_backslash", 0) => Some(Box::new(CtrlChar {
+            name: "ctrl_backslash",
+            byte: 0x1C,
+        })),
         _ => None,
     }
 }
@@ -107,10 +132,19 @@ pub struct Sleep;
 
 #[async_trait]
 impl PureBif for Sleep {
-    fn name(&self) -> &str { "sleep" }
-    fn arity(&self) -> usize { 1 }
+    fn name(&self) -> &str {
+        "sleep"
+    }
+    fn arity(&self) -> usize {
+        1
+    }
 
-    async fn call(&self, ctx: &mut dyn PureContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        ctx: &mut dyn PureContext,
+        args: Vec<String>,
+        span: &Span,
+    ) -> Result<String, Failure> {
         let duration = humantime::parse_duration(args[0].trim())
             .map_err(|_| runtime_error(format!("invalid duration: `{}`", args[0]), span))?;
         ctx.emit_progress(ProgressEvent::SleepStart);
@@ -124,10 +158,19 @@ pub struct Annotate;
 
 #[async_trait]
 impl PureBif for Annotate {
-    fn name(&self) -> &str { "annotate" }
-    fn arity(&self) -> usize { 1 }
+    fn name(&self) -> &str {
+        "annotate"
+    }
+    fn arity(&self) -> usize {
+        1
+    }
 
-    async fn call(&self, ctx: &mut dyn PureContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        ctx: &mut dyn PureContext,
+        args: Vec<String>,
+        _span: &Span,
+    ) -> Result<String, Failure> {
         let text = args[0].clone();
         ctx.emit_progress(ProgressEvent::Annotation(text.clone()));
         Ok(text)
@@ -138,10 +181,19 @@ pub struct Log;
 
 #[async_trait]
 impl PureBif for Log {
-    fn name(&self) -> &str { "log" }
-    fn arity(&self) -> usize { 1 }
+    fn name(&self) -> &str {
+        "log"
+    }
+    fn arity(&self) -> usize {
+        1
+    }
 
-    async fn call(&self, ctx: &mut dyn PureContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        ctx: &mut dyn PureContext,
+        args: Vec<String>,
+        _span: &Span,
+    ) -> Result<String, Failure> {
         let message = args[0].clone();
         ctx.emit_log(message.clone()).await;
         Ok(message)
@@ -152,10 +204,19 @@ pub struct Trim;
 
 #[async_trait]
 impl PureBif for Trim {
-    fn name(&self) -> &str { "trim" }
-    fn arity(&self) -> usize { 1 }
+    fn name(&self) -> &str {
+        "trim"
+    }
+    fn arity(&self) -> usize {
+        1
+    }
 
-    async fn call(&self, _ctx: &mut dyn PureContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        _ctx: &mut dyn PureContext,
+        args: Vec<String>,
+        _span: &Span,
+    ) -> Result<String, Failure> {
         Ok(args[0].trim().to_string())
     }
 }
@@ -164,10 +225,19 @@ pub struct Upper;
 
 #[async_trait]
 impl PureBif for Upper {
-    fn name(&self) -> &str { "upper" }
-    fn arity(&self) -> usize { 1 }
+    fn name(&self) -> &str {
+        "upper"
+    }
+    fn arity(&self) -> usize {
+        1
+    }
 
-    async fn call(&self, _ctx: &mut dyn PureContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        _ctx: &mut dyn PureContext,
+        args: Vec<String>,
+        _span: &Span,
+    ) -> Result<String, Failure> {
         Ok(args[0].to_uppercase())
     }
 }
@@ -176,10 +246,19 @@ pub struct Lower;
 
 #[async_trait]
 impl PureBif for Lower {
-    fn name(&self) -> &str { "lower" }
-    fn arity(&self) -> usize { 1 }
+    fn name(&self) -> &str {
+        "lower"
+    }
+    fn arity(&self) -> usize {
+        1
+    }
 
-    async fn call(&self, _ctx: &mut dyn PureContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        _ctx: &mut dyn PureContext,
+        args: Vec<String>,
+        _span: &Span,
+    ) -> Result<String, Failure> {
         Ok(args[0].to_lowercase())
     }
 }
@@ -188,10 +267,19 @@ pub struct Replace;
 
 #[async_trait]
 impl PureBif for Replace {
-    fn name(&self) -> &str { "replace" }
-    fn arity(&self) -> usize { 3 }
+    fn name(&self) -> &str {
+        "replace"
+    }
+    fn arity(&self) -> usize {
+        3
+    }
 
-    async fn call(&self, _ctx: &mut dyn PureContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        _ctx: &mut dyn PureContext,
+        args: Vec<String>,
+        _span: &Span,
+    ) -> Result<String, Failure> {
         Ok(args[0].replace(&args[1], &args[2]))
     }
 }
@@ -200,11 +288,21 @@ pub struct Split;
 
 #[async_trait]
 impl PureBif for Split {
-    fn name(&self) -> &str { "split" }
-    fn arity(&self) -> usize { 3 }
+    fn name(&self) -> &str {
+        "split"
+    }
+    fn arity(&self) -> usize {
+        3
+    }
 
-    async fn call(&self, _ctx: &mut dyn PureContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
-        let index: usize = args[2].parse()
+    async fn call(
+        &self,
+        _ctx: &mut dyn PureContext,
+        args: Vec<String>,
+        span: &Span,
+    ) -> Result<String, Failure> {
+        let index: usize = args[2]
+            .parse()
             .map_err(|_| runtime_error(format!("invalid index: `{}`", args[2]), span))?;
         let parts: Vec<&str> = args[0].split(&args[1]).collect();
         Ok(parts.get(index).unwrap_or(&"").to_string())
@@ -215,10 +313,19 @@ pub struct Len;
 
 #[async_trait]
 impl PureBif for Len {
-    fn name(&self) -> &str { "len" }
-    fn arity(&self) -> usize { 1 }
+    fn name(&self) -> &str {
+        "len"
+    }
+    fn arity(&self) -> usize {
+        1
+    }
 
-    async fn call(&self, _ctx: &mut dyn PureContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        _ctx: &mut dyn PureContext,
+        args: Vec<String>,
+        _span: &Span,
+    ) -> Result<String, Failure> {
         Ok(args[0].len().to_string())
     }
 }
@@ -227,10 +334,19 @@ pub struct Uuid;
 
 #[async_trait]
 impl PureBif for Uuid {
-    fn name(&self) -> &str { "uuid" }
-    fn arity(&self) -> usize { 0 }
+    fn name(&self) -> &str {
+        "uuid"
+    }
+    fn arity(&self) -> usize {
+        0
+    }
 
-    async fn call(&self, _ctx: &mut dyn PureContext, _args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        _ctx: &mut dyn PureContext,
+        _args: Vec<String>,
+        _span: &Span,
+    ) -> Result<String, Failure> {
         Ok(uuid::Uuid::new_v4().to_string())
     }
 }
@@ -239,10 +355,19 @@ pub struct Rand;
 
 #[async_trait]
 impl PureBif for Rand {
-    fn name(&self) -> &str { "rand" }
-    fn arity(&self) -> usize { 1 }
+    fn name(&self) -> &str {
+        "rand"
+    }
+    fn arity(&self) -> usize {
+        1
+    }
 
-    async fn call(&self, _ctx: &mut dyn PureContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        _ctx: &mut dyn PureContext,
+        args: Vec<String>,
+        span: &Span,
+    ) -> Result<String, Failure> {
         let n = parse_length(&args[0], span)?;
         Ok(random_string(n, ALPHANUM))
     }
@@ -252,10 +377,19 @@ pub struct RandWithMode;
 
 #[async_trait]
 impl PureBif for RandWithMode {
-    fn name(&self) -> &str { "rand" }
-    fn arity(&self) -> usize { 2 }
+    fn name(&self) -> &str {
+        "rand"
+    }
+    fn arity(&self) -> usize {
+        2
+    }
 
-    async fn call(&self, _ctx: &mut dyn PureContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        _ctx: &mut dyn PureContext,
+        args: Vec<String>,
+        span: &Span,
+    ) -> Result<String, Failure> {
         let n = parse_length(&args[0], span)?;
         let charset = match args[1].as_str() {
             "alpha" => ALPHA,
@@ -264,10 +398,14 @@ impl PureBif for RandWithMode {
             "hex" => HEX,
             "oct" => OCT,
             "bin" => BIN,
-            other => return Err(runtime_error(
-                format!("unknown rand mode: `{other}` (expected: alpha, num, alphanum, hex, oct, bin)"),
-                span,
-            )),
+            other => {
+                return Err(runtime_error(
+                    format!(
+                        "unknown rand mode: `{other}` (expected: alpha, num, alphanum, hex, oct, bin)"
+                    ),
+                    span,
+                ));
+            }
         };
         Ok(random_string(n, charset))
     }
@@ -297,13 +435,23 @@ pub struct AvailablePort;
 
 #[async_trait]
 impl PureBif for AvailablePort {
-    fn name(&self) -> &str { "available_port" }
-    fn arity(&self) -> usize { 0 }
+    fn name(&self) -> &str {
+        "available_port"
+    }
+    fn arity(&self) -> usize {
+        0
+    }
 
-    async fn call(&self, _ctx: &mut dyn PureContext, _args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        _ctx: &mut dyn PureContext,
+        _args: Vec<String>,
+        span: &Span,
+    ) -> Result<String, Failure> {
         let listener = std::net::TcpListener::bind("127.0.0.1:0")
             .map_err(|e| runtime_error(format!("failed to bind to ephemeral port: {e}"), span))?;
-        let port = listener.local_addr()
+        let port = listener
+            .local_addr()
             .map_err(|e| runtime_error(format!("failed to get local address: {e}"), span))?
             .port();
         Ok(port.to_string())
@@ -314,10 +462,19 @@ pub struct Which;
 
 #[async_trait]
 impl PureBif for Which {
-    fn name(&self) -> &str { "which" }
-    fn arity(&self) -> usize { 1 }
+    fn name(&self) -> &str {
+        "which"
+    }
+    fn arity(&self) -> usize {
+        1
+    }
 
-    async fn call(&self, _ctx: &mut dyn PureContext, args: Vec<String>, _span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        _ctx: &mut dyn PureContext,
+        args: Vec<String>,
+        _span: &Span,
+    ) -> Result<String, Failure> {
         let name = &args[0];
         if name.is_empty() {
             return Ok(String::new());
@@ -356,10 +513,19 @@ pub struct MatchPrompt;
 
 #[async_trait]
 impl Bif for MatchPrompt {
-    fn name(&self) -> &str { "match_prompt" }
-    fn arity(&self) -> usize { 0 }
+    fn name(&self) -> &str {
+        "match_prompt"
+    }
+    fn arity(&self) -> usize {
+        0
+    }
 
-    async fn call(&self, vm: &mut dyn VmContext, _args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        vm: &mut dyn VmContext,
+        _args: Vec<String>,
+        span: &Span,
+    ) -> Result<String, Failure> {
         let prompt = vm.shell_prompt().to_string();
         vm.match_literal(&prompt, span).await
     }
@@ -369,10 +535,19 @@ pub struct MatchExitCode;
 
 #[async_trait]
 impl Bif for MatchExitCode {
-    fn name(&self) -> &str { "match_exit_code" }
-    fn arity(&self) -> usize { 1 }
+    fn name(&self) -> &str {
+        "match_exit_code"
+    }
+    fn arity(&self) -> usize {
+        1
+    }
 
-    async fn call(&self, vm: &mut dyn VmContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        vm: &mut dyn VmContext,
+        args: Vec<String>,
+        span: &Span,
+    ) -> Result<String, Failure> {
         let prompt = vm.shell_prompt().to_string();
         vm.send_line("echo ::$?::", span).await?;
         vm.match_literal(&format!("::{}::", args[0]), span).await?;
@@ -384,10 +559,19 @@ pub struct MatchOk;
 
 #[async_trait]
 impl Bif for MatchOk {
-    fn name(&self) -> &str { "match_ok" }
-    fn arity(&self) -> usize { 0 }
+    fn name(&self) -> &str {
+        "match_ok"
+    }
+    fn arity(&self) -> usize {
+        0
+    }
 
-    async fn call(&self, vm: &mut dyn VmContext, _args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        vm: &mut dyn VmContext,
+        _args: Vec<String>,
+        span: &Span,
+    ) -> Result<String, Failure> {
         let prompt = vm.shell_prompt().to_string();
         vm.match_literal(&prompt, span).await?;
         vm.send_line("echo ::$?::", span).await?;
@@ -400,13 +584,26 @@ pub struct MatchNotOk;
 
 #[async_trait]
 impl Bif for MatchNotOk {
-    fn name(&self) -> &str { "match_not_ok" }
-    fn arity(&self) -> usize { 0 }
+    fn name(&self) -> &str {
+        "match_not_ok"
+    }
+    fn arity(&self) -> usize {
+        0
+    }
 
-    async fn call(&self, vm: &mut dyn VmContext, _args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        vm: &mut dyn VmContext,
+        _args: Vec<String>,
+        span: &Span,
+    ) -> Result<String, Failure> {
         let prompt = vm.shell_prompt().to_string();
         vm.match_literal(&prompt, span).await?;
-        vm.send_line("__RE=$(echo ::$?::) && test \"${__RE}\" != '::0::' && echo ${__RE}", span).await?;
+        vm.send_line(
+            "__RE=$(echo ::$?::) && test \"${__RE}\" != '::0::' && echo ${__RE}",
+            span,
+        )
+        .await?;
         vm.match_literal("::", span).await?;
         vm.match_literal(&prompt, span).await
     }
@@ -416,16 +613,26 @@ pub struct MatchNotOkWithCode;
 
 #[async_trait]
 impl Bif for MatchNotOkWithCode {
-    fn name(&self) -> &str { "match_not_ok" }
-    fn arity(&self) -> usize { 1 }
+    fn name(&self) -> &str {
+        "match_not_ok"
+    }
+    fn arity(&self) -> usize {
+        1
+    }
 
-    async fn call(&self, vm: &mut dyn VmContext, args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        vm: &mut dyn VmContext,
+        args: Vec<String>,
+        span: &Span,
+    ) -> Result<String, Failure> {
         let prompt = vm.shell_prompt().to_string();
         vm.match_literal(&prompt, span).await?;
         vm.send_line(
             "__RE=$(echo ::$?::) && test \"${__RE}\" != '::0::' && echo ${__RE}",
             span,
-        ).await?;
+        )
+        .await?;
         vm.match_literal(&format!("::{}::", args[0]), span).await?;
         vm.match_literal(&prompt, span).await
     }
@@ -438,10 +645,19 @@ pub struct CtrlChar {
 
 #[async_trait]
 impl Bif for CtrlChar {
-    fn name(&self) -> &str { self.name }
-    fn arity(&self) -> usize { 0 }
+    fn name(&self) -> &str {
+        self.name
+    }
+    fn arity(&self) -> usize {
+        0
+    }
 
-    async fn call(&self, vm: &mut dyn VmContext, _args: Vec<String>, span: &Span) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        vm: &mut dyn VmContext,
+        _args: Vec<String>,
+        span: &Span,
+    ) -> Result<String, Failure> {
         vm.send_raw(&[self.byte], span).await?;
         Ok(String::new())
     }
@@ -450,6 +666,7 @@ impl Bif for CtrlChar {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dsl::resolver::ir;
 
     struct DummyVm;
 
@@ -479,27 +696,36 @@ mod tests {
     }
 
     fn dummy_span() -> Span {
-        Span::new(0, 0..0)
+        Span::new(ir::FileId::from(0), 0..0)
     }
 
     #[tokio::test]
     async fn test_trim() {
         let mut vm = DummyVm;
-        let r = Trim.call(&mut vm, vec!["  hello  ".into()], &dummy_span()).await.unwrap();
+        let r = Trim
+            .call(&mut vm, vec!["  hello  ".into()], &dummy_span())
+            .await
+            .unwrap();
         assert_eq!(r, "hello");
     }
 
     #[tokio::test]
     async fn test_upper() {
         let mut vm = DummyVm;
-        let r = Upper.call(&mut vm, vec!["hello".into()], &dummy_span()).await.unwrap();
+        let r = Upper
+            .call(&mut vm, vec!["hello".into()], &dummy_span())
+            .await
+            .unwrap();
         assert_eq!(r, "HELLO");
     }
 
     #[tokio::test]
     async fn test_lower() {
         let mut vm = DummyVm;
-        let r = Lower.call(&mut vm, vec!["HELLO".into()], &dummy_span()).await.unwrap();
+        let r = Lower
+            .call(&mut vm, vec!["HELLO".into()], &dummy_span())
+            .await
+            .unwrap();
         assert_eq!(r, "hello");
     }
 
@@ -507,7 +733,11 @@ mod tests {
     async fn test_replace() {
         let mut vm = DummyVm;
         let r = Replace
-            .call(&mut vm, vec!["hello world".into(), "world".into(), "relux".into()], &dummy_span())
+            .call(
+                &mut vm,
+                vec!["hello world".into(), "world".into(), "relux".into()],
+                &dummy_span(),
+            )
             .await
             .unwrap();
         assert_eq!(r, "hello relux");
@@ -517,7 +747,11 @@ mod tests {
     async fn test_split() {
         let mut vm = DummyVm;
         let r = Split
-            .call(&mut vm, vec!["a,b,c".into(), ",".into(), "1".into()], &dummy_span())
+            .call(
+                &mut vm,
+                vec!["a,b,c".into(), ",".into(), "1".into()],
+                &dummy_span(),
+            )
             .await
             .unwrap();
         assert_eq!(r, "b");
@@ -527,7 +761,11 @@ mod tests {
     async fn test_split_out_of_bounds() {
         let mut vm = DummyVm;
         let r = Split
-            .call(&mut vm, vec!["a,b".into(), ",".into(), "5".into()], &dummy_span())
+            .call(
+                &mut vm,
+                vec!["a,b".into(), ",".into(), "5".into()],
+                &dummy_span(),
+            )
             .await
             .unwrap();
         assert_eq!(r, "");
@@ -537,7 +775,11 @@ mod tests {
     async fn test_split_invalid_index() {
         let mut vm = DummyVm;
         let r = Split
-            .call(&mut vm, vec!["a,b".into(), ",".into(), "xyz".into()], &dummy_span())
+            .call(
+                &mut vm,
+                vec!["a,b".into(), ",".into(), "xyz".into()],
+                &dummy_span(),
+            )
             .await;
         assert!(r.is_err());
     }
@@ -545,7 +787,10 @@ mod tests {
     #[tokio::test]
     async fn test_len() {
         let mut vm = DummyVm;
-        let r = Len.call(&mut vm, vec!["hello".into()], &dummy_span()).await.unwrap();
+        let r = Len
+            .call(&mut vm, vec!["hello".into()], &dummy_span())
+            .await
+            .unwrap();
         assert_eq!(r, "5");
     }
 
@@ -560,7 +805,10 @@ mod tests {
     #[tokio::test]
     async fn test_rand_default() {
         let mut vm = DummyVm;
-        let r = Rand.call(&mut vm, vec!["8".into()], &dummy_span()).await.unwrap();
+        let r = Rand
+            .call(&mut vm, vec!["8".into()], &dummy_span())
+            .await
+            .unwrap();
         assert_eq!(r.len(), 8);
         assert!(r.chars().all(|c| c.is_ascii_alphanumeric()));
     }
@@ -606,42 +854,59 @@ mod tests {
     #[tokio::test]
     async fn test_log() {
         let mut vm = DummyVm;
-        let r = Log.call(&mut vm, vec!["a message".into()], &dummy_span()).await.unwrap();
+        let r = Log
+            .call(&mut vm, vec!["a message".into()], &dummy_span())
+            .await
+            .unwrap();
         assert_eq!(r, "a message");
     }
 
     #[tokio::test]
     async fn test_annotate() {
         let mut vm = DummyVm;
-        let r = Annotate.call(&mut vm, vec!["note".into()], &dummy_span()).await.unwrap();
+        let r = Annotate
+            .call(&mut vm, vec!["note".into()], &dummy_span())
+            .await
+            .unwrap();
         assert_eq!(r, "note");
     }
 
     #[tokio::test]
     async fn test_sleep_invalid_duration() {
         let mut vm = DummyVm;
-        let r = Sleep.call(&mut vm, vec!["not-a-duration".into()], &dummy_span()).await;
+        let r = Sleep
+            .call(&mut vm, vec!["not-a-duration".into()], &dummy_span())
+            .await;
         assert!(r.is_err());
     }
 
     #[tokio::test]
     async fn test_match_prompt() {
         let mut vm = DummyVm;
-        let r = MatchPrompt.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        let r = MatchPrompt
+            .call(&mut vm, vec![], &dummy_span())
+            .await
+            .unwrap();
         assert_eq!(r, "test> ");
     }
 
     #[tokio::test]
     async fn test_match_exit_code() {
         let mut vm = DummyVm;
-        let r = MatchExitCode.call(&mut vm, vec!["0".into()], &dummy_span()).await.unwrap();
+        let r = MatchExitCode
+            .call(&mut vm, vec!["0".into()], &dummy_span())
+            .await
+            .unwrap();
         assert_eq!(r, "test> ");
     }
 
     #[tokio::test]
     async fn test_match_exit_code_non_numeric() {
         let mut vm = DummyVm;
-        let r = MatchExitCode.call(&mut vm, vec!["abc".into()], &dummy_span()).await.unwrap();
+        let r = MatchExitCode
+            .call(&mut vm, vec!["abc".into()], &dummy_span())
+            .await
+            .unwrap();
         assert_eq!(r, "test> ");
     }
 
@@ -655,56 +920,95 @@ mod tests {
     #[tokio::test]
     async fn test_match_not_ok() {
         let mut vm = DummyVm;
-        let r = MatchNotOk.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        let r = MatchNotOk
+            .call(&mut vm, vec![], &dummy_span())
+            .await
+            .unwrap();
         assert_eq!(r, "test> ");
     }
 
     #[tokio::test]
     async fn test_match_not_ok_with_code() {
         let mut vm = DummyVm;
-        let r = MatchNotOkWithCode.call(&mut vm, vec!["2".into()], &dummy_span()).await.unwrap();
+        let r = MatchNotOkWithCode
+            .call(&mut vm, vec!["2".into()], &dummy_span())
+            .await
+            .unwrap();
         assert_eq!(r, "test> ");
     }
 
     #[tokio::test]
     async fn test_ctrl_c() {
         let mut vm = DummyVm;
-        let r = CtrlChar { name: "ctrl_c", byte: 0x03 }.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        let r = CtrlChar {
+            name: "ctrl_c",
+            byte: 0x03,
+        }
+        .call(&mut vm, vec![], &dummy_span())
+        .await
+        .unwrap();
         assert_eq!(r, "");
     }
 
     #[tokio::test]
     async fn test_ctrl_d() {
         let mut vm = DummyVm;
-        let r = CtrlChar { name: "ctrl_d", byte: 0x04 }.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        let r = CtrlChar {
+            name: "ctrl_d",
+            byte: 0x04,
+        }
+        .call(&mut vm, vec![], &dummy_span())
+        .await
+        .unwrap();
         assert_eq!(r, "");
     }
 
     #[tokio::test]
     async fn test_ctrl_z() {
         let mut vm = DummyVm;
-        let r = CtrlChar { name: "ctrl_z", byte: 0x1A }.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        let r = CtrlChar {
+            name: "ctrl_z",
+            byte: 0x1A,
+        }
+        .call(&mut vm, vec![], &dummy_span())
+        .await
+        .unwrap();
         assert_eq!(r, "");
     }
 
     #[tokio::test]
     async fn test_ctrl_l() {
         let mut vm = DummyVm;
-        let r = CtrlChar { name: "ctrl_l", byte: 0x0C }.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        let r = CtrlChar {
+            name: "ctrl_l",
+            byte: 0x0C,
+        }
+        .call(&mut vm, vec![], &dummy_span())
+        .await
+        .unwrap();
         assert_eq!(r, "");
     }
 
     #[tokio::test]
     async fn test_ctrl_backslash() {
         let mut vm = DummyVm;
-        let r = CtrlChar { name: "ctrl_backslash", byte: 0x1C }.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        let r = CtrlChar {
+            name: "ctrl_backslash",
+            byte: 0x1C,
+        }
+        .call(&mut vm, vec![], &dummy_span())
+        .await
+        .unwrap();
         assert_eq!(r, "");
     }
 
     #[tokio::test]
     async fn test_available_port() {
         let mut vm = DummyVm;
-        let r = AvailablePort.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        let r = AvailablePort
+            .call(&mut vm, vec![], &dummy_span())
+            .await
+            .unwrap();
         let port: u16 = r.parse().expect("should be a valid port number");
         assert!(port > 0);
     }
@@ -712,8 +1016,14 @@ mod tests {
     #[tokio::test]
     async fn test_available_port_unique() {
         let mut vm = DummyVm;
-        let a = AvailablePort.call(&mut vm, vec![], &dummy_span()).await.unwrap();
-        let b = AvailablePort.call(&mut vm, vec![], &dummy_span()).await.unwrap();
+        let a = AvailablePort
+            .call(&mut vm, vec![], &dummy_span())
+            .await
+            .unwrap();
+        let b = AvailablePort
+            .call(&mut vm, vec![], &dummy_span())
+            .await
+            .unwrap();
         // Not guaranteed but extremely likely with ephemeral ports
         assert_ne!(a, b);
     }
@@ -721,33 +1031,55 @@ mod tests {
     #[tokio::test]
     async fn test_which_finds_sh() {
         let mut vm = DummyVm;
-        let r = Which.call(&mut vm, vec!["sh".into()], &dummy_span()).await.unwrap();
+        let r = Which
+            .call(&mut vm, vec!["sh".into()], &dummy_span())
+            .await
+            .unwrap();
         assert!(!r.is_empty(), "which(\"sh\") should find sh on PATH");
-        assert!(r.ends_with("/sh"), "result should be an absolute path ending in /sh, got: {r}");
+        assert!(
+            r.ends_with("/sh"),
+            "result should be an absolute path ending in /sh, got: {r}"
+        );
     }
 
     #[tokio::test]
     async fn test_which_not_found() {
         let mut vm = DummyVm;
-        let r = Which.call(&mut vm, vec!["nonexistent_program_xyz_123".into()], &dummy_span()).await.unwrap();
+        let r = Which
+            .call(
+                &mut vm,
+                vec!["nonexistent_program_xyz_123".into()],
+                &dummy_span(),
+            )
+            .await
+            .unwrap();
         assert_eq!(r, "");
     }
 
     #[tokio::test]
     async fn test_which_empty_name() {
         let mut vm = DummyVm;
-        let r = Which.call(&mut vm, vec!["".into()], &dummy_span()).await.unwrap();
+        let r = Which
+            .call(&mut vm, vec!["".into()], &dummy_span())
+            .await
+            .unwrap();
         assert_eq!(r, "");
     }
 
     #[tokio::test]
     async fn test_which_result_is_executable() {
         let mut vm = DummyVm;
-        let r = Which.call(&mut vm, vec!["sh".into()], &dummy_span()).await.unwrap();
+        let r = Which
+            .call(&mut vm, vec!["sh".into()], &dummy_span())
+            .await
+            .unwrap();
         assert!(!r.is_empty());
         let metadata = std::fs::metadata(&r).expect("path should exist");
         use std::os::unix::fs::PermissionsExt;
-        assert!(metadata.permissions().mode() & 0o111 != 0, "result should be executable");
+        assert!(
+            metadata.permissions().mode() & 0o111 != 0,
+            "result should be executable"
+        );
     }
 
     #[tokio::test]

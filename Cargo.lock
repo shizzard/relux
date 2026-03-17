@@ -762,6 +762,7 @@ dependencies = [
  "serde",
  "tabled",
  "terminal_size",
+ "thiserror",
  "tokio",
  "toml",
  "uuid",

@@ -4,7 +4,9 @@ use std::sync::Arc;
 use regex::Regex;
 use tokio::sync::Mutex;
 
-use crate::dsl::resolver::ir::{Expr, Spanned, StringExpr, StringPart, Timeout, VarAssign, VarDecl};
+use crate::dsl::resolver::ir::{
+    Expr, Interpolation, Spanned, StringPart, Timeout, VarAssign, VarDecl,
+};
 
 pub type Env = HashMap<String, String>;
 
@@ -222,36 +224,48 @@ impl ScopeStack {
     }
 }
 
-pub async fn interpolate(expr: &StringExpr, vars: &ScopeStack) -> String {
+pub async fn interpolate(expr: &Interpolation, vars: &ScopeStack) -> String {
     let mut out = String::new();
     for part in &expr.parts {
         match &part.node {
             StringPart::Literal(s) => out.push_str(s),
-            StringPart::Interp(name) => {
+            StringPart::VarRef(name) => {
                 if let Some(v) = vars.lookup(name).await {
                     out.push_str(&v);
                 }
             }
             StringPart::EscapedDollar => out.push('$'),
+            StringPart::CaptureRef(i) => {
+                let name = i.to_string();
+                if let Some(v) = vars.lookup(&name).await {
+                    out.push_str(&v);
+                }
+            }
         }
     }
     out
 }
 
 pub fn interpolate_with_lookup(
-    expr: &StringExpr,
+    expr: &Interpolation,
     mut lookup: impl FnMut(&str) -> Option<String>,
 ) -> String {
     let mut out = String::new();
     for part in &expr.parts {
         match &part.node {
             StringPart::Literal(s) => out.push_str(s),
-            StringPart::Interp(name) => {
+            StringPart::VarRef(name) => {
                 if let Some(v) = lookup(name) {
                     out.push_str(&v);
                 }
             }
             StringPart::EscapedDollar => out.push('$'),
+            StringPart::CaptureRef(i) => {
+                let name = i.to_string();
+                if let Some(v) = lookup(&name) {
+                    out.push_str(&v);
+                }
+            }
         }
     }
     out
@@ -263,7 +277,10 @@ mod tests {
     use std::time::Duration;
 
     fn tol(secs: u64) -> Timeout {
-        Timeout::Tolerance { duration: Duration::from_secs(secs), multiplier: 1.0 }
+        Timeout::Tolerance {
+            duration: Duration::from_secs(secs),
+            multiplier: 1.0,
+        }
     }
 
     fn make_scope(timeout: Timeout) -> ScopeStack {
