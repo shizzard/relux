@@ -152,8 +152,7 @@ fn stmt_timed_match_literal<'a>()
             let span = Span::from(e.span());
             Spanned::new(
                 AstStmt::TimedMatchLiteral {
-                    timeout_kind: t.node.kind,
-                    duration: t.node.duration,
+                    timeout: t.node,
                     pattern: payload,
                     span,
                 },
@@ -173,8 +172,7 @@ fn stmt_timed_match_regex<'a>()
             let span = Span::from(e.span());
             Spanned::new(
                 AstStmt::TimedMatchRegex {
-                    timeout_kind: t.node.kind,
-                    duration: t.node.duration,
+                    timeout: t.node,
                     pattern: payload,
                     span,
                 },
@@ -190,8 +188,7 @@ fn stmt_timeout<'a>()
         let span = Span::from(e.span());
         Spanned::new(
             AstStmt::Timeout {
-                kind: t.node.kind,
-                duration: t.node.duration,
+                timeout: t.node,
                 span,
             },
             span,
@@ -298,8 +295,10 @@ fn is_empty_payload(interp: &AstInterpolation) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
-    use crate::dsl::parser::ast::{AstExpr, AstStmt, AstTimeoutKind};
+    use crate::dsl::parser::ast::{AstExpr, AstStmt, AstTimeout};
     use crate::dsl::parser::{lex_to_pairs, make_input};
 
     fn parse_stmt(source: &str) -> AstStmt {
@@ -417,13 +416,9 @@ mod tests {
     fn timed_match_literal() {
         let s = parse_stmt("<~5s= expected\n");
         match s {
-            AstStmt::TimedMatchLiteral {
-                timeout_kind,
-                duration,
-                ..
-            } => {
-                assert!(matches!(timeout_kind, AstTimeoutKind::Tolerance { .. }));
-                assert_eq!(duration, "5s");
+            AstStmt::TimedMatchLiteral { timeout, .. } => {
+                assert!(matches!(timeout, AstTimeout::Tolerance { .. }));
+                assert_eq!(timeout.duration(), Duration::from_secs(5));
             }
             _ => panic!("expected TimedMatchLiteral, got {s:?}"),
         }
@@ -433,13 +428,9 @@ mod tests {
     fn timed_match_regex() {
         let s = parse_stmt("<@2s? \\d+\n");
         match s {
-            AstStmt::TimedMatchRegex {
-                timeout_kind,
-                duration,
-                ..
-            } => {
-                assert!(matches!(timeout_kind, AstTimeoutKind::Assertion { .. }));
-                assert_eq!(duration, "2s");
+            AstStmt::TimedMatchRegex { timeout, .. } => {
+                assert!(matches!(timeout, AstTimeout::Assertion { .. }));
+                assert_eq!(timeout.duration(), Duration::from_secs(2));
             }
             _ => panic!("expected TimedMatchRegex, got {s:?}"),
         }
@@ -449,9 +440,9 @@ mod tests {
     fn timeout_statement() {
         let s = parse_stmt("~10s\n");
         match s {
-            AstStmt::Timeout { kind, duration, .. } => {
-                assert!(matches!(kind, AstTimeoutKind::Tolerance { .. }));
-                assert_eq!(duration, "10s");
+            AstStmt::Timeout { timeout, .. } => {
+                assert!(matches!(timeout, AstTimeout::Tolerance { .. }));
+                assert_eq!(timeout.duration(), Duration::from_secs(10));
             }
             _ => panic!("expected Timeout, got {s:?}"),
         }
@@ -462,7 +453,7 @@ mod tests {
         let s = parse_stmt("let x\n");
         match s {
             AstStmt::Let { stmt: l, .. } => {
-                assert_eq!(l.name.node, "x");
+                assert_eq!(l.name.node.name, "x");
                 assert!(l.value.is_none());
             }
             _ => panic!("expected Let, got {s:?}"),
@@ -474,7 +465,7 @@ mod tests {
         let s = parse_stmt("let x = my_var\n");
         match s {
             AstStmt::Let { stmt: l, .. } => {
-                assert_eq!(l.name.node, "x");
+                assert_eq!(l.name.node.name, "x");
                 assert!(l.value.is_some());
             }
             _ => panic!("expected Let, got {s:?}"),
@@ -486,7 +477,7 @@ mod tests {
         let s = parse_stmt("x = my_var\n");
         match s {
             AstStmt::Assign { stmt: a, .. } => {
-                assert_eq!(a.name.node, "x");
+                assert_eq!(a.name.node.name, "x");
             }
             _ => panic!("expected Assign, got {s:?}"),
         }
@@ -500,7 +491,7 @@ mod tests {
                 expr: AstExpr::Call { call, .. },
                 ..
             } => {
-                assert_eq!(call.name.node, "foo");
+                assert_eq!(call.name.node.name, "foo");
             }
             _ => panic!("expected Expr(Call), got {s:?}"),
         }
@@ -542,9 +533,9 @@ mod tests {
     fn assertion_timeout_statement() {
         let s = parse_stmt("@5s\n");
         match s {
-            AstStmt::Timeout { kind, duration, .. } => {
-                assert!(matches!(kind, AstTimeoutKind::Assertion { .. }));
-                assert_eq!(duration, "5s");
+            AstStmt::Timeout { timeout, .. } => {
+                assert!(matches!(timeout, AstTimeout::Assertion { .. }));
+                assert_eq!(timeout.duration(), Duration::from_secs(5));
             }
             _ => panic!("expected Timeout, got {s:?}"),
         }
@@ -555,7 +546,7 @@ mod tests {
         let s = parse_stmt("let x = \"hello\"\n");
         match s {
             AstStmt::Let { stmt: l, .. } => {
-                assert_eq!(l.name.node, "x");
+                assert_eq!(l.name.node.name, "x");
                 assert!(l.value.is_some());
                 assert!(matches!(l.value.unwrap().node, AstExpr::String { .. }));
             }
@@ -568,7 +559,7 @@ mod tests {
         let s = parse_stmt("let x = foo()\n");
         match s {
             AstStmt::Let { stmt: l, .. } => {
-                assert_eq!(l.name.node, "x");
+                assert_eq!(l.name.node.name, "x");
                 assert!(l.value.is_some());
                 assert!(matches!(l.value.unwrap().node, AstExpr::Call { .. }));
             }
@@ -671,7 +662,7 @@ mod tests {
         let s = parse_stmt("x = \"hello\"\n");
         match s {
             AstStmt::Assign { stmt: a, .. } => {
-                assert_eq!(a.name.node, "x");
+                assert_eq!(a.name.node.name, "x");
                 assert!(matches!(a.value.node, AstExpr::String { .. }));
             }
             _ => panic!("expected Assign, got {s:?}"),
@@ -683,7 +674,7 @@ mod tests {
         let s = parse_stmt("x = foo()\n");
         match s {
             AstStmt::Assign { stmt: a, .. } => {
-                assert_eq!(a.name.node, "x");
+                assert_eq!(a.name.node.name, "x");
                 assert!(matches!(a.value.node, AstExpr::Call { .. }));
             }
             _ => panic!("expected Assign, got {s:?}"),
@@ -695,13 +686,10 @@ mod tests {
         let s = parse_stmt("<@3s? ${pat}.*\n");
         match s {
             AstStmt::TimedMatchRegex {
-                timeout_kind,
-                duration,
-                pattern,
-                ..
+                timeout, pattern, ..
             } => {
-                assert!(matches!(timeout_kind, AstTimeoutKind::Assertion { .. }));
-                assert_eq!(duration, "3s");
+                assert!(matches!(timeout, AstTimeout::Assertion { .. }));
+                assert_eq!(timeout.duration(), Duration::from_secs(3));
                 assert!(pattern.node.parts.len() >= 2);
                 assert!(
                     matches!(&pattern.node.parts[0], AstStringPart::VarRef { name, .. } if name == "pat")
@@ -739,13 +727,9 @@ mod tests {
     fn timed_match_regex_tolerance() {
         let s = parse_stmt("<~5s? \\d+\n");
         match s {
-            AstStmt::TimedMatchRegex {
-                timeout_kind,
-                duration,
-                ..
-            } => {
-                assert!(matches!(timeout_kind, AstTimeoutKind::Tolerance { .. }));
-                assert_eq!(duration, "5s");
+            AstStmt::TimedMatchRegex { timeout, .. } => {
+                assert!(matches!(timeout, AstTimeout::Tolerance { .. }));
+                assert_eq!(timeout.duration(), Duration::from_secs(5));
             }
             _ => panic!("expected TimedMatchRegex, got {s:?}"),
         }
@@ -765,7 +749,7 @@ mod tests {
                 expr: AstExpr::Call { call, .. },
                 ..
             } => {
-                assert_eq!(call.name.node, "foo");
+                assert_eq!(call.name.node.name, "foo");
                 assert_eq!(call.args.len(), 1);
             }
             _ => panic!("expected Expr(Call), got {s:?}"),
@@ -791,7 +775,7 @@ mod tests {
         let s = parse_stmt("let _private = \"secret\"\n");
         match s {
             AstStmt::Let { stmt: l, .. } => {
-                assert_eq!(l.name.node, "_private");
+                assert_eq!(l.name.node.name, "_private");
                 assert!(l.value.is_some());
             }
             _ => panic!("expected Let, got {s:?}"),

@@ -108,8 +108,8 @@ mod tests {
         assert_eq!(imp.path.node, "lib/greeter");
         let names = imp.names.unwrap();
         assert_eq!(names.len(), 2);
-        assert_eq!(names[0].node.name.node, "greet");
-        assert_eq!(names[1].node.name.node, "hello");
+        assert_eq!(names[0].node.name.node.name, "greet");
+        assert_eq!(names[1].node.name.node.name, "hello");
     }
 
     #[test]
@@ -118,16 +118,16 @@ mod tests {
         assert_eq!(imp.path.node, "lib/greeter");
         let names = imp.names.unwrap();
         assert_eq!(names.len(), 2);
-        assert_eq!(names[0].node.name.node, "Db");
-        assert_eq!(names[1].node.name.node, "greet");
+        assert_eq!(names[0].node.name.node.name, "Db");
+        assert_eq!(names[1].node.name.node.name, "greet");
     }
 
     #[test]
     fn aliased_import() {
         let imp = parse_import("import lib/greeter { Db as Database }\n");
         let names = imp.names.unwrap();
-        assert_eq!(names[0].node.name.node, "Db");
-        assert_eq!(names[0].node.alias.as_ref().unwrap().node, "Database");
+        assert_eq!(names[0].node.name.node.name, "Db");
+        assert_eq!(names[0].node.alias.as_ref().unwrap().node.name, "Database");
     }
 
     #[test]
@@ -135,7 +135,7 @@ mod tests {
         let imp = parse_import("import lib/greeter { greet, }\n");
         let names = imp.names.unwrap();
         assert_eq!(names.len(), 1);
-        assert_eq!(names[0].node.name.node, "greet");
+        assert_eq!(names[0].node.name.node.name, "greet");
     }
 
     #[test]
@@ -155,8 +155,8 @@ mod tests {
         );
         let names = imp.names.unwrap();
         assert_eq!(names.len(), 2);
-        assert_eq!(names[0].node.name.node, "greet");
-        assert_eq!(names[1].node.name.node, "hello");
+        assert_eq!(names[0].node.name.node.name, "greet");
+        assert_eq!(names[1].node.name.node.name, "hello");
     }
 
     #[test]
@@ -171,8 +171,8 @@ mod tests {
         let imp = parse_import("import lib/greeter { greet as hello }\n");
         let names = imp.names.unwrap();
         assert_eq!(names.len(), 1);
-        assert_eq!(names[0].node.name.node, "greet");
-        assert_eq!(names[0].node.alias.as_ref().unwrap().node, "hello");
+        assert_eq!(names[0].node.name.node.name, "greet");
+        assert_eq!(names[0].node.alias.as_ref().unwrap().node.name, "hello");
     }
 
     #[test]
@@ -180,7 +180,7 @@ mod tests {
         let imp = parse_import("import lib/greeter { greet }\n");
         let names = imp.names.unwrap();
         assert_eq!(names.len(), 1);
-        assert_eq!(names[0].node.name.node, "greet");
+        assert_eq!(names[0].node.name.node.name, "greet");
         assert!(names[0].node.alias.is_none());
     }
 
@@ -196,10 +196,10 @@ mod tests {
         let imp = parse_import("import lib/all { Db, greet, Cache, hello }\n");
         let names = imp.names.unwrap();
         assert_eq!(names.len(), 4);
-        assert_eq!(names[0].node.name.node, "Db");
-        assert_eq!(names[1].node.name.node, "greet");
-        assert_eq!(names[2].node.name.node, "Cache");
-        assert_eq!(names[3].node.name.node, "hello");
+        assert_eq!(names[0].node.name.node.name, "Db");
+        assert_eq!(names[1].node.name.node.name, "greet");
+        assert_eq!(names[2].node.name.node.name, "Cache");
+        assert_eq!(names[3].node.name.node.name, "hello");
     }
 
     #[test]

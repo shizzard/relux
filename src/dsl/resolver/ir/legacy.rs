@@ -719,11 +719,3 @@ impl TryFrom<Spanned<ShellStmt>> for Spanned<PureStmt> {
         Ok(Spanned::new(pure, span))
     }
 }
-
-// ─── Test Suite ─────────────────────────────────────────────
-
-pub struct TestSuite {
-    pub plan_results: Vec<crate::dsl::resolver::PlanResult>,
-    pub source_map: SourceMap,
-    pub warnings: Vec<crate::dsl::resolver::DiagnosticWarning>,
-}

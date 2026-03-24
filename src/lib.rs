@@ -191,6 +191,10 @@ mod span_tests {
 }
 
 pub mod config;
+pub mod diagnostics;
 pub mod dsl;
 pub mod error;
+pub mod evaluator;
 pub mod runtime;
+pub mod stack;
+pub mod table;

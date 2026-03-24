@@ -48,7 +48,7 @@ mod tests {
     #[test]
     fn bare_need() {
         let n = parse_need("need Db\n");
-        assert_eq!(n.effect.node, "Db");
+        assert_eq!(n.effect.node.name, "Db");
         assert!(n.alias.is_none());
         assert!(n.overlay.is_empty());
     }
@@ -56,25 +56,25 @@ mod tests {
     #[test]
     fn need_with_alias() {
         let n = parse_need("need Db as db\n");
-        assert_eq!(n.effect.node, "Db");
-        assert_eq!(n.alias.as_ref().unwrap().node, "db");
+        assert_eq!(n.effect.node.name, "Db");
+        assert_eq!(n.alias.as_ref().unwrap().node.name, "db");
         assert!(n.overlay.is_empty());
     }
 
     #[test]
     fn need_with_overlay() {
         let n = parse_need("need Db { PORT = \"5433\" }\n");
-        assert_eq!(n.effect.node, "Db");
+        assert_eq!(n.effect.node.name, "Db");
         assert!(n.alias.is_none());
         assert_eq!(n.overlay.len(), 1);
-        assert_eq!(n.overlay[0].node.key.node, "PORT");
+        assert_eq!(n.overlay[0].node.key.node.name, "PORT");
     }
 
     #[test]
     fn need_with_alias_and_overlay() {
         let n = parse_need("need Db as db { PORT = \"5433\" }\n");
-        assert_eq!(n.effect.node, "Db");
-        assert_eq!(n.alias.as_ref().unwrap().node, "db");
+        assert_eq!(n.effect.node.name, "Db");
+        assert_eq!(n.alias.as_ref().unwrap().node.name, "db");
         assert_eq!(n.overlay.len(), 1);
     }
 
@@ -101,14 +101,14 @@ mod tests {
 }
 "#,
         );
-        assert_eq!(n.effect.node, "Db");
+        assert_eq!(n.effect.node.name, "Db");
         assert_eq!(n.overlay.len(), 2);
     }
 
     #[test]
     fn need_alias_with_digit() {
         let n = parse_need("need Db as db2\n");
-        assert_eq!(n.effect.node, "Db");
-        assert_eq!(n.alias.as_ref().unwrap().node, "db2");
+        assert_eq!(n.effect.node.name, "Db");
+        assert_eq!(n.alias.as_ref().unwrap().node.name, "db2");
     }
 }

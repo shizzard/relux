@@ -10,7 +10,7 @@ pub mod resolver;
 
 pub use lexer::lex;
 pub use parser::parse;
-pub use resolver::{resolve, resolve_with};
+pub use resolver::resolve;
 
 /// Recursively discover `.relux` files in a directory, stopping at nested
 /// project boundaries (directories containing `Relux.toml`).

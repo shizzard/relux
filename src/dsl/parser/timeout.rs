@@ -3,21 +3,13 @@ use chumsky::prelude::*;
 use crate::dsl::lexer::Token;
 use crate::{Span, Spanned};
 
-use super::AstTimeoutKind;
 use super::ParserInput;
+use super::ast::AstTimeout;
 use super::token::text;
-
-/// Parser-internal: parsed timeout with kind and duration string.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ParsedTimeout {
-    pub kind: AstTimeoutKind,
-    pub duration: String,
-}
 
 /// `~duration` — tolerance timeout. Validates span contiguity.
 pub fn timeout_tolerance<'a>()
--> impl Parser<'a, ParserInput<'a>, Spanned<ParsedTimeout>, extra::Err<Rich<'a, Token<'a>>>> + Clone
-{
+-> impl Parser<'a, ParserInput<'a>, Spanned<AstTimeout>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::Tilde)
         .map_with(|_, e| e.span())
         .then(text())
@@ -30,10 +22,12 @@ pub fn timeout_tolerance<'a>()
                     ));
                 }
                 let full_span = Span::new(tilde_span.start, dur_span.end);
+                let duration = humantime::parse_duration(dur)
+                    .map_err(|e| Rich::custom(dur_span, format!("invalid duration: {e}")))?;
                 Ok(Spanned::new(
-                    ParsedTimeout {
-                        kind: AstTimeoutKind::Tolerance { span: full_span },
-                        duration: dur.to_string(),
+                    AstTimeout::Tolerance {
+                        duration,
+                        span: full_span,
                     },
                     full_span,
                 ))
@@ -44,8 +38,7 @@ pub fn timeout_tolerance<'a>()
 
 /// `@duration` — assertion timeout. Validates span contiguity.
 pub fn timeout_assert<'a>()
--> impl Parser<'a, ParserInput<'a>, Spanned<ParsedTimeout>, extra::Err<Rich<'a, Token<'a>>>> + Clone
-{
+-> impl Parser<'a, ParserInput<'a>, Spanned<AstTimeout>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::At)
         .map_with(|_, e| e.span())
         .then(text())
@@ -58,10 +51,12 @@ pub fn timeout_assert<'a>()
                     ));
                 }
                 let full_span = Span::new(at_span.start, dur_span.end);
+                let duration = humantime::parse_duration(dur)
+                    .map_err(|e| Rich::custom(dur_span, format!("invalid duration: {e}")))?;
                 Ok(Spanned::new(
-                    ParsedTimeout {
-                        kind: AstTimeoutKind::Assertion { span: full_span },
-                        duration: dur.to_string(),
+                    AstTimeout::Assertion {
+                        duration,
+                        span: full_span,
                     },
                     full_span,
                 ))
@@ -72,14 +67,16 @@ pub fn timeout_assert<'a>()
 
 /// Tolerance or assertion timeout.
 pub fn timeout<'a>()
--> impl Parser<'a, ParserInput<'a>, Spanned<ParsedTimeout>, extra::Err<Rich<'a, Token<'a>>>> + Clone
-{
+-> impl Parser<'a, ParserInput<'a>, Spanned<AstTimeout>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     choice((timeout_tolerance(), timeout_assert())).labelled("timeout (~Ns or @Ns)")
 }
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
+
     use crate::dsl::parser::{lex_to_pairs, make_input};
 
     #[test]
@@ -90,8 +87,8 @@ mod tests {
         let result = timeout().parse(input).into_result();
         assert!(result.is_ok());
         let t = result.unwrap();
-        assert!(matches!(t.node.kind, AstTimeoutKind::Tolerance { .. }));
-        assert_eq!(t.node.duration, "5s");
+        assert!(matches!(t.node, AstTimeout::Tolerance { .. }));
+        assert_eq!(t.node.duration(), Duration::from_secs(5));
     }
 
     #[test]
@@ -102,8 +99,8 @@ mod tests {
         let result = timeout().parse(input).into_result();
         assert!(result.is_ok());
         let t = result.unwrap();
-        assert!(matches!(t.node.kind, AstTimeoutKind::Assertion { .. }));
-        assert_eq!(t.node.duration, "10s");
+        assert!(matches!(t.node, AstTimeout::Assertion { .. }));
+        assert_eq!(t.node.duration(), Duration::from_secs(10));
     }
 
     #[test]
@@ -113,7 +110,10 @@ mod tests {
         let input = make_input(&pairs, source.len());
         let result = timeout().parse(input).into_result();
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().node.duration, "2h30m12s");
+        assert_eq!(
+            result.unwrap().node.duration(),
+            Duration::from_secs(2 * 3600 + 30 * 60 + 12)
+        );
     }
 
     #[test]
@@ -139,7 +139,7 @@ mod tests {
         let input = make_input(&pairs, source.len());
         let result = timeout().parse(input).into_result();
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().node.duration, "500ms");
+        assert_eq!(result.unwrap().node.duration(), Duration::from_millis(500));
     }
 
     #[test]
@@ -150,7 +150,7 @@ mod tests {
         let result = timeout().parse(input).into_result();
         assert!(result.is_ok());
         let t = result.unwrap();
-        assert!(matches!(t.node.kind, AstTimeoutKind::Assertion { .. }));
-        assert_eq!(t.node.duration, "2m");
+        assert!(matches!(t.node, AstTimeout::Assertion { .. }));
+        assert_eq!(t.node.duration(), Duration::from_secs(120));
     }
 }

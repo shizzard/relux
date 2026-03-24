@@ -69,22 +69,22 @@ mod tests {
     fn single_entry() {
         let entries = parse_overlay(r#"{ PORT = "5433" }"#);
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].node.key.node, "PORT");
+        assert_eq!(entries[0].node.key.node.name, "PORT");
     }
 
     #[test]
     fn multiple_entries() {
         let entries = parse_overlay(r#"{ PORT = "5433", HOST = "localhost" }"#);
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].node.key.node, "PORT");
-        assert_eq!(entries[1].node.key.node, "HOST");
+        assert_eq!(entries[0].node.key.node.name, "PORT");
+        assert_eq!(entries[1].node.key.node.name, "HOST");
     }
 
     #[test]
     fn trailing_comma() {
         let entries = parse_overlay(r#"{ PORT = "5433", }"#);
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].node.key.node, "PORT");
+        assert_eq!(entries[0].node.key.node.name, "PORT");
     }
 
     #[test]
@@ -96,8 +96,8 @@ mod tests {
 }"#,
         );
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].node.key.node, "PORT");
-        assert_eq!(entries[1].node.key.node, "HOST");
+        assert_eq!(entries[0].node.key.node.name, "PORT");
+        assert_eq!(entries[1].node.key.node.name, "HOST");
     }
 
     #[test]
@@ -110,7 +110,7 @@ mod tests {
     fn overlay_with_var_value() {
         let entries = parse_overlay("{ PORT = port_var }");
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].node.key.node, "PORT");
+        assert_eq!(entries[0].node.key.node.name, "PORT");
         assert!(matches!(entries[0].node.value.node, AstExpr::Var { .. }));
     }
 
@@ -118,7 +118,7 @@ mod tests {
     fn overlay_with_call_value() {
         let entries = parse_overlay("{ PORT = get_port() }");
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].node.key.node, "PORT");
+        assert_eq!(entries[0].node.key.node.name, "PORT");
         assert!(matches!(entries[0].node.value.node, AstExpr::Call { .. }));
     }
 
@@ -126,7 +126,7 @@ mod tests {
     fn overlay_with_numeric_value() {
         let entries = parse_overlay("{ PORT = 5432 }");
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].node.key.node, "PORT");
+        assert_eq!(entries[0].node.key.node.name, "PORT");
         assert!(matches!(entries[0].node.value.node, AstExpr::String { .. }));
     }
 }

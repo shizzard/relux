@@ -4,7 +4,8 @@ use crate::dsl::lexer::Token;
 use crate::{Span, Spanned};
 
 use super::ParserInput;
-use super::timeout::{ParsedTimeout, timeout};
+use super::ast::AstTimeout;
+use super::timeout::timeout;
 
 // ─── L2: Untimed Operators ──────────────────────────────────
 
@@ -70,8 +71,7 @@ pub fn op_fail_literal<'a>()
 
 /// `<~5s=` or `<@2s=` — timed match literal
 pub fn op_timed_match_literal<'a>()
--> impl Parser<'a, ParserInput<'a>, Spanned<ParsedTimeout>, extra::Err<Rich<'a, Token<'a>>>> + Clone
-{
+-> impl Parser<'a, ParserInput<'a>, Spanned<AstTimeout>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::Lt)
         .map_with(|_, e| e.span())
         .then(timeout())
@@ -85,8 +85,7 @@ pub fn op_timed_match_literal<'a>()
 
 /// `<~5s?` or `<@2s?` — timed match regex
 pub fn op_timed_match_regex<'a>()
--> impl Parser<'a, ParserInput<'a>, Spanned<ParsedTimeout>, extra::Err<Rich<'a, Token<'a>>>> + Clone
-{
+-> impl Parser<'a, ParserInput<'a>, Spanned<AstTimeout>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::Lt)
         .map_with(|_, e| e.span())
         .then(timeout())
@@ -100,8 +99,9 @@ pub fn op_timed_match_regex<'a>()
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
-    use crate::dsl::parser::ast::AstTimeoutKind;
     use crate::dsl::parser::{lex_to_pairs, make_input};
 
     #[test]
@@ -160,8 +160,8 @@ mod tests {
         let result = op_timed_match_regex().parse(input).into_result();
         assert!(result.is_ok());
         let t = result.unwrap();
-        assert!(matches!(t.node.kind, AstTimeoutKind::Tolerance { .. }));
-        assert_eq!(t.node.duration, "5s");
+        assert!(matches!(t.node, AstTimeout::Tolerance { .. }));
+        assert_eq!(t.node.duration(), Duration::from_secs(5));
         assert_eq!(t.span, Span::new(0, 5));
     }
 
@@ -197,8 +197,8 @@ mod tests {
         let result = op_timed_match_literal().parse(input).into_result();
         assert!(result.is_ok());
         let t = result.unwrap();
-        assert!(matches!(t.node.kind, AstTimeoutKind::Assertion { .. }));
-        assert_eq!(t.node.duration, "2s");
+        assert!(matches!(t.node, AstTimeout::Assertion { .. }));
+        assert_eq!(t.node.duration(), Duration::from_secs(2));
         assert_eq!(t.span, Span::new(0, 5));
     }
 }

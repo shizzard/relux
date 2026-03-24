@@ -5,7 +5,7 @@ use crate::{Span, Spanned};
 
 use super::ParserInput;
 use super::annotation::{comment, marker};
-use super::ast::{AstFnDef, AstMarkerDecl, AstPureFnDef, AstStmt};
+use super::ast::{AstFnDef, AstIdent, AstMarkerDecl, AstPureFnDef, AstStmt};
 use super::ident::{ident_fn, ident_var};
 use super::punctuation::{
     punctuation_brace_close, punctuation_brace_open, punctuation_comma, punctuation_paren_close,
@@ -62,7 +62,8 @@ enum PreambleItem {
 
 /// Comma-separated parameter list between parens.
 fn params<'a>()
--> impl Parser<'a, ParserInput<'a>, Vec<Spanned<String>>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+-> impl Parser<'a, ParserInput<'a>, Vec<Spanned<AstIdent>>, extra::Err<Rich<'a, Token<'a>>>> + Clone
+{
     punctuation_paren_open()
         .ignore_then(ws())
         .ignore_then(
@@ -199,7 +200,7 @@ mod tests {
 }
 "#,
         );
-        assert_eq!(f.name.node, "greet");
+        assert_eq!(f.name.node.name, "greet");
         assert!(f.params.is_empty());
         assert_eq!(f.body.len(), 1);
     }
@@ -212,10 +213,10 @@ mod tests {
 }
 "#,
         );
-        assert_eq!(f.name.node, "greet");
+        assert_eq!(f.name.node.name, "greet");
         assert_eq!(f.params.len(), 2);
-        assert_eq!(f.params[0].node, "name");
-        assert_eq!(f.params[1].node, "greeting");
+        assert_eq!(f.params[0].node.name, "name");
+        assert_eq!(f.params[1].node.name, "greeting");
     }
 
     #[test]
@@ -239,7 +240,7 @@ fn greet() {
 }
 "#,
         );
-        assert_eq!(f.name.node, "concat");
+        assert_eq!(f.name.node.name, "concat");
         assert_eq!(f.params.len(), 2);
     }
 
@@ -250,7 +251,7 @@ fn greet() {
 }
 "#,
         );
-        assert_eq!(f.name.node, "noop");
+        assert_eq!(f.name.node.name, "noop");
         assert!(f.params.is_empty());
         assert!(f.body.is_empty());
     }
@@ -265,7 +266,7 @@ fn greet() {
 }
 "#,
         );
-        assert_eq!(f.name.node, "greet");
+        assert_eq!(f.name.node.name, "greet");
         assert_eq!(f.body.len(), 3);
     }
 
@@ -291,7 +292,7 @@ pure fn concat(a, b) {
 }
 "#,
         );
-        assert_eq!(f.name.node, "concat");
+        assert_eq!(f.name.node.name, "concat");
         assert_eq!(f.markers.len(), 1);
         assert!(matches!(f.markers[0].node.kind, AstMarkerKind::Skip { .. }));
     }
@@ -303,7 +304,7 @@ pure fn concat(a, b) {
 }
 "#,
         );
-        assert_eq!(f.name.node, "noop");
+        assert_eq!(f.name.node.name, "noop");
         assert!(f.body.is_empty());
     }
 
@@ -316,7 +317,7 @@ fn greet() {
 }
 "#,
         );
-        assert_eq!(f.name.node, "greet");
+        assert_eq!(f.name.node.name, "greet");
         assert!(f.markers.is_empty());
         assert_eq!(f.body.len(), 1);
     }
@@ -347,9 +348,9 @@ fn greet() {
 }
 "#,
         );
-        assert_eq!(f.name.node, "greet");
+        assert_eq!(f.name.node.name, "greet");
         assert_eq!(f.params.len(), 1);
-        assert_eq!(f.params[0].node, "name");
+        assert_eq!(f.params[0].node.name, "name");
     }
 
     #[test]
@@ -361,8 +362,8 @@ fn greet() {
 "#,
         );
         assert_eq!(f.params.len(), 2);
-        assert_eq!(f.params[0].node, "name");
-        assert_eq!(f.params[1].node, "greeting");
+        assert_eq!(f.params[0].node.name, "name");
+        assert_eq!(f.params[1].node.name, "greeting");
     }
 
     #[test]
@@ -375,7 +376,7 @@ fn greet() {
 }
 "#,
         );
-        assert_eq!(f.name.node, "greet");
+        assert_eq!(f.name.node.name, "greet");
         assert_eq!(f.markers.len(), 1);
         assert!(matches!(f.markers[0].node.kind, AstMarkerKind::Skip { .. }));
     }
@@ -389,7 +390,7 @@ fn greet() {
 "#,
         );
         assert_eq!(f.params.len(), 2);
-        assert_eq!(f.params[0].node, "name");
-        assert_eq!(f.params[1].node, "greeting");
+        assert_eq!(f.params[0].node.name, "name");
+        assert_eq!(f.params[1].node.name, "greeting");
     }
 }

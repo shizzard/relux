@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::{fs, process};
 
 use clap::{Arg, ArgAction, Command, value_parser};
@@ -6,12 +7,10 @@ use clap::{Arg, ArgAction, Command, value_parser};
 use relux::config::{self, ReluxConfig};
 use relux::dsl::lexer::{lex, normalize};
 use relux::dsl::parser::parse;
-use relux::dsl::resolver::ir::Timeout;
-use relux::dsl::resolver::{PlanResult, resolve};
+use relux::dsl::resolver::ir::NewPlan;
+use relux::dsl::resolver::{FsSourceLoader, discover_test_modules, resolve};
 use relux::runtime::history::{HistoryCommand, OutputFormat, run_history};
-use relux::runtime::html::generate_run_summary;
-use relux::runtime::result::{Outcome, RunReport};
-use relux::runtime::{RunContext, RunStrategy, Runtime};
+use relux::stack::Env;
 
 fn cli() -> Command {
     Command::new("relux")
@@ -403,151 +402,9 @@ fn capitalize_effect_name(segment: &str) -> String {
         .join("")
 }
 
-async fn cmd_run(matches: &clap::ArgMatches) {
-    let (project_root, relux_config) = resolve_project(matches);
-
-    let multiplier: f64 = *matches.get_one("multiplier").unwrap();
-    if multiplier <= 0.0 || !multiplier.is_finite() {
-        eprintln!("error: --timeout-multiplier must be a positive finite number, got {multiplier}");
-        process::exit(1);
-    }
-
-    let strategy = match matches.get_one::<String>("strategy").map(|s| s.as_str()) {
-        Some("fail-fast") => RunStrategy::FailFast,
-        _ => RunStrategy::All,
-    };
-
-    let (mut plans, source_map) = if matches.get_flag("rerun") {
-        let suite = resolve(&project_root, None, multiplier).unwrap_or_else(|e| {
-            e.eprint();
-            process::exit(1);
-        });
-
-        let out_root = config::out_dir(&project_root);
-        let latest = find_latest_run(&out_root);
-        let summary = relux::runtime::run_summary::read_run_summary(&latest).unwrap_or_else(|e| {
-            eprintln!("error: {e}");
-            process::exit(1);
-        });
-        let failed_ids = relux::runtime::run_summary::failed_test_ids(&summary);
-        if failed_ids.is_empty() {
-            eprintln!("no failed tests in the latest run");
-            process::exit(0);
-        }
-
-        let plans = extract_plans(suite.plan_results);
-        let filtered: Vec<_> = plans
-            .into_iter()
-            .filter(|plan| {
-                let tp = relux::runtime::compute_test_path(&suite.source_map, &project_root, plan);
-                let tn = &plan.test.name.node;
-                failed_ids.iter().any(|&(p, n)| p == tp && n == tn)
-            })
-            .collect();
-
-        if filtered.is_empty() {
-            eprintln!("no matching test plans found for previously failed tests");
-            process::exit(0);
-        }
-
-        eprintln!("re-running {} failed test(s)", filtered.len());
-        (filtered, suite.source_map)
-    } else {
-        let paths: Option<Vec<PathBuf>> = matches
-            .get_many::<PathBuf>("paths")
-            .map(|p| p.cloned().collect());
-        let suite = resolve(&project_root, paths.as_deref(), multiplier).unwrap_or_else(|e| {
-            e.eprint();
-            process::exit(1);
-        });
-        let plans = extract_plans(suite.plan_results);
-        (plans, suite.source_map)
-    };
-
-    if plans.is_empty() {
-        eprintln!("no tests found");
-        process::exit(0);
-    }
-
-    let run_context = create_run_context(&project_root, &relux_config, multiplier, strategy);
-    let run_id = run_context.run_id.clone();
-    let plans = std::mem::take(&mut plans);
-    let runtime = Runtime::new(source_map, run_context);
-    let results = runtime.run(plans).await;
-    RunReport {
-        results: &results,
-        source_map: runtime.source_map(),
-        run_dir: runtime.run_dir(),
-    }
-    .eprint();
-
-    let suite_name = relux_config.name.as_deref().unwrap_or("relux");
-    if matches.get_flag("tap") {
-        relux::runtime::tap::generate_tap(
-            runtime.run_dir(),
-            suite_name,
-            &results,
-            runtime.source_map(),
-        );
-    }
-    if matches.get_flag("junit") {
-        relux::runtime::junit::generate_junit(
-            runtime.run_dir(),
-            suite_name,
-            &results,
-            runtime.source_map(),
-        );
-    }
-
-    generate_run_summary(runtime.run_dir(), &results);
-
-    let total_duration: std::time::Duration = results.iter().map(|r| r.duration).sum();
-    relux::runtime::run_summary::write_run_summary(
-        runtime.run_dir(),
-        &run_id,
-        &results,
-        total_duration,
-    );
-
-    let failed = results
-        .iter()
-        .any(|r| matches!(r.outcome, Outcome::Fail(_)));
-    if failed {
-        process::exit(1);
-    }
-}
-
-fn find_latest_run(out_root: &std::path::Path) -> PathBuf {
-    let latest = out_root.join("latest");
-    if latest.exists() {
-        return latest;
-    }
-
-    // Fallback: find the most recent run-* directory by name (timestamps sort lexicographically)
-    let mut run_dirs: Vec<_> = fs::read_dir(out_root)
-        .unwrap_or_else(|e| {
-            eprintln!(
-                "error: cannot read output directory {}: {e}",
-                out_root.display()
-            );
-            process::exit(1);
-        })
-        .filter_map(|entry| {
-            let entry = entry.ok()?;
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with("run-") && entry.file_type().ok()?.is_dir() {
-                Some(entry.path())
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    run_dirs.sort();
-    run_dirs.pop().unwrap_or_else(|| {
-        eprintln!("error: no previous runs found in {}", out_root.display());
-        process::exit(1);
-    })
+async fn cmd_run(_matches: &clap::ArgMatches) {
+    // TODO(R004): runtime adaptation — needs runtime pipeline updated to work with new IR
+    todo!("R004: runtime adaptation")
 }
 
 fn cmd_history(matches: &clap::ArgMatches) {
@@ -581,41 +438,20 @@ fn cmd_history(matches: &clap::ArgMatches) {
 
 fn cmd_check(matches: &clap::ArgMatches) {
     let (project_root, _config) = resolve_project(matches);
+    let test_paths = resolve_test_paths(matches, &project_root);
+    let loader = build_source_loader(&project_root);
+    let env = Arc::new(Env::capture());
 
-    let paths: Option<Vec<PathBuf>> = matches
-        .get_many::<PathBuf>("paths")
-        .map(|p| p.cloned().collect());
-    let suite = resolve(&project_root, paths.as_deref(), 1.0).unwrap_or_else(|e| {
-        e.eprint();
+    let suite = resolve(&*loader, test_paths, env);
+
+    // Diagnostics are already printed inside resolve().
+    // Check if any plan is Invalid → exit 1.
+    let has_invalid = suite
+        .plans
+        .iter()
+        .any(|p| matches!(p, NewPlan::Invalid { .. }));
+    if has_invalid {
         process::exit(1);
-    });
-
-    // Collect all errors and warnings from plan results
-    use relux::error::{DiagnosticReport, DiagnosticReports};
-    let mut errors = Vec::new();
-    let mut warnings: Vec<DiagnosticReport> =
-        suite.warnings.iter().map(DiagnosticReport::from).collect();
-    for pr in &suite.plan_results {
-        if let PlanResult::Err {
-            errors: errs,
-            warnings: warns,
-        } = pr
-        {
-            errors.extend(errs.iter().map(DiagnosticReport::from));
-            warnings.extend(warns.iter().map(DiagnosticReport::from));
-        }
-    }
-
-    if !errors.is_empty() || !warnings.is_empty() {
-        let reports = DiagnosticReports {
-            errors,
-            warnings,
-            source_map: suite.source_map,
-        };
-        reports.eprint();
-        if reports.has_errors() {
-            process::exit(1);
-        }
     }
 
     eprintln!("check passed");
@@ -655,28 +491,36 @@ fn cmd_dump_ir(matches: &clap::ArgMatches) {
         .cloned()
         .collect();
 
-    let suite = resolve(&project_root, Some(&files), 1.0).unwrap_or_else(|e| {
-        e.eprint();
-        process::exit(1);
-    });
-
-    let plans = extract_plans(suite.plan_results);
-    for (i, plan) in plans.iter().enumerate() {
-        if i > 0 {
-            println!("\n{}", "─".repeat(60));
-        }
-        println!("{plan:#?}");
-    }
-}
-
-fn extract_plans(plan_results: Vec<PlanResult>) -> Vec<relux::dsl::resolver::ir::Plan> {
-    plan_results
-        .into_iter()
-        .filter_map(|pr| match pr {
-            PlanResult::Ok { plan, .. } => Some(*plan),
-            PlanResult::Err { .. } => None,
+    // Convert file paths to module paths relative to project root
+    let test_paths: Vec<_> = files
+        .iter()
+        .filter_map(|f| {
+            let abs = if f.is_relative() {
+                std::env::current_dir().ok()?.join(f)
+            } else {
+                f.clone()
+            };
+            let rel = abs.strip_prefix(&project_root).ok()?;
+            let without_ext = rel.with_extension("");
+            let mod_path = without_ext.to_string_lossy().replace('\\', "/");
+            Some(relux::diagnostics::ModulePath(mod_path))
         })
-        .collect()
+        .collect();
+
+    let loader = build_source_loader(&project_root);
+    let env = Arc::new(Env::capture());
+    let suite = resolve(&*loader, test_paths, env);
+
+    let mut first = true;
+    for plan in &suite.plans {
+        if let NewPlan::Runnable { test, .. } = plan {
+            if !first {
+                println!("\n{}", "─".repeat(60));
+            }
+            println!("{test:#?}");
+            first = false;
+        }
+    }
 }
 
 fn resolve_project(matches: &clap::ArgMatches) -> (PathBuf, ReluxConfig) {
@@ -697,74 +541,44 @@ fn read_file(path: &PathBuf) -> String {
     })
 }
 
-fn create_run_context(
+fn resolve_test_paths(
+    matches: &clap::ArgMatches,
     project_root: &std::path::Path,
-    config: &ReluxConfig,
-    multiplier: f64,
-    strategy: RunStrategy,
-) -> RunContext {
-    let out_root = config::out_dir(project_root);
-    fs::create_dir_all(&out_root).unwrap_or_else(|e| {
-        eprintln!("error: cannot create output directory: {e}");
-        process::exit(1);
-    });
+) -> Vec<relux::diagnostics::ModulePath> {
+    let paths: Option<Vec<PathBuf>> = matches
+        .get_many::<PathBuf>("paths")
+        .map(|p| p.cloned().collect());
 
-    let timestamp = chrono::Utc::now().format("%Y-%m-%d-%H-%M-%S").to_string();
-
-    for _ in 0..32 {
-        let run_id = generate_run_id();
-        let run_dir = out_root.join(format!("run-{timestamp}-{run_id}"));
-        let artifacts_dir = run_dir.join("artifacts");
-
-        match fs::create_dir(&run_dir) {
-            Ok(()) => {
-                fs::create_dir_all(&artifacts_dir).unwrap_or_else(|e| {
-                    eprintln!("error: cannot create artifacts directory: {e}");
-                    process::exit(1);
-                });
-
-                let latest = out_root.join("latest");
-                let _ = fs::remove_file(&latest);
-                #[cfg(unix)]
-                {
-                    let _ = std::os::unix::fs::symlink(&run_dir, &latest);
-                }
-
-                return RunContext {
-                    run_id,
-                    run_dir,
-                    artifacts_dir,
-                    project_root: project_root.to_path_buf(),
-                    shell_command: config.shell.command.clone(),
-                    shell_prompt: config.shell.prompt.clone(),
-                    default_timeout: Timeout::Tolerance {
-                        duration: config.timeout.match_timeout,
-                        multiplier,
-                    },
-                    test_timeout: config.timeout.test.map(|d| Timeout::Tolerance {
-                        duration: d,
-                        multiplier,
-                    }),
-                    suite_timeout: config
-                        .timeout
-                        .suite
-                        .map(|d| std::time::Duration::from_secs_f64(d.as_secs_f64() * multiplier)),
-                    strategy,
+    match paths {
+        Some(files) => files
+            .iter()
+            .filter_map(|f| {
+                let abs = if f.is_relative() {
+                    std::env::current_dir().ok()?.join(f)
+                } else {
+                    f.clone()
                 };
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(e) => {
-                eprintln!("error: cannot create run directory: {e}");
-                process::exit(1);
-            }
+                let rel = abs.strip_prefix(project_root).ok()?;
+                let without_ext = rel.with_extension("");
+                let mod_path = without_ext.to_string_lossy().replace('\\', "/");
+                Some(relux::diagnostics::ModulePath(mod_path))
+            })
+            .collect(),
+        None => {
+            let test_dir = config::tests_dir(project_root);
+            discover_test_modules(&test_dir, project_root)
         }
     }
-
-    eprintln!("error: failed to generate a unique run directory");
-    process::exit(1);
 }
 
-fn generate_run_id() -> String {
-    let bytes: [u8; 16] = rand::random();
-    bs58::encode(bytes).into_string().chars().take(10).collect()
+fn build_source_loader(
+    project_root: &std::path::Path,
+) -> Box<dyn relux::dsl::resolver::SourceLoader> {
+    let lib_dir = config::lib_dir(project_root);
+    let extra = if lib_dir.is_dir() {
+        vec![lib_dir]
+    } else {
+        vec![]
+    };
+    Box::new(FsSourceLoader::new(project_root.to_path_buf(), extra))
 }

@@ -1,9 +1,10 @@
 use chumsky::prelude::*;
 
-use crate::Spanned;
 use crate::dsl::lexer::Token;
+use crate::{Span, Spanned};
 
 use super::ParserInput;
+use super::ast::AstIdent;
 use super::token::text;
 use super::ws::ws;
 
@@ -36,11 +37,12 @@ fn is_numeric(s: &str) -> bool {
 
 /// Variable name: starts with lowercase or `_`, alphanumeric + `_`.
 pub fn ident_var<'a>()
--> impl Parser<'a, ParserInput<'a>, Spanned<String>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+-> impl Parser<'a, ParserInput<'a>, Spanned<AstIdent>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     text()
         .try_map(|(s, span), _extra| {
             if is_var_ident(s) {
-                Ok(Spanned::from((s.to_string(), span)))
+                let sp = Span::from(span);
+                Ok(Spanned::new(AstIdent::new(s, sp), sp))
             } else {
                 Err(Rich::custom(
                     span,
@@ -53,11 +55,12 @@ pub fn ident_var<'a>()
 
 /// Function name: snake_case.
 pub fn ident_fn<'a>()
--> impl Parser<'a, ParserInput<'a>, Spanned<String>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+-> impl Parser<'a, ParserInput<'a>, Spanned<AstIdent>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     text()
         .try_map(|(s, span), _extra| {
             if is_snake_case(s) {
-                Ok(Spanned::from((s.to_string(), span)))
+                let sp = Span::from(span);
+                Ok(Spanned::new(AstIdent::new(s, sp), sp))
             } else {
                 Err(Rich::custom(
                     span,
@@ -70,11 +73,12 @@ pub fn ident_fn<'a>()
 
 /// Effect name: CamelCase.
 pub fn ident_effect<'a>()
--> impl Parser<'a, ParserInput<'a>, Spanned<String>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+-> impl Parser<'a, ParserInput<'a>, Spanned<AstIdent>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     text()
         .try_map(|(s, span), _extra| {
             if is_camel_case(s) {
-                Ok(Spanned::from((s.to_string(), span)))
+                let sp = Span::from(span);
+                Ok(Spanned::new(AstIdent::new(s, sp), sp))
             } else {
                 Err(Rich::custom(
                     span,
@@ -105,8 +109,8 @@ pub fn expr_numeric<'a>()
 // ─── Aliased Name ───────────────────────────────────────────
 
 pub struct AliasedName {
-    pub name: Spanned<String>,
-    pub alias: Option<Spanned<String>>,
+    pub name: Spanned<AstIdent>,
+    pub alias: Option<Spanned<AstIdent>>,
 }
 
 /// `ident_fn() [as ident_fn()]`
@@ -160,7 +164,7 @@ mod tests {
             let input = make_input(&pairs, name.len());
             let result = ident_var().parse(input).into_result();
             assert!(result.is_ok(), "expected `{name}` to be a valid var ident");
-            assert_eq!(result.unwrap().node, name);
+            assert_eq!(result.unwrap().node.name, name);
         }
     }
 
@@ -242,8 +246,8 @@ mod tests {
         let result = ident_aliased_fn().parse(input).into_result();
         assert!(result.is_ok());
         let aliased = result.unwrap();
-        assert_eq!(aliased.name.node, "greet");
-        assert_eq!(aliased.alias.unwrap().node, "hello");
+        assert_eq!(aliased.name.node.name, "greet");
+        assert_eq!(aliased.alias.unwrap().node.name, "hello");
     }
 
     #[test]
@@ -254,7 +258,7 @@ mod tests {
         let result = ident_aliased_fn().parse(input).into_result();
         assert!(result.is_ok());
         let aliased = result.unwrap();
-        assert_eq!(aliased.name.node, "greet");
+        assert_eq!(aliased.name.node.name, "greet");
         assert!(aliased.alias.is_none());
     }
 
@@ -266,8 +270,8 @@ mod tests {
         let result = ident_aliased_effect_shell().parse(input).into_result();
         assert!(result.is_ok());
         let aliased = result.unwrap();
-        assert_eq!(aliased.name.node, "Db");
-        assert_eq!(aliased.alias.unwrap().node, "db");
+        assert_eq!(aliased.name.node.name, "Db");
+        assert_eq!(aliased.alias.unwrap().node.name, "db");
     }
 
     #[test]
@@ -278,8 +282,8 @@ mod tests {
         let result = ident_aliased_effect().parse(input).into_result();
         assert!(result.is_ok());
         let aliased = result.unwrap();
-        assert_eq!(aliased.name.node, "Db");
-        assert_eq!(aliased.alias.unwrap().node, "Database");
+        assert_eq!(aliased.name.node.name, "Db");
+        assert_eq!(aliased.alias.unwrap().node.name, "Database");
     }
 
     #[test]
@@ -290,7 +294,7 @@ mod tests {
         let result = ident_aliased_effect().parse(input).into_result();
         assert!(result.is_ok());
         let aliased = result.unwrap();
-        assert_eq!(aliased.name.node, "Db");
+        assert_eq!(aliased.name.node.name, "Db");
         assert!(aliased.alias.is_none());
     }
 
@@ -309,7 +313,7 @@ mod tests {
         let input = make_input(&pairs, source.len());
         let result = ident_var().parse(input).into_result();
         assert!(result.is_ok(), "expected `_` to be a valid var ident");
-        assert_eq!(result.unwrap().node, "_");
+        assert_eq!(result.unwrap().node.name, "_");
     }
 
     #[test]
@@ -335,7 +339,7 @@ mod tests {
         let input = make_input(&pairs, source.len());
         let result = ident_effect().parse(input).into_result();
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().node, "Http2Server");
+        assert_eq!(result.unwrap().node.name, "Http2Server");
     }
 
     #[test]
@@ -345,6 +349,6 @@ mod tests {
         let input = make_input(&pairs, source.len());
         let result = ident_fn().parse(input).into_result();
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().node, "get_v2");
+        assert_eq!(result.unwrap().node.name, "get_v2");
     }
 }

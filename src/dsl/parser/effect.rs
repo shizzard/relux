@@ -235,8 +235,8 @@ mod tests {
 }
 "#,
         );
-        assert_eq!(e.name.node, "Db");
-        assert_eq!(e.exported_shell.node, "db");
+        assert_eq!(e.name.node.name, "Db");
+        assert_eq!(e.exported_shell.node.name, "db");
         assert!(e.markers.is_empty());
     }
 
@@ -251,7 +251,7 @@ mod tests {
 }
 "#,
         );
-        assert_eq!(e.name.node, "App");
+        assert_eq!(e.name.node.name, "App");
         assert!(
             e.body
                 .iter()
@@ -326,7 +326,7 @@ effect Db -> db {
 }
 "#,
         );
-        assert_eq!(e.name.node, "App");
+        assert_eq!(e.name.node.name, "App");
         assert!(
             e.body
                 .iter()
@@ -412,7 +412,7 @@ effect Db -> db {
 }
 "#,
         );
-        assert_eq!(e.name.node, "App");
+        assert_eq!(e.name.node.name, "App");
         assert!(
             e.body
                 .iter()

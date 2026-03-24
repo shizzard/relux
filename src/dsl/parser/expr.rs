@@ -109,7 +109,7 @@ pub fn expr<'a>()
             let span = Span::from(e.span());
             Spanned::new(
                 AstExpr::Var {
-                    name: name.node,
+                    name: name.node.name,
                     span,
                 },
                 span,
@@ -174,7 +174,7 @@ mod tests {
         let e = parse_expr("foo()");
         match e {
             AstExpr::Call { call, .. } => {
-                assert_eq!(call.name.node, "foo");
+                assert_eq!(call.name.node.name, "foo");
                 assert!(call.args.is_empty());
             }
             _ => panic!("expected Call, got {e:?}"),
@@ -186,7 +186,7 @@ mod tests {
         let e = parse_expr(r#"greet("hello", name)"#);
         match e {
             AstExpr::Call { call, .. } => {
-                assert_eq!(call.name.node, "greet");
+                assert_eq!(call.name.node.name, "greet");
                 assert_eq!(call.args.len(), 2);
             }
             _ => panic!("expected Call, got {e:?}"),
@@ -198,10 +198,10 @@ mod tests {
         let e = parse_expr("outer(inner())");
         match e {
             AstExpr::Call { call, .. } => {
-                assert_eq!(call.name.node, "outer");
+                assert_eq!(call.name.node.name, "outer");
                 assert_eq!(call.args.len(), 1);
                 match &call.args[0].node {
-                    AstExpr::Call { call: inner, .. } => assert_eq!(inner.name.node, "inner"),
+                    AstExpr::Call { call: inner, .. } => assert_eq!(inner.name.node.name, "inner"),
                     other => panic!("expected inner Call, got {other:?}"),
                 }
             }
@@ -264,7 +264,7 @@ mod tests {
         let e = parse_expr(r#"foo("a",)"#);
         match e {
             AstExpr::Call { call, .. } => {
-                assert_eq!(call.name.node, "foo");
+                assert_eq!(call.name.node.name, "foo");
                 assert_eq!(call.args.len(), 1);
             }
             _ => panic!("expected Call, got {e:?}"),
@@ -306,7 +306,7 @@ mod tests {
         let e = parse_expr(r#"foo("str", var, 42, $1)"#);
         match e {
             AstExpr::Call { call, .. } => {
-                assert_eq!(call.name.node, "foo");
+                assert_eq!(call.name.node.name, "foo");
                 assert_eq!(call.args.len(), 4);
                 assert!(matches!(call.args[0].node, AstExpr::String { .. }));
                 assert!(matches!(call.args[1].node, AstExpr::Var { .. }));
@@ -322,12 +322,12 @@ mod tests {
         let e = parse_expr("a(b(c()))");
         match e {
             AstExpr::Call { call, .. } => {
-                assert_eq!(call.name.node, "a");
+                assert_eq!(call.name.node.name, "a");
                 match &call.args[0].node {
                     AstExpr::Call { call: b, .. } => {
-                        assert_eq!(b.name.node, "b");
+                        assert_eq!(b.name.node.name, "b");
                         match &b.args[0].node {
-                            AstExpr::Call { call: c, .. } => assert_eq!(c.name.node, "c"),
+                            AstExpr::Call { call: c, .. } => assert_eq!(c.name.node.name, "c"),
                             other => panic!("expected Call c, got {other:?}"),
                         }
                     }
@@ -352,7 +352,7 @@ mod tests {
         let e = parse_expr("foo(x)");
         match e {
             AstExpr::Call { call, .. } => {
-                assert_eq!(call.name.node, "foo");
+                assert_eq!(call.name.node.name, "foo");
                 assert_eq!(call.args.len(), 1);
                 assert!(matches!(call.args[0].node, AstExpr::Var { .. }));
             }
@@ -416,7 +416,7 @@ mod tests {
         let e = parse_expr(r#"foo("hello ${name}")"#);
         match e {
             AstExpr::Call { call, .. } => {
-                assert_eq!(call.name.node, "foo");
+                assert_eq!(call.name.node.name, "foo");
                 assert_eq!(call.args.len(), 1);
                 assert!(matches!(call.args[0].node, AstExpr::String { .. }));
             }
@@ -435,7 +435,7 @@ mod tests {
         let e = parse_expr(r#"foo("a" , "b")"#);
         match e {
             AstExpr::Call { call, .. } => {
-                assert_eq!(call.name.node, "foo");
+                assert_eq!(call.name.node.name, "foo");
                 assert_eq!(call.args.len(), 2);
             }
             _ => panic!("expected Call, got {e:?}"),

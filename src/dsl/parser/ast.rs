@@ -1,4 +1,25 @@
+use std::time::Duration;
+
 use crate::{Span, Spanned};
+
+// ─── AstIdent ───────────────────────────────────────────────
+
+/// Dedicated identifier type, replacing raw `String` for names
+/// throughout the AST.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstIdent {
+    pub name: String,
+    pub span: Span,
+}
+
+impl AstIdent {
+    pub fn new(name: impl Into<String>, span: Span) -> Self {
+        Self {
+            name: name.into(),
+            span,
+        }
+    }
+}
 
 // ─── Trait + Macros ─────────────────────────────────────────
 
@@ -90,7 +111,7 @@ impl AstExpr {
             AstExpr::Var { name, .. } => format!("V:{name}"),
             AstExpr::Call { call, .. } => {
                 let args: Vec<String> = call.args.iter().map(|a| a.node.canonical()).collect();
-                format!("C:{}({})", call.name.node, args.join(","))
+                format!("C:{}({})", call.name.node.name, args.join(","))
             }
             AstExpr::CaptureRef { index, .. } => format!("cap:{index}"),
         }
@@ -123,7 +144,7 @@ impl AstInterpolation {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCallExpr {
-    pub name: Spanned<String>,
+    pub name: Spanned<AstIdent>,
     pub args: Vec<Spanned<AstExpr>>,
     pub span: Span,
 }
@@ -145,8 +166,7 @@ pub enum AstStmt {
         span: Span,
     },
     Timeout {
-        kind: AstTimeoutKind,
-        duration: String,
+        timeout: AstTimeout,
         span: Span,
     },
     FailRegex {
@@ -177,14 +197,12 @@ pub enum AstStmt {
         span: Span,
     },
     TimedMatchRegex {
-        timeout_kind: AstTimeoutKind,
-        duration: String,
+        timeout: AstTimeout,
         pattern: Spanned<AstInterpolation>,
         span: Span,
     },
     TimedMatchLiteral {
-        timeout_kind: AstTimeoutKind,
-        duration: String,
+        timeout: AstTimeout,
         pattern: Spanned<AstInterpolation>,
         span: Span,
     },
@@ -217,14 +235,14 @@ impl_ast_node_enum!(AstStmt {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstLetStmt {
-    pub name: Spanned<String>,
+    pub name: Spanned<AstIdent>,
     pub value: Option<Spanned<AstExpr>>,
     pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstAssignStmt {
-    pub name: Spanned<String>,
+    pub name: Spanned<AstIdent>,
     pub value: Spanned<AstExpr>,
     pub span: Span,
 }
@@ -233,7 +251,7 @@ pub struct AstAssignStmt {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstShellBlock {
-    pub name: Spanned<String>,
+    pub name: Spanned<AstIdent>,
     pub stmts: Vec<Spanned<AstStmt>>,
     pub span: Span,
 }
@@ -308,8 +326,8 @@ pub struct AstImport {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstImportName {
-    pub name: Spanned<String>,
-    pub alias: Option<Spanned<String>>,
+    pub name: Spanned<AstIdent>,
+    pub alias: Option<Spanned<AstIdent>>,
     pub span: Span,
 }
 
@@ -317,15 +335,15 @@ pub struct AstImportName {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstNeedDecl {
-    pub effect: Spanned<String>,
-    pub alias: Option<Spanned<String>>,
+    pub effect: Spanned<AstIdent>,
+    pub alias: Option<Spanned<AstIdent>>,
     pub overlay: Vec<Spanned<AstOverlayEntry>>,
     pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstOverlayEntry {
-    pub key: Spanned<String>,
+    pub key: Spanned<AstIdent>,
     pub value: Spanned<AstExpr>,
     pub span: Span,
 }
@@ -334,8 +352,8 @@ pub struct AstOverlayEntry {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstFnDef {
-    pub name: Spanned<String>,
-    pub params: Vec<Spanned<String>>,
+    pub name: Spanned<AstIdent>,
+    pub params: Vec<Spanned<AstIdent>>,
     pub markers: Vec<Spanned<AstMarkerDecl>>,
     pub body: Vec<Spanned<AstStmt>>,
     pub span: Span,
@@ -343,8 +361,8 @@ pub struct AstFnDef {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstPureFnDef {
-    pub name: Spanned<String>,
-    pub params: Vec<Spanned<String>>,
+    pub name: Spanned<AstIdent>,
+    pub params: Vec<Spanned<AstIdent>>,
     pub markers: Vec<Spanned<AstMarkerDecl>>,
     pub body: Vec<Spanned<AstStmt>>,
     pub span: Span,
@@ -354,8 +372,8 @@ pub struct AstPureFnDef {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstEffectDef {
-    pub name: Spanned<String>,
-    pub exported_shell: Spanned<String>,
+    pub name: Spanned<AstIdent>,
+    pub exported_shell: Spanned<AstIdent>,
     pub markers: Vec<Spanned<AstMarkerDecl>>,
     pub body: Vec<Spanned<AstEffectItem>>,
     pub span: Span,
@@ -383,7 +401,7 @@ impl_ast_node_enum!(AstEffectItem {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstTestDef {
     pub name: Spanned<String>,
-    pub timeout: Option<Spanned<(AstTimeoutKind, String)>>,
+    pub timeout: Option<Spanned<AstTimeout>>,
     pub markers: Vec<Spanned<AstMarkerDecl>>,
     pub body: Vec<Spanned<AstTestItem>>,
     pub span: Span,
@@ -435,15 +453,24 @@ impl_ast_node_enum!(AstItem {
     Test
 });
 
-// ─── Timeout Kind ───────────────────────────────────────────
+// ─── Timeout ────────────────────────────────────────────────
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum AstTimeoutKind {
-    Tolerance { span: Span },
-    Assertion { span: Span },
+#[derive(Debug, PartialEq, Clone)]
+pub enum AstTimeout {
+    Tolerance { duration: Duration, span: Span },
+    Assertion { duration: Duration, span: Span },
 }
 
-impl_ast_node_enum!(AstTimeoutKind {
+impl AstTimeout {
+    pub fn duration(&self) -> Duration {
+        match self {
+            AstTimeout::Tolerance { duration, .. } => *duration,
+            AstTimeout::Assertion { duration, .. } => *duration,
+        }
+    }
+}
+
+impl_ast_node_enum!(AstTimeout {
     Tolerance,
     Assertion
 });
@@ -451,6 +478,7 @@ impl_ast_node_enum!(AstTimeoutKind {
 // ─── Macro Impls ────────────────────────────────────────────
 
 impl_ast_node_struct!(
+    AstIdent,
     AstInterpolation,
     AstCallExpr,
     AstLetStmt,

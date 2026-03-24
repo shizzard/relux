@@ -108,7 +108,7 @@ mod tests {
             r#"shell main {
 }"#,
         );
-        assert_eq!(sb.name.node, "main");
+        assert_eq!(sb.name.node.name, "main");
         assert!(sb.stmts.is_empty());
     }
 
@@ -120,7 +120,7 @@ mod tests {
   <= hello
 }"#,
         );
-        assert_eq!(sb.name.node, "main");
+        assert_eq!(sb.name.node.name, "main");
         assert_eq!(sb.stmts.len(), 2);
         assert!(matches!(&sb.stmts[0].node, AstStmt::Send { .. }));
         assert!(matches!(&sb.stmts[1].node, AstStmt::MatchLiteral { .. }));
@@ -233,7 +233,7 @@ mod tests {
   > echo hello
 }"#,
         );
-        assert_eq!(sb.name.node, "main_2");
+        assert_eq!(sb.name.node.name, "main_2");
         assert_eq!(sb.stmts.len(), 1);
     }
 

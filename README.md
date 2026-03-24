@@ -40,6 +40,7 @@ A1. [Best Practices](docs/tutorial/A1-best-practices.md) — all best-practices 
 - Custom scaffold templates: user-defined templates for `relux new --test` and `relux new --effect` via `Relux.toml`, replacing the built-in defaults
 - Make `sleep`, `log`, and `annotate` impure BIFs: these have observable side effects (time delay, output) and don't belong in pure context — move them from `lookup_pure` to `lookup` so they require a shell context
 - Unresolved function call diagnostics: emit an error when a function call in a test or effect body doesn't resolve to any known function — currently unresolved calls are silently skipped during plan building
+- Infallible pure BIFs: all pure built-in functions must be total — they must return a valid string for any input, never panic or error. This keeps marker evaluation infallible and ensures `# skip if` / `# run if` conditions always resolve cleanly
 
 ## Planned RFCs
 

@@ -46,7 +46,7 @@ fn interp_var_ref<'a>()
         .ignore_then(ident_var())
         .then_ignore(just(Token::BraceClose))
         .map_with(|name, e| AstStringPart::VarRef {
-            name: name.node,
+            name: name.node.name,
             span: Span::from(e.span()),
         })
 }

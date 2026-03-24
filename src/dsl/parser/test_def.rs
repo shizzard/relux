@@ -187,8 +187,7 @@ pub fn def_test<'a>()
             |(((((((markers, name), timeout_opt), docs), needs), lets), shells), cleanup), e| {
                 let outer_span = Span::from(e.span());
 
-                let timeout =
-                    timeout_opt.map(|t| Spanned::new((t.node.kind, t.node.duration), t.span));
+                let timeout = timeout_opt;
 
                 let mut body = Vec::new();
                 for item in docs {
@@ -240,18 +239,37 @@ fn is_sentinel_comment(item: &AstTestItem) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::parser::ast::AstTimeoutKind;
+    use std::time::Duration;
+
+    use crate::dsl::parser::ast::AstTimeout;
     use crate::dsl::parser::{lex_to_pairs, make_input};
 
     fn parse_test(source: &str) -> AstTestDef {
+        try_parse_test(source).expect("parse failed")
+    }
+
+    fn try_parse_test(source: &str) -> Option<AstTestDef> {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
         def_test()
             .then_ignore(any().repeated())
             .parse(input)
             .into_result()
-            .unwrap()
-            .node
+            .ok()
+            .map(|s| s.node)
+    }
+
+    #[test]
+    fn empty_test_body_parses() {
+        let t = try_parse_test("test \"t\" {}\n");
+        assert!(t.is_some(), "empty test body must parse");
+        assert!(t.unwrap().body.is_empty());
+    }
+
+    #[test]
+    fn comment_only_test_body_parses() {
+        let t = try_parse_test("test \"t\" {\n  // just a comment\n}\n");
+        assert!(t.is_some(), "comment-only test body must parse");
     }
 
     #[test]
@@ -281,8 +299,8 @@ mod tests {
         );
         assert_eq!(t.name.node, "my test");
         let timeout = t.timeout.unwrap();
-        assert!(matches!(timeout.node.0, AstTimeoutKind::Tolerance { .. }));
-        assert_eq!(timeout.node.1, "5s");
+        assert!(matches!(timeout.node, AstTimeout::Tolerance { .. }));
+        assert_eq!(timeout.node.duration(), Duration::from_secs(5));
     }
 
     #[test]
@@ -405,8 +423,8 @@ test "my test" {
 "#,
         );
         let timeout = t.timeout.unwrap();
-        assert!(matches!(timeout.node.0, AstTimeoutKind::Assertion { .. }));
-        assert_eq!(timeout.node.1, "5s");
+        assert!(matches!(timeout.node, AstTimeout::Assertion { .. }));
+        assert_eq!(timeout.node.duration(), Duration::from_secs(5));
     }
 
     #[test]
@@ -513,8 +531,8 @@ test "my test" {
                 _ => None,
             })
             .unwrap();
-        assert_eq!(need.effect.node, "Db");
-        assert_eq!(need.alias.as_ref().unwrap().node, "db");
+        assert_eq!(need.effect.node.name, "Db");
+        assert_eq!(need.alias.as_ref().unwrap().node.name, "db");
     }
 
     #[test]
@@ -536,7 +554,7 @@ test "my test" {
                 _ => None,
             })
             .unwrap();
-        assert_eq!(need.effect.node, "Db");
+        assert_eq!(need.effect.node.name, "Db");
         assert_eq!(need.overlay.len(), 1);
     }
 
