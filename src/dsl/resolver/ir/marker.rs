@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
+use crate::core::table::FileId;
 use crate::diagnostics::{
     DefinitionRef, InvalidReport, IrSpan, LoweringBail, SkipEvaluation, SkipReport,
 };
 use crate::dsl::parser::ast::{AstCondModifier, AstMarkerCondBody, AstMarkerDecl, AstMarkerKind};
-use crate::stack::Env;
-use crate::table::FileId;
+use crate::pure::Env;
 
 use super::expr::IrPureExpr;
 use super::interpolation::IrInterpolation;
@@ -16,8 +16,6 @@ use super::{IrNodeLowering, LoweringContext};
 /// Requires: scope already pushed on `ctx` (for resolving pure fn calls).
 /// Returns `Ok(Some(SkipReport))` if a marker triggers skip, `Ok(None)` otherwise.
 /// Returns `Err(LoweringBail)` if marker lowering fails (e.g., invalid regex, undefined fn).
-// TODO: box LoweringBail to reduce Result size
-#[allow(clippy::result_large_err)]
 pub(crate) fn eval_marker(
     markers: &[crate::Spanned<AstMarkerDecl>],
     definition: DefinitionRef,
@@ -34,10 +32,7 @@ pub(crate) fn eval_marker(
         let is_skip = match &decl.kind {
             AstMarkerKind::Skip { .. } => true,
             AstMarkerKind::Run { .. } => false,
-            AstMarkerKind::Flaky { .. } => {
-                // TODO(R004): flaky markers not yet supported
-                continue;
-            }
+            AstMarkerKind::Flaky { .. } => continue,
         };
 
         let Some(condition) = &decl.condition else {
@@ -58,9 +53,9 @@ pub(crate) fn eval_marker(
         let (mut met, evaluation) = match &condition.body {
             AstMarkerCondBody::Bare { expr, .. } => {
                 let ir_expr = IrPureExpr::lower(expr, file_id, ctx)?;
-                let value = crate::evaluator::eval_pure_expr(
+                let value = crate::pure::evaluator::eval_pure_expr(
                     &ir_expr,
-                    &crate::stack::VarScope::new(),
+                    &crate::pure::VarScope::new(),
                     env,
                     &fns,
                 );
@@ -70,9 +65,9 @@ pub(crate) fn eval_marker(
             AstMarkerCondBody::Eq { lhs, rhs, .. } => {
                 let ir_lhs = IrPureExpr::lower(lhs, file_id, ctx)?;
                 let ir_rhs = IrPureExpr::lower(rhs, file_id, ctx)?;
-                let vars = crate::stack::VarScope::new();
-                let lhs_val = crate::evaluator::eval_pure_expr(&ir_lhs, &vars, env, &fns);
-                let rhs_val = crate::evaluator::eval_pure_expr(&ir_rhs, &vars, env, &fns);
+                let vars = crate::pure::VarScope::new();
+                let lhs_val = crate::pure::evaluator::eval_pure_expr(&ir_lhs, &vars, env, &fns);
+                let rhs_val = crate::pure::evaluator::eval_pure_expr(&ir_rhs, &vars, env, &fns);
                 let met = lhs_val == rhs_val;
                 (
                     met,
@@ -89,8 +84,8 @@ pub(crate) fn eval_marker(
                 span,
             } => {
                 let ir_expr = IrPureExpr::lower(expr, file_id, ctx)?;
-                let vars = crate::stack::VarScope::new();
-                let value = crate::evaluator::eval_pure_expr(&ir_expr, &vars, env, &fns);
+                let vars = crate::pure::VarScope::new();
+                let value = crate::pure::evaluator::eval_pure_expr(&ir_expr, &vars, env, &fns);
 
                 // Lower pattern as interpolation, wrap in IrPureExpr to evaluate
                 let ir_interp = IrInterpolation::lower(pattern, file_id, ctx)?;
@@ -98,10 +93,11 @@ pub(crate) fn eval_marker(
                     value: ir_interp,
                     span: IrSpan::new(file_id.clone(), pattern.span),
                 };
-                let pattern_str = crate::evaluator::eval_pure_expr(&pattern_expr, &vars, env, &fns);
+                let pattern_str =
+                    crate::pure::evaluator::eval_pure_expr(&pattern_expr, &vars, env, &fns);
 
                 let regex = regex::Regex::new(&pattern_str).map_err(|e| {
-                    LoweringBail::Invalid(InvalidReport::InvalidRegex {
+                    LoweringBail::invalid(InvalidReport::InvalidRegex {
                         pattern: pattern_str.clone(),
                         error: e.to_string(),
                         span: IrSpan::new(file_id.clone(), *span),

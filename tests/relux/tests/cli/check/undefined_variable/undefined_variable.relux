@@ -4,7 +4,7 @@ test "check detects undefined variable" {
     Verify relux check reports use of an undefined variable.
     """
     shell s {
-        > relux check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        > ${__RELUX} check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? undefined variable
         match_prompt()
         match_exit_code(1)

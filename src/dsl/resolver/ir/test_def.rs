@@ -1,11 +1,11 @@
+use crate::core::table::FileId;
 use crate::diagnostics::{InvalidReport, IrSpan, LoweringBail};
 use crate::dsl::parser::ast::{AstTestDef, AstTestItem};
-use crate::table::FileId;
 
 use super::block::{IrCleanupBlock, IrShellBlock};
 use super::comment::IrComment;
 use super::effect::IrEffectNeed;
-use super::stmt::IrLetStmt;
+use super::stmt::IrPureLetStmt;
 use super::{IrNode, IrNodeLowering, LoweringContext};
 
 // ─── IrTestItem ──────────────────────────────────────────────
@@ -15,7 +15,7 @@ pub enum IrTestItem {
     Comment { comment: IrComment, span: IrSpan },
     DocString { text: String, span: IrSpan },
     Need { need: IrEffectNeed, span: IrSpan },
-    Let { stmt: IrLetStmt, span: IrSpan },
+    Let { stmt: IrPureLetStmt, span: IrSpan },
     Shell { block: IrShellBlock, span: IrSpan },
     Cleanup { block: IrCleanupBlock, span: IrSpan },
 }
@@ -108,7 +108,7 @@ impl IrNodeLowering for IrTestItem {
                 })
             }
             AstTestItem::Let { stmt, span } => {
-                let ir = IrLetStmt::lower(stmt, file, ctx)?;
+                let ir = IrPureLetStmt::lower(stmt, file, ctx)?;
                 Ok(IrTestItem::Let {
                     stmt: ir,
                     span: s(span),
@@ -155,7 +155,7 @@ impl IrNodeLowering for IrTest {
             |item| matches!(item, IrTestItem::Shell { block, .. } if !block.body().is_empty()),
         );
         if !has_nonempty_shell {
-            return Err(LoweringBail::Invalid(InvalidReport::EmptyTestBody {
+            return Err(LoweringBail::invalid(InvalidReport::EmptyTestBody {
                 name: ast.name.node.clone(),
                 span: IrSpan::new(file.clone(), ast.span),
             }));
@@ -323,5 +323,60 @@ test "t" {
                 .all(|item| !matches!(item, IrTestItem::Need { .. }))
         );
         assert!(!result.body().is_empty());
+    }
+
+    // ─── Purity enforcement tests ────────────────────────────
+
+    use crate::diagnostics::LoweringBail;
+
+    #[test]
+    fn lower_test_let_rejects_impure_fn_call() {
+        let source = r#"fn impure_fn() {
+  > cmd
+}
+test "t" {
+  let x = impure_fn()
+  shell sh {
+    > cmd
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let result = lower_first_test(&mut ctx, "tests/a");
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
+    }
+
+    #[test]
+    fn lower_test_let_accepts_pure_fn_call() {
+        let source = r#"test "t" {
+  let x = trim("hi")
+  shell sh {
+    > cmd
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let result = lower_first_test(&mut ctx, "tests/a");
+        assert!(result.is_ok());
+        let test = result.unwrap();
+        assert!(
+            test.body()
+                .iter()
+                .any(|item| matches!(item, IrTestItem::Let { .. }))
+        );
+    }
+
+    #[test]
+    fn lower_test_let_accepts_string_literal() {
+        let source = r#"test "t" {
+  let x = "hello"
+  shell sh {
+    > cmd
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let result = lower_first_test(&mut ctx, "tests/a");
+        assert!(result.is_ok());
     }
 }

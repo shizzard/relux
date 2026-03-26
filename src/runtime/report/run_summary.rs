@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::runtime::result::{Outcome, TestResult};
+use crate::runtime::report::result::{Outcome, TestResult};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RunSummary {
@@ -89,6 +89,9 @@ fn build_summary(run_id: &str, results: &[TestResult], total_duration: Duration)
                 Outcome::Skipped(reason) => {
                     ("skipped".to_string(), None, None, Some(reason.clone()))
                 }
+                Outcome::Invalid(reason) => {
+                    ("invalid".to_string(), None, None, Some(reason.clone()))
+                }
             };
 
             TestEntry {
@@ -109,8 +112,8 @@ fn build_summary(run_id: &str, results: &[TestResult], total_duration: Duration)
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::resolver::ir::{self, Span};
-    use crate::runtime::result::Failure;
+    use crate::diagnostics::IrSpan;
+    use crate::runtime::report::result::Failure;
 
     fn make_result(name: &str, path: &str, outcome: Outcome) -> TestResult {
         TestResult {
@@ -121,6 +124,7 @@ mod tests {
 
             progress: String::new(),
             log_dir: None,
+            warnings: Vec::new(),
         }
     }
 
@@ -134,7 +138,7 @@ mod tests {
                 Outcome::Fail(Failure::MatchTimeout {
                     pattern: "/ready/".into(),
                     shell: "default".into(),
-                    span: Span::new(ir::FileId::from(0), 0..1),
+                    span: IrSpan::synthetic(),
                 }),
             ),
             make_result(

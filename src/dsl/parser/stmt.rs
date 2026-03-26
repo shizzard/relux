@@ -25,7 +25,6 @@ fn stmt_send<'a>()
     op_send()
         .ignore_then(ws())
         .ignore_then(interp_literal(Token::Newline))
-        .then_ignore(newline())
         .map_with(|payload, e| {
             let span = Span::from(e.span());
             Spanned::new(
@@ -36,6 +35,7 @@ fn stmt_send<'a>()
                 span,
             )
         })
+        .then_ignore(newline())
 }
 
 /// `=> payload` → `AstStmt::SendRaw`
@@ -44,7 +44,6 @@ fn stmt_send_raw<'a>()
     op_send_raw()
         .ignore_then(ws())
         .ignore_then(interp_literal(Token::Newline))
-        .then_ignore(newline())
         .map_with(|payload, e| {
             let span = Span::from(e.span());
             Spanned::new(
@@ -55,6 +54,7 @@ fn stmt_send_raw<'a>()
                 span,
             )
         })
+        .then_ignore(newline())
 }
 
 /// `<? payload` → `AstStmt::MatchRegex`, or `<?` alone → `AstStmt::BufferReset`
@@ -63,7 +63,6 @@ fn stmt_match_regex<'a>()
     op_match_regex()
         .ignore_then(ws())
         .ignore_then(interp_regex(Token::Newline))
-        .then_ignore(newline())
         .map_with(|payload, e| {
             let span = Span::from(e.span());
             let stmt = if is_empty_payload(&payload.node) {
@@ -76,6 +75,7 @@ fn stmt_match_regex<'a>()
             };
             Spanned::new(stmt, span)
         })
+        .then_ignore(newline())
 }
 
 /// `<= payload` → `AstStmt::MatchLiteral`, or `<=` alone → `AstStmt::BufferReset`
@@ -84,7 +84,6 @@ fn stmt_match_literal<'a>()
     op_match_literal()
         .ignore_then(ws())
         .ignore_then(interp_literal(Token::Newline))
-        .then_ignore(newline())
         .map_with(|payload, e| {
             let span = Span::from(e.span());
             let stmt = if is_empty_payload(&payload.node) {
@@ -97,6 +96,7 @@ fn stmt_match_literal<'a>()
             };
             Spanned::new(stmt, span)
         })
+        .then_ignore(newline())
 }
 
 /// `!? payload` → `AstStmt::FailRegex`, or `!?` alone → `AstStmt::ClearFailPattern`
@@ -105,7 +105,6 @@ fn stmt_fail_regex<'a>()
     op_fail_regex()
         .ignore_then(ws())
         .ignore_then(interp_regex(Token::Newline))
-        .then_ignore(newline())
         .map_with(|payload, e| {
             let span = Span::from(e.span());
             let stmt = if is_empty_payload(&payload.node) {
@@ -118,6 +117,7 @@ fn stmt_fail_regex<'a>()
             };
             Spanned::new(stmt, span)
         })
+        .then_ignore(newline())
 }
 
 /// `!= payload` → `AstStmt::FailLiteral`, or `!=` alone → `AstStmt::ClearFailPattern`
@@ -126,7 +126,6 @@ fn stmt_fail_literal<'a>()
     op_fail_literal()
         .ignore_then(ws())
         .ignore_then(interp_literal(Token::Newline))
-        .then_ignore(newline())
         .map_with(|payload, e| {
             let span = Span::from(e.span());
             let stmt = if is_empty_payload(&payload.node) {
@@ -139,6 +138,7 @@ fn stmt_fail_literal<'a>()
             };
             Spanned::new(stmt, span)
         })
+        .then_ignore(newline())
 }
 
 /// `<~5s= payload` or `<@2s= payload` → `AstStmt::TimedMatchLiteral`
@@ -147,7 +147,6 @@ fn stmt_timed_match_literal<'a>()
     op_timed_match_literal()
         .then_ignore(ws())
         .then(interp_literal(Token::Newline))
-        .then_ignore(newline())
         .map_with(|(t, payload), e| {
             let span = Span::from(e.span());
             Spanned::new(
@@ -159,6 +158,7 @@ fn stmt_timed_match_literal<'a>()
                 span,
             )
         })
+        .then_ignore(newline())
 }
 
 /// `<~5s? payload` or `<@2s? payload` → `AstStmt::TimedMatchRegex`
@@ -167,7 +167,6 @@ fn stmt_timed_match_regex<'a>()
     op_timed_match_regex()
         .then_ignore(ws())
         .then(interp_regex(Token::Newline))
-        .then_ignore(newline())
         .map_with(|(t, payload), e| {
             let span = Span::from(e.span());
             Spanned::new(
@@ -179,21 +178,24 @@ fn stmt_timed_match_regex<'a>()
                 span,
             )
         })
+        .then_ignore(newline())
 }
 
 /// `~5s` or `@10s` followed by newline → `AstStmt::Timeout`
 fn stmt_timeout<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
-    timeout().then_ignore(newline()).map_with(|t, e| {
-        let span = Span::from(e.span());
-        Spanned::new(
-            AstStmt::Timeout {
-                timeout: t.node,
+    timeout()
+        .map_with(|t, e| {
+            let span = Span::from(e.span());
+            Spanned::new(
+                AstStmt::Timeout {
+                    timeout: t.node,
+                    span,
+                },
                 span,
-            },
-            span,
-        )
-    })
+            )
+        })
+        .then_ignore(newline())
 }
 
 /// `let name [= expr]` → `AstStmt::Let`
@@ -208,7 +210,6 @@ fn stmt_let<'a>()
                 .ignore_then(expr())
                 .or_not(),
         )
-        .then_ignore(newline())
         .map_with(|(name, value), e| {
             let span = Span::from(e.span());
             Spanned::new(
@@ -219,6 +220,7 @@ fn stmt_let<'a>()
                 span,
             )
         })
+        .then_ignore(newline())
 }
 
 /// `name = expr` → `AstStmt::Assign`
@@ -227,7 +229,6 @@ fn stmt_assign<'a>()
     ident_var()
         .then_ignore(ws().then(just(Token::Eq)).then(ws()))
         .then(expr())
-        .then_ignore(newline())
         .map_with(|(name, value), e| {
             let span = Span::from(e.span());
             Spanned::new(
@@ -238,15 +239,18 @@ fn stmt_assign<'a>()
                 span,
             )
         })
+        .then_ignore(newline())
 }
 
 /// `expr` → `AstStmt::Expr` (catch-all for bare function calls)
 fn stmt_expr<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
-    expr().then_ignore(newline()).map_with(|e, extra| {
-        let span = Span::from(extra.span());
-        Spanned::new(AstStmt::Expr { expr: e.node, span }, span)
-    })
+    expr()
+        .map_with(|e, extra| {
+            let span = Span::from(extra.span());
+            Spanned::new(AstStmt::Expr { expr: e.node, span }, span)
+        })
+        .then_ignore(newline())
 }
 
 /// Full statement combinator: `leading_ws()` then ordered choice.

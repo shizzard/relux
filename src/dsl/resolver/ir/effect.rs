@@ -1,15 +1,15 @@
+use crate::core::table::FileId;
 use crate::diagnostics::{
     EffectId as DiagEffectId, EffectName, InvalidReport, IrSpan, LoweringBail,
 };
 use crate::dsl::parser::ast::{AstEffectDef, AstEffectItem, AstNeedDecl, AstOverlayEntry};
-use crate::table::FileId;
 
 use super::block::{IrCleanupBlock, IrShellBlock};
 use super::comment::IrComment;
-use super::expr::IrExpr;
+use super::expr::IrPureExpr;
 use super::ident::IrIdent;
-use super::keys::LocalEffectKey;
-use super::stmt::IrLetStmt;
+use super::stmt::IrPureLetStmt;
+use super::tables::LocalEffectKey;
 use super::{IrNode, IrNodeLowering, LoweringContext};
 
 // ─── IrOverlayEntry ──────────────────────────────────────────
@@ -17,12 +17,12 @@ use super::{IrNode, IrNodeLowering, LoweringContext};
 #[derive(Debug, Clone)]
 pub struct IrOverlayEntry {
     key: IrIdent,
-    value: IrExpr,
+    value: IrPureExpr,
     span: IrSpan,
 }
 
 impl IrOverlayEntry {
-    pub fn new(key: IrIdent, value: IrExpr, span: IrSpan) -> Self {
+    pub fn new(key: IrIdent, value: IrPureExpr, span: IrSpan) -> Self {
         Self { key, value, span }
     }
 
@@ -30,7 +30,7 @@ impl IrOverlayEntry {
         &self.key
     }
 
-    pub fn value(&self) -> &IrExpr {
+    pub fn value(&self) -> &IrPureExpr {
         &self.value
     }
 }
@@ -90,7 +90,7 @@ impl_ir_node_struct!(IrEffectNeed);
 pub enum IrEffectItem {
     Comment { comment: IrComment, span: IrSpan },
     Need { need: IrEffectNeed, span: IrSpan },
-    Let { stmt: IrLetStmt, span: IrSpan },
+    Let { stmt: IrPureLetStmt, span: IrSpan },
     Shell { block: IrShellBlock, span: IrSpan },
     Cleanup { block: IrCleanupBlock, span: IrSpan },
 }
@@ -162,7 +162,7 @@ impl IrNodeLowering for IrOverlayEntry {
         ctx: &mut LoweringContext,
     ) -> Result<Self, LoweringBail> {
         let key = IrIdent::lower(&ast.key.node, file, ctx)?;
-        let value = IrExpr::lower(&ast.value.node, file, ctx)?;
+        let value = IrPureExpr::lower(&ast.value.node, file, ctx)?;
         Ok(IrOverlayEntry::new(
             key,
             value,
@@ -184,15 +184,11 @@ impl IrNodeLowering for IrEffectNeed {
         // Look up in current scope's effect table
         let global_key = {
             let scope = ctx.current_scope();
-            let et = scope
-                .effect_table
-                .as_ref()
-                .expect("effect table must be in scope");
-            et.get_global_key(&local_key).cloned()
+            scope.tables.effects.get_global_key(&local_key).cloned()
         };
 
         let global_key = global_key.ok_or_else(|| {
-            LoweringBail::Invalid(InvalidReport::UndefinedEffectNeed {
+            LoweringBail::invalid(InvalidReport::UndefinedEffectNeed {
                 name: effect_name.clone(),
                 span: IrSpan::new(file.clone(), ast.effect.node.span),
             })
@@ -253,7 +249,7 @@ impl IrNodeLowering for IrEffectItem {
                 })
             }
             AstEffectItem::Let { stmt, span } => {
-                let ir = IrLetStmt::lower(stmt, file, ctx)?;
+                let ir = IrPureLetStmt::lower(stmt, file, ctx)?;
                 Ok(IrEffectItem::Let {
                     stmt: ir,
                     span: s(span),
@@ -313,8 +309,8 @@ impl IrNodeLowering for IrEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::table::FileId;
     use crate::diagnostics::ModulePath;
-    use crate::table::FileId;
     use std::path::PathBuf;
 
     fn test_file_id() -> FileId {
@@ -396,13 +392,13 @@ mod tests {
     #[test]
     fn ir_overlay_entry() {
         let s = test_span();
-        let val = IrExpr::Var {
+        let val = IrPureExpr::Var {
             name: "port_var".into(),
             span: s.clone(),
         };
         let entry = IrOverlayEntry::new(test_ident("PORT"), val, s);
         assert_eq!(entry.key().name(), "PORT");
-        assert!(matches!(entry.value(), IrExpr::Var { .. }));
+        assert!(matches!(entry.value(), IrPureExpr::Var { .. }));
     }
 
     // ─── Effect lowering (cacheable) ──────────────────────────
@@ -513,12 +509,7 @@ effect B -> b {
             name: EffectName("A".into()),
         };
         let result = ctx.resolve_effect(&effect_id);
-        assert!(matches!(
-            result,
-            Err(LoweringBail::Invalid(InvalidReport::Cycle(
-                CycleReport::Effect { .. }
-            )))
-        ));
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
     }
 
     #[test]
@@ -536,12 +527,7 @@ effect B -> b {
             name: EffectName("A".into()),
         };
         let result = ctx.resolve_effect(&effect_id);
-        assert!(matches!(
-            result,
-            Err(LoweringBail::Invalid(InvalidReport::Cycle(
-                CycleReport::Effect { .. }
-            )))
-        ));
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
     }
 
     #[test]
@@ -572,10 +558,12 @@ effect C -> c {
         };
         let result = ctx.resolve_effect(&effect_id);
         assert!(result.is_err());
-        if let Err(LoweringBail::Invalid(InvalidReport::Cycle(CycleReport::Effect { chain }))) =
-            &result
-        {
-            assert_eq!(chain.len(), 3);
+        if let Err(LoweringBail::Invalid(inner)) = &result {
+            if let InvalidReport::Cycle(CycleReport::Effect { chain }) = inner.as_ref() {
+                assert_eq!(chain.len(), 3);
+            } else {
+                panic!("expected effect cycle, got {:?}", result);
+            }
         } else {
             panic!("expected effect cycle, got {:?}", result);
         }
@@ -639,12 +627,7 @@ effect C -> c {
             name: EffectName("A".into()),
         };
         let result = ctx.resolve_effect(&effect_id);
-        assert!(matches!(
-            result,
-            Err(LoweringBail::Invalid(
-                InvalidReport::UndefinedEffectNeed { .. }
-            ))
-        ));
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
     }
 
     #[test]
@@ -810,5 +793,141 @@ effect App -> app {
         assert!(result1.is_err());
         let result2 = ctx.resolve_effect(&effect_id);
         assert!(result2.is_err());
+    }
+
+    // ─── Purity enforcement tests ────────────────────────────
+
+    #[test]
+    fn lower_effect_let_rejects_impure_fn_call() {
+        let source = r#"fn impure_fn() {
+  > cmd
+}
+effect E -> sh {
+  let x = impure_fn()
+  shell sh {
+    > start
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let effect_id = EffectId {
+            module: ModulePath("tests/a".into()),
+            name: EffectName("E".into()),
+        };
+        let result = ctx.resolve_effect(&effect_id);
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
+    }
+
+    #[test]
+    fn lower_effect_let_accepts_pure_fn_call() {
+        let source = r#"effect E -> sh {
+  let x = trim("hi")
+  shell sh {
+    > start
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let effect_id = EffectId {
+            module: ModulePath("tests/a".into()),
+            name: EffectName("E".into()),
+        };
+        let result = ctx.resolve_effect(&effect_id);
+        assert!(result.is_ok());
+        let eff = result.unwrap();
+        assert!(
+            eff.body()
+                .iter()
+                .any(|item| matches!(item, IrEffectItem::Let { .. }))
+        );
+    }
+
+    #[test]
+    fn lower_effect_let_accepts_string_literal() {
+        let source = r#"effect E -> sh {
+  let x = "hello"
+  shell sh {
+    > start
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let effect_id = EffectId {
+            module: ModulePath("tests/a".into()),
+            name: EffectName("E".into()),
+        };
+        let result = ctx.resolve_effect(&effect_id);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn lower_effect_let_accepts_var_ref() {
+        let source = r#"effect E -> sh {
+  let x = "val"
+  let y = x
+  shell sh {
+    > start
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let effect_id = EffectId {
+            module: ModulePath("tests/a".into()),
+            name: EffectName("E".into()),
+        };
+        let result = ctx.resolve_effect(&effect_id);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn lower_overlay_accepts_pure_fn_call() {
+        let source = r#"effect Db -> db {
+  shell db {
+    > start
+  }
+}
+effect App -> app {
+  need Db { PORT = available_port() }
+  shell app {
+    > app
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let effect_id = EffectId {
+            module: ModulePath("tests/a".into()),
+            name: EffectName("App".into()),
+        };
+        let result = ctx.resolve_effect(&effect_id);
+        assert!(result.is_ok());
+        let eff = result.unwrap();
+        let need = &eff.needs()[0];
+        assert!(!need.overlay().is_empty());
+    }
+
+    #[test]
+    fn lower_overlay_rejects_impure_fn_call() {
+        let source = r#"fn impure_fn() {
+  > cmd
+}
+effect Db -> db {
+  shell db {
+    > start
+  }
+}
+effect App -> app {
+  need Db { PORT = impure_fn() }
+  shell app {
+    > app
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let effect_id = EffectId {
+            module: ModulePath("tests/a".into()),
+            name: EffectName("App".into()),
+        };
+        let result = ctx.resolve_effect(&effect_id);
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
     }
 }

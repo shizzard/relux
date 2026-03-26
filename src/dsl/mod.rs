@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use walkdir::WalkDir;
 
-use crate::config;
+use crate::core::config;
 
 pub mod lexer;
 pub mod parser;

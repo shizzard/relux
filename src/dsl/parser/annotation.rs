@@ -143,7 +143,6 @@ pub fn marker<'a>()
         .ignore_then(ws())
         .ignore_then(kind)
         .then(condition.or_not())
-        .then_ignore(newline())
         .map_with(|(kind, condition), e| {
             let span = Span::from(e.span());
             Spanned::new(
@@ -155,6 +154,7 @@ pub fn marker<'a>()
                 span,
             )
         })
+        .then_ignore(newline())
         .labelled("marker (# skip/run/flaky)")
 }
 

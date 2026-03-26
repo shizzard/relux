@@ -1,13 +1,11 @@
+use crate::core::table::FileId;
 use crate::diagnostics::{CycleReport, InvalidReport, LoweringBail};
-use crate::table::FileId;
 
 pub use crate::dsl::resolver::lower::LoweringContext;
 
 /// Trait for lowering AST nodes into IR nodes with optional caching
 /// and cycle detection. Default implementations provide no-op behavior
 /// for non-cacheable types — only `lower` must be implemented.
-// TODO: box LoweringBail to reduce Result size
-#[allow(clippy::result_large_err)]
 pub trait IrNodeLowering: Sized + Clone {
     type Ast;
 
@@ -49,7 +47,7 @@ pub trait IrNodeLowering: Sized + Clone {
             Some(Some(result)) => result,
             Some(None) => {
                 if let Some(cycle) = Self::check_cycle(ast, ctx) {
-                    let bail = LoweringBail::Invalid(InvalidReport::Cycle(cycle));
+                    let bail = LoweringBail::invalid(InvalidReport::Cycle(cycle));
                     Self::cache(ast, Err(bail.clone()), ctx);
                     return Err(bail);
                 }

@@ -4,13 +4,17 @@ use std::{fs, process};
 
 use clap::{Arg, ArgAction, Command, value_parser};
 
-use relux::config::{self, ReluxConfig};
+use relux::core::config::{self, ReluxConfig};
+use relux::diagnostics::Cause;
+use relux::diagnostics::ModulePath;
 use relux::dsl::lexer::{lex, normalize};
 use relux::dsl::parser::parse;
-use relux::dsl::resolver::ir::NewPlan;
+use relux::dsl::resolver::ir::{IrTimeout, Plan};
 use relux::dsl::resolver::{FsSourceLoader, discover_test_modules, resolve};
-use relux::runtime::history::{HistoryCommand, OutputFormat, run_history};
-use relux::stack::Env;
+use relux::history::{HistoryCommand, LatestRun, OutputFormat, run_history};
+use relux::pure::Env;
+use relux::runtime::report::result::Outcome;
+use relux::runtime::{RunContext, RunStrategy};
 
 fn cli() -> Command {
     Command::new("relux")
@@ -80,7 +84,7 @@ fn cli() -> Command {
                 .arg(
                     Arg::new("rerun")
                         .long("rerun")
-                        .help("Re-run only failed tests from the latest run")
+                        .help("Re-run only non-passing tests from the latest run")
                         .action(ArgAction::SetTrue),
                 )
                 .arg(
@@ -402,9 +406,121 @@ fn capitalize_effect_name(segment: &str) -> String {
         .join("")
 }
 
-async fn cmd_run(_matches: &clap::ArgMatches) {
-    // TODO(R004): runtime adaptation — needs runtime pipeline updated to work with new IR
-    todo!("R004: runtime adaptation")
+async fn cmd_run(matches: &clap::ArgMatches) {
+    let (project_root, cfg) = resolve_project(matches);
+
+    let rerun = matches.get_flag("rerun");
+    let test_paths = if rerun {
+        match LatestRun::load(&project_root) {
+            Ok(run) => {
+                let paths = run.non_pass_paths();
+                if paths.is_empty() {
+                    eprintln!("nothing to rerun: all tests passed in the latest run");
+                    return;
+                }
+                paths.into_iter().map(ModulePath).collect()
+            }
+            Err(e) => {
+                eprintln!("error: {e}");
+                process::exit(1);
+            }
+        }
+    } else {
+        resolve_test_paths(matches, &project_root)
+    };
+
+    let multiplier: f64 = *matches
+        .get_one("multiplier")
+        .expect("clap default guarantees presence");
+
+    let loader = build_source_loader(&project_root);
+    let env = Arc::new(Env::capture());
+
+    let suite = resolve(&*loader, test_paths, env, multiplier, &project_root);
+    let strategy = match matches.get_one::<String>("strategy").map(|s| s.as_str()) {
+        Some("fail-fast") => RunStrategy::FailFast,
+        _ => RunStrategy::All,
+    };
+
+    let run_id = generate_run_id();
+    let timestamp = chrono::Utc::now().format("%Y-%m-%d-%H-%M-%S").to_string();
+    let out_dir = config::out_dir(&project_root);
+    let run_dir = out_dir.join(format!("run-{timestamp}-{run_id}"));
+    let artifacts_dir = run_dir.join("artifacts");
+    let _ = fs::create_dir_all(&artifacts_dir);
+
+    // Update latest symlink
+    let latest = out_dir.join("latest");
+    let _ = fs::remove_file(&latest);
+    #[cfg(unix)]
+    {
+        let _ = std::os::unix::fs::symlink(&run_dir, &latest);
+    }
+
+    let default_timeout = IrTimeout::tolerance_scaled(cfg.timeout.match_timeout, multiplier);
+    let test_timeout = cfg
+        .timeout
+        .test
+        .map(|d| IrTimeout::tolerance_scaled(d, multiplier));
+
+    let run_ctx = RunContext {
+        run_id: run_id.clone(),
+        run_dir: run_dir.clone(),
+        artifacts_dir: artifacts_dir.clone(),
+        project_root: project_root.clone(),
+        shell_command: cfg.shell.command.clone(),
+        shell_prompt: cfg.shell.prompt.clone(),
+        default_timeout,
+        test_timeout,
+        suite_timeout: cfg.timeout.suite,
+        strategy,
+    };
+
+    let results = relux::runtime::execute(&suite, &run_ctx).await;
+
+    // Summary
+    let total_duration: std::time::Duration = results.iter().map(|r| r.duration).sum();
+    relux::runtime::report::run_summary::write_run_summary(
+        &run_dir,
+        &run_id,
+        &results,
+        total_duration,
+    );
+
+    // Report
+    let report = relux::runtime::report::result::RunReport {
+        results: &results,
+        source_table: &suite.tables.sources,
+        run_dir: &run_dir,
+        project_root: &project_root,
+    };
+    report.eprint();
+
+    // Optional artifact formats
+    let suite_name = cfg.name.as_deref().unwrap_or("relux");
+    if matches.get_flag("tap") {
+        relux::runtime::report::tap::generate_tap(
+            &run_dir,
+            suite_name,
+            &results,
+            &suite.tables.sources,
+        );
+    }
+    if matches.get_flag("junit") {
+        relux::runtime::report::junit::generate_junit(
+            &run_dir,
+            suite_name,
+            &results,
+            &suite.tables.sources,
+        );
+    }
+
+    let has_problems = results
+        .iter()
+        .any(|r| matches!(r.outcome, Outcome::Fail(_) | Outcome::Invalid(_)));
+    if has_problems {
+        process::exit(1);
+    }
 }
 
 fn cmd_history(matches: &clap::ArgMatches) {
@@ -442,15 +558,20 @@ fn cmd_check(matches: &clap::ArgMatches) {
     let loader = build_source_loader(&project_root);
     let env = Arc::new(Env::capture());
 
-    let suite = resolve(&*loader, test_paths, env);
+    let suite = resolve(&*loader, test_paths, env, 1.0, &project_root);
 
     // Diagnostics are already printed inside resolve().
-    // Check if any plan is Invalid → exit 1.
-    let has_invalid = suite
+    // Check if any plan is Invalid or any cause is Invalid → exit 1.
+    let has_invalid_plan = suite
         .plans
         .iter()
-        .any(|p| matches!(p, NewPlan::Invalid { .. }));
-    if has_invalid {
+        .any(|p| matches!(p, Plan::Invalid { .. }));
+    let has_invalid_cause = suite
+        .causes
+        .as_vec()
+        .into_iter()
+        .any(|(_id, cause)| matches!(cause, Cause::Invalid(_)));
+    if has_invalid_plan || has_invalid_cause {
         process::exit(1);
     }
 
@@ -491,7 +612,8 @@ fn cmd_dump_ir(matches: &clap::ArgMatches) {
         .cloned()
         .collect();
 
-    // Convert file paths to module paths relative to project root
+    // Convert file paths to module paths relative to relux dir
+    let relux_dir = project_root.join(config::RELUX_DIR);
     let test_paths: Vec<_> = files
         .iter()
         .filter_map(|f| {
@@ -500,7 +622,7 @@ fn cmd_dump_ir(matches: &clap::ArgMatches) {
             } else {
                 f.clone()
             };
-            let rel = abs.strip_prefix(&project_root).ok()?;
+            let rel = abs.strip_prefix(&relux_dir).ok()?;
             let without_ext = rel.with_extension("");
             let mod_path = without_ext.to_string_lossy().replace('\\', "/");
             Some(relux::diagnostics::ModulePath(mod_path))
@@ -509,11 +631,11 @@ fn cmd_dump_ir(matches: &clap::ArgMatches) {
 
     let loader = build_source_loader(&project_root);
     let env = Arc::new(Env::capture());
-    let suite = resolve(&*loader, test_paths, env);
+    let suite = resolve(&*loader, test_paths, env, 1.0, &project_root);
 
     let mut first = true;
     for plan in &suite.plans {
-        if let NewPlan::Runnable { test, .. } = plan {
+        if let Plan::Runnable { test, .. } = plan {
             if !first {
                 println!("\n{}", "─".repeat(60));
             }
@@ -545,6 +667,7 @@ fn resolve_test_paths(
     matches: &clap::ArgMatches,
     project_root: &std::path::Path,
 ) -> Vec<relux::diagnostics::ModulePath> {
+    let relux_dir = project_root.join(config::RELUX_DIR);
     let paths: Option<Vec<PathBuf>> = matches
         .get_many::<PathBuf>("paths")
         .map(|p| p.cloned().collect());
@@ -558,7 +681,7 @@ fn resolve_test_paths(
                 } else {
                     f.clone()
                 };
-                let rel = abs.strip_prefix(project_root).ok()?;
+                let rel = abs.strip_prefix(&relux_dir).ok()?;
                 let without_ext = rel.with_extension("");
                 let mod_path = without_ext.to_string_lossy().replace('\\', "/");
                 Some(relux::diagnostics::ModulePath(mod_path))
@@ -566,19 +689,19 @@ fn resolve_test_paths(
             .collect(),
         None => {
             let test_dir = config::tests_dir(project_root);
-            discover_test_modules(&test_dir, project_root)
+            discover_test_modules(&test_dir, &relux_dir)
         }
     }
+}
+
+fn generate_run_id() -> String {
+    let bytes: [u8; 16] = rand::random();
+    bs58::encode(bytes).into_string().chars().take(10).collect()
 }
 
 fn build_source_loader(
     project_root: &std::path::Path,
 ) -> Box<dyn relux::dsl::resolver::SourceLoader> {
-    let lib_dir = config::lib_dir(project_root);
-    let extra = if lib_dir.is_dir() {
-        vec![lib_dir]
-    } else {
-        vec![]
-    };
-    Box::new(FsSourceLoader::new(project_root.to_path_buf(), extra))
+    let relux_dir = project_root.join(config::RELUX_DIR);
+    Box::new(FsSourceLoader::new(relux_dir, vec![]))
 }

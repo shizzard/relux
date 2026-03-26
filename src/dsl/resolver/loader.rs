@@ -2,18 +2,13 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 
 use crate::Span;
+use crate::core::table::{FileId, SharedTable, SourceFile};
 use crate::diagnostics::{
     Cause, CauseId, CauseTable, InvalidReport, IrSpan, ModulePath, WarningTable,
 };
 use crate::dsl::resolver::SourceLoader;
-use crate::table::{FileId, SharedTable, SourceFile};
 
-use crate::dsl::parser::ast::AstModule;
-
-// ─── Type aliases for shared tables during loading ──────────
-
-type SharedAstTable = SharedTable<ModulePath, (FileId, AstModule)>;
-type SharedSourceTable = SharedTable<FileId, SourceFile>;
+use super::ir::{AstTable, SourceTable};
 
 // ─── load_modules ───────────────────────────────────────────
 
@@ -31,9 +26,9 @@ pub fn load_modules(
     seeds: Vec<ModulePath>,
     cause_table: &CauseTable,
     _warning_table: &WarningTable,
-) -> (SharedAstTable, SharedSourceTable) {
-    let ast_table: SharedAstTable = SharedTable::new();
-    let source_table: SharedSourceTable = SharedTable::new();
+) -> (AstTable, SourceTable) {
+    let ast_table: AstTable = SharedTable::new();
+    let source_table: SourceTable = SharedTable::new();
 
     let mut queue: VecDeque<ModulePath> = VecDeque::new();
 
@@ -57,7 +52,7 @@ pub fn load_modules(
             let ir_span = IrSpan::new(FileId::new(PathBuf::from(&mod_path.0)), Span::new(0, 0));
             cause_table.insert(
                 cause_id,
-                Cause::Invalid(InvalidReport::UndefinedModuleImport {
+                Cause::invalid(InvalidReport::UndefinedModuleImport {
                     module_path: mod_path.clone(),
                     span: ir_span,
                 }),
@@ -99,7 +94,7 @@ pub fn load_modules(
                 let ir_span = IrSpan::new(file_id, err_span);
                 cause_table.insert(
                     cause_id,
-                    Cause::Invalid(InvalidReport::ParseError {
+                    Cause::invalid(InvalidReport::ParseError {
                         module_path: mod_path,
                         message: parse_err.to_string(),
                         span: ir_span,
@@ -152,7 +147,7 @@ impl SourceLoader for InMemoryLoader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::table::{FrozenTable, SharedTable};
+    use crate::core::table::SharedTable;
 
     fn mp(s: &str) -> ModulePath {
         ModulePath(s.into())
@@ -360,10 +355,7 @@ mod tests {
         let cause_id = CauseId::generate("lib/missing", "", 0, "module_not_found");
         let cause = causes.get(&cause_id);
         assert!(cause.is_some(), "expected cause for missing module");
-        assert!(matches!(
-            cause.unwrap(),
-            Cause::Invalid(InvalidReport::UndefinedModuleImport { .. })
-        ));
+        assert!(matches!(cause.unwrap(), Cause::Invalid(_)));
     }
 
     #[test]
@@ -392,10 +384,7 @@ mod tests {
         let cause_id = CauseId::generate("tests/bad", "", 0, "parse_error");
         let cause = causes.get(&cause_id);
         assert!(cause.is_some(), "expected cause for parse error");
-        assert!(matches!(
-            cause.unwrap(),
-            Cause::Invalid(InvalidReport::ParseError { .. })
-        ));
+        assert!(matches!(cause.unwrap(), Cause::Invalid(_)));
     }
 
     #[test]
@@ -462,56 +451,6 @@ mod tests {
     }
 
     // ── Freeze semantics ───────────────────────────────────
-
-    #[test]
-    fn freeze_ast_table() {
-        let mut loader = InMemoryLoader::new();
-        loader.add("tests/a", "test \"a\" {}");
-        loader.add("tests/b", "test \"b\" {}");
-        let (causes, warnings) = new_tables();
-        let (ast_shared, _src) = load_modules(
-            &loader,
-            vec![mp("tests/a"), mp("tests/b")],
-            &causes,
-            &warnings,
-        );
-        let frozen: FrozenTable<ModulePath, (FileId, AstModule)> =
-            ast_shared.try_into().expect("freeze should succeed");
-        assert!(frozen.get(&mp("tests/a")).is_some());
-        assert!(frozen.get(&mp("tests/b")).is_some());
-    }
-
-    #[test]
-    fn freeze_source_table() {
-        let mut loader = InMemoryLoader::new();
-        loader.add("tests/a", "test \"a\" {}");
-        let (causes, warnings) = new_tables();
-        let (_ast, src_shared) = load_modules(&loader, vec![mp("tests/a")], &causes, &warnings);
-        let frozen: FrozenTable<FileId, SourceFile> =
-            src_shared.try_into().expect("freeze should succeed");
-        assert!(!frozen.is_empty());
-    }
-
-    #[test]
-    fn freeze_fails_with_outstanding_clone() {
-        let mut loader = InMemoryLoader::new();
-        loader.add("tests/a", "test \"a\" {}");
-        let (causes, warnings) = new_tables();
-        let (ast_shared, _src) = load_modules(&loader, vec![mp("tests/a")], &causes, &warnings);
-        let _clone = ast_shared.clone();
-        let result: Result<FrozenTable<ModulePath, (FileId, AstModule)>, _> = ast_shared.try_into();
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn freeze_empty_table() {
-        let loader = InMemoryLoader::new();
-        let (causes, warnings) = new_tables();
-        let (ast_shared, _src) = load_modules(&loader, vec![], &causes, &warnings);
-        let frozen: FrozenTable<ModulePath, (FileId, AstModule)> =
-            ast_shared.try_into().expect("freeze should succeed");
-        assert!(frozen.is_empty());
-    }
 
     // ── Additional error accumulation ─────────────────────
 

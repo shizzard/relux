@@ -3,8 +3,8 @@ test "check detects undefined name" {
     Verify relux check reports a call to an undefined function.
     """
     shell s {
-        > relux check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
-        <? undefined name
+        > ${__RELUX} check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? undefined function
         match_prompt()
         match_exit_code(1)
     }

@@ -1,71 +1,180 @@
 use std::time::Duration;
 
+use crate::core::table::FileId;
 use crate::diagnostics::{IrSpan, LoweringBail};
 use crate::dsl::parser::ast::AstTimeout;
-use crate::table::FileId;
 
 use super::{IrNode, IrNodeLowering, LoweringContext};
 
 #[derive(Debug, Clone)]
-pub enum IrTimeoutKind {
-    Tolerance { span: IrSpan },
-    Assertion { span: IrSpan },
-}
-
-impl_ir_node_enum!(IrTimeoutKind {
-    Tolerance,
-    Assertion
-});
-
-#[derive(Debug, Clone)]
-pub struct IrTimeout {
-    kind: IrTimeoutKind,
-    duration: Duration,
-    span: IrSpan,
+pub enum IrTimeout {
+    Tolerance {
+        duration: Duration,
+        multiplier: f64,
+        span: IrSpan,
+    },
+    Assertion {
+        duration: Duration,
+        span: IrSpan,
+    },
 }
 
 impl IrTimeout {
-    pub fn new(kind: IrTimeoutKind, duration: Duration, span: IrSpan) -> Self {
-        Self {
-            kind,
+    /// Convenience constructor for a tolerance timeout with default multiplier (1.0).
+    pub fn tolerance(duration: Duration) -> Self {
+        Self::tolerance_scaled(duration, 1.0)
+    }
+
+    /// Convenience constructor for a tolerance timeout with a given multiplier.
+    pub fn tolerance_scaled(duration: Duration, multiplier: f64) -> Self {
+        Self::Tolerance {
             duration,
-            span,
+            multiplier,
+            span: IrSpan::synthetic(),
         }
     }
 
-    pub fn kind(&self) -> &IrTimeoutKind {
-        &self.kind
+    /// Apply a multiplier to this timeout. Only affects Tolerance; Assertion is unchanged.
+    pub fn apply_multiplier(&mut self, m: f64) {
+        if let Self::Tolerance { multiplier, .. } = self {
+            *multiplier = m;
+        }
     }
 
-    pub fn duration(&self) -> Duration {
-        self.duration
+    /// The raw duration before any multiplier adjustment.
+    pub fn raw_duration(&self) -> Duration {
+        match self {
+            Self::Tolerance { duration, .. } | Self::Assertion { duration, .. } => *duration,
+        }
+    }
+
+    /// The effective duration after multiplier adjustment.
+    pub fn adjusted_duration(&self) -> Duration {
+        match self {
+            Self::Tolerance {
+                duration,
+                multiplier,
+                ..
+            } => duration.mul_f64(*multiplier),
+            Self::Assertion { duration, .. } => *duration,
+        }
+    }
+
+    /// Whether this is an assertion timeout.
+    pub fn is_assertion(&self) -> bool {
+        matches!(self, Self::Assertion { .. })
     }
 }
 
-impl_ir_node_struct!(IrTimeout);
+impl_ir_node_enum!(IrTimeout {
+    Tolerance,
+    Assertion
+});
 
 impl IrNodeLowering for IrTimeout {
     type Ast = AstTimeout;
     fn lower(
         ast: &AstTimeout,
         file: &FileId,
-        _ctx: &mut LoweringContext,
+        ctx: &mut LoweringContext,
     ) -> Result<Self, LoweringBail> {
         Ok(match ast {
-            AstTimeout::Tolerance { duration, span } => IrTimeout::new(
-                IrTimeoutKind::Tolerance {
-                    span: IrSpan::new(file.clone(), *span),
-                },
-                *duration,
-                IrSpan::new(file.clone(), *span),
-            ),
-            AstTimeout::Assertion { duration, span } => IrTimeout::new(
-                IrTimeoutKind::Assertion {
-                    span: IrSpan::new(file.clone(), *span),
-                },
-                *duration,
-                IrSpan::new(file.clone(), *span),
-            ),
+            AstTimeout::Tolerance { duration, span } => IrTimeout::Tolerance {
+                duration: *duration,
+                multiplier: ctx.multiplier(),
+                span: IrSpan::new(file.clone(), *span),
+            },
+            AstTimeout::Assertion { duration, span } => IrTimeout::Assertion {
+                duration: *duration,
+                span: IrSpan::new(file.clone(), *span),
+            },
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn tolerance_default_multiplier() {
+        let t = IrTimeout::tolerance(Duration::from_secs(5));
+        assert_eq!(t.adjusted_duration(), Duration::from_secs(5));
+    }
+
+    #[test]
+    fn tolerance_apply_multiplier() {
+        let mut t = IrTimeout::tolerance(Duration::from_secs(5));
+        t.apply_multiplier(2.0);
+        assert_eq!(t.adjusted_duration(), Duration::from_secs(10));
+    }
+
+    #[test]
+    fn tolerance_apply_multiplier_fractional() {
+        let mut t = IrTimeout::tolerance(Duration::from_secs(5));
+        t.apply_multiplier(0.5);
+        assert_eq!(t.adjusted_duration(), Duration::from_millis(2500));
+    }
+
+    #[test]
+    fn tolerance_apply_multiplier_zero() {
+        let mut t = IrTimeout::tolerance(Duration::from_secs(5));
+        t.apply_multiplier(0.0);
+        assert_eq!(t.adjusted_duration(), Duration::ZERO);
+    }
+
+    #[test]
+    fn assertion_ignores_multiplier() {
+        let mut t = IrTimeout::Assertion {
+            duration: Duration::from_secs(5),
+            span: IrSpan::synthetic(),
+        };
+        t.apply_multiplier(2.0);
+        assert_eq!(t.adjusted_duration(), Duration::from_secs(5));
+    }
+
+    #[test]
+    fn tolerance_raw_duration() {
+        let mut t = IrTimeout::tolerance(Duration::from_secs(5));
+        t.apply_multiplier(3.0);
+        assert_eq!(t.raw_duration(), Duration::from_secs(5));
+        assert_eq!(t.adjusted_duration(), Duration::from_secs(15));
+    }
+
+    #[test]
+    fn tolerance_constructor_synthetic_span() {
+        let t = IrTimeout::tolerance(Duration::from_secs(1));
+        assert_eq!(t.span().file().path().to_str().unwrap(), "<synthetic>");
+    }
+
+    #[test]
+    fn assertion_adjusted_is_raw() {
+        let t = IrTimeout::Assertion {
+            duration: Duration::from_secs(3),
+            span: IrSpan::synthetic(),
+        };
+        assert_eq!(t.adjusted_duration(), Duration::from_secs(3));
+        assert_eq!(t.raw_duration(), Duration::from_secs(3));
+        assert_eq!(t.adjusted_duration(), t.raw_duration());
+    }
+
+    #[test]
+    fn tolerance_scaled_applies_multiplier() {
+        let t = IrTimeout::tolerance_scaled(Duration::from_secs(5), 2.0);
+        assert_eq!(t.raw_duration(), Duration::from_secs(5));
+        assert_eq!(t.adjusted_duration(), Duration::from_secs(10));
+    }
+
+    #[test]
+    fn tolerance_scaled_with_unit_multiplier() {
+        let t = IrTimeout::tolerance_scaled(Duration::from_secs(5), 1.0);
+        assert_eq!(t.adjusted_duration(), Duration::from_secs(5));
+    }
+
+    #[test]
+    fn tolerance_scaled_fractional() {
+        let t = IrTimeout::tolerance_scaled(Duration::from_secs(10), 0.5);
+        assert_eq!(t.adjusted_duration(), Duration::from_secs(5));
     }
 }

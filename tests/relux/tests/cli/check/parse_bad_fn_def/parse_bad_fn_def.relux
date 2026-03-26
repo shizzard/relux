@@ -3,7 +3,7 @@ test "function without name is a parse error" {
     Verify relux check rejects a function definition without a name.
     """
     shell s {
-        > relux check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        > ${__RELUX} check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? expected function name
         match_prompt()
         match_exit_code(1)

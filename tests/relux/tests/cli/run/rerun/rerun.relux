@@ -1,18 +1,26 @@
 test "rerun re-runs only failed tests" {
     """
-    Verify --rerun selects only tests that failed in the latest run.
+    Verify --rerun selects only non-passing tests from the latest run.
 
-    Run a trigger test that fails via fail pattern, then re-run with
-    the trigger set to pass and verify --rerun picks it up.
+    Phase 1: run with TRIGGER=error — always_pass passes, trigger fails,
+             always_skipped is skipped, always_invalid is invalid.
+    Phase 2: --rerun with TRIGGER=success — reruns trigger (now passes),
+             always_skipped (still skipped), always_invalid (still invalid).
+             always_pass is excluded because it passed.
+    Phase 3: --rerun again — trigger passed in phase 2, so only skipped and
+             invalid remain. Both are still rerun.
     """
     shell s {
-        > TRIGGER=error relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
-        <? 1 failed
+        > TRIGGER=error ${__RELUX} run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 passed.*1 failed.*1 invalid.*1 skipped
         match_not_ok()
 
-        > TRIGGER=success relux run --rerun --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
-        <? re-running 1 failed test
-        <? 1 passed
-        match_ok()
+        > TRIGGER=success ${__RELUX} run --rerun --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 passed.*0 failed.*1 invalid.*1 skipped
+        match_not_ok()
+
+        > ${__RELUX} run --rerun --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 0 passed.*0 failed.*1 invalid.*1 skipped
+        match_not_ok()
     }
 }

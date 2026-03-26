@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
+use crate::core::table::FileId;
 use crate::diagnostics::{
     Cause, CauseId, CauseTable, DefinitionRef, IrSpan, LoweringBail, ModulePath, WarningId,
     WarningTable,
 };
 use crate::dsl::parser::ast::{AstItem, AstTestDef, AstTestItem};
-use crate::stack::Env;
-use crate::table::FileId;
+use crate::pure::Env;
 
-use super::tables::SourceTable;
+use super::tables::Tables;
 use super::test_def::IrTest;
 use super::timeout::IrTimeout;
 use super::{IrNode, IrNodeLowering, LoweringContext};
@@ -53,10 +53,10 @@ impl TestMeta {
 
 impl_ir_node_struct!(TestMeta);
 
-// ─── NewPlan ─────────────────────────────────────────────────
+// ─── Plan ─────────────────────────────────────────────────
 
 #[derive(Debug)]
-pub enum NewPlan {
+pub enum Plan {
     Runnable {
         meta: TestMeta,
         test: IrTest,
@@ -74,12 +74,12 @@ pub enum NewPlan {
     },
 }
 
-impl NewPlan {
+impl Plan {
     pub fn meta(&self) -> &TestMeta {
         match self {
-            NewPlan::Runnable { meta, .. } => meta,
-            NewPlan::Skipped { meta, .. } => meta,
-            NewPlan::Invalid { meta, .. } => meta,
+            Plan::Runnable { meta, .. } => meta,
+            Plan::Skipped { meta, .. } => meta,
+            Plan::Invalid { meta, .. } => meta,
         }
     }
 }
@@ -88,11 +88,11 @@ impl NewPlan {
 
 #[derive(Debug)]
 pub struct Suite {
-    pub plans: Vec<NewPlan>,
-    pub source_map: SourceTable,
+    pub plans: Vec<Plan>,
     pub env: Arc<Env>,
     pub causes: CauseTable,
     pub warnings: WarningTable,
+    pub tables: Tables,
 }
 
 // ─── Plan Building ───────────────────────────────────────────
@@ -102,7 +102,7 @@ pub(crate) fn build_plan(
     module_path: &ModulePath,
     file_id: &FileId,
     ctx: &mut LoweringContext,
-) -> NewPlan {
+) -> Plan {
     // Extract TestMeta
     let docstring = def.body.iter().find_map(|item| {
         if let AstTestItem::DocString { text, .. } = &item.node {
@@ -123,20 +123,12 @@ pub(crate) fn build_plan(
     );
 
     // Create and populate local tables
-    let mut fn_table = ctx.local_fn_table();
-    let mut pure_fn_table = ctx.local_pure_fn_table();
-    let mut effect_table = ctx.local_effect_table();
-    if let Err(e) = ctx.populate_local_tables(
-        module_path,
-        file_id,
-        &mut fn_table,
-        &mut pure_fn_table,
-        Some(&mut effect_table),
-    ) {
-        let bail = LoweringBail::Invalid(e);
+    let mut tables = ctx.local_tables();
+    if let Err(e) = ctx.populate_local_tables(module_path, file_id, &mut tables) {
+        let bail = LoweringBail::invalid(e);
         let cause_id = bail.cause_id();
         ctx.register_cause(cause_id.clone(), Cause::from_bail(&bail));
-        return NewPlan::Invalid {
+        return Plan::Invalid {
             meta,
             causes: vec![cause_id],
             warnings: vec![],
@@ -147,9 +139,7 @@ pub(crate) fn build_plan(
     use crate::dsl::resolver::lower::LoweringScope;
     ctx.push_scope(LoweringScope {
         module_path: module_path.clone(),
-        fn_table,
-        pure_fn_table,
-        effect_table: Some(effect_table),
+        tables,
     });
 
     // Evaluate markers
@@ -161,9 +151,9 @@ pub(crate) fn build_plan(
     match super::marker::eval_marker(&def.markers, definition, &env, file_id, ctx) {
         Ok(Some(skip)) => {
             let cause_id = skip.cause_id();
-            ctx.register_cause(cause_id.clone(), Cause::Skip(skip));
+            ctx.register_cause(cause_id.clone(), Cause::skip(skip));
             ctx.pop_scope();
-            return NewPlan::Skipped {
+            return Plan::Skipped {
                 meta,
                 causes: vec![cause_id],
                 warnings: vec![],
@@ -174,7 +164,7 @@ pub(crate) fn build_plan(
             let cause_id = bail.cause_id();
             ctx.register_cause(cause_id.clone(), Cause::from_bail(&bail));
             ctx.pop_scope();
-            return NewPlan::Invalid {
+            return Plan::Invalid {
                 meta,
                 causes: vec![cause_id],
                 warnings: vec![],
@@ -187,7 +177,7 @@ pub(crate) fn build_plan(
     ctx.pop_scope();
 
     match result {
-        Ok(ir_test) => NewPlan::Runnable {
+        Ok(ir_test) => Plan::Runnable {
             meta,
             test: ir_test,
             warnings: vec![],
@@ -195,7 +185,7 @@ pub(crate) fn build_plan(
         Err(LoweringBail::Skip(skip)) => {
             let cause_id = skip.cause_id();
             ctx.register_cause(cause_id.clone(), Cause::Skip(skip));
-            NewPlan::Skipped {
+            Plan::Skipped {
                 meta,
                 causes: vec![cause_id],
                 warnings: vec![],
@@ -204,7 +194,7 @@ pub(crate) fn build_plan(
         Err(LoweringBail::Invalid(invalid)) => {
             let cause_id = invalid.cause_id();
             ctx.register_cause(cause_id.clone(), Cause::Invalid(invalid));
-            NewPlan::Invalid {
+            Plan::Invalid {
                 meta,
                 causes: vec![cause_id],
                 warnings: vec![],
@@ -214,12 +204,12 @@ pub(crate) fn build_plan(
 }
 
 /// Build plans for all tests across all modules, sorted by module path.
-pub fn build_all_plans(ctx: &mut LoweringContext) -> Vec<NewPlan> {
+pub fn build_all_plans(ctx: &mut LoweringContext) -> Vec<Plan> {
     // Collect (module_path, file_id, test_index) tuples
     let ast_table = ctx.ast_table().clone();
     let mut test_entries: Vec<(ModulePath, FileId, usize)> = Vec::new();
 
-    for (module_path, (file_id, module)) in ast_table.iter() {
+    for (module_path, (file_id, module)) in ast_table.as_vec() {
         for (idx, item) in module.items.iter().enumerate() {
             if matches!(&item.node, AstItem::Test { .. }) {
                 test_entries.push((module_path.clone(), file_id.clone(), idx));
@@ -247,14 +237,14 @@ pub fn build_all_plans(ctx: &mut LoweringContext) -> Vec<NewPlan> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::table::FileId;
     use crate::dsl::resolver::ir::IrTestItem;
     use crate::dsl::resolver::lower::test_helpers::*;
-    use crate::table::FileId;
     use std::collections::HashMap;
     use std::path::PathBuf;
     use std::time::Duration;
 
-    use super::super::timeout::IrTimeoutKind;
+    use super::super::timeout::IrTimeout;
 
     fn test_file_id() -> FileId {
         FileId::new(PathBuf::from("test.relux"))
@@ -269,12 +259,12 @@ mod tests {
         let s = test_span();
         let meta = TestMeta::new("test1", None, None, s.clone());
         let test = IrTest::new("test1", vec![], vec![], None, s);
-        let plan = NewPlan::Runnable {
+        let plan = Plan::Runnable {
             meta,
             test,
             warnings: vec![],
         };
-        assert!(matches!(plan, NewPlan::Runnable { .. }));
+        assert!(matches!(plan, Plan::Runnable { .. }));
     }
 
     #[test]
@@ -285,12 +275,12 @@ mod tests {
         let w = WarningId {
             id: "test-warn-0001".into(),
         };
-        let plan = NewPlan::Runnable {
+        let plan = Plan::Runnable {
             meta,
             test,
             warnings: vec![w],
         };
-        if let NewPlan::Runnable { warnings, .. } = &plan {
+        if let Plan::Runnable { warnings, .. } = &plan {
             assert_eq!(warnings.len(), 1);
         }
     }
@@ -299,12 +289,12 @@ mod tests {
     fn plan_skipped_variant() {
         let meta = TestMeta::new("test1", None, None, test_span());
         let cause = CauseId::generate("test", "skip", 0, "skip");
-        let plan = NewPlan::Skipped {
+        let plan = Plan::Skipped {
             meta,
             causes: vec![cause],
             warnings: vec![],
         };
-        assert!(matches!(plan, NewPlan::Skipped { .. }));
+        assert!(matches!(plan, Plan::Skipped { .. }));
     }
 
     #[test]
@@ -312,12 +302,12 @@ mod tests {
         let meta = TestMeta::new("test1", None, None, test_span());
         let c1 = CauseId::generate("test", "a", 0, "skip");
         let c2 = CauseId::generate("test", "b", 1, "skip");
-        let plan = NewPlan::Skipped {
+        let plan = Plan::Skipped {
             meta,
             causes: vec![c1, c2],
             warnings: vec![],
         };
-        if let NewPlan::Skipped { causes, .. } = &plan {
+        if let Plan::Skipped { causes, .. } = &plan {
             assert_eq!(causes.len(), 2);
         }
     }
@@ -326,12 +316,12 @@ mod tests {
     fn plan_invalid_variant() {
         let meta = TestMeta::new("test1", None, None, test_span());
         let cause = CauseId::generate("test", "err", 0, "invalid");
-        let plan = NewPlan::Invalid {
+        let plan = Plan::Invalid {
             meta,
             causes: vec![cause],
             warnings: vec![],
         };
-        assert!(matches!(plan, NewPlan::Invalid { .. }));
+        assert!(matches!(plan, Plan::Invalid { .. }));
     }
 
     #[test]
@@ -339,12 +329,12 @@ mod tests {
         let meta = TestMeta::new("test1", None, None, test_span());
         let c1 = CauseId::generate("test", "a", 0, "err1");
         let c2 = CauseId::generate("test", "b", 1, "err2");
-        let plan = NewPlan::Invalid {
+        let plan = Plan::Invalid {
             meta,
             causes: vec![c1, c2],
             warnings: vec![],
         };
-        if let NewPlan::Invalid { causes, .. } = &plan {
+        if let Plan::Invalid { causes, .. } = &plan {
             assert_eq!(causes.len(), 2);
         }
     }
@@ -352,11 +342,11 @@ mod tests {
     #[test]
     fn test_meta_with_all_fields() {
         let s = test_span();
-        let timeout = IrTimeout::new(
-            IrTimeoutKind::Tolerance { span: s.clone() },
-            Duration::from_secs(5),
-            s.clone(),
-        );
+        let timeout = IrTimeout::Tolerance {
+            duration: Duration::from_secs(5),
+            multiplier: 1.0,
+            span: s.clone(),
+        };
         let meta = TestMeta::new("test1", Some("docs".into()), Some(timeout), s);
         assert_eq!(meta.name(), "test1");
         assert_eq!(meta.docstring(), Some("docs"));
@@ -540,7 +530,7 @@ test "with effect" {
 "#,
         )]);
         assert!(is_runnable(&suite.plans[0]));
-        if let NewPlan::Runnable { test, .. } = &suite.plans[0] {
+        if let Plan::Runnable { test, .. } = &suite.plans[0] {
             let has_cleanup = test
                 .body()
                 .iter()
@@ -614,7 +604,7 @@ test "multi effects" {
 "#,
         )]);
         assert!(is_runnable(&suite.plans[0]));
-        if let NewPlan::Runnable { test, .. } = &suite.plans[0] {
+        if let Plan::Runnable { test, .. } = &suite.plans[0] {
             assert_eq!(test.needs().len(), 2);
         }
     }
@@ -668,7 +658,7 @@ test "skipped" {
 }
 "#,
         )]);
-        if let NewPlan::Skipped { causes, .. } = &suite.plans[0] {
+        if let Plan::Skipped { causes, .. } = &suite.plans[0] {
             assert!(!causes.is_empty());
         } else {
             panic!("expected Skipped plan");
@@ -782,7 +772,7 @@ test "t" {
 }
 "#,
         )]);
-        if let NewPlan::Invalid { causes, .. } = &suite.plans[0] {
+        if let Plan::Invalid { causes, .. } = &suite.plans[0] {
             assert!(!causes.is_empty());
         } else {
             panic!("expected Invalid plan");
@@ -848,7 +838,7 @@ test "t2" {
     }
 
     #[test]
-    fn suite_has_source_map() {
+    fn suite_has_source_table() {
         let suite = resolve_source_no_env(&[(
             "tests/a",
             r#"test "t" {
@@ -858,7 +848,7 @@ test "t2" {
 }
 "#,
         )]);
-        let has_entries = suite.source_map.iter().next().is_some();
+        let has_entries = !suite.tables.sources.is_empty();
         assert!(has_entries);
     }
 
@@ -990,5 +980,51 @@ test "third" {
         assert_eq!(plan_name(&suite.plans[0]), "first");
         assert_eq!(plan_name(&suite.plans[1]), "second");
         assert_eq!(plan_name(&suite.plans[2]), "third");
+    }
+
+    // ─── Purity enforcement (end-to-end plan building) ───────
+
+    #[test]
+    fn plan_test_let_impure_fn_invalidates() {
+        let suite = resolve_source_no_env(&[(
+            "tests/a",
+            r#"fn impure_fn() {
+  > cmd
+}
+test "t" {
+  let x = impure_fn()
+  shell sh {
+    > cmd
+  }
+}
+"#,
+        )]);
+        assert_eq!(suite.plans.len(), 1);
+        assert!(is_invalid(&suite.plans[0]));
+    }
+
+    #[test]
+    fn plan_effect_let_impure_fn_invalidates() {
+        let suite = resolve_source_no_env(&[(
+            "tests/a",
+            r#"fn impure_fn() {
+  > cmd
+}
+effect E -> sh {
+  let x = impure_fn()
+  shell sh {
+    > start
+  }
+}
+test "t" {
+  need E
+  shell sh {
+    > cmd
+  }
+}
+"#,
+        )]);
+        assert_eq!(suite.plans.len(), 1);
+        assert!(is_invalid(&suite.plans[0]));
     }
 }

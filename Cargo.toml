@@ -19,7 +19,7 @@ async-recursion = "~1"
 chrono = "~0.4"
 rand = "~0.10"
 bs58 = "~0.5"
-ariadne = "~0.6"
+ariadne = { version = "~0.6", features = ["auto-color"] }
 async-trait = "~0.1"
 uuid = { version = "~1", features = ["v4"] }
 clap = { version = "~4" }
@@ -32,3 +32,5 @@ tabled = "~0.18"
 terminal_size = "~0.4"
 bytes = "~1.11"
 thiserror = "~2"
+elsa = "~1.11"
+tokio-util = { version = "~0.7", features = ["rt"] }

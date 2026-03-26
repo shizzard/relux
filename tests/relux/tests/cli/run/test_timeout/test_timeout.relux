@@ -6,7 +6,7 @@ test "run reports inline test timeout exceeded" ~2s {
     so it must fail with a "test timeout" message.
     """
     shell s {
-        > relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        > ${__RELUX} run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? test timeout.*exceeded
         match_prompt()
         match_exit_code(1)

@@ -1,9 +1,14 @@
 use std::collections::HashMap;
 
+pub mod bifs;
+pub mod evaluator;
+
+// ─── VarScope ───────────────────────────────────────────────
+
 /// A single variable scope — flat name→value mapping.
 ///
-/// Used by the evaluator for per-call variable frames and later
-/// by the runtime's `ScopeStack` for its frame variables.
+/// Used by the evaluator for per-call variable frames and
+/// by the runtime's `ExecutionContext` for its frame variables.
 #[derive(Debug, Default)]
 pub struct VarScope {
     vars: HashMap<String, String>,
@@ -14,6 +19,10 @@ impl VarScope {
         Self {
             vars: HashMap::new(),
         }
+    }
+
+    pub fn from_map(vars: HashMap<String, String>) -> Self {
+        Self { vars }
     }
 
     pub fn get(&self, key: &str) -> Option<&str> {
@@ -41,12 +50,25 @@ impl VarScope {
 /// Immutable snapshot of environment variables, captured once before
 /// resolution. Shared between the resolver (marker evaluation) and
 /// the runtime (variable fallback).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Env {
     vars: HashMap<String, String>,
 }
 
+impl Default for Env {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Env {
+    /// Create an empty environment.
+    pub fn new() -> Self {
+        Self {
+            vars: HashMap::new(),
+        }
+    }
+
     /// Snapshot the current process environment.
     pub fn capture() -> Self {
         Self {
@@ -58,10 +80,20 @@ impl Env {
         self.vars.get(key).map(String::as_str)
     }
 
+    pub fn insert(&mut self, key: String, value: String) {
+        self.vars.insert(key, value);
+    }
+
     pub fn from_map(vars: HashMap<String, String>) -> Self {
         Self { vars }
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.vars.iter().map(|(k, v)| (k.as_str(), v.as_str()))
+    }
 }
+
+// ─── Tests ──────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -153,7 +185,6 @@ mod tests {
     #[test]
     fn env_capture() {
         let env = Env::capture();
-        // At least one of PATH or HOME should be set in any sane environment.
         assert!(env.get("PATH").is_some() || env.get("HOME").is_some());
     }
 
@@ -193,5 +224,29 @@ mod tests {
         m.insert("EMPTY".into(), String::new());
         let env = Env::from_map(m);
         assert_eq!(env.get("EMPTY"), Some(""));
+    }
+
+    #[test]
+    fn env_clone() {
+        let mut m = HashMap::new();
+        m.insert("K".into(), "V".into());
+        let env = Env::from_map(m);
+        let cloned = env.clone();
+        assert_eq!(cloned.get("K"), Some("V"));
+    }
+
+    #[test]
+    fn env_insert() {
+        let mut env = Env::from_map(HashMap::new());
+        env.insert("NEW".into(), "val".into());
+        assert_eq!(env.get("NEW"), Some("val"));
+    }
+
+    #[test]
+    fn env_insert_overwrites() {
+        let mut env = Env::from_map(HashMap::new());
+        env.insert("K".into(), "old".into());
+        env.insert("K".into(), "new".into());
+        assert_eq!(env.get("K"), Some("new"));
     }
 }

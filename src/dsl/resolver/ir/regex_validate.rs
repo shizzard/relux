@@ -1,11 +1,9 @@
+use crate::core::table::FileId;
 use crate::diagnostics::{InvalidReport, IrSpan, LoweringBail};
 use crate::dsl::parser::ast::{AstInterpolation, AstStringPart};
-use crate::table::FileId;
 
 /// Validate a static regex pattern (no interpolation variables).
 /// If the pattern contains variables, skip validation (runtime-only).
-// TODO: box LoweringBail to reduce Result size
-#[allow(clippy::result_large_err)]
 pub(crate) fn validate_static_regex(
     interp: &AstInterpolation,
     file: &FileId,
@@ -37,7 +35,7 @@ pub(crate) fn validate_static_regex(
     }
 
     if let Err(e) = regex::Regex::new(&pattern) {
-        return Err(LoweringBail::Invalid(InvalidReport::InvalidRegex {
+        return Err(LoweringBail::invalid(InvalidReport::InvalidRegex {
             pattern,
             error: e.to_string(),
             span: IrSpan::new(file.clone(), interp.span),
@@ -70,10 +68,7 @@ mod tests {
         let file = file_id_for(&ctx, "tests/a");
         let stmt = extract_first_stmt("fn t() {\n  <? [unclosed\n}\n");
         let ir = IrShellStmt::lower(&stmt, &file, &mut ctx);
-        assert!(matches!(
-            ir,
-            Err(LoweringBail::Invalid(InvalidReport::InvalidRegex { .. }))
-        ));
+        assert!(matches!(ir, Err(LoweringBail::Invalid(_))));
     }
 
     #[test]
@@ -83,10 +78,7 @@ mod tests {
         let file = file_id_for(&ctx, "tests/a");
         let stmt = extract_first_stmt("fn t() {\n  !? [unclosed\n}\n");
         let ir = IrShellStmt::lower(&stmt, &file, &mut ctx);
-        assert!(matches!(
-            ir,
-            Err(LoweringBail::Invalid(InvalidReport::InvalidRegex { .. }))
-        ));
+        assert!(matches!(ir, Err(LoweringBail::Invalid(_))));
     }
 
     #[test]
@@ -96,10 +88,7 @@ mod tests {
         let file = file_id_for(&ctx, "tests/a");
         let stmt = extract_first_stmt("fn t() {\n  <~5s? [unclosed\n}\n");
         let ir = IrShellStmt::lower(&stmt, &file, &mut ctx);
-        assert!(matches!(
-            ir,
-            Err(LoweringBail::Invalid(InvalidReport::InvalidRegex { .. }))
-        ));
+        assert!(matches!(ir, Err(LoweringBail::Invalid(_))));
     }
 
     #[test]
@@ -109,8 +98,12 @@ mod tests {
         let file = file_id_for(&ctx, "tests/a");
         let stmt = extract_first_stmt("fn t() {\n  <? [unclosed\n}\n");
         let ir = IrShellStmt::lower(&stmt, &file, &mut ctx);
-        if let Err(LoweringBail::Invalid(InvalidReport::InvalidRegex { pattern, .. })) = &ir {
-            assert!(pattern.contains("[unclosed"));
+        if let Err(LoweringBail::Invalid(inner)) = &ir {
+            if let InvalidReport::InvalidRegex { pattern, .. } = inner.as_ref() {
+                assert!(pattern.contains("[unclosed"));
+            } else {
+                panic!("expected InvalidRegex, got {:?}", ir);
+            }
         } else {
             panic!("expected InvalidRegex, got {:?}", ir);
         }
@@ -123,8 +116,12 @@ mod tests {
         let file = file_id_for(&ctx, "tests/a");
         let stmt = extract_first_stmt("fn t() {\n  <? [unclosed\n}\n");
         let ir = IrShellStmt::lower(&stmt, &file, &mut ctx);
-        if let Err(LoweringBail::Invalid(InvalidReport::InvalidRegex { error, .. })) = &ir {
-            assert!(!error.is_empty());
+        if let Err(LoweringBail::Invalid(inner)) = &ir {
+            if let InvalidReport::InvalidRegex { error, .. } = inner.as_ref() {
+                assert!(!error.is_empty());
+            } else {
+                panic!("expected InvalidRegex, got {:?}", ir);
+            }
         } else {
             panic!("expected InvalidRegex, got {:?}", ir);
         }

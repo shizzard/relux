@@ -1,6 +1,3 @@
-// TODO: box LoweringBail to reduce Result size
-#![allow(clippy::result_large_err)]
-
 // ─── IrNode trait and macros ─────────────────────────────────
 // Defined here so textual macro scoping makes impl_ir_node_struct!
 // and impl_ir_node_enum! available in all sub-modules declared below.
@@ -37,9 +34,6 @@ macro_rules! impl_ir_node_enum {
 
 // ─── Sub-modules ─────────────────────────────────────────────
 
-pub mod legacy;
-pub use legacy::*;
-
 mod block;
 mod comment;
 mod effect;
@@ -47,7 +41,6 @@ mod expr;
 mod func;
 mod ident;
 mod interpolation;
-mod keys;
 mod lowering_trait;
 pub(crate) mod marker;
 mod plan;
@@ -64,7 +57,6 @@ pub use expr::*;
 pub use func::*;
 pub use ident::*;
 pub use interpolation::*;
-pub use keys::*;
 pub use lowering_trait::*;
 pub use plan::*;
 pub use stmt::*;

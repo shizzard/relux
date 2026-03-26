@@ -3,8 +3,8 @@ test "check detects invalid timeout" {
     Verify relux check reports an unparseable timeout duration.
     """
     shell s {
-        > relux check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
-        <? invalid timeout
+        > ${__RELUX} check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? parse error
         match_prompt()
         match_exit_code(1)
     }

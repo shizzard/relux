@@ -1,0 +1,10 @@
+test "always passes" {
+    """
+    Pass unconditionally.
+    """
+    shell s {
+        > echo ok
+        <? ^ok$
+        match_ok()
+    }
+}

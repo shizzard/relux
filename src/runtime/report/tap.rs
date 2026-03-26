@@ -1,8 +1,9 @@
 use std::fmt::Write;
 use std::path::Path;
 
-use crate::dsl::resolver::ir::{SourceMap, Span};
-use crate::runtime::result::{Failure, Outcome, TestResult, log_link};
+use crate::diagnostics::IrSpan;
+use crate::dsl::resolver::ir::SourceTable;
+use crate::runtime::report::result::{Failure, Outcome, TestResult, log_link};
 
 /// Compute the 1-based line number for a byte offset in a source string.
 fn line_number(source: &str, offset: usize) -> usize {
@@ -19,12 +20,12 @@ fn yaml_escape(s: &str) -> String {
 }
 
 /// Extract the span from a Failure, if present.
-fn failure_span(failure: &Failure) -> Option<&Span> {
+fn failure_span(failure: &Failure) -> Option<&IrSpan> {
     match failure {
         Failure::MatchTimeout { span, .. }
         | Failure::FailPatternMatched { span, .. }
         | Failure::ShellExited { span, .. } => Some(span),
-        Failure::Runtime { span, .. } => span.as_ref(),
+        Failure::Runtime { span, .. } | Failure::Cancelled { span, .. } => span.as_ref(),
     }
 }
 
@@ -34,7 +35,7 @@ fn failure_shell(failure: &Failure) -> Option<&str> {
         Failure::MatchTimeout { shell, .. }
         | Failure::FailPatternMatched { shell, .. }
         | Failure::ShellExited { shell, .. } => Some(shell),
-        Failure::Runtime { shell, .. } => shell.as_deref(),
+        Failure::Runtime { shell, .. } | Failure::Cancelled { shell, .. } => shell.as_deref(),
     }
 }
 
@@ -53,7 +54,7 @@ fn render_tap(
     run_dir: &Path,
     _suite_name: &str,
     results: &[TestResult],
-    source_map: &SourceMap,
+    source_table: &SourceTable,
 ) -> String {
     let mut out = String::new();
 
@@ -84,13 +85,14 @@ fn render_tap(
                 if let Some(pattern) = failure_pattern(failure) {
                     writeln!(out, "  pattern: {pattern}").unwrap();
                 }
-                if let Some(span) = failure_span(failure) {
-                    let file = &source_map.files[span.file];
-                    writeln!(out, "  file: {}", file.path.display()).unwrap();
+                if let Some(span) = failure_span(failure)
+                    && let Some(sf) = source_table.get(span.file())
+                {
+                    writeln!(out, "  file: {}", sf.path.display()).unwrap();
                     writeln!(
                         out,
                         "  line: {}",
-                        line_number(&file.source, span.range.start)
+                        line_number(&sf.source, span.span().start())
                     )
                     .unwrap();
                 }
@@ -103,6 +105,14 @@ fn render_tap(
             Outcome::Skipped(reason) => {
                 writeln!(out, "ok {num} - {} # SKIP {reason}", result.test_name).unwrap();
             }
+            Outcome::Invalid(reason) => {
+                writeln!(
+                    out,
+                    "not ok {num} - {} # INVALID {reason}",
+                    result.test_name
+                )
+                .unwrap();
+            }
         }
     }
 
@@ -114,9 +124,9 @@ pub fn generate_tap(
     run_dir: &Path,
     suite_name: &str,
     results: &[TestResult],
-    source_map: &SourceMap,
+    source_table: &SourceTable,
 ) {
-    let tap = render_tap(run_dir, suite_name, results, source_map);
+    let tap = render_tap(run_dir, suite_name, results, source_table);
     let path = run_dir.join("results.tap");
     std::fs::write(path, tap).expect("failed to write results.tap");
 }
@@ -124,19 +134,29 @@ pub fn generate_tap(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::resolver::ir::{self, SourceMap, Span};
-    use crate::runtime::result::{Failure, Outcome, TestResult};
+    use crate::core::table::{FileId, SharedTable, SourceFile};
+    use crate::diagnostics::IrSpan;
+    use crate::runtime::report::result::{Failure, Outcome, TestResult};
     use std::path::{Path, PathBuf};
     use std::time::Duration;
 
-    fn make_source_map() -> SourceMap {
-        let mut sm = SourceMap::new();
-        // 3 lines: line 1 = bytes 0..6, line 2 = bytes 7..13, line 3 = bytes 14..20
-        sm.add(
-            PathBuf::from("tests/auth/login.relux"),
-            "line 1\nline 2\nline 3\n".to_string(),
+    fn test_source_table() -> SourceTable {
+        let table: SourceTable = SharedTable::new();
+        table.insert(
+            FileId::new(PathBuf::from("tests/auth/login.relux")),
+            SourceFile {
+                path: PathBuf::from("tests/auth/login.relux"),
+                source: "line 1\nline 2\nline 3\n".to_string(),
+            },
         );
-        sm
+        table
+    }
+
+    fn test_span(offset_start: usize, offset_end: usize) -> IrSpan {
+        IrSpan::new(
+            FileId::new(PathBuf::from("tests/auth/login.relux")),
+            crate::Span::new(offset_start, offset_end),
+        )
     }
 
     fn run_dir() -> &'static Path {
@@ -152,6 +172,7 @@ mod tests {
 
             progress: String::new(),
             log_dir: log_dir.map(PathBuf::from),
+            warnings: Vec::new(),
         }
     }
 
@@ -164,6 +185,7 @@ mod tests {
 
             progress: String::new(),
             log_dir: log_dir.map(PathBuf::from),
+            warnings: Vec::new(),
         }
     }
 
@@ -176,14 +198,15 @@ mod tests {
 
             progress: String::new(),
             log_dir: None,
+            warnings: Vec::new(),
         }
     }
 
     #[test]
     fn header_and_plan_line() {
-        let sm = make_source_map();
+        let st = test_source_table();
         let results = vec![pass_result("a", 100, None), pass_result("b", 200, None)];
-        let tap = render_tap(run_dir(), "suite", &results, &sm);
+        let tap = render_tap(run_dir(), "suite", &results, &st);
         let lines: Vec<&str> = tap.lines().collect();
         assert_eq!(lines[0], "TAP version 14");
         assert_eq!(lines[1], "1..2");
@@ -191,13 +214,13 @@ mod tests {
 
     #[test]
     fn passed_test_with_log() {
-        let sm = make_source_map();
+        let st = test_source_table();
         let results = vec![pass_result(
             "login-test",
             1230,
             Some("/tmp/runs/run-001/logs/auth/login-test"),
         )];
-        let tap = render_tap(run_dir(), "suite", &results, &sm);
+        let tap = render_tap(run_dir(), "suite", &results, &st);
         let lines: Vec<&str> = tap.lines().collect();
         assert_eq!(lines[2], "ok 1 - login-test");
         assert_eq!(lines[3], "  ---");
@@ -208,9 +231,9 @@ mod tests {
 
     #[test]
     fn passed_test_without_log() {
-        let sm = make_source_map();
+        let st = test_source_table();
         let results = vec![pass_result("simple", 50, None)];
-        let tap = render_tap(run_dir(), "suite", &results, &sm);
+        let tap = render_tap(run_dir(), "suite", &results, &st);
         assert!(tap.contains("ok 1 - simple"));
         assert!(tap.contains("duration_ms: 50"));
         assert!(!tap.contains("log:"));
@@ -218,11 +241,11 @@ mod tests {
 
     #[test]
     fn failed_test_with_diagnostics() {
-        let sm = make_source_map();
+        let st = test_source_table();
         // span at byte 14 = start of line 3
         let failure = Failure::MatchTimeout {
             pattern: "/ready/".into(),
-            span: Span::new(ir::FileId::from(0), 14..20),
+            span: test_span(14, 20),
             shell: "default".into(),
         };
         let results = vec![fail_result(
@@ -231,7 +254,7 @@ mod tests {
             failure,
             Some("/tmp/runs/run-001/logs/auth/timeout-test"),
         )];
-        let tap = render_tap(run_dir(), "suite", &results, &sm);
+        let tap = render_tap(run_dir(), "suite", &results, &st);
         let lines: Vec<&str> = tap.lines().collect();
 
         assert_eq!(lines[2], "not ok 1 - timeout-test");
@@ -249,14 +272,14 @@ mod tests {
 
     #[test]
     fn failed_runtime_error_without_span() {
-        let sm = make_source_map();
+        let st = test_source_table();
         let failure = Failure::Runtime {
             message: "something broke".into(),
             span: None,
             shell: None,
         };
         let results = vec![fail_result("broken", 100, failure, None)];
-        let tap = render_tap(run_dir(), "suite", &results, &sm);
+        let tap = render_tap(run_dir(), "suite", &results, &st);
         assert!(tap.contains("not ok 1 - broken"));
         assert!(tap.contains("message: \"runtime error: something broke\""));
         assert!(!tap.contains("shell:"));
@@ -267,9 +290,9 @@ mod tests {
 
     #[test]
     fn skipped_test() {
-        let sm = make_source_map();
+        let st = test_source_table();
         let results = vec![skip_result("linux-only", "os:linux")];
-        let tap = render_tap(run_dir(), "suite", &results, &sm);
+        let tap = render_tap(run_dir(), "suite", &results, &st);
         let lines: Vec<&str> = tap.lines().collect();
         assert_eq!(lines[2], "ok 1 - linux-only # SKIP os:linux");
         // No diagnostics block for skipped tests
@@ -278,18 +301,18 @@ mod tests {
 
     #[test]
     fn mixed_results() {
-        let sm = make_source_map();
+        let st = test_source_table();
         let failure = Failure::ShellExited {
             shell: "main".into(),
             exit_code: Some(1),
-            span: Span::new(ir::FileId::from(0), 0..5),
+            span: test_span(0, 5),
         };
         let results = vec![
             pass_result("test-a", 100, None),
             fail_result("test-b", 200, failure, None),
             skip_result("test-c", "os:macos"),
         ];
-        let tap = render_tap(run_dir(), "suite", &results, &sm);
+        let tap = render_tap(run_dir(), "suite", &results, &st);
 
         assert!(tap.starts_with("TAP version 14\n1..3\n"));
         assert!(tap.contains("ok 1 - test-a"));
@@ -299,15 +322,15 @@ mod tests {
 
     #[test]
     fn message_with_quotes_is_escaped() {
-        let sm = make_source_map();
+        let st = test_source_table();
         let failure = Failure::FailPatternMatched {
             pattern: "/error/".into(),
             matched_line: "got \"error\" here".into(),
-            span: Span::new(ir::FileId::from(0), 0..5),
+            span: test_span(0, 5),
             shell: "default".into(),
         };
         let results = vec![fail_result("quote-test", 100, failure, None)];
-        let tap = render_tap(run_dir(), "suite", &results, &sm);
+        let tap = render_tap(run_dir(), "suite", &results, &st);
         // Inner quotes should be escaped
         assert!(tap.contains("\\\"error\\\""));
     }

@@ -3,8 +3,8 @@ test "check detects duplicate definition" {
     Verify relux check reports a duplicate function definition via imports.
     """
     shell s {
-        > relux check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
-        <? duplicate definition
+        > ${__RELUX} check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? name conflict
         match_prompt()
         match_exit_code(1)
     }

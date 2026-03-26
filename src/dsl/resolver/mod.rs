@@ -1,4 +1,3 @@
-pub mod error;
 pub mod ir;
 
 mod discover;
@@ -6,14 +5,13 @@ mod loader;
 pub(crate) mod lower;
 
 pub use discover::discover_test_modules;
-pub use error::{DiagnosticError, DiagnosticWarning};
 pub use loader::load_modules;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::diagnostics::ModulePath;
-use crate::stack::Env;
+use crate::pure::Env;
 use ir::Suite;
 
 // ─── Source Loader ──────────────────────────────────────────
@@ -52,20 +50,18 @@ pub fn resolve(
     source_loader: &dyn SourceLoader,
     test_paths: Vec<ModulePath>,
     env: Arc<Env>,
+    multiplier: f64,
+    project_root: &std::path::Path,
 ) -> Suite {
-    use ir::{AstTable, SourceTable, build_all_plans};
+    use ir::build_all_plans;
     use lower::LoweringContext;
 
     let causes = crate::diagnostics::CauseTable::default();
     let warnings = crate::diagnostics::WarningTable::default();
-    let (ast_shared, source_shared) = load_modules(source_loader, test_paths, &causes, &warnings);
-    let ast_table: AstTable = ast_shared.try_into().expect("ast_table freeze failed");
-    let source_table: SourceTable = source_shared
-        .try_into()
-        .expect("source_table freeze failed");
-    let mut ctx = LoweringContext::new(ast_table, source_table, env, causes, warnings);
+    let (ast_table, source_table) = load_modules(source_loader, test_paths, &causes, &warnings);
+    let mut ctx = LoweringContext::new(ast_table, source_table, env, causes, warnings, multiplier);
     ctx.register_bifs();
     let plans = build_all_plans(&mut ctx);
-    ctx.print_diagnostics();
+    ctx.print_diagnostics(Some(project_root));
     ctx.into_suite(plans)
 }

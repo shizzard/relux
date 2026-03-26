@@ -1,6 +1,6 @@
+use crate::core::table::FileId;
 use crate::diagnostics::{IrSpan, LoweringBail};
 use crate::dsl::parser::ast::{AstCleanupBlock, AstShellBlock};
-use crate::table::FileId;
 
 use super::ident::IrIdent;
 use super::stmt::IrShellStmt;
@@ -90,7 +90,7 @@ impl IrNodeLowering for IrCleanupBlock {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::table::FileId;
+    use crate::core::table::FileId;
     use std::path::PathBuf;
 
     fn test_file_id() -> FileId {

@@ -1,9 +1,10 @@
 use std::collections::hash_map::DefaultHasher;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 use crate::Span;
-use crate::table::{FileId, SharedTable};
+use crate::core::table::{FileId, SharedTable};
 
 // ─── ModulePath / EffectName ────────────────────────────────
 
@@ -38,6 +39,14 @@ pub struct IrSpan {
 }
 
 impl IrSpan {
+    /// Sentinel span for config-derived or synthetic values not tied to source.
+    pub fn synthetic() -> Self {
+        Self {
+            file: FileId::new(std::path::PathBuf::from("<synthetic>")),
+            span: Span::new(0, 0),
+        }
+    }
+
     pub fn new(file: FileId, span: Span) -> Self {
         Self { file, span }
     }
@@ -143,23 +152,51 @@ impl Diagnostic {
     /// Render this diagnostic to stderr using ariadne.
     pub fn eprint(
         &self,
-        source_table: &crate::table::FrozenTable<FileId, crate::table::SourceFile>,
+        source_table: &crate::core::table::SharedTable<FileId, crate::core::table::SourceFile>,
+        project_root: Option<&std::path::Path>,
     ) {
-        use ariadne::{CharSet, Config, IndexType, Label, Report, ReportKind, sources};
+        self.eprint_inner(None, source_table, project_root);
+    }
+
+    /// Render this diagnostic to stderr with a mnemonic cause/warning ID prefix.
+    ///
+    /// Output: `[cause-id] Error: message` instead of `Error: message`.
+    pub fn eprint_with_id(
+        &self,
+        id: &impl fmt::Display,
+        source_table: &crate::core::table::SharedTable<FileId, crate::core::table::SourceFile>,
+        project_root: Option<&std::path::Path>,
+    ) {
+        self.eprint_inner(Some(&id.to_string()), source_table, project_root);
+    }
+
+    fn eprint_inner(
+        &self,
+        id: Option<&str>,
+        source_table: &crate::core::table::SharedTable<FileId, crate::core::table::SourceFile>,
+        project_root: Option<&std::path::Path>,
+    ) {
+        use ariadne::{CharSet, Color, Config, IndexType, Label, Report, ReportKind, sources};
 
         let cfg = Config::default()
             .with_index_type(IndexType::Byte)
-            .with_char_set(CharSet::Ascii);
+            .with_char_set(CharSet::Unicode);
 
-        let kind = match self.severity {
-            Severity::Error => ReportKind::Error,
-            Severity::Warning => ReportKind::Warning,
+        let kind = match (&self.severity, id) {
+            (Severity::Error, Some(id)) => ReportKind::Custom(&format!("[{id}] Error"), Color::Red),
+            (Severity::Error, None) => ReportKind::Error,
+            (Severity::Warning, Some(id)) => {
+                ReportKind::Custom(&format!("[{id}] Warning"), Color::Yellow)
+            }
+            (Severity::Warning, None) => ReportKind::Warning,
         };
 
         if self.labels.is_empty() {
-            let prefix = match self.severity {
-                Severity::Error => "error",
-                Severity::Warning => "warning",
+            let prefix = match (&self.severity, id) {
+                (Severity::Error, Some(id)) => format!("[{id}] error"),
+                (Severity::Error, None) => "error".to_string(),
+                (Severity::Warning, Some(id)) => format!("[{id}] warning"),
+                (Severity::Warning, None) => "warning".to_string(),
             };
             eprintln!("{prefix}: {}", self.message);
             if let Some(note) = &self.note {
@@ -169,13 +206,22 @@ impl Diagnostic {
         }
 
         // Build source cache from referenced files
-        let mut src_entries: Vec<(String, &str)> = Vec::new();
+        let display = |p: &std::path::Path| -> String {
+            if let Some(root) = project_root
+                && let Ok(rel) = p.strip_prefix(root)
+            {
+                return rel.display().to_string();
+            }
+            p.display().to_string()
+        };
+
+        let mut src_entries: Vec<(String, String)> = Vec::new();
         for label in &self.labels {
-            let path_str = label.span.file().path().display().to_string();
+            let path_str = display(label.span.file().path());
             if !src_entries.iter().any(|(p, _)| p == &path_str)
                 && let Some(sf) = source_table.get(label.span.file())
             {
-                src_entries.push((path_str, sf.source.as_str()));
+                src_entries.push((path_str, sf.source.clone()));
             }
         }
         let mut cache = sources(src_entries);
@@ -183,17 +229,25 @@ impl Diagnostic {
         type Src = String;
 
         let first = &self.labels[0];
-        let path: Src = first.span.file().path().display().to_string();
+        let path: Src = display(first.span.file().path());
         let range: std::ops::Range<usize> = (*first.span.span()).into();
 
+        let label_color = match self.severity {
+            Severity::Error => Color::Red,
+            Severity::Warning => Color::Yellow,
+        };
         let mut builder = Report::<(Src, std::ops::Range<usize>)>::build(kind, (path, range))
             .with_config(cfg)
             .with_message(&self.message);
 
         for label in &self.labels {
-            let lpath: Src = label.span.file().path().display().to_string();
+            let lpath: Src = display(label.span.file().path());
             let lrange: std::ops::Range<usize> = (*label.span.span()).into();
-            builder = builder.with_label(Label::new((lpath, lrange)).with_message(&label.message));
+            builder = builder.with_label(
+                Label::new((lpath, lrange))
+                    .with_message(&label.message)
+                    .with_color(label_color),
+            );
         }
 
         if let Some(help) = &self.help {
@@ -212,8 +266,18 @@ impl Diagnostic {
 /// Error type for lowering failures — either a skip or an invalid definition.
 #[derive(Debug, Clone)]
 pub enum LoweringBail {
-    Skip(SkipReport),
-    Invalid(InvalidReport),
+    Skip(Arc<SkipReport>),
+    Invalid(Arc<InvalidReport>),
+}
+
+impl LoweringBail {
+    pub fn skip(report: SkipReport) -> Self {
+        Self::Skip(Arc::new(report))
+    }
+
+    pub fn invalid(report: InvalidReport) -> Self {
+        Self::Invalid(Arc::new(report))
+    }
 }
 
 impl fmt::Display for LoweringBail {
@@ -558,11 +622,19 @@ impl fmt::Display for CauseId {
 
 #[derive(Debug, Clone)]
 pub enum Cause {
-    Skip(SkipReport),
-    Invalid(InvalidReport),
+    Skip(Arc<SkipReport>),
+    Invalid(Arc<InvalidReport>),
 }
 
 impl Cause {
+    pub fn skip(report: SkipReport) -> Self {
+        Self::Skip(Arc::new(report))
+    }
+
+    pub fn invalid(report: InvalidReport) -> Self {
+        Self::Invalid(Arc::new(report))
+    }
+
     pub fn from_bail(bail: &LoweringBail) -> Self {
         match bail {
             LoweringBail::Skip(s) => Cause::Skip(s.clone()),
@@ -705,8 +777,8 @@ impl From<&SkipReport> for Diagnostic {
 impl From<&Cause> for Diagnostic {
     fn from(cause: &Cause) -> Self {
         match cause {
-            Cause::Skip(skip) => Diagnostic::from(skip),
-            Cause::Invalid(invalid) => Diagnostic::from(invalid),
+            Cause::Skip(skip) => Diagnostic::from(skip.as_ref()),
+            Cause::Invalid(invalid) => Diagnostic::from(invalid.as_ref()),
         }
     }
 }
@@ -1597,19 +1669,19 @@ mod tests {
 
     #[test]
     fn lowering_bail_skip_variant() {
-        let bail = LoweringBail::Skip(make_skip(SkipEvaluation::Unconditional));
+        let bail = LoweringBail::skip(make_skip(SkipEvaluation::Unconditional));
         assert!(matches!(bail, LoweringBail::Skip(_)));
     }
 
     #[test]
     fn lowering_bail_invalid_variant() {
-        let bail = LoweringBail::Invalid(InvalidReport::PurityViolation { span: test_span() });
+        let bail = LoweringBail::invalid(InvalidReport::PurityViolation { span: test_span() });
         assert!(matches!(bail, LoweringBail::Invalid(_)));
     }
 
     #[test]
     fn lowering_bail_clone() {
-        let bail = LoweringBail::Skip(make_skip(SkipEvaluation::Unconditional));
+        let bail = LoweringBail::skip(make_skip(SkipEvaluation::Unconditional));
         let _cloned = bail.clone();
     }
 
@@ -1674,7 +1746,7 @@ mod tests {
         let id = CauseId::generate("m", "f", 0, "invalid");
         table.insert(
             id.clone(),
-            Cause::Invalid(InvalidReport::PurityViolation { span: test_span() }),
+            Cause::invalid(InvalidReport::PurityViolation { span: test_span() }),
         );
         let cause = table.get(&id);
         assert!(cause.is_some());
@@ -1689,7 +1761,7 @@ mod tests {
         };
         table.insert(
             id.clone(),
-            Cause::Skip(make_skip(SkipEvaluation::Unconditional)),
+            Cause::skip(make_skip(SkipEvaluation::Unconditional)),
         );
         assert!(matches!(table.get(&id).unwrap(), Cause::Skip(_)));
     }
@@ -1705,31 +1777,32 @@ mod tests {
         };
         table.insert(
             id1.clone(),
-            Cause::Skip(make_skip(SkipEvaluation::Unconditional)),
+            Cause::skip(make_skip(SkipEvaluation::Unconditional)),
         );
         table.insert(
             id2.clone(),
-            Cause::Invalid(InvalidReport::PurityViolation { span: test_span() }),
+            Cause::invalid(InvalidReport::PurityViolation { span: test_span() }),
         );
         assert!(table.get(&id1).is_some());
         assert!(table.get(&id2).is_some());
     }
 
     #[test]
-    fn cause_table_duplicate_id_overwrites() {
+    fn cause_table_duplicate_id_first_insert_wins() {
         let table: CauseTable = SharedTable::new();
         let id = CauseId {
             id: "x-y-0000".into(),
         };
         table.insert(
             id.clone(),
-            Cause::Skip(make_skip(SkipEvaluation::Unconditional)),
+            Cause::skip(make_skip(SkipEvaluation::Unconditional)),
         );
         table.insert(
             id.clone(),
-            Cause::Invalid(InvalidReport::PurityViolation { span: test_span() }),
+            Cause::invalid(InvalidReport::PurityViolation { span: test_span() }),
         );
-        assert!(matches!(table.get(&id).unwrap(), Cause::Invalid(_)));
+        // FrozenMap: first insert wins
+        assert!(matches!(table.get(&id).unwrap(), Cause::Skip(_)));
     }
 
     #[test]

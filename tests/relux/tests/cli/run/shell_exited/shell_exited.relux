@@ -7,7 +7,7 @@ test "run reports shell exited" {
     subsequent write and reports "exited unexpectedly" with the exit code.
     """
     shell s {
-        > relux run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        > ${__RELUX} run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? exited unexpectedly
         match_prompt()
         match_exit_code(1)

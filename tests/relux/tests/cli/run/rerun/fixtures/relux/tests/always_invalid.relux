@@ -1,0 +1,11 @@
+test "always invalid" {
+    """
+    Fail at resolve time due to a non-existent effect dependency.
+    """
+    need NonExistent as s
+    shell s {
+        > echo unreachable
+        <? ^unreachable$
+        match_ok()
+    }
+}

@@ -1,0 +1,11 @@
+# skip
+test "always skipped" {
+    """
+    Verify this test is unconditionally skipped.
+    """
+    shell s {
+        > echo unreachable
+        <? ^unreachable$
+        match_ok()
+    }
+}

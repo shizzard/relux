@@ -1,6 +1,6 @@
+use crate::core::table::FileId;
 use crate::diagnostics::{IrSpan, LoweringBail};
 use crate::dsl::parser::ast::{AstInterpolation, AstStringPart};
-use crate::table::FileId;
 
 use super::{IrNode, IrNodeLowering, LoweringContext};
 
@@ -86,7 +86,7 @@ impl IrNodeLowering for IrInterpolation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::table::FileId;
+    use crate::core::table::FileId;
     use std::path::PathBuf;
 
     fn test_file_id() -> FileId {

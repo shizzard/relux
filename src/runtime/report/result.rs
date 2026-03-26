@@ -4,30 +4,35 @@ use std::time::Duration;
 
 use colored::Colorize;
 
-use crate::dsl::resolver::ir::{SourceMap, Span};
-use crate::error::DiagnosticReport;
+use crate::core::error::DiagnosticReport;
+use crate::diagnostics::IrSpan;
+use crate::dsl::resolver::ir::SourceTable;
 
 #[derive(Debug, Clone)]
 pub enum Failure {
     MatchTimeout {
         pattern: String,
-        span: Span,
+        span: IrSpan,
         shell: String,
     },
     FailPatternMatched {
         pattern: String,
         matched_line: String,
-        span: Span,
+        span: IrSpan,
         shell: String,
     },
     ShellExited {
         shell: String,
         exit_code: Option<i32>,
-        span: Span,
+        span: IrSpan,
     },
     Runtime {
         message: String,
-        span: Option<Span>,
+        span: Option<IrSpan>,
+        shell: Option<String>,
+    },
+    Cancelled {
+        span: Option<IrSpan>,
         shell: Option<String>,
     },
 }
@@ -76,6 +81,12 @@ impl Failure {
             } => {
                 format!("runtime error: {message}")
             }
+            Failure::Cancelled {
+                shell: Some(shell), ..
+            } => {
+                format!("cancelled in shell '{shell}'")
+            }
+            Failure::Cancelled { shell: None, .. } => "cancelled".to_string(),
         }
     }
 
@@ -85,13 +96,14 @@ impl Failure {
             Failure::FailPatternMatched { .. } => "FailPatternMatched",
             Failure::ShellExited { .. } => "ShellExited",
             Failure::Runtime { .. } => "Runtime",
+            Failure::Cancelled { .. } => "Cancelled",
         }
     }
 }
 
-impl From<&Failure> for crate::error::DiagnosticReport {
+impl From<&Failure> for crate::core::error::DiagnosticReport {
     fn from(failure: &Failure) -> Self {
-        use crate::error::{DiagnosticReport, Severity};
+        use crate::core::error::{DiagnosticReport, Severity};
         match failure {
             Failure::MatchTimeout {
                 pattern,
@@ -169,6 +181,28 @@ impl From<&Failure> for crate::error::DiagnosticReport {
                     },
                 }
             }
+            Failure::Cancelled { span, shell } => {
+                let msg = match shell {
+                    Some(s) => format!("cancelled in shell `{s}`"),
+                    None => "cancelled".to_string(),
+                };
+                match span {
+                    Some(span) => DiagnosticReport {
+                        severity: Severity::Error,
+                        message: msg,
+                        labels: vec![(span.clone(), "cancelled here".to_string()).into()],
+                        help: None,
+                        note: None,
+                    },
+                    None => DiagnosticReport {
+                        severity: Severity::Error,
+                        message: msg,
+                        labels: vec![],
+                        help: None,
+                        note: None,
+                    },
+                }
+            }
         }
     }
 }
@@ -187,6 +221,13 @@ pub struct TestResult {
     pub duration: Duration,
     pub progress: String,
     pub log_dir: Option<PathBuf>,
+    pub warnings: Vec<crate::runtime::effect::Warning>,
+}
+
+impl TestResult {
+    pub fn is_failure(&self) -> bool {
+        matches!(self.outcome, Outcome::Fail(_))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -194,14 +235,16 @@ pub enum Outcome {
     Pass,
     Fail(Failure),
     Skipped(String),
+    Invalid(String),
 }
 
 // ─── Run Report ─────────────────────────────────────────────
 
 pub struct RunReport<'a> {
     pub results: &'a [TestResult],
-    pub source_map: &'a SourceMap,
+    pub source_table: &'a SourceTable,
     pub run_dir: &'a Path,
+    pub project_root: &'a Path,
 }
 
 impl RunReport<'_> {
@@ -209,6 +252,7 @@ impl RunReport<'_> {
         let mut passed = 0usize;
         let mut failed = 0usize;
         let mut skipped = 0usize;
+        let mut invalid = 0usize;
         let mut total_duration = Duration::ZERO;
 
         for result in self.results {
@@ -217,7 +261,7 @@ impl RunReport<'_> {
                 Outcome::Pass => passed += 1,
                 Outcome::Fail(f) => {
                     failed += 1;
-                    DiagnosticReport::from(f).eprint(self.source_map);
+                    DiagnosticReport::from(f).eprint(self.source_table, Some(self.project_root));
                     if let Some(log_dir) = &result.log_dir {
                         eprintln!(
                             "  Event log: file://{}",
@@ -226,16 +270,21 @@ impl RunReport<'_> {
                     }
                 }
                 Outcome::Skipped(_) => skipped += 1,
+                Outcome::Invalid(_) => invalid += 1,
             }
         }
 
-        let status = if failed > 0 {
+        let has_problems = failed > 0 || invalid > 0;
+        let status = if has_problems {
             "FAILED".red().to_string()
         } else {
             "ok".green().to_string()
         };
 
         let mut summary = format!("\ntest result: {status}. {passed} passed; {failed} failed");
+        if invalid > 0 {
+            summary.push_str(&format!("; {invalid} invalid"));
+        }
         if skipped > 0 {
             summary.push_str(&format!("; {skipped} skipped"));
         }
@@ -264,11 +313,10 @@ pub fn format_duration(d: Duration) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::resolver::ir;
     use std::path::Path;
 
-    fn dummy_span() -> Span {
-        Span::new(ir::FileId::from(0), 0..1)
+    fn dummy_span() -> IrSpan {
+        IrSpan::synthetic()
     }
 
     #[test]
@@ -358,6 +406,7 @@ mod tests {
 
             progress: String::new(),
             log_dir: Some(PathBuf::from("/tmp/runs/run-001/my_test")),
+            warnings: Vec::new(),
         };
         assert_eq!(
             log_link(run_dir, &result),
@@ -376,6 +425,7 @@ mod tests {
 
             progress: String::new(),
             log_dir: None,
+            warnings: Vec::new(),
         };
         assert_eq!(log_link(run_dir, &result), None);
     }

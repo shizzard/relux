@@ -41,6 +41,8 @@ A1. [Best Practices](docs/tutorial/A1-best-practices.md) — all best-practices 
 - Make `sleep`, `log`, and `annotate` impure BIFs: these have observable side effects (time delay, output) and don't belong in pure context — move them from `lookup_pure` to `lookup` so they require a shell context
 - Unresolved function call diagnostics: emit an error when a function call in a test or effect body doesn't resolve to any known function — currently unresolved calls are silently skipped during plan building
 - Infallible pure BIFs: all pure built-in functions must be total — they must return a valid string for any input, never panic or error. This keeps marker evaluation infallible and ensures `# skip if` / `# run if` conditions always resolve cleanly
+- Effect-level timeouts: allow effects to declare a default timeout (similar to test-level `~timeout`) that applies to all match operations within the effect's shell blocks
+- Flaky marker support: implement `# flaky` marker semantics — automatically retry tests marked as flaky on failure, with configurable retry count
 
 ## Planned RFCs
 

@@ -1,249 +1,33 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use daggy::petgraph::algo::toposort;
-use daggy::petgraph::visit::{EdgeRef, IntoEdgesDirected};
-use tokio::sync::Mutex;
+use std::collections::VecDeque;
 
-use crate::dsl::resolver::ir::{
-    self, EffectInstance, InstanceId, Plan, SourceMap, Spanned, Timeout,
-};
-use crate::runtime::event_log::{EventCollector, LogEventKind};
-use crate::runtime::progress::{ProgressEvent, ProgressTx};
-use crate::runtime::result::{Failure, Outcome, TestResult};
-use crate::runtime::vars::{Env, ScopeStack, TestScope, interpolate_with_lookup};
+use tokio::sync::Mutex as TokioMutex;
+use tokio_util::sync::CancellationToken;
+
+use crate::diagnostics::{Cause, CauseId, CauseTable, WarningId};
+use crate::dsl::resolver::ir::{IrNode, IrTest, IrTestItem, IrTimeout, Plan, SourceTable, Suite};
+use crate::pure::{Env, VarScope};
+use crate::runtime::effect::EffectManager;
+use crate::runtime::effect::{CleanupSource, Warning};
+use crate::runtime::observe::event_log::EventCollector;
+use crate::runtime::observe::progress::ProgressTx;
+use crate::runtime::report::result::{Failure, Outcome, TestResult};
 use crate::runtime::vm::Vm;
+use crate::runtime::vm::context::{ExecutionContext, Scope, ShellState};
 
-/// Shared context for test execution phases (setup, body, teardown).
-struct TestRunContext<'a> {
-    progress_tx: ProgressTx,
-    log_dir: &'a Path,
-    test_start: Instant,
-    event_collector: &'a EventCollector,
-    env: &'a Arc<Env>,
-}
-
-impl TestRunContext<'_> {
-    fn emit(&self, event: ProgressEvent) {
-        let _ = self.progress_tx.send(event);
-    }
-
-    async fn spawn_vm(
-        &self,
-        shell_name: String,
-        shell_prompt: String,
-        shell_command: String,
-        scope: ScopeStack,
-        code_server: Arc<CodeServer>,
-    ) -> Result<Vm, Failure> {
-        Vm::new(
-            shell_name,
-            shell_prompt,
-            shell_command,
-            scope,
-            code_server,
-            Some(self.progress_tx.clone()),
-            self.log_dir,
-            self.test_start,
-            Some(self.event_collector.clone()),
-        )
-        .await
-    }
-}
-
-pub mod bifs;
-pub mod event_log;
-pub mod history;
-pub mod html;
-pub mod junit;
-pub mod progress;
-pub mod pure;
-pub mod result;
-pub mod run_summary;
-pub mod shell_log;
-pub mod tap;
-pub mod vars;
+pub mod effect;
+pub mod observe;
+pub mod report;
 pub mod vm;
 
-use crate::config;
+use crate::core::config;
 
-pub fn compute_test_path(source_map: &SourceMap, project_root: &Path, plan: &Plan) -> String {
-    let source_path = &source_map.files[plan.test.span.file].path;
-    let tests_dir = config::tests_dir(project_root);
-    source_path
-        .strip_prefix(&tests_dir)
-        .unwrap_or(source_path)
-        .display()
-        .to_string()
-}
-
-/// Format a test identifier for display: `path/slugified-name`.
-pub fn test_display_id(test_path: &str, test_name: &str) -> String {
-    format!("{}/{}", test_path, slugify(test_name))
-}
-
-pub type SharedVm = Arc<Mutex<Vm>>;
-
-pub enum Callable {
-    UserDefined(ir::FnId),
-    UserDefinedPure(ir::PureFnId),
-    Builtin(Box<dyn bifs::Bif>),
-    PureBuiltin(Box<dyn bifs::PureBif>),
-}
-
-pub struct CodeServer {
-    functions: ir::IndexVec<ir::FnId, ir::Function>,
-    index: HashMap<(String, usize), ir::FnId>,
-    pure_functions: ir::IndexVec<ir::PureFnId, ir::PureFunction>,
-    pure_index: HashMap<(String, usize), ir::PureFnId>,
-}
-
-impl CodeServer {
-    pub fn new(
-        functions: ir::IndexVec<ir::FnId, ir::Function>,
-        pure_functions: ir::IndexVec<ir::PureFnId, ir::PureFunction>,
-    ) -> Self {
-        let mut index = HashMap::new();
-        for (i, f) in functions.iter().enumerate() {
-            index.insert((f.name.node.clone(), f.params.len()), ir::FnId::from(i));
-        }
-        let mut pure_index = HashMap::new();
-        for (i, f) in pure_functions.iter().enumerate() {
-            pure_index.insert((f.name.node.clone(), f.params.len()), ir::PureFnId::from(i));
-        }
-        Self {
-            functions,
-            index,
-            pure_functions,
-            pure_index,
-        }
-    }
-
-    pub fn lookup(&self, name: &str, arity: usize) -> Option<Callable> {
-        let key = (name.to_string(), arity);
-        if let Some(&id) = self.index.get(&key) {
-            Some(Callable::UserDefined(id))
-        } else if let Some(&id) = self.pure_index.get(&key) {
-            Some(Callable::UserDefinedPure(id))
-        } else if let Some(bif) = bifs::lookup_impure(name, arity) {
-            Some(Callable::Builtin(bif))
-        } else {
-            bifs::lookup_pure(name, arity).map(Callable::PureBuiltin)
-        }
-    }
-
-    /// Lookup for pure contexts — only returns pure callables.
-    pub fn lookup_pure(&self, name: &str, arity: usize) -> Option<Callable> {
-        let key = (name.to_string(), arity);
-        if let Some(&id) = self.pure_index.get(&key) {
-            Some(Callable::UserDefinedPure(id))
-        } else {
-            bifs::lookup_pure(name, arity).map(Callable::PureBuiltin)
-        }
-    }
-
-    pub fn get(&self, fn_id: ir::FnId) -> Option<&ir::Function> {
-        self.functions.get(fn_id)
-    }
-
-    pub fn get_pure(&self, fn_id: ir::PureFnId) -> Option<&ir::PureFunction> {
-        self.pure_functions.get(fn_id)
-    }
-}
-
-fn eval_marker_string_expr(expr: &ir::Interpolation, env: &Env) -> String {
-    interpolate_with_lookup(expr, |name| env.get(name).cloned())
-}
-
-async fn eval_marker_pure_expr(
-    expr: &ir::PureExpr,
-    env: &Arc<Env>,
-    code_server: &CodeServer,
-) -> String {
-    let spanned = Spanned::new(expr.clone(), ir::Span::new(ir::FileId::from(0), 0..0));
-    let mut vars = std::collections::HashMap::new();
-    pure::eval_pure_expr(
-        &spanned,
-        &mut vars,
-        env,
-        code_server,
-        &mut pure::SimplePureContext,
-    )
-    .await
-    .unwrap_or_default()
-}
-
-async fn evaluate_conditions(
-    conditions: &[Spanned<ir::Condition>],
-    env: &Arc<Env>,
-    code_server: &CodeServer,
-) -> Option<String> {
-    for cond in conditions {
-        // Bare (unconditional) markers: no condition body
-        let Some(ref cond_expr) = cond.node.cond else {
-            match cond.node.kind {
-                ir::CondKind::Skip => return Some("skip: unconditional".to_string()),
-                ir::CondKind::Run => continue,
-                ir::CondKind::Flaky => return Some("flaky: unconditional".to_string()),
-            }
-        };
-
-        let result_value = match &cond_expr.body {
-            ir::CondBody::Bare(expr) => eval_marker_pure_expr(expr, env, code_server).await,
-            ir::CondBody::Eq(lhs, rhs) => {
-                let lval = eval_marker_pure_expr(lhs, env, code_server).await;
-                let rval = eval_marker_pure_expr(rhs, env, code_server).await;
-                if lval == rval { lval } else { String::new() }
-            }
-            ir::CondBody::Regex(lhs, pat) => {
-                let lval = eval_marker_pure_expr(lhs, env, code_server).await;
-                let pat_str = eval_marker_string_expr(pat, env);
-                match regex::Regex::new(&pat_str) {
-                    Ok(re) => re
-                        .find(&lval)
-                        .map(|m| m.as_str().to_string())
-                        .unwrap_or_default(),
-                    Err(_) => String::new(),
-                }
-            }
-        };
-
-        let truthy = !result_value.is_empty();
-
-        let should_act = match cond_expr.modifier {
-            ir::CondModifier::If => truthy,
-            ir::CondModifier::Unless => !truthy,
-        };
-
-        let kind_label = match cond.node.kind {
-            ir::CondKind::Skip => "skip",
-            ir::CondKind::Run => "run",
-            ir::CondKind::Flaky => "flaky",
-        };
-
-        match cond.node.kind {
-            ir::CondKind::Skip => {
-                if should_act {
-                    return Some(format!("{kind_label}: condition not met"));
-                }
-            }
-            ir::CondKind::Run => {
-                if !should_act {
-                    return Some(format!("{kind_label}: condition not met"));
-                }
-            }
-            ir::CondKind::Flaky => {
-                if should_act {
-                    return Some(format!("{kind_label}: condition not met"));
-                }
-            }
-        }
-    }
-    None
-}
+// ─── RunStrategy ────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunStrategy {
@@ -251,18 +35,7 @@ pub enum RunStrategy {
     FailFast,
 }
 
-pub struct Runtime {
-    env: Arc<Env>,
-    source_map: SourceMap,
-    run_dir: PathBuf,
-    project_root: PathBuf,
-    default_timeout: Timeout,
-    shell_command: String,
-    shell_prompt: String,
-    test_timeout: Option<Timeout>,
-    suite_timeout: Option<Duration>,
-    strategy: RunStrategy,
-}
+// ─── RunContext ─────────────────────────────────────────────
 
 pub struct RunContext {
     pub run_id: String,
@@ -271,679 +44,121 @@ pub struct RunContext {
     pub project_root: PathBuf,
     pub shell_command: String,
     pub shell_prompt: String,
-    pub default_timeout: Timeout,
-    pub test_timeout: Option<Timeout>,
+    pub default_timeout: IrTimeout,
+    pub test_timeout: Option<IrTimeout>,
     pub suite_timeout: Option<Duration>,
     pub strategy: RunStrategy,
 }
 
-impl Runtime {
-    pub fn new(source_map: SourceMap, run_context: RunContext) -> Self {
-        let mut env = std::env::vars().collect::<HashMap<_, _>>();
-        env.insert("__RELUX_RUN_ID".to_string(), run_context.run_id.clone());
-        env.insert(
-            "__RELUX_RUN_ARTIFACTS".to_string(),
-            run_context.artifacts_dir.display().to_string(),
-        );
-        env.insert(
-            "__RELUX_SHELL_PROMPT".to_string(),
-            run_context.shell_prompt.clone(),
-        );
-        env.insert(
-            "__RELUX_SUITE_ROOT".to_string(),
-            run_context.project_root.display().to_string(),
-        );
-        Self {
-            env: Arc::new(env),
-            source_map,
-            run_dir: run_context.run_dir,
-            project_root: run_context.project_root,
-            default_timeout: run_context.default_timeout,
-            shell_command: run_context.shell_command,
-            shell_prompt: run_context.shell_prompt,
-            test_timeout: run_context.test_timeout,
-            suite_timeout: run_context.suite_timeout,
-            strategy: run_context.strategy,
+// ─── Environment Helpers ────────────────────────────────────
+
+fn build_env(ctx: &RunContext) -> Arc<Env> {
+    let mut env = Env::capture();
+    env.insert("__RELUX_RUN_ID".into(), ctx.run_id.clone());
+    env.insert(
+        "__RELUX_RUN_ARTIFACTS".into(),
+        ctx.artifacts_dir.display().to_string(),
+    );
+    env.insert("__RELUX_SHELL_PROMPT".into(), ctx.shell_prompt.clone());
+    env.insert(
+        "__RELUX_SUITE_ROOT".into(),
+        ctx.project_root.display().to_string(),
+    );
+    if let Ok(exe) = std::env::current_exe() {
+        env.insert("__RELUX".into(), exe.display().to_string());
+    }
+    Arc::new(env)
+}
+
+fn make_test_env(base: &Arc<Env>, test_file: &Path) -> Arc<Env> {
+    let mut env = base.as_ref().clone();
+    if let Some(dir) = test_file.parent() {
+        env.insert("__RELUX_TEST_ROOT".into(), dir.display().to_string());
+    }
+    Arc::new(env)
+}
+
+// ─── Log / Display Helpers ──────────────────────────────────
+
+fn test_log_dir(
+    run_dir: &Path,
+    source_table: &SourceTable,
+    meta: &crate::dsl::resolver::ir::TestMeta,
+    project_root: &Path,
+) -> PathBuf {
+    let file_id = meta.span().file();
+    let source_path = source_table
+        .get(file_id)
+        .map(|sf| sf.path.clone())
+        .unwrap_or_else(|| file_id.path().clone());
+    let relative = source_path
+        .strip_prefix(project_root)
+        .unwrap_or(&source_path);
+    run_dir
+        .join("logs")
+        .join(relative.with_extension(""))
+        .join(slugify(meta.name()))
+}
+
+fn test_path_from_meta(
+    source_table: &SourceTable,
+    meta: &crate::dsl::resolver::ir::TestMeta,
+    project_root: &Path,
+) -> String {
+    let file_id = meta.span().file();
+    let source_path = source_table
+        .get(file_id)
+        .map(|sf| sf.path.clone())
+        .unwrap_or_else(|| file_id.path().clone());
+    let tests_dir = config::tests_dir(project_root);
+    source_path
+        .strip_prefix(&tests_dir)
+        .unwrap_or(&source_path)
+        .display()
+        .to_string()
+}
+
+/// Format cause/warning IDs as typed groups for test line output.
+///
+/// Example: ` [invalid: cheap-walrus-0042] [warning: worn-falcon-5678]`
+fn format_cause_tags(
+    causes: &[CauseId],
+    warnings: &[WarningId],
+    cause_table: &CauseTable,
+) -> String {
+    let mut parts = Vec::new();
+
+    let mut invalid_ids = Vec::new();
+    let mut skip_ids = Vec::new();
+    for id in causes {
+        match cause_table.get(id) {
+            Some(Cause::Invalid(_)) => invalid_ids.push(id.to_string()),
+            Some(Cause::Skip(_)) => skip_ids.push(id.to_string()),
+            None => {}
         }
     }
 
-    pub fn source_map(&self) -> &SourceMap {
-        &self.source_map
+    if !invalid_ids.is_empty() {
+        parts.push(format!("[invalid: {}]", invalid_ids.join(", ")));
+    }
+    if !skip_ids.is_empty() {
+        parts.push(format!("[skip: {}]", skip_ids.join(", ")));
+    }
+    if !warnings.is_empty() {
+        let ids: Vec<String> = warnings.iter().map(|w| w.to_string()).collect();
+        parts.push(format!("[warning: {}]", ids.join(", ")));
     }
 
-    pub fn run_dir(&self) -> &Path {
-        &self.run_dir
-    }
-
-    pub async fn run(&self, plans: Vec<Plan>) -> Vec<TestResult> {
-        let run_fut = self.run_inner(plans);
-        match self.suite_timeout {
-            Some(timeout) => match tokio::time::timeout(timeout, run_fut).await {
-                Ok(results) => results,
-                Err(_) => {
-                    eprintln!("suite timeout ({timeout:?}) exceeded");
-                    Vec::new()
-                }
-            },
-            None => run_fut.await,
-        }
-    }
-
-    async fn run_inner(&self, plans: Vec<Plan>) -> Vec<TestResult> {
-        eprintln!("\nrunning {} tests", plans.len());
-        let mut results = Vec::with_capacity(plans.len());
-        for plan in plans {
-            let result = self.run_plan(plan).await;
-            let failed = matches!(result.outcome, Outcome::Fail(_));
-            results.push(result);
-            if failed && self.strategy == RunStrategy::FailFast {
-                break;
-            }
-        }
-        results
-    }
-
-    async fn run_plan(&self, plan: Plan) -> TestResult {
-        // Inline test timeout takes precedence over the inherited config/manifest
-        // timeout.  The multiplier is already baked into Tolerance variants.
-        let effective_timeout = match &plan.test.timeout {
-            Some(t) => Some(t.clone()),
-            None => self.test_timeout.clone(),
-        };
-        match effective_timeout {
-            Some(ref t) => match tokio::time::timeout(t.resolve(), self.run_plan_inner(plan)).await
-            {
-                Ok(result) => result,
-                Err(_) => TestResult {
-                    test_name: "(unknown)".to_string(),
-                    test_path: "(unknown)".to_string(),
-                    outcome: Outcome::Fail(Failure::Runtime {
-                        message: format!("test timeout ({:?}) exceeded", t.resolve()),
-                        span: None,
-                        shell: None,
-                    }),
-                    duration: Duration::ZERO,
-                    progress: String::new(),
-                    log_dir: None,
-                },
-            },
-            None => self.run_plan_inner(plan).await,
-        }
-    }
-
-    fn compute_test_path(&self, plan: &Plan) -> String {
-        compute_test_path(&self.source_map, &self.project_root, plan)
-    }
-
-    fn plan_env(&self, plan: &Plan) -> Arc<Env> {
-        let mut env = (*self.env).clone();
-        let test_file = &self.source_map.files[plan.test.span.file].path;
-        if let Some(dir) = test_file.parent() {
-            env.insert("__RELUX_TEST_ROOT".to_string(), dir.display().to_string());
-        }
-        Arc::new(env)
-    }
-
-    async fn run_plan_inner(&self, plan: Plan) -> TestResult {
-        let test_start = Instant::now();
-        let test_name = plan.test.name.node.clone();
-        let test_path = self.compute_test_path(&plan);
-        let code_server = Arc::new(CodeServer::new(
-            plan.functions.clone(),
-            plan.pure_functions.clone(),
-        ));
-        let env = self.plan_env(&plan);
-
-        let log_dir = self.compute_test_log_dir(&plan);
-        let _ = std::fs::create_dir_all(&log_dir);
-        let event_collector = EventCollector::new(test_start);
-
-        let display_id = test_display_id(&test_path, &test_name);
-        eprint!("test {display_id}: ");
-        let _ = std::io::stderr().flush();
-
-        let (progress_tx, progress_rx) = progress::channel();
-        let printer_handle = progress::spawn_printer(progress_rx);
-
-        if let Some(reason) = evaluate_conditions(&plan.test.conditions, &env, &code_server).await {
-            drop(progress_tx);
-            let progress_string = printer_handle.await.unwrap_or_default();
-            let duration = test_start.elapsed();
-            {
-                use colored::Colorize;
-                eprintln!("{} ({})", "skipped".yellow(), reason);
-            }
-            let events = event_collector.take().await;
-            crate::runtime::html::generate_html_logs(&log_dir, &test_name, &events, &self.run_dir);
-            return TestResult {
-                test_name,
-                test_path,
-                outcome: Outcome::Skipped(reason),
-                duration,
-                progress: progress_string,
-                log_dir: Some(log_dir),
-            };
-        }
-
-        let rctx = TestRunContext {
-            progress_tx: progress_tx.clone(),
-            log_dir: &log_dir,
-            test_start,
-            event_collector: &event_collector,
-            env: &env,
-        };
-
-        let mut effect_exec = self
-            .execute_effects(&plan, code_server.clone(), &rctx)
-            .await;
-
-        let outcome = match effect_exec.outcome.take() {
-            Some(outcome) => outcome,
-            None => {
-                let test_scope = Arc::new(Mutex::new(TestScope::new()));
-                for decl in &plan.test.vars {
-                    let value = if let Some(expr) = &decl.node.value {
-                        pure::eval_pure_var_value(
-                            expr,
-                            &env,
-                            &code_server,
-                            &mut pure::SimplePureContext,
-                        )
-                        .await
-                        .unwrap_or_default()
-                    } else {
-                        String::new()
-                    };
-                    test_scope
-                        .lock()
-                        .await
-                        .insert(decl.node.name.node.clone(), value);
-                }
-
-                self.run_test_body(
-                    &plan,
-                    test_scope,
-                    code_server,
-                    &mut effect_exec.alias_shells,
-                    &rctx,
-                )
-                .await
-            }
-        };
-
-        self.run_test_cleanup(&plan, &rctx).await;
-        // Drop alias references before teardown so Arc::try_unwrap
-        // can succeed when shutting down effect shells.
-        effect_exec.alias_shells.clear();
-        self.teardown_effects(&plan, &mut effect_exec, &rctx).await;
-
-        drop(rctx);
-        drop(progress_tx);
-        let progress_string = printer_handle.await.unwrap_or_default();
-        let duration = test_start.elapsed();
-
-        {
-            use crate::runtime::result::format_duration;
-            use colored::Colorize;
-            let suffix = match &outcome {
-                Outcome::Pass => format!(" {} ({})", "ok".green(), format_duration(duration)),
-                Outcome::Fail(_) => format!(" {} ({})", "FAILED".red(), format_duration(duration)),
-                Outcome::Skipped(reason) => format!(" {} ({})", "skipped".yellow(), reason),
-            };
-            eprintln!("{suffix}");
-        }
-
-        let events = event_collector.take().await;
-        crate::runtime::html::generate_html_logs(&log_dir, &test_name, &events, &self.run_dir);
-
-        TestResult {
-            test_name,
-            test_path,
-            outcome,
-            duration,
-            progress: progress_string,
-            log_dir: Some(log_dir),
-        }
-    }
-
-    fn compute_test_log_dir(&self, plan: &Plan) -> PathBuf {
-        let source_path = &self.source_map.files[plan.test.span.file].path;
-        let relative = source_path
-            .strip_prefix(&self.project_root)
-            .unwrap_or(source_path);
-        self.run_dir
-            .join("logs")
-            .join(relative.with_extension(""))
-            .join(slugify(&plan.test.name.node))
-    }
-
-    async fn execute_effects(
-        &self,
-        plan: &Plan,
-        code_server: Arc<CodeServer>,
-        rctx: &TestRunContext<'_>,
-    ) -> EffectExecution {
-        let mut effect_state = EffectExecution::default();
-        let order = match toposort(&plan.effect_graph.dag, None) {
-            Ok(v) => v,
-            Err(e) => {
-                effect_state.outcome = Some(Outcome::Fail(Failure::Runtime {
-                    message: format!("effect graph has cycle at {:?}", e.node_id()),
-                    span: Some(plan.test.span.clone()),
-                    shell: None,
-                }));
-                return effect_state;
-            }
-        };
-
-        let scope_prefixes = compute_scope_prefixes(plan);
-
-        for instance_id in order {
-            let Some(instance) = plan.effect_graph.dag.node_weight(instance_id).cloned() else {
-                continue;
-            };
-            let overlay = self
-                .interpolate_overlay(&instance.overlay, rctx.env, &code_server)
-                .await;
-            let effect = &plan.effects[instance.effect];
-            rctx.emit(ProgressEvent::EffectSetup(effect.name.node.clone()));
-            rctx.event_collector
-                .push(
-                    "",
-                    LogEventKind::EffectSetup {
-                        effect: effect.name.node.clone(),
-                    },
-                )
-                .await;
-
-            if let Some(reason) =
-                evaluate_conditions(&effect.conditions, rctx.env, &code_server).await
-            {
-                rctx.event_collector
-                    .push(
-                        "",
-                        LogEventKind::EffectSkip {
-                            effect: effect.name.node.clone(),
-                            reason: reason.clone(),
-                        },
-                    )
-                    .await;
-                let reason = format!("effect {} skipped: {reason}", effect.name.node);
-                effect_state.outcome = Some(Outcome::Skipped(reason));
-                return effect_state;
-            }
-
-            let effect_scope = Arc::new(Mutex::new(TestScope::new()));
-            let mut shells: HashMap<String, SharedVm> = HashMap::new();
-            let scope_prefix = scope_prefixes
-                .get(&instance_id)
-                .cloned()
-                .unwrap_or_else(|| effect.name.node.clone());
-
-            for incoming in plan
-                .effect_graph
-                .dag
-                .edges_directed(instance_id, daggy::petgraph::Direction::Incoming)
-            {
-                if let Some(alias) = &incoming.weight().alias {
-                    let dep_id = incoming.source();
-                    if let Some(dep) = effect_state.instances.get(&dep_id) {
-                        shells.insert(alias.node.clone(), dep.exported_vm.clone());
-                    }
-                }
-            }
-
-            let mut setup_failed = None;
-            for var in &effect.vars {
-                let value = if let Some(expr) = &var.node.value {
-                    match pure::eval_pure_var_value(
-                        expr,
-                        rctx.env,
-                        &code_server,
-                        &mut pure::SimplePureContext,
-                    )
-                    .await
-                    {
-                        Ok(v) => v,
-                        Err(f) => {
-                            setup_failed = Some(f);
-                            break;
-                        }
-                    }
-                } else {
-                    String::new()
-                };
-                rctx.event_collector
-                    .push(
-                        "",
-                        LogEventKind::VarLet {
-                            name: var.node.name.node.clone(),
-                            value: value.clone(),
-                        },
-                    )
-                    .await;
-                effect_scope
-                    .lock()
-                    .await
-                    .insert(var.node.name.node.clone(), value);
-            }
-
-            if setup_failed.is_none() {
-                for block in &effect.shells {
-                    let shell_name = block.node.name.node.clone();
-                    let scoped_name = format!("{scope_prefix}.{shell_name}");
-                    if !shells.contains_key(&shell_name) {
-                        let scope = ScopeStack::new(
-                            effect_scope.clone(),
-                            overlay.clone(),
-                            rctx.env.clone(),
-                            self.default_timeout.clone(),
-                        );
-                        match rctx
-                            .spawn_vm(
-                                scoped_name,
-                                self.shell_prompt.clone(),
-                                self.shell_command.clone(),
-                                scope,
-                                code_server.clone(),
-                            )
-                            .await
-                        {
-                            Ok(vm) => {
-                                shells.insert(shell_name.clone(), Arc::new(Mutex::new(vm)));
-                            }
-                            Err(f) => {
-                                setup_failed = Some(f);
-                                break;
-                            }
-                        }
-                    }
-                    if let Some(vm) = shells.get(&shell_name) {
-                        let mut guard = vm.lock().await;
-                        if let Err(f) = guard.exec_stmts(&block.node.stmts).await {
-                            setup_failed = Some(f);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if let Some(failure) = setup_failed {
-                let reason = format!("effect setup failed: {failure:?}");
-                effect_state.outcome = Some(Outcome::Skipped(reason));
-                effect_state.failures.push(failure);
-                break;
-            }
-
-            let exported_name = effect.exported_shell.node.clone();
-            let Some(exported_vm) = shells.get(&exported_name).cloned() else {
-                effect_state.outcome = Some(Outcome::Fail(Failure::Runtime {
-                    message: format!(
-                        "effect `{}` exported shell `{}` not created",
-                        effect.name.node, exported_name
-                    ),
-                    span: Some(effect.span.clone()),
-                    shell: None,
-                }));
-                break;
-            };
-
-            effect_state.instances.insert(
-                instance_id,
-                EffectInstanceState {
-                    info: instance,
-                    scope_prefix,
-                    all_shells: shells,
-                    exported_vm,
-                },
-            );
-        }
-
-        for need in &plan.test.needs {
-            if let Some(alias) = &need.node.alias
-                && let Some(state) = effect_state.instances.get(&need.node.instance)
-            {
-                effect_state
-                    .alias_shells
-                    .insert(alias.node.clone(), state.exported_vm.clone());
-            }
-        }
-
-        effect_state
-    }
-
-    async fn run_test_body(
-        &self,
-        plan: &Plan,
-        test_scope: Arc<Mutex<TestScope>>,
-        code_server: Arc<CodeServer>,
-        aliases: &mut HashMap<String, SharedVm>,
-        rctx: &TestRunContext<'_>,
-    ) -> Outcome {
-        let mut local_shells: HashMap<String, SharedVm> = HashMap::new();
-        for block in &plan.test.shells {
-            let shell_name = block.node.name.node.clone();
-            rctx.emit(ProgressEvent::ShellSwitch(shell_name.clone()));
-            rctx.event_collector
-                .push(
-                    "",
-                    LogEventKind::ShellSwitch {
-                        name: shell_name.clone(),
-                    },
-                )
-                .await;
-            let vm = if let Some(vm) = aliases.get(&shell_name).cloned() {
-                rctx.event_collector
-                    .push(
-                        "",
-                        LogEventKind::ShellAlias {
-                            name: shell_name.clone(),
-                            source: shell_name.clone(),
-                        },
-                    )
-                    .await;
-                vm
-            } else if let Some(vm) = local_shells.get(&shell_name).cloned() {
-                vm
-            } else {
-                let scope = ScopeStack::new(
-                    test_scope.clone(),
-                    HashMap::new(),
-                    rctx.env.clone(),
-                    self.default_timeout.clone(),
-                );
-                let vm = match rctx
-                    .spawn_vm(
-                        shell_name.clone(),
-                        self.shell_prompt.clone(),
-                        self.shell_command.clone(),
-                        scope,
-                        code_server.clone(),
-                    )
-                    .await
-                {
-                    Ok(vm) => Arc::new(Mutex::new(vm)),
-                    Err(f) => return Outcome::Fail(f),
-                };
-                local_shells.insert(shell_name.clone(), vm.clone());
-                vm
-            };
-
-            let mut guard = vm.lock().await;
-            if let Err(f) = guard.exec_stmts(&block.node.stmts).await {
-                return Outcome::Fail(f);
-            }
-        }
-        Outcome::Pass
-    }
-
-    async fn run_test_cleanup(&self, plan: &Plan, rctx: &TestRunContext<'_>) {
-        if let Some(cleanup) = &plan.test.cleanup {
-            rctx.emit(ProgressEvent::Cleanup);
-            let test_scope = Arc::new(Mutex::new(TestScope::new()));
-            let scope = ScopeStack::new(
-                test_scope,
-                HashMap::new(),
-                rctx.env.clone(),
-                self.default_timeout.clone(),
-            );
-            let code_server = Arc::new(CodeServer::new(
-                plan.functions.clone(),
-                plan.pure_functions.clone(),
-            ));
-            rctx.event_collector
-                .push(
-                    "",
-                    LogEventKind::Cleanup {
-                        shell: "__cleanup".to_string(),
-                    },
-                )
-                .await;
-            if let Ok(mut vm) = rctx
-                .spawn_vm(
-                    "__cleanup".to_string(),
-                    self.shell_prompt.clone(),
-                    self.shell_command.clone(),
-                    scope,
-                    code_server,
-                )
-                .await
-            {
-                let converted = cleanup_to_shell_stmts(&cleanup.node.stmts, &cleanup.span);
-                let _ = vm.exec_stmts(&converted).await;
-                vm.shutdown().await;
-            }
-        }
-    }
-
-    async fn teardown_effects(
-        &self,
-        plan: &Plan,
-        state: &mut EffectExecution,
-        rctx: &TestRunContext<'_>,
-    ) {
-        let mut order = match toposort(&plan.effect_graph.dag, None) {
-            Ok(v) => v,
-            Err(_) => return,
-        };
-        order.reverse();
-
-        for id in order {
-            let Some(instance_state) = state.instances.remove(&id) else {
-                continue;
-            };
-            let effect = &plan.effects[instance_state.info.effect];
-            if let Some(cleanup) = &effect.cleanup {
-                rctx.emit(ProgressEvent::Cleanup);
-                let cleanup_name = format!("{}.__cleanup", instance_state.scope_prefix);
-                rctx.event_collector
-                    .push(
-                        "",
-                        LogEventKind::EffectTeardown {
-                            effect: effect.name.node.clone(),
-                        },
-                    )
-                    .await;
-                rctx.event_collector
-                    .push(
-                        "",
-                        LogEventKind::Cleanup {
-                            shell: cleanup_name.clone(),
-                        },
-                    )
-                    .await;
-                let test_scope = Arc::new(Mutex::new(TestScope::new()));
-                let code_server =
-                    Arc::new(CodeServer::new(ir::IndexVec::new(), ir::IndexVec::new()));
-                let overlay = self
-                    .interpolate_overlay(&instance_state.info.overlay, rctx.env, &code_server)
-                    .await;
-                let scope = ScopeStack::new(
-                    test_scope,
-                    overlay,
-                    rctx.env.clone(),
-                    self.default_timeout.clone(),
-                );
-                if let Ok(mut vm) = rctx
-                    .spawn_vm(
-                        cleanup_name,
-                        self.shell_prompt.clone(),
-                        self.shell_command.clone(),
-                        scope,
-                        code_server,
-                    )
-                    .await
-                {
-                    let converted = cleanup_to_shell_stmts(&cleanup.node.stmts, &cleanup.span);
-                    let _ = vm.exec_stmts(&converted).await;
-                    vm.shutdown().await;
-                }
-            }
-            for (_, vm) in instance_state.all_shells {
-                if let Ok(mutex) = Arc::try_unwrap(vm) {
-                    mutex.into_inner().shutdown().await;
-                }
-            }
-        }
-    }
-
-    async fn interpolate_overlay(
-        &self,
-        overlay: &[ir::OverlayEntry],
-        env: &Arc<Env>,
-        code_server: &Arc<CodeServer>,
-    ) -> HashMap<String, String> {
-        pure::eval_overlay(overlay, env, code_server).await
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", parts.join(" "))
     }
 }
 
-#[derive(Default)]
-struct EffectExecution {
-    instances: HashMap<InstanceId, EffectInstanceState>,
-    alias_shells: HashMap<String, SharedVm>,
-    failures: Vec<Failure>,
-    outcome: Option<Outcome>,
-}
-
-struct EffectInstanceState {
-    info: EffectInstance,
-    scope_prefix: String,
-    all_shells: HashMap<String, SharedVm>,
-    exported_vm: SharedVm,
-}
-
-fn cleanup_to_shell_stmts(
-    stmts: &[Spanned<ir::CleanupStmt>],
-    span: &ir::Span,
-) -> Vec<Spanned<ir::ShellStmt>> {
-    stmts
-        .iter()
-        .map(|stmt| {
-            let node = match &stmt.node {
-                ir::CleanupStmt::Send(s) => ir::ShellStmt::Expr(ir::Expr::Send(s.clone())),
-                ir::CleanupStmt::SendRaw(s) => ir::ShellStmt::Expr(ir::Expr::SendRaw(s.clone())),
-                ir::CleanupStmt::Let(v) => ir::ShellStmt::Let(ir::VarDecl {
-                    name: v.name.clone(),
-                    value: v
-                        .value
-                        .as_ref()
-                        .map(|e| Spanned::new(e.node.clone(), e.span.clone())),
-                }),
-                ir::CleanupStmt::Assign(a) => ir::ShellStmt::Assign(ir::VarAssign {
-                    name: a.name.clone(),
-                    value: Spanned::new(a.value.node.clone(), a.value.span.clone()),
-                }),
-            };
-            Spanned::new(node, stmt.span.clone())
-        })
-        .chain(std::iter::once(Spanned::new(
-            ir::ShellStmt::Timeout(Timeout::Tolerance {
-                duration: config::DEFAULT_TIMEOUT,
-                multiplier: 1.0,
-            }),
-            span.clone(),
-        )))
-        .collect()
+/// Format a test identifier for display: `path/slugified-name`.
+pub fn test_display_id(test_path: &str, test_name: &str) -> String {
+    format!("{}/{}", test_path, slugify(test_name))
 }
 
 pub fn slugify(name: &str) -> String {
@@ -960,343 +175,529 @@ pub fn slugify(name: &str) -> String {
         .to_string()
 }
 
-/// Builds a map from InstanceId to a hierarchical scope prefix string.
-/// Top-level effects (referenced by test needs) get `{effect_name}.{alias}`.
-/// Nested dependencies get `{parent_prefix}.{effect_name}.{dep_alias}`.
-fn compute_scope_prefixes(plan: &Plan) -> HashMap<InstanceId, String> {
-    let mut prefixes: HashMap<InstanceId, String> = HashMap::new();
+// ─── Execute (Suite Entry Point) ────────────────────────────
 
-    for need in &plan.test.needs {
-        let instance_id = need.node.instance;
-        if let Some(instance) = plan.effect_graph.dag.node_weight(instance_id) {
-            let effect = &plan.effects[instance.effect];
-            let alias_str = need
-                .node
-                .alias
-                .as_ref()
-                .map(|a| a.node.as_str())
-                .unwrap_or(&effect.name.node);
-            let prefix = format!("{}.{}", effect.name.node, alias_str);
-            prefixes.insert(instance_id, prefix);
-        }
+pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> Vec<TestResult> {
+    let base_env = build_env(run_ctx);
+
+    eprintln!("\nrunning {} tests", suite.plans.len());
+
+    let cancel = CancellationToken::new();
+
+    // Spawn suite timeout watchdog
+    let watchdog = run_ctx.suite_timeout.map(|timeout| {
+        let watchdog_cancel = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(timeout).await;
+            watchdog_cancel.cancel();
+        })
+    });
+
+    // Build shared test queue
+    let queue: Arc<std::sync::Mutex<VecDeque<&Plan>>> =
+        Arc::new(std::sync::Mutex::new(suite.plans.iter().collect()));
+
+    // Run single worker (future: spawn N workers for concurrency)
+    let results = run_worker(queue, cancel, suite, run_ctx, &base_env).await;
+
+    // Abort suite timeout watchdog if it's still running
+    if let Some(handle) = watchdog {
+        handle.abort();
     }
 
-    if let Ok(order) = toposort(&plan.effect_graph.dag, None) {
-        let reversed: Vec<_> = order.into_iter().rev().collect();
-        for id in reversed {
-            if prefixes.contains_key(&id) {
-                continue;
+    results
+}
+
+async fn run_worker<'a>(
+    queue: Arc<std::sync::Mutex<VecDeque<&'a Plan>>>,
+    cancel: CancellationToken,
+    suite: &'a Suite,
+    run_ctx: &RunContext,
+    base_env: &Arc<Env>,
+) -> Vec<TestResult> {
+    let mut results = Vec::new();
+    loop {
+        if cancel.is_cancelled() {
+            break;
+        }
+
+        let plan = {
+            let mut q = queue.lock().expect("queue lock poisoned");
+            q.pop_front()
+        };
+        let Some(plan) = plan else { break };
+
+        let test_path =
+            test_path_from_meta(&suite.tables.sources, plan.meta(), &run_ctx.project_root);
+
+        let result = match plan {
+            Plan::Runnable {
+                meta,
+                test,
+                warnings: plan_warnings,
+            } => {
+                let tags = format_cause_tags(&[], plan_warnings, &suite.causes);
+                run_test_cancellable(
+                    meta,
+                    test,
+                    run_ctx,
+                    base_env,
+                    &test_path,
+                    &tags,
+                    &cancel,
+                    &suite.tables,
+                    &suite.causes,
+                )
+                .await
             }
-            if let Some(instance) = plan.effect_graph.dag.node_weight(id) {
-                let effect = &plan.effects[instance.effect];
-                let mut parent_prefix = None;
-                for edge in plan
-                    .effect_graph
-                    .dag
-                    .edges_directed(id, daggy::petgraph::Direction::Outgoing)
-                {
-                    let target = edge.target();
-                    if let Some(p) = prefixes.get(&target) {
-                        let edge_alias = edge
-                            .weight()
-                            .alias
-                            .as_ref()
-                            .map(|a| a.node.as_str())
-                            .unwrap_or(&effect.name.node);
-                        parent_prefix = Some(format!("{}.{}.{}", p, effect.name.node, edge_alias));
-                        break;
-                    }
+            Plan::Skipped {
+                meta,
+                causes,
+                warnings,
+            } => {
+                let tags = format_cause_tags(causes, warnings, &suite.causes);
+                let display_id = test_display_id(&test_path, meta.name());
+                eprintln!(
+                    "test {display_id}: {}{tags}",
+                    colored::Colorize::yellow("skipped")
+                );
+                TestResult {
+                    test_name: meta.name().to_string(),
+                    test_path: test_path.clone(),
+                    outcome: Outcome::Skipped("skipped".to_string()),
+                    duration: Duration::ZERO,
+                    progress: String::new(),
+                    log_dir: None,
+                    warnings: Vec::new(),
                 }
-                let prefix =
-                    parent_prefix.unwrap_or_else(|| format!("{}.{}", effect.name.node, id.index()));
-                prefixes.insert(id, prefix);
             }
+            Plan::Invalid {
+                meta,
+                causes,
+                warnings,
+            } => {
+                let tags = format_cause_tags(causes, warnings, &suite.causes);
+                let display_id = test_display_id(&test_path, meta.name());
+                eprintln!(
+                    "test {display_id}: {}{tags}",
+                    colored::Colorize::red("INVALID")
+                );
+                TestResult {
+                    test_name: meta.name().to_string(),
+                    test_path: test_path.clone(),
+                    outcome: Outcome::Invalid("invalid".to_string()),
+                    duration: Duration::ZERO,
+                    progress: String::new(),
+                    log_dir: None,
+                    warnings: Vec::new(),
+                }
+            }
+        };
+
+        let failed = matches!(result.outcome, Outcome::Fail(_));
+        results.push(result);
+
+        if failed && run_ctx.strategy == RunStrategy::FailFast {
+            cancel.cancel();
+            break;
         }
     }
 
-    prefixes
+    // Drain remaining queue as skipped
+    // TODO: track cancellation reason explicitly (e.g. CancelReason enum) —
+    // the heuristic below is wrong when suite timeout fires during fail-fast mode
+    let skip_reason = if cancel.is_cancelled() {
+        if run_ctx.strategy == RunStrategy::FailFast {
+            "fail fast"
+        } else {
+            "suite timeout"
+        }
+    } else {
+        return results; // queue was exhausted normally, nothing to drain
+    };
+
+    let remaining: Vec<&Plan> = {
+        let mut q = queue.lock().expect("queue lock poisoned");
+        q.drain(..).collect()
+    };
+    for plan in remaining {
+        let test_path =
+            test_path_from_meta(&suite.tables.sources, plan.meta(), &run_ctx.project_root);
+        let display_id = test_display_id(&test_path, plan.meta().name());
+        eprintln!(
+            "test {display_id}: {}",
+            colored::Colorize::yellow("skipped")
+        );
+        results.push(TestResult {
+            test_name: plan.meta().name().to_string(),
+            test_path,
+            outcome: Outcome::Skipped(skip_reason.to_string()),
+            duration: Duration::ZERO,
+            progress: String::new(),
+            log_dir: None,
+            warnings: Vec::new(),
+        });
+    }
+
+    results
+}
+
+/// Run a single test with cancellation support. On cancellation, cleanup
+/// still runs and a partial result is returned.
+// TODO: consolidate parameters into a context struct
+#[allow(clippy::too_many_arguments)]
+async fn run_test_cancellable(
+    meta: &crate::dsl::resolver::ir::TestMeta,
+    test: &IrTest,
+    run_ctx: &RunContext,
+    base_env: &Arc<Env>,
+    test_path: &str,
+    cause_tags: &str,
+    cancel: &CancellationToken,
+    tables: &crate::dsl::resolver::ir::Tables,
+    causes: &CauseTable,
+) -> TestResult {
+    // Create a child token for test-level timeout
+    let test_cancel = cancel.child_token();
+
+    let effective_timeout = meta
+        .timeout()
+        .map(|t| t.adjusted_duration())
+        .or_else(|| run_ctx.test_timeout.as_ref().map(|t| t.adjusted_duration()));
+
+    // Spawn test-level timeout watchdog
+    let test_watchdog = effective_timeout.map(|timeout| {
+        let timeout_cancel = test_cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(timeout).await;
+            timeout_cancel.cancel();
+        })
+    });
+
+    let mut result = run_test(
+        meta,
+        test,
+        run_ctx,
+        base_env,
+        test_path,
+        cause_tags,
+        &test_cancel,
+        tables,
+        causes,
+    )
+    .await;
+
+    // Abort test timeout watchdog if it's still running
+    if let Some(handle) = test_watchdog {
+        handle.abort();
+    }
+
+    // If the test was cancelled due to its own timeout (not the parent suite
+    // cancel), rewrite the Cancelled failure into a specific timeout message.
+    if test_cancel.is_cancelled()
+        && !cancel.is_cancelled()
+        && matches!(result.outcome, Outcome::Fail(Failure::Cancelled { .. }))
+        && let Some(timeout) = effective_timeout
+    {
+        result.outcome = Outcome::Fail(Failure::Runtime {
+            message: format!("test timeout ({timeout:?}) exceeded"),
+            span: None,
+            shell: None,
+        });
+    }
+
+    result
+}
+
+// ─── Run Test ───────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
+async fn run_test(
+    meta: &crate::dsl::resolver::ir::TestMeta,
+    test: &IrTest,
+    run_ctx: &RunContext,
+    base_env: &Arc<Env>,
+    test_path: &str,
+    cause_tags: &str,
+    cancel: &CancellationToken,
+    tables: &crate::dsl::resolver::ir::Tables,
+    _causes: &CauseTable,
+) -> TestResult {
+    let test_start = Instant::now();
+    let source_table = &tables.sources;
+    let log_dir = test_log_dir(&run_ctx.run_dir, source_table, meta, &run_ctx.project_root);
+    let _ = std::fs::create_dir_all(&log_dir);
+    let event_collector = EventCollector::new(test_start);
+
+    let display_id = test_display_id(test_path, meta.name());
+    eprint!("test {display_id}: ");
+    let _ = std::io::stderr().flush();
+
+    let (progress_tx, progress_rx) = observe::progress::channel();
+    let printer_handle = observe::progress::spawn_printer(progress_rx);
+
+    let file_id = meta.span().file();
+    let source_file = source_table
+        .get(file_id)
+        .map(|sf| sf.path.clone())
+        .unwrap_or_else(|| file_id.path().clone());
+    let test_env = make_test_env(base_env, &source_file);
+    let mut warnings = Vec::new();
+
+    // Create a per-test EffectManager with proper progress/event_collector
+    let test_manager = EffectManager::new(
+        tables.clone(),
+        test_env.clone(),
+        &run_ctx.shell_command,
+        &run_ctx.shell_prompt,
+        run_ctx.default_timeout.clone(),
+        Some(progress_tx.clone()),
+        &log_dir,
+        test_start,
+        Some(event_collector.clone()),
+        cancel.clone(),
+    );
+
+    let outcome = run_test_body(
+        meta,
+        test,
+        &test_manager,
+        &mut warnings,
+        &test_env,
+        &log_dir,
+        test_start,
+        &event_collector,
+        progress_tx.clone(),
+        &run_ctx.default_timeout,
+        cancel,
+    )
+    .await;
+
+    // Release effects (always runs, even after cancellation)
+    let effect_warnings = test_manager.cleanup(test.needs()).await;
+    warnings.extend(effect_warnings);
+
+    // Drop all progress_tx clones so the printer task can finish
+    drop(test_manager);
+    drop(progress_tx);
+    let progress_string = printer_handle.await.unwrap_or_default();
+    let duration = test_start.elapsed();
+
+    {
+        use crate::runtime::report::result::format_duration;
+        use colored::Colorize;
+        let suffix = match &outcome {
+            Ok(()) => format!(" {} ({})", "ok".green(), format_duration(duration)),
+            Err(_) => format!(" {} ({})", "FAILED".red(), format_duration(duration)),
+        };
+        eprintln!("{suffix}{cause_tags}");
+    }
+
+    let events = event_collector.take().await;
+    crate::runtime::report::html::generate_html_logs(
+        &log_dir,
+        meta.name(),
+        &events,
+        &run_ctx.run_dir,
+    );
+
+    match outcome {
+        Ok(()) => TestResult {
+            test_name: meta.name().to_string(),
+            test_path: test_path.to_string(),
+            outcome: Outcome::Pass,
+            duration,
+            progress: progress_string,
+            log_dir: Some(log_dir),
+            warnings,
+        },
+        Err(failure) => TestResult {
+            test_name: meta.name().to_string(),
+            test_path: test_path.to_string(),
+            outcome: Outcome::Fail(failure),
+            duration,
+            progress: progress_string,
+            log_dir: Some(log_dir),
+            warnings,
+        },
+    }
+}
+
+// ─── Run Test Body ──────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
+async fn run_test_body(
+    meta: &crate::dsl::resolver::ir::TestMeta,
+    test: &IrTest,
+    manager: &EffectManager,
+    warnings: &mut Vec<Warning>,
+    env: &Arc<Env>,
+    log_dir: &Path,
+    test_start: Instant,
+    event_collector: &EventCollector,
+    progress_tx: ProgressTx,
+    default_timeout: &IrTimeout,
+    cancel: &CancellationToken,
+) -> Result<(), Failure> {
+    // 1. Create test scope
+    let scope = Scope::Test {
+        name: meta.name().to_string(),
+        vars: Arc::new(TokioMutex::new(VarScope::new())),
+        timeout: meta.timeout().cloned(),
+    };
+
+    // 2. Instantiate effects
+    let exported = manager.instantiate(test.needs()).await?;
+
+    // 3. Build shell map from exported effect shells
+    let mut shells: HashMap<String, Arc<TokioMutex<Vm>>> = HashMap::new();
+    let mut reset_seen = HashSet::new();
+    for (need, vm_arc) in test.needs().iter().zip(exported) {
+        let ptr = Arc::as_ptr(&vm_arc) as usize;
+        if reset_seen.insert(ptr) {
+            vm_arc.lock().await.reset_for_export(scope.clone());
+        }
+        if let Some(alias) = need.alias() {
+            shells.insert(alias.to_string(), vm_arc);
+        }
+    }
+
+    // 4. Walk IrTestItems
+    let mut cleanup_block = None;
+    let body_result: Result<(), Failure> = async {
+        for item in test.body() {
+            match item {
+                IrTestItem::Comment { .. } | IrTestItem::DocString { .. } => continue,
+                IrTestItem::Need { .. } => continue,
+                IrTestItem::Let { stmt, .. } => {
+                    let vars = VarScope::new();
+                    let value = if let Some(expr) = stmt.value() {
+                        crate::pure::evaluator::eval_pure_expr(
+                            expr,
+                            &vars,
+                            env,
+                            &manager.tables.pure_fns,
+                        )
+                    } else {
+                        String::new()
+                    };
+                    scope
+                        .vars()
+                        .lock()
+                        .await
+                        .insert(stmt.name().name().to_string(), value);
+                }
+                IrTestItem::Shell { block, .. } => {
+                    let name = block.name().name().to_string();
+                    if !shells.contains_key(&name) {
+                        let shell_state = ShellState::new(name.clone(), None, None);
+                        let ctx = ExecutionContext::new(
+                            scope.clone(),
+                            shell_state,
+                            default_timeout.clone(),
+                            env.clone(),
+                        );
+                        let vm = Vm::new(
+                            name.clone(),
+                            manager.shell_prompt.to_string(),
+                            manager.shell_command.to_string(),
+                            ctx,
+                            manager.tables.clone(),
+                            Some(progress_tx.clone()),
+                            log_dir,
+                            test_start,
+                            Some(event_collector.clone()),
+                            cancel.clone(),
+                        )
+                        .await?;
+                        shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
+                    }
+                    let vm_arc = shells.get(&name).expect("shell just inserted above");
+                    vm_arc.lock().await.exec_stmts(block.body()).await?;
+                }
+                IrTestItem::Cleanup { block, .. } => {
+                    cleanup_block = Some(block.clone());
+                }
+            }
+        }
+        Ok(())
+    }
+    .await;
+
+    // 5. Terminate all test shells (deduplicated by Arc pointer)
+    let mut seen = HashSet::new();
+    for (_, vm_arc) in shells.drain() {
+        let ptr = Arc::as_ptr(&vm_arc) as usize;
+        if seen.insert(ptr) {
+            vm_arc.lock().await.shutdown().await;
+        }
+    }
+
+    // 6. Run test cleanup (fresh shell, best-effort)
+    if let Some(cleanup) = &cleanup_block {
+        let shell_state = ShellState::new("__cleanup".to_string(), None, None);
+        let ctx = ExecutionContext::new(
+            scope.clone(),
+            shell_state,
+            default_timeout.clone(),
+            env.clone(),
+        );
+        if let Ok(mut cleanup_vm) = Vm::new(
+            "__cleanup".to_string(),
+            manager.shell_prompt.to_string(),
+            manager.shell_command.to_string(),
+            ctx,
+            manager.tables.clone(),
+            Some(progress_tx.clone()),
+            log_dir,
+            test_start,
+            Some(event_collector.clone()),
+            CancellationToken::new(), // intentionally uncancellable: cleanup must always complete
+        )
+        .await
+        {
+            if let Err(failure) = cleanup_vm.exec_stmts(cleanup.body()).await {
+                warnings.push(Warning::CleanupFailed {
+                    source: CleanupSource::Test,
+                    failure,
+                });
+            }
+            cleanup_vm.shutdown().await;
+        }
+    }
+
+    body_result
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::resolver::ir::{self, Span};
 
-    fn make_str_expr(s: &str) -> ir::Interpolation {
-        ir::Interpolation {
-            parts: vec![ir::Spanned::new(
-                ir::StringPart::Literal(s.to_string()),
-                Span::new(ir::FileId::from(0), 0..0),
-            )],
-            span: Span::new(ir::FileId::from(0), 0..0),
-        }
+    #[test]
+    fn slugify_simple() {
+        assert_eq!(slugify("Hello World"), "hello-world");
     }
 
-    fn make_var_pure_expr(var: &str) -> ir::PureExpr {
-        ir::PureExpr::Var(var.to_string())
+    #[test]
+    fn slugify_special_chars() {
+        assert_eq!(slugify("test: foo/bar"), "test--foo-bar");
     }
 
-    fn make_str_pure_expr(s: &str) -> ir::PureExpr {
-        ir::PureExpr::String(make_str_expr(s))
+    #[test]
+    fn slugify_alphanumeric() {
+        assert_eq!(slugify("abc-123_def"), "abc-123_def");
     }
 
-    fn make_cond(
-        kind: ir::CondKind,
-        modifier: Option<ir::CondModifier>,
-        var: Option<&str>,
-        test: Option<CondTest>,
-    ) -> Spanned<ir::Condition> {
-        let cond = match (modifier, var, test) {
-            (None, None, None) => None,
-            (Some(modifier), Some(var_name), None) => Some(ir::CondExpr {
-                modifier,
-                body: ir::CondBody::Bare(make_var_pure_expr(var_name)),
-            }),
-            (Some(modifier), Some(var_name), Some(CondTest::Eq(val))) => Some(ir::CondExpr {
-                modifier,
-                body: ir::CondBody::Eq(make_var_pure_expr(var_name), make_str_pure_expr(&val)),
-            }),
-            (Some(modifier), Some(var_name), Some(CondTest::Regex(pat))) => Some(ir::CondExpr {
-                modifier,
-                body: ir::CondBody::Regex(make_var_pure_expr(var_name), make_str_expr(&pat)),
-            }),
-            _ => unreachable!(),
-        };
-        Spanned::new(
-            ir::Condition { kind, cond },
-            Span::new(ir::FileId::from(0), 0..0),
-        )
+    #[test]
+    fn slugify_leading_trailing_dashes() {
+        assert_eq!(slugify("  hello  "), "hello");
     }
 
-    // Keep CondTest as a local helper enum for test compatibility
-    enum CondTest {
-        Eq(String),
-        Regex(String),
-    }
-
-    fn empty_code_server() -> Arc<CodeServer> {
-        Arc::new(CodeServer::new(ir::IndexVec::new(), ir::IndexVec::new()))
-    }
-
-    #[tokio::test]
-    async fn skip_unless_unset_var() {
-        let conds = vec![make_cond(
-            ir::CondKind::Skip,
-            Some(ir::CondModifier::Unless),
-            Some("MISSING"),
-            None,
-        )];
-        let env = Arc::new(Env::new());
-        let result = evaluate_conditions(&conds, &env, &empty_code_server()).await;
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("skip"));
-    }
-
-    #[tokio::test]
-    async fn skip_unless_set_var() {
-        let conds = vec![make_cond(
-            ir::CondKind::Skip,
-            Some(ir::CondModifier::Unless),
-            Some("CI"),
-            None,
-        )];
-        let mut env = Env::new();
-        env.insert("CI".into(), "true".into());
-        let env = Arc::new(env);
-        assert!(
-            evaluate_conditions(&conds, &env, &empty_code_server())
-                .await
-                .is_none()
-        );
-    }
-
-    #[tokio::test]
-    async fn skip_if_set_var() {
-        let conds = vec![make_cond(
-            ir::CondKind::Skip,
-            Some(ir::CondModifier::If),
-            Some("CI"),
-            None,
-        )];
-        let mut env = Env::new();
-        env.insert("CI".into(), "1".into());
-        let env = Arc::new(env);
-        let result = evaluate_conditions(&conds, &env, &empty_code_server()).await;
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("skip"));
-    }
-
-    #[tokio::test]
-    async fn run_if_matching_literal() {
-        let conds = vec![make_cond(
-            ir::CondKind::Run,
-            Some(ir::CondModifier::If),
-            Some("OS"),
-            Some(CondTest::Eq("linux".into())),
-        )];
-        let mut env = Env::new();
-        env.insert("OS".into(), "linux".into());
-        let env = Arc::new(env);
-        assert!(
-            evaluate_conditions(&conds, &env, &empty_code_server())
-                .await
-                .is_none()
-        );
-    }
-
-    #[tokio::test]
-    async fn run_if_not_matching_literal() {
-        let conds = vec![make_cond(
-            ir::CondKind::Run,
-            Some(ir::CondModifier::If),
-            Some("OS"),
-            Some(CondTest::Eq("linux".into())),
-        )];
-        let mut env = Env::new();
-        env.insert("OS".into(), "macos".into());
-        let env = Arc::new(env);
-        let result = evaluate_conditions(&conds, &env, &empty_code_server()).await;
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("condition not met"));
-    }
-
-    #[tokio::test]
-    async fn skip_unless_regex_match() {
-        let conds = vec![make_cond(
-            ir::CondKind::Skip,
-            Some(ir::CondModifier::Unless),
-            Some("ARCH"),
-            Some(CondTest::Regex("^(x86_64|aarch64)$".into())),
-        )];
-        let mut env = Env::new();
-        env.insert("ARCH".into(), "x86_64".into());
-        let env = Arc::new(env);
-        assert!(
-            evaluate_conditions(&conds, &env, &empty_code_server())
-                .await
-                .is_none()
-        );
-    }
-
-    #[tokio::test]
-    async fn skip_unless_regex_no_match() {
-        let conds = vec![make_cond(
-            ir::CondKind::Skip,
-            Some(ir::CondModifier::Unless),
-            Some("ARCH"),
-            Some(CondTest::Regex("^(x86_64|aarch64)$".into())),
-        )];
-        let mut env = Env::new();
-        env.insert("ARCH".into(), "riscv".into());
-        let env = Arc::new(env);
-        let result = evaluate_conditions(&conds, &env, &empty_code_server()).await;
-        assert!(result.is_some());
-    }
-
-    #[tokio::test]
-    async fn multiple_conditions_all_pass() {
-        let conds = vec![
-            make_cond(
-                ir::CondKind::Skip,
-                Some(ir::CondModifier::Unless),
-                Some("CI"),
-                None,
-            ),
-            make_cond(
-                ir::CondKind::Run,
-                Some(ir::CondModifier::If),
-                Some("OS"),
-                Some(CondTest::Eq("linux".into())),
-            ),
-        ];
-        let mut env = Env::new();
-        env.insert("CI".into(), "1".into());
-        env.insert("OS".into(), "linux".into());
-        let env = Arc::new(env);
-        assert!(
-            evaluate_conditions(&conds, &env, &empty_code_server())
-                .await
-                .is_none()
-        );
-    }
-
-    #[tokio::test]
-    async fn multiple_conditions_second_fails() {
-        let conds = vec![
-            make_cond(
-                ir::CondKind::Skip,
-                Some(ir::CondModifier::Unless),
-                Some("CI"),
-                None,
-            ),
-            make_cond(
-                ir::CondKind::Run,
-                Some(ir::CondModifier::If),
-                Some("OS"),
-                Some(CondTest::Eq("linux".into())),
-            ),
-        ];
-        let mut env = Env::new();
-        env.insert("CI".into(), "1".into());
-        env.insert("OS".into(), "macos".into());
-        let env = Arc::new(env);
-        let result = evaluate_conditions(&conds, &env, &empty_code_server()).await;
-        assert!(result.is_some());
-    }
-
-    #[tokio::test]
-    async fn flaky_if_set() {
-        let conds = vec![make_cond(
-            ir::CondKind::Flaky,
-            Some(ir::CondModifier::If),
-            Some("CI"),
-            None,
-        )];
-        let mut env = Env::new();
-        env.insert("CI".into(), "1".into());
-        let env = Arc::new(env);
-        let result = evaluate_conditions(&conds, &env, &empty_code_server()).await;
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("flaky"));
-    }
-
-    #[tokio::test]
-    async fn bare_skip_unconditionally_skips() {
-        let conds = vec![make_cond(ir::CondKind::Skip, None, None, None)];
-        let env = Arc::new(Env::new());
-        let result = evaluate_conditions(&conds, &env, &empty_code_server()).await;
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("skip: unconditional"));
-    }
-
-    #[tokio::test]
-    async fn bare_run_is_noop() {
-        let conds = vec![make_cond(ir::CondKind::Run, None, None, None)];
-        let env = Arc::new(Env::new());
-        assert!(
-            evaluate_conditions(&conds, &env, &empty_code_server())
-                .await
-                .is_none()
-        );
-    }
-
-    #[tokio::test]
-    async fn bare_flaky_unconditionally_flaky() {
-        let conds = vec![make_cond(ir::CondKind::Flaky, None, None, None)];
-        let env = Arc::new(Env::new());
-        let result = evaluate_conditions(&conds, &env, &empty_code_server()).await;
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("flaky: unconditional"));
-    }
-
-    #[tokio::test]
-    async fn empty_conditions_pass() {
-        let conds: Vec<Spanned<ir::Condition>> = vec![];
-        let env = Arc::new(Env::new());
-        assert!(
-            evaluate_conditions(&conds, &env, &empty_code_server())
-                .await
-                .is_none()
+    #[test]
+    fn test_display_id_format() {
+        assert_eq!(
+            test_display_id("basic/test.relux", "my test"),
+            "basic/test.relux/my-test"
         );
     }
 }

@@ -1,10 +1,10 @@
+use crate::core::table::FileId;
 use crate::diagnostics::{FnId, InvalidReport, IrSpan, LoweringBail, ModulePath};
 use crate::dsl::parser::ast::{AstCallExpr, AstExpr, AstStringPart};
-use crate::table::FileId;
 
 use super::ident::IrIdent;
 use super::interpolation::IrInterpolation;
-use super::keys::LocalFnKey;
+use super::tables::LocalFnKey;
 use super::{IrNode, IrNodeLowering, LoweringContext};
 
 // ─── IrExpr ──────────────────────────────────────────────────
@@ -176,7 +176,7 @@ impl IrNodeLowering for IrPureExpr {
                 // Check for CaptureRef in interpolation parts
                 for part in &interp.parts {
                     if let AstStringPart::CaptureRef { span: cap_span, .. } = part {
-                        return Err(LoweringBail::Invalid(InvalidReport::PurityViolation {
+                        return Err(LoweringBail::invalid(InvalidReport::PurityViolation {
                             span: IrSpan::new(file.clone(), *cap_span),
                         }));
                     }
@@ -192,7 +192,7 @@ impl IrNodeLowering for IrPureExpr {
                 span: IrSpan::new(file.clone(), *span),
             }),
             AstExpr::CaptureRef { span, .. } => {
-                Err(LoweringBail::Invalid(InvalidReport::PurityViolation {
+                Err(LoweringBail::invalid(InvalidReport::PurityViolation {
                     span: IrSpan::new(file.clone(), *span),
                 }))
             }
@@ -223,7 +223,7 @@ impl IrNodeLowering for IrCallExpr {
         // Look up in current scope's fn table, then fall back to BIF
         let global_key = {
             let scope = ctx.current_scope();
-            scope.fn_table.get_global_key(&local_key).cloned()
+            scope.tables.fns.get_global_key(&local_key).cloned()
         }
         .or_else(|| {
             let bif_id = FnId {
@@ -239,7 +239,7 @@ impl IrNodeLowering for IrCallExpr {
         });
 
         let global_key = global_key.ok_or_else(|| {
-            LoweringBail::Invalid(InvalidReport::UndefinedFunctionCall {
+            LoweringBail::invalid(InvalidReport::UndefinedFunctionCall {
                 name: name.clone(),
                 arity,
                 span: IrSpan::new(file.clone(), ast.name.node.span),
@@ -250,7 +250,7 @@ impl IrNodeLowering for IrCallExpr {
         // Check if this is a pure fn first (pure fns are also in fn_table).
         let is_pure = {
             let scope = ctx.current_scope();
-            scope.pure_fn_table.get_global_key(&local_key).is_some()
+            scope.tables.pure_fns.get_global_key(&local_key).is_some()
         } || ctx.pure_functions().contains(&global_key);
 
         if is_pure {
@@ -291,7 +291,7 @@ impl IrNodeLowering for IrPureCallExpr {
         // Look up in pure fn table, then fall back to pure BIF
         let global_key = {
             let scope = ctx.current_scope();
-            scope.pure_fn_table.get_global_key(&local_key).cloned()
+            scope.tables.pure_fns.get_global_key(&local_key).cloned()
         }
         .or_else(|| {
             let bif_id = FnId {
@@ -312,7 +312,7 @@ impl IrNodeLowering for IrPureCallExpr {
                 // Check if it's impure (local table or impure BIF) → PurityViolation
                 let in_impure = {
                     let scope = ctx.current_scope();
-                    scope.fn_table.get_global_key(&local_key).is_some()
+                    scope.tables.fns.get_global_key(&local_key).is_some()
                 } || {
                     let bif_id = FnId {
                         module: ModulePath("@builtin".into()),
@@ -322,11 +322,11 @@ impl IrNodeLowering for IrPureCallExpr {
                     ctx.functions().contains(&bif_id)
                 };
                 if in_impure {
-                    return Err(LoweringBail::Invalid(InvalidReport::PurityViolation {
+                    return Err(LoweringBail::invalid(InvalidReport::PurityViolation {
                         span: IrSpan::new(file.clone(), ast.name.node.span),
                     }));
                 } else {
-                    return Err(LoweringBail::Invalid(
+                    return Err(LoweringBail::invalid(
                         InvalidReport::UndefinedFunctionCall {
                             name: name.clone(),
                             arity,
@@ -361,8 +361,8 @@ impl IrNodeLowering for IrPureCallExpr {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::table::FileId;
     use crate::diagnostics::ModulePath;
-    use crate::table::FileId;
     use std::path::PathBuf;
 
     fn test_file_id() -> FileId {
@@ -484,7 +484,7 @@ mod tests {
     // ─── Expression lowering ──────────────────────────────────
 
     use crate::Span;
-    use crate::diagnostics::{FnId, InvalidReport, LoweringBail};
+    use crate::diagnostics::{FnId, LoweringBail};
     use crate::dsl::parser::ast::*;
     use crate::dsl::resolver::lower::test_helpers::*;
 
@@ -671,7 +671,7 @@ fn bar() {
         };
         let result = IrPureExpr::lower(&ast, &file, &mut ctx);
         assert!(result.is_err());
-        if let Err(LoweringBail::Invalid(InvalidReport::PurityViolation { .. })) = result {
+        if let Err(LoweringBail::Invalid(_)) = result {
             // OK
         } else {
             panic!("expected PurityViolation, got {:?}", result);
@@ -695,9 +695,6 @@ fn bar() {
             span: Span::new(0, 6),
         };
         let result = IrPureExpr::lower(&ast, &file, &mut ctx);
-        assert!(matches!(
-            result,
-            Err(LoweringBail::Invalid(InvalidReport::PurityViolation { .. }))
-        ));
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
     }
 }

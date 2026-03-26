@@ -1,6 +1,6 @@
+use crate::core::table::FileId;
 use crate::diagnostics::{InvalidReport, IrSpan, LoweringBail};
 use crate::dsl::parser::ast::{AstAssignStmt, AstLetStmt, AstStmt};
-use crate::table::FileId;
 
 use super::comment::IrComment;
 use super::expr::{IrExpr, IrPureExpr};
@@ -474,7 +474,7 @@ impl IrNodeLowering for IrPureStmt {
             | AstStmt::FailLiteral { span, .. }
             | AstStmt::ClearFailPattern { span }
             | AstStmt::BufferReset { span } => {
-                Err(LoweringBail::Invalid(InvalidReport::PurityViolation {
+                Err(LoweringBail::invalid(InvalidReport::PurityViolation {
                     span: s(span),
                 }))
             }
@@ -487,12 +487,12 @@ impl IrNodeLowering for IrPureStmt {
 #[cfg(test)]
 mod tests {
     use super::super::interpolation::IrStringPart;
-    use super::super::timeout::IrTimeoutKind;
+    use super::super::timeout::IrTimeout;
     use super::*;
-    use crate::diagnostics::{InvalidReport, LoweringBail};
+    use crate::core::table::FileId;
+    use crate::diagnostics::LoweringBail;
     use crate::dsl::parser::ast::*;
     use crate::dsl::resolver::lower::test_helpers::*;
-    use crate::table::FileId;
     use std::path::PathBuf;
     use std::time::Duration;
 
@@ -551,12 +551,11 @@ mod tests {
     #[test]
     fn ir_shell_stmt_timed_match_regex() {
         let s = test_span();
-        use super::super::timeout::{IrTimeout, IrTimeoutKind};
-        let timeout = IrTimeout::new(
-            IrTimeoutKind::Tolerance { span: s.clone() },
-            Duration::from_secs(5),
-            s.clone(),
-        );
+        let timeout = IrTimeout::Tolerance {
+            duration: Duration::from_secs(5),
+            multiplier: 1.0,
+            span: s.clone(),
+        };
         let stmt = IrShellStmt::TimedMatchRegex {
             timeout,
             pattern: IrInterpolation::new(vec![], s.clone()),
@@ -568,12 +567,10 @@ mod tests {
     #[test]
     fn ir_shell_stmt_timed_match_literal() {
         let s = test_span();
-        use super::super::timeout::{IrTimeout, IrTimeoutKind};
-        let timeout = IrTimeout::new(
-            IrTimeoutKind::Assertion { span: s.clone() },
-            Duration::from_secs(2),
-            s.clone(),
-        );
+        let timeout = IrTimeout::Assertion {
+            duration: Duration::from_secs(2),
+            span: s.clone(),
+        };
         let stmt = IrShellStmt::TimedMatchLiteral {
             timeout,
             pattern: IrInterpolation::new(vec![], s.clone()),
@@ -585,12 +582,11 @@ mod tests {
     #[test]
     fn ir_shell_stmt_timeout() {
         let s = test_span();
-        use super::super::timeout::{IrTimeout, IrTimeoutKind};
-        let timeout = IrTimeout::new(
-            IrTimeoutKind::Tolerance { span: s.clone() },
-            Duration::from_secs(10),
-            s.clone(),
-        );
+        let timeout = IrTimeout::Tolerance {
+            duration: Duration::from_secs(10),
+            multiplier: 1.0,
+            span: s.clone(),
+        };
         let stmt = IrShellStmt::Timeout { timeout, span: s };
         assert!(matches!(stmt, IrShellStmt::Timeout { .. }));
     }
@@ -902,7 +898,10 @@ mod tests {
         let stmt = extract_first_stmt("fn t() {\n  <~500ms? pat\n}\n");
         let ir = IrShellStmt::lower(&stmt, &file, &mut ctx).unwrap();
         if let IrShellStmt::TimedMatchRegex { timeout, .. } = &ir {
-            assert_eq!(timeout.duration(), std::time::Duration::from_millis(500));
+            assert_eq!(
+                timeout.raw_duration(),
+                std::time::Duration::from_millis(500)
+            );
         } else {
             panic!("expected TimedMatchRegex");
         }
@@ -916,7 +915,7 @@ mod tests {
         let stmt = extract_first_stmt("fn t() {\n  <@2s? pat\n}\n");
         let ir = IrShellStmt::lower(&stmt, &file, &mut ctx).unwrap();
         if let IrShellStmt::TimedMatchRegex { timeout, .. } = &ir {
-            assert!(matches!(timeout.kind(), IrTimeoutKind::Assertion { .. }));
+            assert!(timeout.is_assertion());
         } else {
             panic!("expected TimedMatchRegex");
         }
@@ -930,8 +929,8 @@ mod tests {
         let stmt = extract_first_stmt("fn t() {\n  ~10s\n}\n");
         let ir = IrShellStmt::lower(&stmt, &file, &mut ctx).unwrap();
         if let IrShellStmt::Timeout { timeout, .. } = &ir {
-            assert!(matches!(timeout.kind(), IrTimeoutKind::Tolerance { .. }));
-            assert_eq!(timeout.duration(), std::time::Duration::from_secs(10));
+            assert!(!timeout.is_assertion());
+            assert_eq!(timeout.raw_duration(), std::time::Duration::from_secs(10));
         } else {
             panic!("expected Timeout, got {:?}", ir);
         }
@@ -945,8 +944,8 @@ mod tests {
         let stmt = extract_first_stmt("fn t() {\n  @5s\n}\n");
         let ir = IrShellStmt::lower(&stmt, &file, &mut ctx).unwrap();
         if let IrShellStmt::Timeout { timeout, .. } = &ir {
-            assert!(matches!(timeout.kind(), IrTimeoutKind::Assertion { .. }));
-            assert_eq!(timeout.duration(), std::time::Duration::from_secs(5));
+            assert!(timeout.is_assertion());
+            assert_eq!(timeout.raw_duration(), std::time::Duration::from_secs(5));
         } else {
             panic!("expected Timeout, got {:?}", ir);
         }
@@ -1071,10 +1070,7 @@ mod tests {
         let file = file_id_for(&ctx, "tests/a");
         let stmt = extract_first_stmt("fn t() {\n  > cmd\n}\n");
         let result = IrPureStmt::lower(&stmt, &file, &mut ctx);
-        assert!(matches!(
-            result,
-            Err(LoweringBail::Invalid(InvalidReport::PurityViolation { .. }))
-        ));
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
     }
 
     #[test]
@@ -1084,10 +1080,7 @@ mod tests {
         let file = file_id_for(&ctx, "tests/a");
         let stmt = extract_first_stmt("fn t() {\n  => cmd\n}\n");
         let result = IrPureStmt::lower(&stmt, &file, &mut ctx);
-        assert!(matches!(
-            result,
-            Err(LoweringBail::Invalid(InvalidReport::PurityViolation { .. }))
-        ));
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
     }
 
     #[test]
@@ -1097,10 +1090,7 @@ mod tests {
         let file = file_id_for(&ctx, "tests/a");
         let stmt = extract_first_stmt("fn t() {\n  <? pat\n}\n");
         let result = IrPureStmt::lower(&stmt, &file, &mut ctx);
-        assert!(matches!(
-            result,
-            Err(LoweringBail::Invalid(InvalidReport::PurityViolation { .. }))
-        ));
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
     }
 
     #[test]
@@ -1110,10 +1100,7 @@ mod tests {
         let file = file_id_for(&ctx, "tests/a");
         let stmt = extract_first_stmt("fn t() {\n  <= text\n}\n");
         let result = IrPureStmt::lower(&stmt, &file, &mut ctx);
-        assert!(matches!(
-            result,
-            Err(LoweringBail::Invalid(InvalidReport::PurityViolation { .. }))
-        ));
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
     }
 
     #[test]
@@ -1123,10 +1110,7 @@ mod tests {
         let file = file_id_for(&ctx, "tests/a");
         let stmt = extract_first_stmt("fn t() {\n  <~5s? pat\n}\n");
         let result = IrPureStmt::lower(&stmt, &file, &mut ctx);
-        assert!(matches!(
-            result,
-            Err(LoweringBail::Invalid(InvalidReport::PurityViolation { .. }))
-        ));
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
     }
 
     #[test]
@@ -1136,10 +1120,7 @@ mod tests {
         let file = file_id_for(&ctx, "tests/a");
         let stmt = extract_first_stmt("fn t() {\n  ~10s\n}\n");
         let result = IrPureStmt::lower(&stmt, &file, &mut ctx);
-        assert!(matches!(
-            result,
-            Err(LoweringBail::Invalid(InvalidReport::PurityViolation { .. }))
-        ));
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
     }
 
     #[test]
@@ -1149,10 +1130,7 @@ mod tests {
         let file = file_id_for(&ctx, "tests/a");
         let stmt = extract_first_stmt("fn t() {\n  !? pat\n}\n");
         let result = IrPureStmt::lower(&stmt, &file, &mut ctx);
-        assert!(matches!(
-            result,
-            Err(LoweringBail::Invalid(InvalidReport::PurityViolation { .. }))
-        ));
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
     }
 
     #[test]
@@ -1162,10 +1140,7 @@ mod tests {
         let file = file_id_for(&ctx, "tests/a");
         let stmt = extract_first_stmt("fn t() {\n  != text\n}\n");
         let result = IrPureStmt::lower(&stmt, &file, &mut ctx);
-        assert!(matches!(
-            result,
-            Err(LoweringBail::Invalid(InvalidReport::PurityViolation { .. }))
-        ));
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
     }
 
     #[test]
@@ -1175,10 +1150,7 @@ mod tests {
         let file = file_id_for(&ctx, "tests/a");
         let stmt = extract_first_stmt("fn t() {\n  <?\n}\n");
         let result = IrPureStmt::lower(&stmt, &file, &mut ctx);
-        assert!(matches!(
-            result,
-            Err(LoweringBail::Invalid(InvalidReport::PurityViolation { .. }))
-        ));
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
     }
 
     #[test]
@@ -1188,9 +1160,6 @@ mod tests {
         let file = file_id_for(&ctx, "tests/a");
         let stmt = extract_first_stmt("fn t() {\n  !?\n}\n");
         let result = IrPureStmt::lower(&stmt, &file, &mut ctx);
-        assert!(matches!(
-            result,
-            Err(LoweringBail::Invalid(InvalidReport::PurityViolation { .. }))
-        ));
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
     }
 }

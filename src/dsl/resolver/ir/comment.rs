@@ -1,5 +1,5 @@
+use crate::core::table::FileId;
 use crate::diagnostics::{IrSpan, LoweringBail};
-use crate::table::FileId;
 
 use super::{IrNode, IrNodeLowering, LoweringContext};
 
@@ -33,7 +33,7 @@ impl IrNodeLowering for IrComment {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::table::FileId;
+    use crate::core::table::FileId;
     use std::path::PathBuf;
 
     #[test]

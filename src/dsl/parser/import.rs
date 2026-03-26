@@ -76,11 +76,11 @@ pub fn import<'a>()
         .ignore_then(ws())
         .ignore_then(import_path())
         .then(selective.or_not())
-        .then_ignore(newline())
         .map_with(|(path, names), e| {
             let span = Span::from(e.span());
             Spanned::new(AstImport { path, names, span }, span)
         })
+        .then_ignore(newline())
         .labelled("import declaration")
 }
 

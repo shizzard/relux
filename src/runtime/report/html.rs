@@ -4,8 +4,8 @@ use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
-use crate::runtime::event_log::{BufferSnapshot, LogEvent, LogEventKind};
-use crate::runtime::result::{Outcome, TestResult, format_duration};
+use crate::runtime::observe::event_log::{BufferSnapshot, LogEvent, LogEventKind};
+use crate::runtime::report::result::{Outcome, TestResult, format_duration};
 
 const CSS: &str = r#"
 :root{--bg:#fff;--fg:#222;--muted:#888;--ts-fg:#999;--send:#1a6dcc;--recv:#1a8a3f;
@@ -307,9 +307,13 @@ pub fn generate_run_summary(run_dir: &Path, results: &[TestResult]) {
         .iter()
         .filter(|r| matches!(r.outcome, Outcome::Skipped(_)))
         .count();
+    let invalid = results
+        .iter()
+        .filter(|r| matches!(r.outcome, Outcome::Invalid(_)))
+        .count();
     let _ = writeln!(
         html,
-        "<p>{passed} passed, {failed} failed, {skipped} skipped</p>"
+        "<p>{passed} passed, {failed} failed, {invalid} invalid, {skipped} skipped</p>"
     );
 
     let mut report_links = Vec::new();
@@ -333,6 +337,7 @@ pub fn generate_run_summary(run_dir: &Path, results: &[TestResult]) {
             Outcome::Pass => ("pass", "PASS".to_string()),
             Outcome::Fail(_) => ("fail", "FAIL".to_string()),
             Outcome::Skipped(r) => ("skip", format!("SKIP: {r}")),
+            Outcome::Invalid(r) => ("invalid", format!("INVALID: {r}")),
         };
         let link = if let Some(log_dir) = &result.log_dir {
             let rel = log_dir.strip_prefix(run_dir).unwrap_or(log_dir);

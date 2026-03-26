@@ -1,6 +1,9 @@
-use ariadne::{CharSet, Config, IndexType, Label, Report, ReportKind, sources};
+use std::path::Path;
 
-use crate::dsl::resolver::ir::{self, SourceMap, Span};
+use ariadne::{CharSet, Color, Config, IndexType, Label, Report, ReportKind, sources};
+
+use crate::diagnostics::IrSpan;
+use crate::dsl::resolver::ir::SourceTable;
 
 // ─── Severity ──────────────────────────────────────────────
 
@@ -14,18 +17,18 @@ pub enum Severity {
 
 #[derive(Debug, Clone)]
 pub struct ReportLabel {
-    pub span: Span,
+    pub span: IrSpan,
     pub message: String,
 }
 
-impl From<(Span, String)> for ReportLabel {
-    fn from((span, message): (Span, String)) -> Self {
+impl From<(IrSpan, String)> for ReportLabel {
+    fn from((span, message): (IrSpan, String)) -> Self {
         Self { span, message }
     }
 }
 
-impl From<(Span, &str)> for ReportLabel {
-    fn from((span, message): (Span, &str)) -> Self {
+impl From<(IrSpan, &str)> for ReportLabel {
+    fn from((span, message): (IrSpan, &str)) -> Self {
         Self {
             span,
             message: message.to_string(),
@@ -42,22 +45,24 @@ pub struct DiagnosticReport {
     pub note: Option<String>,
 }
 
-// ─── Diagnostic Reports (batch with source map) ─────────────
+// ─── Diagnostic Reports (batch with source table) ───────────
 
 pub struct DiagnosticReports {
     pub errors: Vec<DiagnosticReport>,
     pub warnings: Vec<DiagnosticReport>,
-    pub source_map: SourceMap,
+    pub source_table: SourceTable,
+    pub project_root: Option<std::path::PathBuf>,
 }
 
 impl DiagnosticReports {
     pub fn eprint(&self) {
-        let mut cache = make_cache(&self.source_map);
+        let root = self.project_root.as_deref();
+        let mut cache = make_cache(&self.source_table, root);
         for warning in &self.warnings {
-            warning.render(&mut cache, &self.source_map);
+            warning.render(&mut cache, &self.source_table, root);
         }
         for error in &self.errors {
-            error.render(&mut cache, &self.source_map);
+            error.render(&mut cache, &self.source_table, root);
         }
     }
 
@@ -73,18 +78,35 @@ type Src = String;
 fn cfg() -> Config {
     Config::default()
         .with_index_type(IndexType::Byte)
-        .with_char_set(CharSet::Ascii)
+        .with_char_set(CharSet::Unicode)
 }
 
-fn aspan(span: &Span, source_map: &SourceMap) -> (Src, std::ops::Range<usize>) {
-    let path = source_map.display_path(span.file);
-    let range = &span.range;
+fn display_path(abs: &Path, root: Option<&Path>) -> String {
+    if let Some(root) = root
+        && let Ok(rel) = abs.strip_prefix(root)
+    {
+        return rel.display().to_string();
+    }
+    abs.display().to_string()
+}
+
+fn aspan(
+    span: &IrSpan,
+    source_table: &SourceTable,
+    root: Option<&Path>,
+) -> (Src, std::ops::Range<usize>) {
+    let abs = source_table
+        .get(span.file())
+        .map(|sf| sf.path.clone())
+        .unwrap_or_else(|| span.file().path().clone());
+    let path = display_path(&abs, root);
+    let range = span.span().start()..span.span().end();
     if range.start < range.end {
-        return (path, range.clone());
+        return (path, range);
     }
     // Zero-width span: expand to the surrounding non-whitespace token on the same line
-    if let Some(file) = source_map.files.get(span.file) {
-        let src = file.source.as_bytes();
+    if let Some(sf) = source_table.get(span.file()) {
+        let src = sf.source.as_bytes();
         let pos = range.start.min(src.len());
         let line_start = src[..pos]
             .iter()
@@ -98,31 +120,30 @@ fn aspan(span: &Span, source_map: &SourceMap) -> (Src, std::ops::Range<usize>) {
             return (path, token_start..pos);
         }
     }
-    (path, range.clone())
+    (path, range)
 }
 
-fn make_cache(source_map: &SourceMap) -> impl ariadne::Cache<Src> + '_ {
-    let srcs: Vec<(Src, &str)> = source_map
-        .files
-        .iter()
-        .enumerate()
-        .map(|(id, f)| {
-            (
-                source_map.display_path(ir::FileId::from(id)),
-                f.source.as_str(),
-            )
-        })
+fn make_cache(source_table: &SourceTable, root: Option<&Path>) -> impl ariadne::Cache<Src> {
+    let srcs: Vec<(Src, String)> = source_table
+        .as_vec()
+        .into_iter()
+        .map(|(_file_id, sf)| (display_path(&sf.path, root), sf.source.clone()))
         .collect();
     sources(srcs)
 }
 
 impl DiagnosticReport {
-    pub fn eprint(&self, source_map: &SourceMap) {
-        let mut cache = make_cache(source_map);
-        self.render(&mut cache, source_map);
+    pub fn eprint(&self, source_table: &SourceTable, project_root: Option<&Path>) {
+        let mut cache = make_cache(source_table, project_root);
+        self.render(&mut cache, source_table, project_root);
     }
 
-    fn render(&self, cache: &mut impl ariadne::Cache<Src>, source_map: &SourceMap) {
+    fn render(
+        &self,
+        cache: &mut impl ariadne::Cache<Src>,
+        source_table: &SourceTable,
+        root: Option<&Path>,
+    ) {
         let kind = match self.severity {
             Severity::Error => ReportKind::Error,
             Severity::Warning => ReportKind::Warning,
@@ -140,14 +161,22 @@ impl DiagnosticReport {
             return;
         }
 
-        let (path, range) = aspan(&self.labels[0].span, source_map);
+        let label_color = match self.severity {
+            Severity::Error => Color::Red,
+            Severity::Warning => Color::Yellow,
+        };
+        let (path, range) = aspan(&self.labels[0].span, source_table, root);
         let mut builder = Report::build(kind, (path, range))
             .with_config(cfg())
             .with_message(&self.message);
 
         for label in &self.labels {
-            let (path, range) = aspan(&label.span, source_map);
-            builder = builder.with_label(Label::new((path, range)).with_message(&label.message));
+            let (path, range) = aspan(&label.span, source_table, root);
+            builder = builder.with_label(
+                Label::new((path, range))
+                    .with_message(&label.message)
+                    .with_color(label_color),
+            );
         }
 
         if let Some(help) = &self.help {

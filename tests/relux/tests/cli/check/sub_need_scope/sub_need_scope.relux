@@ -6,7 +6,7 @@ test "check passes when sub-need resolves in effect home scope" {
     lib/composite but NOT in the test file.
     """
     shell s {
-        > relux check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        > ${__RELUX} check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? check passed
         match_ok()
     }

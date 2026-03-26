@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::core::table::FileId;
 use crate::diagnostics::{
     Cause, CauseId, CauseTable, CycleReport, DefinitionRef, EffectCycleEntry, EffectId, EffectName,
     FnCycleEntry, FnId, InvalidReport, IrSpan, LoweringBail, ModulePath, Warning, WarningId,
@@ -7,17 +8,10 @@ use crate::diagnostics::{
 };
 use crate::dsl::parser::ast::{AstItem, AstModule};
 use crate::dsl::resolver::ir::{
-    AstTable, EffectTable, FnTable, IrEffect, IrFn, IrNodeLowering, IrPureFn, LocalEffectKey,
-    LocalFnKey, NewPlan, PureFnTable, SourceTable, Suite,
+    AstTable, IrEffect, IrFn, IrNodeLowering, IrPureFn, LocalEffectKey, LocalFnKey, LocalTable,
+    LocalTables, Plan, SourceTable, Suite, Tables,
 };
-use crate::stack::Env;
-use crate::table::{FileId, LocalTable, SharedTable};
-
-// ─── Type aliases for local tables ───────────────────────────
-
-pub type LocalFnTable = LocalTable<LocalFnKey, FnId, Result<IrFn, LoweringBail>>;
-pub type LocalPureFnTable = LocalTable<LocalFnKey, FnId, Result<IrPureFn, LoweringBail>>;
-pub type LocalEffectTable = LocalTable<LocalEffectKey, EffectId, Result<IrEffect, LoweringBail>>;
+use crate::pure::Env;
 
 // ─── LoweringScope ──────────────────────────────────────────
 
@@ -26,22 +20,18 @@ pub type LocalEffectTable = LocalTable<LocalEffectKey, EffectId, Result<IrEffect
 /// popped when leaving.
 pub struct LoweringScope {
     pub module_path: ModulePath,
-    pub fn_table: LocalFnTable,
-    pub pure_fn_table: LocalPureFnTable,
-    pub effect_table: Option<LocalEffectTable>,
+    pub tables: LocalTables,
 }
 
 // ─── LoweringContext ─────────────────────────────────────────
 
 pub struct LoweringContext {
     ast_table: AstTable,
-    source_map: SourceTable,
     env: Arc<Env>,
-    functions: FnTable,
-    pure_functions: PureFnTable,
-    effects: EffectTable,
+    tables: Tables,
     causes: CauseTable,
     warnings: WarningTable,
+    multiplier: f64,
     fn_stack: Vec<(FnId, IrSpan)>,
     effect_stack: Vec<(EffectId, IrSpan)>,
     scope_stack: Vec<LoweringScope>,
@@ -56,20 +46,24 @@ impl std::fmt::Debug for LoweringContext {
 impl LoweringContext {
     pub fn new(
         ast_table: AstTable,
-        source_map: SourceTable,
+        source_table: SourceTable,
         env: Arc<Env>,
         causes: CauseTable,
         warnings: WarningTable,
+        multiplier: f64,
     ) -> Self {
         Self {
             ast_table,
-            source_map,
             env,
-            functions: SharedTable::new(),
-            pure_functions: SharedTable::new(),
-            effects: SharedTable::new(),
+            tables: Tables {
+                sources: source_table,
+                fns: crate::core::table::SharedTable::new(),
+                pure_fns: crate::core::table::SharedTable::new(),
+                effects: crate::core::table::SharedTable::new(),
+            },
             causes,
             warnings,
+            multiplier,
             fn_stack: Vec::new(),
             effect_stack: Vec::new(),
             scope_stack: Vec::new(),
@@ -86,16 +80,20 @@ impl LoweringContext {
         &self.env
     }
 
-    pub fn functions(&self) -> &FnTable {
-        &self.functions
+    pub fn tables(&self) -> &Tables {
+        &self.tables
     }
 
-    pub fn pure_functions(&self) -> &PureFnTable {
-        &self.pure_functions
+    pub fn functions(&self) -> &crate::dsl::resolver::ir::FnTable {
+        &self.tables.fns
     }
 
-    pub fn effects(&self) -> &EffectTable {
-        &self.effects
+    pub fn pure_functions(&self) -> &crate::dsl::resolver::ir::PureFnTable {
+        &self.tables.pure_fns
+    }
+
+    pub fn effects(&self) -> &crate::dsl::resolver::ir::EffectTable {
+        &self.tables.effects
     }
 
     pub fn causes(&self) -> &CauseTable {
@@ -104,6 +102,10 @@ impl LoweringContext {
 
     pub fn warnings(&self) -> &WarningTable {
         &self.warnings
+    }
+
+    pub fn multiplier(&self) -> f64 {
+        self.multiplier
     }
 
     pub fn fn_stack(&self) -> &[(FnId, IrSpan)] {
@@ -122,9 +124,6 @@ impl LoweringContext {
 
         // Pure BIFs — registered in both FnTable and PureFnTable.
         let pure_bifs: &[(&str, usize)] = &[
-            ("sleep", 1),
-            ("annotate", 1),
-            ("log", 1),
             ("trim", 1),
             ("upper", 1),
             ("lower", 1),
@@ -144,14 +143,14 @@ impl LoweringContext {
                 name: name.into(),
                 arity,
             };
-            self.functions.insert(
+            self.tables.fns.insert(
                 fn_id.clone(),
                 Ok(IrFn::Builtin {
                     name: name.into(),
                     arity,
                 }),
             );
-            self.pure_functions.insert(
+            self.tables.pure_fns.insert(
                 fn_id,
                 Ok(IrPureFn::Builtin {
                     name: name.into(),
@@ -162,6 +161,9 @@ impl LoweringContext {
 
         // Impure BIFs — registered in FnTable only.
         let impure_bifs: &[(&str, usize)] = &[
+            ("sleep", 1),
+            ("annotate", 1),
+            ("log", 1),
             ("match_prompt", 0),
             ("match_exit_code", 1),
             ("match_ok", 0),
@@ -180,7 +182,7 @@ impl LoweringContext {
                 name: name.into(),
                 arity,
             };
-            self.functions.insert(
+            self.tables.fns.insert(
                 fn_id,
                 Ok(IrFn::Builtin {
                     name: name.into(),
@@ -192,20 +194,12 @@ impl LoweringContext {
 
     // ─── Local Table Factories ───────────────────────────────
 
-    pub fn local_fn_table(&self) -> LocalTable<LocalFnKey, FnId, Result<IrFn, LoweringBail>> {
-        LocalTable::new(self.functions.clone())
-    }
-
-    pub fn local_pure_fn_table(
-        &self,
-    ) -> LocalTable<LocalFnKey, FnId, Result<IrPureFn, LoweringBail>> {
-        LocalTable::new(self.pure_functions.clone())
-    }
-
-    pub fn local_effect_table(
-        &self,
-    ) -> LocalTable<LocalEffectKey, EffectId, Result<IrEffect, LoweringBail>> {
-        LocalTable::new(self.effects.clone())
+    pub fn local_tables(&self) -> LocalTables {
+        LocalTables {
+            fns: LocalTable::new(self.tables.fns.clone()),
+            pure_fns: LocalTable::new(self.tables.pure_fns.clone()),
+            effects: LocalTable::new(self.tables.effects.clone()),
+        }
     }
 
     // ─── Local Table Population ──────────────────────────────
@@ -218,11 +212,7 @@ impl LoweringContext {
         &self,
         module_path: &ModulePath,
         file_id: &FileId,
-        fn_table: &mut LocalTable<LocalFnKey, FnId, Result<IrFn, LoweringBail>>,
-        pure_fn_table: &mut LocalTable<LocalFnKey, FnId, Result<IrPureFn, LoweringBail>>,
-        mut effect_table: Option<
-            &mut LocalTable<LocalEffectKey, EffectId, Result<IrEffect, LoweringBail>>,
-        >,
+        tables: &mut LocalTables,
     ) -> Result<(), InvalidReport> {
         let module = self
             .ast_table
@@ -232,14 +222,7 @@ impl LoweringContext {
         let ast_module = &module.1;
 
         // 1. Insert own definitions as identity mappings.
-        self.insert_own_definitions(
-            module_path,
-            file_id,
-            ast_module,
-            fn_table,
-            pure_fn_table,
-            effect_table.as_deref_mut(),
-        )?;
+        self.insert_own_definitions(module_path, file_id, ast_module, tables)?;
 
         // 2. Walk import declarations.
         for item in &ast_module.items {
@@ -266,9 +249,7 @@ impl LoweringContext {
                             target_file_id,
                             target_module,
                             &import_span,
-                            fn_table,
-                            pure_fn_table,
-                            effect_table.as_deref_mut(),
+                            tables,
                         )?;
                     }
                     Some(names) => {
@@ -279,9 +260,7 @@ impl LoweringContext {
                             target_module,
                             names,
                             file_id,
-                            fn_table,
-                            pure_fn_table,
-                            effect_table.as_deref_mut(),
+                            tables,
                         )?;
                     }
                 }
@@ -294,13 +273,9 @@ impl LoweringContext {
     fn insert_own_definitions(
         &self,
         module_path: &ModulePath,
-        _file_id: &FileId,
+        file_id: &FileId,
         ast_module: &AstModule,
-        fn_table: &mut LocalTable<LocalFnKey, FnId, Result<IrFn, LoweringBail>>,
-        pure_fn_table: &mut LocalTable<LocalFnKey, FnId, Result<IrPureFn, LoweringBail>>,
-        mut effect_table: Option<
-            &mut LocalTable<LocalEffectKey, EffectId, Result<IrEffect, LoweringBail>>,
-        >,
+        tables: &mut LocalTables,
     ) -> Result<(), InvalidReport> {
         for item in &ast_module.items {
             match &item.node {
@@ -311,7 +286,8 @@ impl LoweringContext {
                         name: def.name.node.name.clone(),
                         arity: def.params.len(),
                     };
-                    fn_table.insert(local_key, global_key);
+                    let span = IrSpan::new(file_id.clone(), def.name.node.span);
+                    tables.fns.insert(local_key, global_key, span);
                 }
                 AstItem::PureFn { def, .. } => {
                     let local_key = LocalFnKey::new(&def.name.node.name, def.params.len());
@@ -320,20 +296,22 @@ impl LoweringContext {
                         name: def.name.node.name.clone(),
                         arity: def.params.len(),
                     };
+                    let span = IrSpan::new(file_id.clone(), def.name.node.span);
                     // Pure fns go in both tables — pure fns are callable
                     // from impure contexts too.
-                    fn_table.insert(local_key.clone(), global_key.clone());
-                    pure_fn_table.insert(local_key, global_key);
+                    tables
+                        .fns
+                        .insert(local_key.clone(), global_key.clone(), span.clone());
+                    tables.pure_fns.insert(local_key, global_key, span);
                 }
                 AstItem::Effect { def, .. } => {
-                    if let Some(et) = effect_table.as_deref_mut() {
-                        let local_key = LocalEffectKey::new(EffectName(def.name.node.name.clone()));
-                        let global_key = EffectId {
-                            module: module_path.clone(),
-                            name: EffectName(def.name.node.name.clone()),
-                        };
-                        et.insert(local_key, global_key);
-                    }
+                    let local_key = LocalEffectKey::new(EffectName(def.name.node.name.clone()));
+                    let global_key = EffectId {
+                        module: module_path.clone(),
+                        name: EffectName(def.name.node.name.clone()),
+                    };
+                    let span = IrSpan::new(file_id.clone(), def.name.node.span);
+                    tables.effects.insert(local_key, global_key, span);
                 }
                 _ => {}
             }
@@ -341,28 +319,22 @@ impl LoweringContext {
         Ok(())
     }
 
-    // TODO: bundle tables into a struct to reduce argument count
-    #[allow(clippy::too_many_arguments)]
     fn import_wildcard(
         &self,
         import_mod_path: &ModulePath,
         _target_file_id: &FileId,
         target_module: &AstModule,
         import_span: &IrSpan,
-        fn_table: &mut LocalTable<LocalFnKey, FnId, Result<IrFn, LoweringBail>>,
-        pure_fn_table: &mut LocalTable<LocalFnKey, FnId, Result<IrPureFn, LoweringBail>>,
-        mut effect_table: Option<
-            &mut LocalTable<LocalEffectKey, EffectId, Result<IrEffect, LoweringBail>>,
-        >,
+        tables: &mut LocalTables,
     ) -> Result<(), InvalidReport> {
         for item in &target_module.items {
             match &item.node {
                 AstItem::Fn { def, .. } => {
                     let local_key = LocalFnKey::new(&def.name.node.name, def.params.len());
-                    if fn_table.contains_local(&local_key) {
+                    if tables.fns.contains_local(&local_key) {
                         return Err(InvalidReport::NameConflict {
                             name: format!("{}/{}", def.name.node.name, def.params.len()),
-                            first: self.span_of_existing_fn(&local_key, fn_table),
+                            first: tables.fns.get_span(&local_key).unwrap().clone(),
                             second: import_span.clone(),
                         });
                     }
@@ -371,14 +343,16 @@ impl LoweringContext {
                         name: def.name.node.name.clone(),
                         arity: def.params.len(),
                     };
-                    fn_table.insert(local_key, global_key);
+                    tables
+                        .fns
+                        .insert(local_key, global_key, import_span.clone());
                 }
                 AstItem::PureFn { def, .. } => {
                     let local_key = LocalFnKey::new(&def.name.node.name, def.params.len());
-                    if fn_table.contains_local(&local_key) {
+                    if tables.fns.contains_local(&local_key) {
                         return Err(InvalidReport::NameConflict {
                             name: format!("{}/{}", def.name.node.name, def.params.len()),
-                            first: self.span_of_existing_fn(&local_key, fn_table),
+                            first: tables.fns.get_span(&local_key).unwrap().clone(),
                             second: import_span.clone(),
                         });
                     }
@@ -387,25 +361,29 @@ impl LoweringContext {
                         name: def.name.node.name.clone(),
                         arity: def.params.len(),
                     };
-                    fn_table.insert(local_key.clone(), global_key.clone());
-                    pure_fn_table.insert(local_key, global_key);
+                    tables
+                        .fns
+                        .insert(local_key.clone(), global_key.clone(), import_span.clone());
+                    tables
+                        .pure_fns
+                        .insert(local_key, global_key, import_span.clone());
                 }
                 AstItem::Effect { def, .. } => {
-                    if let Some(et) = effect_table.as_deref_mut() {
-                        let local_key = LocalEffectKey::new(EffectName(def.name.node.name.clone()));
-                        if et.contains_local(&local_key) {
-                            return Err(InvalidReport::NameConflict {
-                                name: def.name.node.name.clone(),
-                                first: import_span.clone(),
-                                second: import_span.clone(),
-                            });
-                        }
-                        let global_key = EffectId {
-                            module: import_mod_path.clone(),
-                            name: EffectName(def.name.node.name.clone()),
-                        };
-                        et.insert(local_key, global_key);
+                    let local_key = LocalEffectKey::new(EffectName(def.name.node.name.clone()));
+                    if tables.effects.contains_local(&local_key) {
+                        return Err(InvalidReport::NameConflict {
+                            name: def.name.node.name.clone(),
+                            first: tables.effects.get_span(&local_key).unwrap().clone(),
+                            second: import_span.clone(),
+                        });
                     }
+                    let global_key = EffectId {
+                        module: import_mod_path.clone(),
+                        name: EffectName(def.name.node.name.clone()),
+                    };
+                    tables
+                        .effects
+                        .insert(local_key, global_key, import_span.clone());
                 }
                 _ => {}
             }
@@ -413,8 +391,6 @@ impl LoweringContext {
         Ok(())
     }
 
-    // TODO: bundle tables into a struct to reduce argument count
-    #[allow(clippy::too_many_arguments)]
     fn import_selective(
         &self,
         import_mod_path: &ModulePath,
@@ -422,11 +398,7 @@ impl LoweringContext {
         target_module: &AstModule,
         names: &[crate::Spanned<crate::dsl::parser::ast::AstImportName>],
         source_file_id: &FileId,
-        fn_table: &mut LocalTable<LocalFnKey, FnId, Result<IrFn, LoweringBail>>,
-        pure_fn_table: &mut LocalTable<LocalFnKey, FnId, Result<IrPureFn, LoweringBail>>,
-        mut effect_table: Option<
-            &mut LocalTable<LocalEffectKey, EffectId, Result<IrEffect, LoweringBail>>,
-        >,
+        tables: &mut LocalTables,
     ) -> Result<(), InvalidReport> {
         for import_name in names {
             let original_name = &import_name.node.name.node.name;
@@ -458,21 +430,21 @@ impl LoweringContext {
                     });
                 }
 
-                if let Some(et) = effect_table.as_deref_mut() {
-                    let local_key = LocalEffectKey::new(EffectName(local_name.clone()));
-                    if et.contains_local(&local_key) {
-                        return Err(InvalidReport::NameConflict {
-                            name: local_name.clone(),
-                            first: name_span.clone(),
-                            second: name_span,
-                        });
-                    }
-                    let global_key = EffectId {
-                        module: import_mod_path.clone(),
-                        name: EffectName(original_name.clone()),
-                    };
-                    et.insert(local_key, global_key);
+                let local_key = LocalEffectKey::new(EffectName(local_name.clone()));
+                if tables.effects.contains_local(&local_key) {
+                    return Err(InvalidReport::NameConflict {
+                        name: local_name.clone(),
+                        first: tables.effects.get_span(&local_key).unwrap().clone(),
+                        second: name_span,
+                    });
                 }
+                let global_key = EffectId {
+                    module: import_mod_path.clone(),
+                    name: EffectName(original_name.clone()),
+                };
+                tables
+                    .effects
+                    .insert(local_key, global_key, name_span.clone());
             } else {
                 // Look for fn or pure fn definitions in the target module.
                 // Collect all matching definitions (there may be multiple arities).
@@ -483,10 +455,10 @@ impl LoweringContext {
                         AstItem::Fn { def, .. } if def.name.node.name == *original_name => {
                             found_any = true;
                             let local_key = LocalFnKey::new(local_name, def.params.len());
-                            if fn_table.contains_local(&local_key) {
+                            if tables.fns.contains_local(&local_key) {
                                 return Err(InvalidReport::NameConflict {
                                     name: format!("{}/{}", local_name, def.params.len()),
-                                    first: name_span.clone(),
+                                    first: tables.fns.get_span(&local_key).unwrap().clone(),
                                     second: name_span,
                                 });
                             }
@@ -495,15 +467,15 @@ impl LoweringContext {
                                 name: original_name.clone(),
                                 arity: def.params.len(),
                             };
-                            fn_table.insert(local_key, global_key);
+                            tables.fns.insert(local_key, global_key, name_span.clone());
                         }
                         AstItem::PureFn { def, .. } if def.name.node.name == *original_name => {
                             found_any = true;
                             let local_key = LocalFnKey::new(local_name, def.params.len());
-                            if fn_table.contains_local(&local_key) {
+                            if tables.fns.contains_local(&local_key) {
                                 return Err(InvalidReport::NameConflict {
                                     name: format!("{}/{}", local_name, def.params.len()),
-                                    first: name_span.clone(),
+                                    first: tables.fns.get_span(&local_key).unwrap().clone(),
                                     second: name_span,
                                 });
                             }
@@ -512,8 +484,14 @@ impl LoweringContext {
                                 name: original_name.clone(),
                                 arity: def.params.len(),
                             };
-                            fn_table.insert(local_key.clone(), global_key.clone());
-                            pure_fn_table.insert(local_key, global_key);
+                            tables.fns.insert(
+                                local_key.clone(),
+                                global_key.clone(),
+                                name_span.clone(),
+                            );
+                            tables
+                                .pure_fns
+                                .insert(local_key, global_key, name_span.clone());
                         }
                         _ => {}
                     }
@@ -529,22 +507,6 @@ impl LoweringContext {
             }
         }
         Ok(())
-    }
-
-    /// Helper: get the IrSpan for an existing fn entry. Used for NameConflict first span.
-    /// Since we don't store spans in LocalTable, we use a synthetic span for now.
-    fn span_of_existing_fn(
-        &self,
-        _local_key: &LocalFnKey,
-        _fn_table: &LocalTable<LocalFnKey, FnId, Result<IrFn, LoweringBail>>,
-    ) -> IrSpan {
-        // TODO(R004): Proper span tracking for conflict reporting requires
-        // storing spans in LocalTable. For now return a zero-span placeholder.
-        // The second span (from the import) is always accurate.
-        IrSpan::new(
-            FileId::new(std::path::PathBuf::from("<conflict>")),
-            crate::Span::new(0, 0),
-        )
     }
 
     // ─── Cause / Warning Registration ────────────────────────
@@ -603,26 +565,27 @@ impl LoweringContext {
 
     // ─── Finalization ────────────────────────────────────────
 
-    /// Print all diagnostics (invalid causes only — skips are reported at runtime) to stderr.
-    pub fn print_diagnostics(&self) {
+    /// Print all diagnostics (causes and warnings) to stderr.
+    ///
+    /// Each cause is printed once with its mnemonic ID. At runtime, tests
+    /// reference causes by ID rather than repeating the full diagnostic.
+    pub fn print_diagnostics(&self, project_root: Option<&std::path::Path>) {
         use crate::diagnostics::Diagnostic;
 
-        for (_cause_id, cause) in self.causes.iter() {
-            if matches!(&cause, Cause::Invalid(_)) {
-                let diagnostic = Diagnostic::from(&cause);
-                diagnostic.eprint(&self.source_map);
-            }
+        for (cause_id, cause) in self.causes.as_vec() {
+            let diagnostic = Diagnostic::from(cause);
+            diagnostic.eprint_with_id(&cause_id, &self.tables.sources, project_root);
         }
     }
 
     /// Consume the context and produce a Suite.
-    pub fn into_suite(self, plans: Vec<NewPlan>) -> Suite {
+    pub fn into_suite(self, plans: Vec<Plan>) -> Suite {
         Suite {
             plans,
-            source_map: self.source_map,
             env: self.env,
             causes: self.causes,
             warnings: self.warnings,
+            tables: self.tables,
         }
     }
 
@@ -644,18 +607,16 @@ impl LoweringContext {
 
     /// Resolve a function by its global FnId.
     /// Handles caching, cycle detection, local table creation, and lowering.
-    // TODO: box LoweringBail to reduce Result size
-    #[allow(clippy::result_large_err)]
     pub fn resolve_fn(&mut self, fn_id: &FnId) -> Result<IrFn, LoweringBail> {
         // Check cache
-        if let Some(result) = self.functions.get(fn_id) {
-            return result;
+        if let Some(result) = self.tables.fns.get(fn_id) {
+            return result.clone();
         }
 
         // Check cycle
         if let Some(cycle) = self.find_fn_cycle(fn_id) {
-            let bail = LoweringBail::Invalid(InvalidReport::Cycle(cycle));
-            self.functions.insert(fn_id.clone(), Err(bail.clone()));
+            let bail = LoweringBail::invalid(InvalidReport::Cycle(cycle));
+            self.tables.fns.insert(fn_id.clone(), Err(bail.clone()));
             return Err(bail);
         }
 
@@ -680,17 +641,10 @@ impl LoweringContext {
             .expect("fn must be in module");
 
         // Create and populate local tables
-        let mut fn_table = self.local_fn_table();
-        let mut pure_fn_table = self.local_pure_fn_table();
-        if let Err(e) = self.populate_local_tables(
-            &fn_id.module,
-            &file_id,
-            &mut fn_table,
-            &mut pure_fn_table,
-            None,
-        ) {
-            let bail = LoweringBail::Invalid(e);
-            self.functions.insert(fn_id.clone(), Err(bail.clone()));
+        let mut tables = self.local_tables();
+        if let Err(e) = self.populate_local_tables(&fn_id.module, &file_id, &mut tables) {
+            let bail = LoweringBail::invalid(e);
+            self.tables.fns.insert(fn_id.clone(), Err(bail.clone()));
             return Err(bail);
         }
 
@@ -701,9 +655,7 @@ impl LoweringContext {
         // Push scope
         self.push_scope(LoweringScope {
             module_path: fn_id.module.clone(),
-            fn_table,
-            pure_fn_table,
-            effect_table: None,
+            tables,
         });
 
         // Evaluate markers
@@ -717,12 +669,12 @@ impl LoweringContext {
             self,
         ) {
             Ok(Some(skip)) => {
-                let cause_id = skip.cause_id();
-                self.register_cause(cause_id, Cause::Skip(skip.clone()));
-                let bail = LoweringBail::Skip(skip);
+                let bail = LoweringBail::skip(skip);
+                let cause_id = bail.cause_id();
+                self.register_cause(cause_id, Cause::from_bail(&bail));
                 self.pop_scope();
                 self.pop_fn();
-                self.functions.insert(fn_id.clone(), Err(bail.clone()));
+                self.tables.fns.insert(fn_id.clone(), Err(bail.clone()));
                 return Err(bail);
             }
             Ok(None) => {}
@@ -731,7 +683,7 @@ impl LoweringContext {
                 self.register_cause(cause_id, Cause::from_bail(&bail));
                 self.pop_scope();
                 self.pop_fn();
-                self.functions.insert(fn_id.clone(), Err(bail.clone()));
+                self.tables.fns.insert(fn_id.clone(), Err(bail.clone()));
                 return Err(bail);
             }
         }
@@ -744,24 +696,24 @@ impl LoweringContext {
         self.pop_fn();
 
         // Cache and return
-        self.functions.insert(fn_id.clone(), result.clone());
+        self.tables.fns.insert(fn_id.clone(), result.clone());
         result
     }
 
     // ─── Resolve: Pure Functions ─────────────────────────────
 
-    // TODO: box LoweringBail to reduce Result size
-    #[allow(clippy::result_large_err)]
     pub fn resolve_pure_fn(&mut self, fn_id: &FnId) -> Result<IrPureFn, LoweringBail> {
         // Check cache
-        if let Some(result) = self.pure_functions.get(fn_id) {
-            return result;
+        if let Some(result) = self.tables.pure_fns.get(fn_id) {
+            return result.clone();
         }
 
         // Check cycle
         if let Some(cycle) = self.find_fn_cycle(fn_id) {
-            let bail = LoweringBail::Invalid(InvalidReport::Cycle(cycle));
-            self.pure_functions.insert(fn_id.clone(), Err(bail.clone()));
+            let bail = LoweringBail::invalid(InvalidReport::Cycle(cycle));
+            self.tables
+                .pure_fns
+                .insert(fn_id.clone(), Err(bail.clone()));
             return Err(bail);
         }
 
@@ -785,18 +737,13 @@ impl LoweringContext {
             })
             .expect("pure fn must be in module");
 
-        // Create and populate local tables (pure fn only gets pure fn table)
-        let mut fn_table = self.local_fn_table();
-        let mut pure_fn_table = self.local_pure_fn_table();
-        if let Err(e) = self.populate_local_tables(
-            &fn_id.module,
-            &file_id,
-            &mut fn_table,
-            &mut pure_fn_table,
-            None,
-        ) {
-            let bail = LoweringBail::Invalid(e);
-            self.pure_functions.insert(fn_id.clone(), Err(bail.clone()));
+        // Create and populate local tables
+        let mut tables = self.local_tables();
+        if let Err(e) = self.populate_local_tables(&fn_id.module, &file_id, &mut tables) {
+            let bail = LoweringBail::invalid(e);
+            self.tables
+                .pure_fns
+                .insert(fn_id.clone(), Err(bail.clone()));
             return Err(bail);
         }
 
@@ -804,12 +751,10 @@ impl LoweringContext {
         let span = IrSpan::new(file_id.clone(), def.span);
         self.push_fn(fn_id.clone(), span);
 
-        // Push scope (no effect table for pure fns)
+        // Push scope
         self.push_scope(LoweringScope {
             module_path: fn_id.module.clone(),
-            fn_table,
-            pure_fn_table,
-            effect_table: None,
+            tables,
         });
 
         // Evaluate markers
@@ -823,12 +768,14 @@ impl LoweringContext {
             self,
         ) {
             Ok(Some(skip)) => {
-                let cause_id = skip.cause_id();
-                self.register_cause(cause_id, Cause::Skip(skip.clone()));
-                let bail = LoweringBail::Skip(skip);
+                let bail = LoweringBail::skip(skip);
+                let cause_id = bail.cause_id();
+                self.register_cause(cause_id, Cause::from_bail(&bail));
                 self.pop_scope();
                 self.pop_fn();
-                self.pure_functions.insert(fn_id.clone(), Err(bail.clone()));
+                self.tables
+                    .pure_fns
+                    .insert(fn_id.clone(), Err(bail.clone()));
                 return Err(bail);
             }
             Ok(None) => {}
@@ -837,7 +784,9 @@ impl LoweringContext {
                 self.register_cause(cause_id, Cause::from_bail(&bail));
                 self.pop_scope();
                 self.pop_fn();
-                self.pure_functions.insert(fn_id.clone(), Err(bail.clone()));
+                self.tables
+                    .pure_fns
+                    .insert(fn_id.clone(), Err(bail.clone()));
                 return Err(bail);
             }
         }
@@ -850,24 +799,24 @@ impl LoweringContext {
         self.pop_fn();
 
         // Cache and return
-        self.pure_functions.insert(fn_id.clone(), result.clone());
+        self.tables.pure_fns.insert(fn_id.clone(), result.clone());
         result
     }
 
     // ─── Resolve: Effects ────────────────────────────────────
 
-    // TODO: box LoweringBail to reduce Result size
-    #[allow(clippy::result_large_err)]
     pub fn resolve_effect(&mut self, effect_id: &EffectId) -> Result<IrEffect, LoweringBail> {
         // Check cache
-        if let Some(result) = self.effects.get(effect_id) {
-            return result;
+        if let Some(result) = self.tables.effects.get(effect_id) {
+            return result.clone();
         }
 
         // Check cycle
         if let Some(cycle) = self.find_effect_cycle(effect_id) {
-            let bail = LoweringBail::Invalid(InvalidReport::Cycle(cycle));
-            self.effects.insert(effect_id.clone(), Err(bail.clone()));
+            let bail = LoweringBail::invalid(InvalidReport::Cycle(cycle));
+            self.tables
+                .effects
+                .insert(effect_id.clone(), Err(bail.clone()));
             return Err(bail);
         }
 
@@ -887,19 +836,13 @@ impl LoweringContext {
             })
             .expect("effect must be in module");
 
-        // Create and populate local tables (effects get all three)
-        let mut fn_table = self.local_fn_table();
-        let mut pure_fn_table = self.local_pure_fn_table();
-        let mut effect_table = self.local_effect_table();
-        if let Err(e) = self.populate_local_tables(
-            &effect_id.module,
-            &file_id,
-            &mut fn_table,
-            &mut pure_fn_table,
-            Some(&mut effect_table),
-        ) {
-            let bail = LoweringBail::Invalid(e);
-            self.effects.insert(effect_id.clone(), Err(bail.clone()));
+        // Create and populate local tables
+        let mut tables = self.local_tables();
+        if let Err(e) = self.populate_local_tables(&effect_id.module, &file_id, &mut tables) {
+            let bail = LoweringBail::invalid(e);
+            self.tables
+                .effects
+                .insert(effect_id.clone(), Err(bail.clone()));
             return Err(bail);
         }
 
@@ -910,9 +853,7 @@ impl LoweringContext {
         // Push scope
         self.push_scope(LoweringScope {
             module_path: effect_id.module.clone(),
-            fn_table,
-            pure_fn_table,
-            effect_table: Some(effect_table),
+            tables,
         });
 
         // Evaluate markers
@@ -926,12 +867,14 @@ impl LoweringContext {
             self,
         ) {
             Ok(Some(skip)) => {
-                let cause_id = skip.cause_id();
-                self.register_cause(cause_id, Cause::Skip(skip.clone()));
-                let bail = LoweringBail::Skip(skip);
+                let bail = LoweringBail::skip(skip);
+                let cause_id = bail.cause_id();
+                self.register_cause(cause_id, Cause::from_bail(&bail));
                 self.pop_scope();
                 self.pop_effect();
-                self.effects.insert(effect_id.clone(), Err(bail.clone()));
+                self.tables
+                    .effects
+                    .insert(effect_id.clone(), Err(bail.clone()));
                 return Err(bail);
             }
             Ok(None) => {}
@@ -940,7 +883,9 @@ impl LoweringContext {
                 self.register_cause(cause_id, Cause::from_bail(&bail));
                 self.pop_scope();
                 self.pop_effect();
-                self.effects.insert(effect_id.clone(), Err(bail.clone()));
+                self.tables
+                    .effects
+                    .insert(effect_id.clone(), Err(bail.clone()));
                 return Err(bail);
             }
         }
@@ -953,7 +898,9 @@ impl LoweringContext {
         self.pop_effect();
 
         // Cache and return
-        self.effects.insert(effect_id.clone(), result.clone());
+        self.tables
+            .effects
+            .insert(effect_id.clone(), result.clone());
         result
     }
 }
@@ -966,11 +913,11 @@ impl LoweringContext {
 pub(crate) mod test_helpers {
     use super::*;
     use crate::Span;
+    use crate::core::table::{FileId, SharedTable};
     use crate::diagnostics::{CauseTable, IrSpan, LoweringBail, ModulePath, WarningTable};
     use crate::dsl::parser::ast::*;
     use crate::dsl::resolver::ir::*;
-    use crate::stack::Env;
-    use crate::table::{FileId, FrozenTable, SharedTable, SourceFile};
+    use crate::pure::Env;
     use std::collections::HashMap;
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -988,13 +935,11 @@ pub(crate) mod test_helpers {
     }
 
     pub fn empty_ast_table() -> AstTable {
-        let shared: SharedTable<ModulePath, (FileId, AstModule)> = SharedTable::new();
-        FrozenTable::try_from(shared).unwrap()
+        AstTable::new()
     }
 
     pub fn empty_source_table() -> SourceTable {
-        let shared: SharedTable<FileId, SourceFile> = SharedTable::new();
-        FrozenTable::try_from(shared).unwrap()
+        SourceTable::new()
     }
 
     /// Parse a Relux source string into an AstModule.
@@ -1011,21 +956,21 @@ pub(crate) mod test_helpers {
     /// Build a LoweringContext with multiple modules.
     /// Each entry is (module_path, file_path, source).
     pub fn ctx_with_modules(modules: Vec<(&str, &str, &str)>) -> LoweringContext {
-        let shared: SharedTable<ModulePath, (FileId, AstModule)> = SharedTable::new();
+        let ast_table: AstTable = SharedTable::new();
         for (mod_path, file_path, source) in &modules {
             let ast = parse_module(source);
-            shared.insert(
+            ast_table.insert(
                 ModulePath((*mod_path).into()),
                 (FileId::new(PathBuf::from(file_path)), ast),
             );
         }
-        let ast_table = FrozenTable::try_from(shared).unwrap();
         let ctx = LoweringContext::new(
             ast_table,
             empty_source_table(),
             test_env(),
             CauseTable::default(),
             WarningTable::default(),
+            1.0,
         );
         ctx.register_bifs();
         ctx
@@ -1034,28 +979,18 @@ pub(crate) mod test_helpers {
     /// Push a scope for the given module path onto ctx, populating all three local tables.
     pub fn push_test_scope(ctx: &mut LoweringContext, mod_path: &str) {
         let module_path = ModulePath(mod_path.into());
-        let file_id = ctx
-            .ast_table()
+        let ast_table = ctx.ast_table().clone();
+        let file_id = ast_table
             .get(&module_path)
             .unwrap_or_else(|| panic!("module {mod_path} not in ast_table"))
             .0
             .clone();
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
-        let mut effect_table = ctx.local_effect_table();
-        ctx.populate_local_tables(
-            &module_path,
-            &file_id,
-            &mut fn_table,
-            &mut pure_fn_table,
-            Some(&mut effect_table),
-        )
-        .unwrap();
+        let mut tables = ctx.local_tables();
+        ctx.populate_local_tables(&module_path, &file_id, &mut tables)
+            .unwrap();
         ctx.push_scope(LoweringScope {
             module_path,
-            fn_table,
-            pure_fn_table,
-            effect_table: Some(effect_table),
+            tables,
         });
     }
 
@@ -1093,8 +1028,6 @@ pub(crate) mod test_helpers {
     }
 
     /// Helper to extract the first test def from the context's ast_table and lower it.
-    // TODO: box LoweringBail to reduce Result size
-    #[allow(clippy::result_large_err)]
     pub fn lower_first_test(
         ctx: &mut LoweringContext,
         mod_path_str: &str,
@@ -1102,9 +1035,8 @@ pub(crate) mod test_helpers {
         let mod_path = ModulePath(mod_path_str.into());
         let file = file_id_for(ctx, mod_path_str);
         let ast_table = ctx.ast_table().clone();
-        let def = ast_table
-            .get(&mod_path)
-            .unwrap()
+        let entry = ast_table.get(&mod_path).unwrap();
+        let def = entry
             .1
             .items
             .iter()
@@ -1114,22 +1046,12 @@ pub(crate) mod test_helpers {
             })
             .unwrap();
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
-        let mut effect_table = ctx.local_effect_table();
-        ctx.populate_local_tables(
-            &mod_path,
-            &file,
-            &mut fn_table,
-            &mut pure_fn_table,
-            Some(&mut effect_table),
-        )
-        .map_err(LoweringBail::Invalid)?;
+        let mut tables = ctx.local_tables();
+        ctx.populate_local_tables(&mod_path, &file, &mut tables)
+            .map_err(LoweringBail::invalid)?;
         ctx.push_scope(LoweringScope {
             module_path: mod_path.clone(),
-            fn_table,
-            pure_fn_table,
-            effect_table: Some(effect_table),
+            tables,
         });
         let result = IrTest::lower(def, &file, ctx);
         ctx.pop_scope();
@@ -1150,17 +1072,41 @@ pub(crate) mod test_helpers {
 
         let causes: CauseTable = SharedTable::new();
         let warnings: WarningTable = SharedTable::new();
-        let (ast_shared, source_shared) = load_modules(&loader, seeds, &causes, &warnings);
-        let ast_table: AstTable = ast_shared.try_into().expect("ast_table freeze failed");
-        let source_table: SourceTable = source_shared
-            .try_into()
-            .expect("source_table freeze failed");
+        let (ast_table, source_table) = load_modules(&loader, seeds, &causes, &warnings);
         let mut ctx = LoweringContext::new(
             ast_table,
             source_table,
             Arc::new(Env::from_map(env)),
             causes,
             warnings,
+            1.0,
+        );
+        ctx.register_bifs();
+        let plans = build_all_plans(&mut ctx);
+        ctx.into_suite(plans)
+    }
+
+    pub fn resolve_source_with_multiplier(sources: &[(&str, &str)], multiplier: f64) -> Suite {
+        use crate::dsl::resolver::load_modules;
+        use crate::dsl::resolver::loader::InMemoryLoader;
+
+        let mut loader = InMemoryLoader::new();
+        let mut seeds = Vec::new();
+        for (mod_path, source) in sources {
+            loader.add(mod_path, source);
+            seeds.push(ModulePath((*mod_path).into()));
+        }
+
+        let causes: CauseTable = SharedTable::new();
+        let warnings: WarningTable = SharedTable::new();
+        let (ast_table, source_table) = load_modules(&loader, seeds, &causes, &warnings);
+        let mut ctx = LoweringContext::new(
+            ast_table,
+            source_table,
+            Arc::new(Env::from_map(HashMap::new())),
+            causes,
+            warnings,
+            multiplier,
         );
         ctx.register_bifs();
         let plans = build_all_plans(&mut ctx);
@@ -1171,20 +1117,20 @@ pub(crate) mod test_helpers {
         resolve_source(sources, HashMap::new())
     }
 
-    pub fn plan_name(plan: &NewPlan) -> &str {
+    pub fn plan_name(plan: &Plan) -> &str {
         plan.meta().name()
     }
 
-    pub fn is_runnable(plan: &NewPlan) -> bool {
-        matches!(plan, NewPlan::Runnable { .. })
+    pub fn is_runnable(plan: &Plan) -> bool {
+        matches!(plan, Plan::Runnable { .. })
     }
 
-    pub fn is_skipped(plan: &NewPlan) -> bool {
-        matches!(plan, NewPlan::Skipped { .. })
+    pub fn is_skipped(plan: &Plan) -> bool {
+        matches!(plan, Plan::Skipped { .. })
     }
 
-    pub fn is_invalid(plan: &NewPlan) -> bool {
-        matches!(plan, NewPlan::Invalid { .. })
+    pub fn is_invalid(plan: &Plan) -> bool {
+        matches!(plan, Plan::Invalid { .. })
     }
 }
 
@@ -1202,9 +1148,9 @@ mod tests {
 
     use crate::Span;
     use crate::Spanned;
+    use crate::core::table::{FileId, SharedTable, SourceFile};
     use crate::dsl::parser::ast::*;
-    use crate::stack::Env;
-    use crate::table::{FileId, FrozenTable, SharedTable, SourceFile};
+    use crate::pure::Env;
     use std::collections::HashMap;
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -1226,6 +1172,7 @@ mod tests {
             test_env(),
             CauseTable::default(),
             WarningTable::default(),
+            1.0,
         )
     }
 
@@ -1237,11 +1184,11 @@ mod tests {
 
     /// Build an AstTable with the given modules.
     fn make_ast_table(modules: Vec<(ModulePath, FileId, AstModule)>) -> AstTable {
-        let shared: SharedTable<ModulePath, (FileId, AstModule)> = SharedTable::new();
+        let table: AstTable = SharedTable::new();
         for (path, file_id, module) in modules {
-            shared.insert(path, (file_id, module));
+            table.insert(path, (file_id, module));
         }
-        FrozenTable::try_from(shared).unwrap()
+        table
     }
 
     fn make_context_with_ast(modules: Vec<(ModulePath, FileId, AstModule)>) -> LoweringContext {
@@ -1252,6 +1199,7 @@ mod tests {
             test_env(),
             CauseTable::default(),
             WarningTable::default(),
+            1.0,
         );
         ctx.register_bifs();
         ctx
@@ -1406,6 +1354,7 @@ mod tests {
             env.clone(),
             CauseTable::default(),
             WarningTable::default(),
+            1.0,
         );
         assert_eq!(ctx.env().get("KEY"), Some("val"));
     }
@@ -1422,6 +1371,7 @@ mod tests {
             test_env(),
             CauseTable::default(),
             WarningTable::default(),
+            1.0,
         );
         assert!(ctx.ast_table().get(&mod_path).is_some());
     }
@@ -1432,7 +1382,7 @@ mod tests {
         let id = CauseId::generate("m", "f", 0, "err");
         causes.insert(
             id.clone(),
-            Cause::Invalid(InvalidReport::PurityViolation { span: test_span() }),
+            Cause::invalid(InvalidReport::PurityViolation { span: test_span() }),
         );
         let ctx = LoweringContext::new(
             empty_ast_table(),
@@ -1440,8 +1390,28 @@ mod tests {
             test_env(),
             causes,
             WarningTable::default(),
+            1.0,
         );
         assert!(ctx.causes().get(&id).is_some());
+    }
+
+    #[test]
+    fn context_new_preserves_multiplier() {
+        let ctx = LoweringContext::new(
+            empty_ast_table(),
+            empty_source_table(),
+            test_env(),
+            CauseTable::default(),
+            WarningTable::default(),
+            2.5,
+        );
+        assert_eq!(ctx.multiplier(), 2.5);
+    }
+
+    #[test]
+    fn context_new_default_multiplier() {
+        let ctx = make_context();
+        assert_eq!(ctx.multiplier(), 1.0);
     }
 
     #[test]
@@ -1454,6 +1424,7 @@ mod tests {
             test_env(),
             CauseTable::default(),
             warnings,
+            1.0,
         );
         let _ = ctx.warnings();
     }
@@ -1509,9 +1480,6 @@ mod tests {
     fn pure_bifs_registered_in_pure_fn_table() {
         let ctx = make_context_with_bifs();
         let pure_bifs: Vec<(&str, usize)> = vec![
-            ("sleep", 1),
-            ("annotate", 1),
-            ("log", 1),
             ("trim", 1),
             ("upper", 1),
             ("lower", 1),
@@ -1541,6 +1509,9 @@ mod tests {
     fn impure_bifs_not_in_pure_fn_table() {
         let ctx = make_context_with_bifs();
         let impure_bifs: Vec<(&str, usize)> = vec![
+            ("sleep", 1),
+            ("annotate", 1),
+            ("log", 1),
             ("match_prompt", 0),
             ("match_exit_code", 1),
             ("match_ok", 0),
@@ -1613,7 +1584,7 @@ mod tests {
         };
         let entry = ctx.functions().get(&key).unwrap();
         if let Ok(IrFn::Builtin { arity, .. }) = entry {
-            assert_eq!(arity, 3);
+            assert_eq!(*arity, 3);
         } else {
             panic!("expected Ok(Builtin)");
         }
@@ -1632,22 +1603,24 @@ mod tests {
     #[test]
     fn local_fn_table_sees_registered_bifs() {
         let ctx = make_context_with_bifs();
-        let mut lt = ctx.local_fn_table();
+        let mut tables = ctx.local_tables();
         let local_key = LocalFnKey::new("trim", 1);
         let global_key = FnId {
             module: builtin_mod(),
             name: "trim".into(),
             arity: 1,
         };
-        lt.insert(local_key.clone(), global_key);
-        assert!(lt.get(&local_key).is_some());
+        tables
+            .fns
+            .insert(local_key.clone(), global_key, IrSpan::synthetic());
+        assert!(tables.fns.get(&local_key).is_some());
     }
 
     #[test]
     fn local_pure_fn_table_shares_registry() {
         let ctx = make_context_with_bifs();
-        let mut lt1 = ctx.local_pure_fn_table();
-        let mut lt2 = ctx.local_pure_fn_table();
+        let mut tables1 = ctx.local_tables();
+        let mut tables2 = ctx.local_tables();
         // Both should see the same registry.
         let key = LocalFnKey::new("uuid", 0);
         let gk = FnId {
@@ -1655,35 +1628,45 @@ mod tests {
             name: "uuid".into(),
             arity: 0,
         };
-        lt1.insert(key.clone(), gk.clone());
-        lt2.insert(key.clone(), gk);
-        assert!(lt1.get(&key).is_some());
-        assert!(lt2.get(&key).is_some());
+        tables1
+            .pure_fns
+            .insert(key.clone(), gk.clone(), IrSpan::synthetic());
+        tables2
+            .pure_fns
+            .insert(key.clone(), gk, IrSpan::synthetic());
+        assert!(tables1.pure_fns.get(&key).is_some());
+        assert!(tables2.pure_fns.get(&key).is_some());
     }
 
     #[test]
     fn local_effect_table_initially_empty() {
         let ctx = make_context();
-        let lt = ctx.local_effect_table();
+        let tables = ctx.local_tables();
         let key = LocalEffectKey::new(EffectName("Db".into()));
-        assert!(lt.get(&key).is_none());
+        assert!(tables.effects.get(&key).is_none());
     }
 
     #[test]
     fn local_fn_table_independent_locals() {
         let ctx = make_context_with_bifs();
-        let mut lt1 = ctx.local_fn_table();
-        let mut lt2 = ctx.local_fn_table();
+        let mut tables1 = ctx.local_tables();
+        let mut tables2 = ctx.local_tables();
         let gk = FnId {
             module: builtin_mod(),
             name: "trim".into(),
             arity: 1,
         };
-        lt1.insert(LocalFnKey::new("my_trim", 1), gk.clone());
-        lt2.insert(LocalFnKey::new("your_trim", 1), gk);
-        // lt1 doesn't see lt2's local mapping.
-        assert!(lt1.get(&LocalFnKey::new("your_trim", 1)).is_none());
-        assert!(lt2.get(&LocalFnKey::new("my_trim", 1)).is_none());
+        tables1.fns.insert(
+            LocalFnKey::new("my_trim", 1),
+            gk.clone(),
+            IrSpan::synthetic(),
+        );
+        tables2
+            .fns
+            .insert(LocalFnKey::new("your_trim", 1), gk, IrSpan::synthetic());
+        // tables1 doesn't see tables2's local mapping.
+        assert!(tables1.fns.get(&LocalFnKey::new("your_trim", 1)).is_none());
+        assert!(tables2.fns.get(&LocalFnKey::new("my_trim", 1)).is_none());
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -1697,12 +1680,10 @@ mod tests {
         let module = make_module(vec![make_fn_def("foo", 1)]);
         let ctx = make_context_with_ast(vec![(mod_path.clone(), file_id.clone(), module)]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
-        let result =
-            ctx.populate_local_tables(&mod_path, &file_id, &mut fn_table, &mut pure_fn_table, None);
+        let mut tables = ctx.local_tables();
+        let result = ctx.populate_local_tables(&mod_path, &file_id, &mut tables);
         assert!(result.is_ok());
-        assert!(fn_table.contains_local(&LocalFnKey::new("foo", 1)));
+        assert!(tables.fns.contains_local(&LocalFnKey::new("foo", 1)));
     }
 
     #[test]
@@ -1712,12 +1693,11 @@ mod tests {
         let module = make_module(vec![make_fn_def("foo", 0), make_fn_def("foo", 1)]);
         let ctx = make_context_with_ast(vec![(mod_path.clone(), file_id.clone(), module)]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
-        ctx.populate_local_tables(&mod_path, &file_id, &mut fn_table, &mut pure_fn_table, None)
+        let mut tables = ctx.local_tables();
+        ctx.populate_local_tables(&mod_path, &file_id, &mut tables)
             .unwrap();
-        assert!(fn_table.contains_local(&LocalFnKey::new("foo", 0)));
-        assert!(fn_table.contains_local(&LocalFnKey::new("foo", 1)));
+        assert!(tables.fns.contains_local(&LocalFnKey::new("foo", 0)));
+        assert!(tables.fns.contains_local(&LocalFnKey::new("foo", 1)));
     }
 
     #[test]
@@ -1727,18 +1707,14 @@ mod tests {
         let module = make_module(vec![make_effect_def("Db")]);
         let ctx = make_context_with_ast(vec![(mod_path.clone(), file_id.clone(), module)]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
-        let mut effect_table = ctx.local_effect_table();
-        ctx.populate_local_tables(
-            &mod_path,
-            &file_id,
-            &mut fn_table,
-            &mut pure_fn_table,
-            Some(&mut effect_table),
-        )
-        .unwrap();
-        assert!(effect_table.contains_local(&LocalEffectKey::new(EffectName("Db".into()))));
+        let mut tables = ctx.local_tables();
+        ctx.populate_local_tables(&mod_path, &file_id, &mut tables)
+            .unwrap();
+        assert!(
+            tables
+                .effects
+                .contains_local(&LocalEffectKey::new(EffectName("Db".into())))
+        );
     }
 
     #[test]
@@ -1748,13 +1724,12 @@ mod tests {
         let module = make_module(vec![make_pure_fn_def("bar", 0)]);
         let ctx = make_context_with_ast(vec![(mod_path.clone(), file_id.clone(), module)]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
-        ctx.populate_local_tables(&mod_path, &file_id, &mut fn_table, &mut pure_fn_table, None)
+        let mut tables = ctx.local_tables();
+        ctx.populate_local_tables(&mod_path, &file_id, &mut tables)
             .unwrap();
         // Pure fns go in both tables.
-        assert!(fn_table.contains_local(&LocalFnKey::new("bar", 0)));
-        assert!(pure_fn_table.contains_local(&LocalFnKey::new("bar", 0)));
+        assert!(tables.fns.contains_local(&LocalFnKey::new("bar", 0)));
+        assert!(tables.pure_fns.contains_local(&LocalFnKey::new("bar", 0)));
     }
 
     #[test]
@@ -1768,21 +1743,21 @@ mod tests {
         ]);
         let ctx = make_context_with_ast(vec![(mod_path.clone(), file_id.clone(), module)]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
-        let mut effect_table = ctx.local_effect_table();
-        ctx.populate_local_tables(
-            &mod_path,
-            &file_id,
-            &mut fn_table,
-            &mut pure_fn_table,
-            Some(&mut effect_table),
-        )
-        .unwrap();
-        assert!(fn_table.contains_local(&LocalFnKey::new("impure_fn", 1)));
-        assert!(fn_table.contains_local(&LocalFnKey::new("pure_fn", 0)));
-        assert!(pure_fn_table.contains_local(&LocalFnKey::new("pure_fn", 0)));
-        assert!(effect_table.contains_local(&LocalEffectKey::new(EffectName("Setup".into()))));
+        let mut tables = ctx.local_tables();
+        ctx.populate_local_tables(&mod_path, &file_id, &mut tables)
+            .unwrap();
+        assert!(tables.fns.contains_local(&LocalFnKey::new("impure_fn", 1)));
+        assert!(tables.fns.contains_local(&LocalFnKey::new("pure_fn", 0)));
+        assert!(
+            tables
+                .pure_fns
+                .contains_local(&LocalFnKey::new("pure_fn", 0))
+        );
+        assert!(
+            tables
+                .effects
+                .contains_local(&LocalEffectKey::new(EffectName("Setup".into())))
+        );
     }
 
     #[test]
@@ -1792,19 +1767,11 @@ mod tests {
         let module = make_module(vec![]);
         let ctx = make_context_with_ast(vec![(mod_path.clone(), file_id.clone(), module)]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
-        let mut effect_table = ctx.local_effect_table();
-        ctx.populate_local_tables(
-            &mod_path,
-            &file_id,
-            &mut fn_table,
-            &mut pure_fn_table,
-            Some(&mut effect_table),
-        )
-        .unwrap();
+        let mut tables = ctx.local_tables();
+        ctx.populate_local_tables(&mod_path, &file_id, &mut tables)
+            .unwrap();
         // No local entries (BIFs are in the registry, not local mappings).
-        assert!(!fn_table.contains_local(&LocalFnKey::new("anything", 0)));
+        assert!(!tables.fns.contains_local(&LocalFnKey::new("anything", 0)));
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -1831,22 +1798,18 @@ mod tests {
             (test_path.clone(), test_fid.clone(), test_mod),
         ]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
-        let mut effect_table = ctx.local_effect_table();
-        ctx.populate_local_tables(
-            &test_path,
-            &test_fid,
-            &mut fn_table,
-            &mut pure_fn_table,
-            Some(&mut effect_table),
-        )
-        .unwrap();
+        let mut tables = ctx.local_tables();
+        ctx.populate_local_tables(&test_path, &test_fid, &mut tables)
+            .unwrap();
 
-        assert!(fn_table.contains_local(&LocalFnKey::new("foo", 1)));
-        assert!(fn_table.contains_local(&LocalFnKey::new("bar", 0)));
-        assert!(pure_fn_table.contains_local(&LocalFnKey::new("bar", 0)));
-        assert!(effect_table.contains_local(&LocalEffectKey::new(EffectName("StartDb".into()))));
+        assert!(tables.fns.contains_local(&LocalFnKey::new("foo", 1)));
+        assert!(tables.fns.contains_local(&LocalFnKey::new("bar", 0)));
+        assert!(tables.pure_fns.contains_local(&LocalFnKey::new("bar", 0)));
+        assert!(
+            tables
+                .effects
+                .contains_local(&LocalEffectKey::new(EffectName("StartDb".into())))
+        );
     }
 
     #[test]
@@ -1864,20 +1827,13 @@ mod tests {
             (test_path.clone(), test_fid.clone(), test_mod),
         ]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
-        ctx.populate_local_tables(
-            &test_path,
-            &test_fid,
-            &mut fn_table,
-            &mut pure_fn_table,
-            None,
-        )
-        .unwrap();
+        let mut tables = ctx.local_tables();
+        ctx.populate_local_tables(&test_path, &test_fid, &mut tables)
+            .unwrap();
 
-        assert!(fn_table.contains_local(&LocalFnKey::new("foo", 1)));
+        assert!(tables.fns.contains_local(&LocalFnKey::new("foo", 1)));
         // bar was not selectively imported.
-        assert!(!fn_table.contains_local(&LocalFnKey::new("bar", 0)));
+        assert!(!tables.fns.contains_local(&LocalFnKey::new("bar", 0)));
     }
 
     #[test]
@@ -1895,19 +1851,15 @@ mod tests {
             (test_path.clone(), test_fid.clone(), test_mod),
         ]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
-        let mut effect_table = ctx.local_effect_table();
-        ctx.populate_local_tables(
-            &test_path,
-            &test_fid,
-            &mut fn_table,
-            &mut pure_fn_table,
-            Some(&mut effect_table),
-        )
-        .unwrap();
+        let mut tables = ctx.local_tables();
+        ctx.populate_local_tables(&test_path, &test_fid, &mut tables)
+            .unwrap();
 
-        assert!(effect_table.contains_local(&LocalEffectKey::new(EffectName("StartDb".into()))));
+        assert!(
+            tables
+                .effects
+                .contains_local(&LocalEffectKey::new(EffectName("StartDb".into())))
+        );
     }
 
     #[test]
@@ -1932,21 +1884,17 @@ mod tests {
             (test_path.clone(), test_fid.clone(), test_mod),
         ]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
-        let mut effect_table = ctx.local_effect_table();
-        ctx.populate_local_tables(
-            &test_path,
-            &test_fid,
-            &mut fn_table,
-            &mut pure_fn_table,
-            Some(&mut effect_table),
-        )
-        .unwrap();
+        let mut tables = ctx.local_tables();
+        ctx.populate_local_tables(&test_path, &test_fid, &mut tables)
+            .unwrap();
 
-        assert!(fn_table.contains_local(&LocalFnKey::new("foo", 0)));
-        assert!(fn_table.contains_local(&LocalFnKey::new("bar", 1)));
-        assert!(effect_table.contains_local(&LocalEffectKey::new(EffectName("StartDb".into()))));
+        assert!(tables.fns.contains_local(&LocalFnKey::new("foo", 0)));
+        assert!(tables.fns.contains_local(&LocalFnKey::new("bar", 1)));
+        assert!(
+            tables
+                .effects
+                .contains_local(&LocalEffectKey::new(EffectName("StartDb".into())))
+        );
     }
 
     #[test]
@@ -1967,21 +1915,14 @@ mod tests {
             (test_path.clone(), test_fid.clone(), test_mod),
         ]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
-        ctx.populate_local_tables(
-            &test_path,
-            &test_fid,
-            &mut fn_table,
-            &mut pure_fn_table,
-            None,
-        )
-        .unwrap();
+        let mut tables = ctx.local_tables();
+        ctx.populate_local_tables(&test_path, &test_fid, &mut tables)
+            .unwrap();
 
         // "bar" is the local alias for "foo".
-        assert!(fn_table.contains_local(&LocalFnKey::new("bar", 1)));
+        assert!(tables.fns.contains_local(&LocalFnKey::new("bar", 1)));
         // "foo" should NOT be in the local table — only the alias.
-        assert!(!fn_table.contains_local(&LocalFnKey::new("foo", 1)));
+        assert!(!tables.fns.contains_local(&LocalFnKey::new("foo", 1)));
     }
 
     #[test]
@@ -2002,20 +1943,20 @@ mod tests {
             (test_path.clone(), test_fid.clone(), test_mod),
         ]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
-        let mut effect_table = ctx.local_effect_table();
-        ctx.populate_local_tables(
-            &test_path,
-            &test_fid,
-            &mut fn_table,
-            &mut pure_fn_table,
-            Some(&mut effect_table),
-        )
-        .unwrap();
+        let mut tables = ctx.local_tables();
+        ctx.populate_local_tables(&test_path, &test_fid, &mut tables)
+            .unwrap();
 
-        assert!(effect_table.contains_local(&LocalEffectKey::new(EffectName("Db".into()))));
-        assert!(!effect_table.contains_local(&LocalEffectKey::new(EffectName("StartDb".into()))));
+        assert!(
+            tables
+                .effects
+                .contains_local(&LocalEffectKey::new(EffectName("Db".into())))
+        );
+        assert!(
+            !tables
+                .effects
+                .contains_local(&LocalEffectKey::new(EffectName("StartDb".into())))
+        );
     }
 
     #[test]
@@ -2038,19 +1979,12 @@ mod tests {
             (test_path.clone(), test_fid.clone(), test_mod),
         ]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
-        ctx.populate_local_tables(
-            &test_path,
-            &test_fid,
-            &mut fn_table,
-            &mut pure_fn_table,
-            None,
-        )
-        .unwrap();
+        let mut tables = ctx.local_tables();
+        ctx.populate_local_tables(&test_path, &test_fid, &mut tables)
+            .unwrap();
 
-        assert!(fn_table.contains_local(&LocalFnKey::new("alpha", 0)));
-        assert!(fn_table.contains_local(&LocalFnKey::new("beta", 1)));
+        assert!(tables.fns.contains_local(&LocalFnKey::new("alpha", 0)));
+        assert!(tables.fns.contains_local(&LocalFnKey::new("beta", 1)));
     }
 
     #[test]
@@ -2070,20 +2004,13 @@ mod tests {
             (test_path.clone(), test_fid.clone(), test_mod),
         ]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
-        ctx.populate_local_tables(
-            &test_path,
-            &test_fid,
-            &mut fn_table,
-            &mut pure_fn_table,
-            None,
-        )
-        .unwrap();
+        let mut tables = ctx.local_tables();
+        ctx.populate_local_tables(&test_path, &test_fid, &mut tables)
+            .unwrap();
 
         // my_fn is imported, but BIFs like "trim" are not in local mappings.
-        assert!(fn_table.contains_local(&LocalFnKey::new("my_fn", 0)));
-        assert!(!fn_table.contains_local(&LocalFnKey::new("trim", 1)));
+        assert!(tables.fns.contains_local(&LocalFnKey::new("my_fn", 0)));
+        assert!(!tables.fns.contains_local(&LocalFnKey::new("trim", 1)));
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -2098,16 +2025,9 @@ mod tests {
 
         let ctx = make_context_with_ast(vec![(test_path.clone(), test_fid.clone(), test_mod)]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
+        let mut tables = ctx.local_tables();
         let err = ctx
-            .populate_local_tables(
-                &test_path,
-                &test_fid,
-                &mut fn_table,
-                &mut pure_fn_table,
-                None,
-            )
+            .populate_local_tables(&test_path, &test_fid, &mut tables)
             .unwrap_err();
         assert!(matches!(err, InvalidReport::UndefinedModuleImport { .. }));
     }
@@ -2130,16 +2050,9 @@ mod tests {
             (test_path.clone(), test_fid.clone(), test_mod),
         ]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
+        let mut tables = ctx.local_tables();
         let err = ctx
-            .populate_local_tables(
-                &test_path,
-                &test_fid,
-                &mut fn_table,
-                &mut pure_fn_table,
-                None,
-            )
+            .populate_local_tables(&test_path, &test_fid, &mut tables)
             .unwrap_err();
         assert!(matches!(err, InvalidReport::UndefinedFunctionImport { .. }));
     }
@@ -2162,17 +2075,9 @@ mod tests {
             (test_path.clone(), test_fid.clone(), test_mod),
         ]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
-        let mut effect_table = ctx.local_effect_table();
+        let mut tables = ctx.local_tables();
         let err = ctx
-            .populate_local_tables(
-                &test_path,
-                &test_fid,
-                &mut fn_table,
-                &mut pure_fn_table,
-                Some(&mut effect_table),
-            )
+            .populate_local_tables(&test_path, &test_fid, &mut tables)
             .unwrap_err();
         assert!(matches!(err, InvalidReport::UndefinedEffectImport { .. }));
     }
@@ -2197,16 +2102,9 @@ mod tests {
             (test_path.clone(), test_fid.clone(), test_mod),
         ]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
+        let mut tables = ctx.local_tables();
         let err = ctx
-            .populate_local_tables(
-                &test_path,
-                &test_fid,
-                &mut fn_table,
-                &mut pure_fn_table,
-                None,
-            )
+            .populate_local_tables(&test_path, &test_fid, &mut tables)
             .unwrap_err();
         assert!(matches!(err, InvalidReport::NameConflict { .. }));
     }
@@ -2226,16 +2124,9 @@ mod tests {
             (test_path.clone(), test_fid.clone(), test_mod),
         ]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
+        let mut tables = ctx.local_tables();
         let err = ctx
-            .populate_local_tables(
-                &test_path,
-                &test_fid,
-                &mut fn_table,
-                &mut pure_fn_table,
-                None,
-            )
+            .populate_local_tables(&test_path, &test_fid, &mut tables)
             .unwrap_err();
         assert!(matches!(err, InvalidReport::NameConflict { .. }));
     }
@@ -2255,16 +2146,9 @@ mod tests {
             (test_path.clone(), test_fid.clone(), test_mod),
         ]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
+        let mut tables = ctx.local_tables();
         let err = ctx
-            .populate_local_tables(
-                &test_path,
-                &test_fid,
-                &mut fn_table,
-                &mut pure_fn_table,
-                None,
-            )
+            .populate_local_tables(&test_path, &test_fid, &mut tables)
             .unwrap_err();
         assert!(matches!(err, InvalidReport::NameConflict { .. }));
     }
@@ -2276,19 +2160,15 @@ mod tests {
         let module = make_module(vec![make_fn_def("setup", 0), make_effect_def("Setup")]);
         let ctx = make_context_with_ast(vec![(mod_path.clone(), file_id.clone(), module)]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
-        let mut effect_table = ctx.local_effect_table();
-        let result = ctx.populate_local_tables(
-            &mod_path,
-            &file_id,
-            &mut fn_table,
-            &mut pure_fn_table,
-            Some(&mut effect_table),
-        );
+        let mut tables = ctx.local_tables();
+        let result = ctx.populate_local_tables(&mod_path, &file_id, &mut tables);
         assert!(result.is_ok());
-        assert!(fn_table.contains_local(&LocalFnKey::new("setup", 0)));
-        assert!(effect_table.contains_local(&LocalEffectKey::new(EffectName("Setup".into()))));
+        assert!(tables.fns.contains_local(&LocalFnKey::new("setup", 0)));
+        assert!(
+            tables
+                .effects
+                .contains_local(&LocalEffectKey::new(EffectName("Setup".into())))
+        );
     }
 
     #[test]
@@ -2311,16 +2191,9 @@ mod tests {
             (test_path.clone(), test_fid.clone(), test_mod),
         ]);
 
-        let mut fn_table = ctx.local_fn_table();
-        let mut pure_fn_table = ctx.local_pure_fn_table();
+        let mut tables = ctx.local_tables();
         let err = ctx
-            .populate_local_tables(
-                &test_path,
-                &test_fid,
-                &mut fn_table,
-                &mut pure_fn_table,
-                None,
-            )
+            .populate_local_tables(&test_path, &test_fid, &mut tables)
             .unwrap_err();
         if let InvalidReport::NameConflict { first, second, .. } = &err {
             // Both spans should be present.
@@ -2341,7 +2214,7 @@ mod tests {
         let id = CauseId::generate("m", "f", 0, "err");
         ctx.register_cause(
             id.clone(),
-            Cause::Invalid(InvalidReport::PurityViolation { span: test_span() }),
+            Cause::invalid(InvalidReport::PurityViolation { span: test_span() }),
         );
         assert!(ctx.causes().get(&id).is_some());
     }
@@ -2352,7 +2225,7 @@ mod tests {
         let id = CauseId::generate("m", "f", 0, "err");
         ctx.register_cause(
             id.clone(),
-            Cause::Invalid(InvalidReport::PurityViolation { span: test_span() }),
+            Cause::invalid(InvalidReport::PurityViolation { span: test_span() }),
         );
         let cause = ctx.causes().get(&id).unwrap();
         assert!(matches!(cause, Cause::Invalid(_)));
@@ -2365,11 +2238,11 @@ mod tests {
         let id2 = CauseId::generate("m", "g", 1, "err2");
         ctx.register_cause(
             id1.clone(),
-            Cause::Invalid(InvalidReport::PurityViolation { span: test_span() }),
+            Cause::invalid(InvalidReport::PurityViolation { span: test_span() }),
         );
         ctx.register_cause(
             id2.clone(),
-            Cause::Invalid(InvalidReport::PurityViolation { span: test_span() }),
+            Cause::invalid(InvalidReport::PurityViolation { span: test_span() }),
         );
         assert!(ctx.causes().get(&id1).is_some());
         assert!(ctx.causes().get(&id2).is_some());
@@ -2388,7 +2261,7 @@ mod tests {
             marker_span: test_span(),
             evaluation: SkipEvaluation::Unconditional,
         };
-        ctx.register_cause(id.clone(), Cause::Skip(skip));
+        ctx.register_cause(id.clone(), Cause::skip(skip));
         assert!(matches!(ctx.causes().get(&id).unwrap(), Cause::Skip(_)));
     }
 
@@ -2398,7 +2271,7 @@ mod tests {
         let id = CauseId::generate("m", "f", 0, "invalid");
         ctx.register_cause(
             id.clone(),
-            Cause::Invalid(InvalidReport::PurityViolation { span: test_span() }),
+            Cause::invalid(InvalidReport::PurityViolation { span: test_span() }),
         );
         assert!(matches!(ctx.causes().get(&id).unwrap(), Cause::Invalid(_)));
     }
@@ -2594,7 +2467,7 @@ mod tests {
     fn into_suite_transfers_plans() {
         let ctx = make_context();
         let meta = TestMeta::new("test1", None, None, test_span());
-        let plan = NewPlan::Invalid {
+        let plan = Plan::Invalid {
             meta,
             causes: vec![],
             warnings: vec![],
@@ -2604,27 +2477,27 @@ mod tests {
     }
 
     #[test]
-    fn into_suite_transfers_source_map() {
-        let shared_src: SharedTable<FileId, SourceFile> = SharedTable::new();
+    fn into_suite_transfers_source_table() {
+        let source_table: SourceTable = SharedTable::new();
         let fid = test_file_id();
-        shared_src.insert(
+        source_table.insert(
             fid.clone(),
             SourceFile {
                 path: PathBuf::from("/test/file.relux"),
                 source: "// test".into(),
             },
         );
-        let source_map = FrozenTable::try_from(shared_src).unwrap();
 
         let ctx = LoweringContext::new(
             empty_ast_table(),
-            source_map,
+            source_table,
             test_env(),
             CauseTable::default(),
             WarningTable::default(),
+            1.0,
         );
         let suite = ctx.into_suite(vec![]);
-        assert!(suite.source_map.get(&fid).is_some());
+        assert!(suite.tables.sources.get(&fid).is_some());
     }
 
     #[test]
@@ -2638,6 +2511,7 @@ mod tests {
             env,
             CauseTable::default(),
             WarningTable::default(),
+            1.0,
         );
         let suite = ctx.into_suite(vec![]);
         assert_eq!(suite.env.get("MY_VAR"), Some("my_val"));
@@ -2649,7 +2523,7 @@ mod tests {
         let id = CauseId::generate("m", "f", 0, "err");
         causes.insert(
             id.clone(),
-            Cause::Invalid(InvalidReport::PurityViolation { span: test_span() }),
+            Cause::invalid(InvalidReport::PurityViolation { span: test_span() }),
         );
         let ctx = LoweringContext::new(
             empty_ast_table(),
@@ -2657,6 +2531,7 @@ mod tests {
             test_env(),
             causes,
             WarningTable::default(),
+            1.0,
         );
         let suite = ctx.into_suite(vec![]);
         assert!(suite.causes.get(&id).is_some());
@@ -2934,13 +2809,15 @@ fn top() {
         ]);
         let result = lower_first_test(&mut ctx, "tests/a");
         assert!(result.is_err());
-        if let Err(LoweringBail::Invalid(InvalidReport::UndefinedFunctionCall { span, .. })) =
-            &result
-        {
-            assert_eq!(
-                span.file(),
-                &FileId::new(PathBuf::from("/lib/helpers.relux"))
-            );
+        if let Err(LoweringBail::Invalid(inner)) = &result {
+            if let InvalidReport::UndefinedFunctionCall { span, .. } = inner.as_ref() {
+                assert_eq!(
+                    span.file(),
+                    &FileId::new(PathBuf::from("/lib/helpers.relux"))
+                );
+            } else {
+                panic!("expected UndefinedFunctionCall, got {:?}", result);
+            }
         } else {
             panic!("expected UndefinedFunctionCall, got {:?}", result);
         }
@@ -2956,13 +2833,14 @@ fn top() {
             arity: 0,
         };
         let result = ctx.resolve_fn(&fn_id);
-        if let Err(LoweringBail::Invalid(InvalidReport::UndefinedFunctionCall {
-            name, span, ..
-        })) = &result
-        {
-            assert_eq!(name, "nonexistent");
-            let s = span.span();
-            assert!(s.end > s.start);
+        if let Err(LoweringBail::Invalid(inner)) = &result {
+            if let InvalidReport::UndefinedFunctionCall { name, span, .. } = inner.as_ref() {
+                assert_eq!(name, "nonexistent");
+                let s = span.span();
+                assert!(s.end > s.start);
+            } else {
+                panic!("expected UndefinedFunctionCall, got {:?}", result);
+            }
         } else {
             panic!("expected UndefinedFunctionCall, got {:?}", result);
         }
@@ -3533,5 +3411,159 @@ test "t" {
         let suite = resolve_source_no_env(&[("tests/a", "test \"t\" {\n  // just a comment\n}\n")]);
         assert_eq!(suite.plans.len(), 1);
         assert!(is_invalid(&suite.plans[0]));
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // Timeout multiplier propagation
+    // ═══════════════════════════════════════════════════════════
+
+    use std::time::Duration;
+
+    /// Extract the first shell block's statements from a runnable plan.
+    fn first_shell_stmts(plan: &Plan) -> &[IrShellStmt] {
+        let Plan::Runnable { test, .. } = plan else {
+            panic!("expected Runnable plan");
+        };
+        for item in test.body() {
+            if let IrTestItem::Shell { block, .. } = item {
+                return block.body();
+            }
+        }
+        panic!("no shell block found");
+    }
+
+    #[test]
+    fn multiplier_scales_scoped_tolerance_timeout() {
+        let suite = resolve_source_with_multiplier(
+            &[(
+                "tests/a",
+                r#"test "t" {
+  """
+  Doc.
+  """
+  shell s {
+    ~10s
+    > echo hi
+  }
+}
+"#,
+            )],
+            2.0,
+        );
+        let stmts = first_shell_stmts(&suite.plans[0]);
+        let IrShellStmt::Timeout { timeout, .. } = &stmts[0] else {
+            panic!("expected Timeout stmt, got {:?}", stmts[0]);
+        };
+        assert_eq!(timeout.raw_duration(), Duration::from_secs(10));
+        assert_eq!(timeout.adjusted_duration(), Duration::from_secs(20));
+    }
+
+    #[test]
+    fn multiplier_scales_inline_timed_regex_match() {
+        let suite = resolve_source_with_multiplier(
+            &[(
+                "tests/a",
+                r#"test "t" {
+  """
+  Doc.
+  """
+  shell s {
+    > echo hi
+    <~5s? ^hi$
+  }
+}
+"#,
+            )],
+            3.0,
+        );
+        let stmts = first_shell_stmts(&suite.plans[0]);
+        let timed = stmts
+            .iter()
+            .find(|s| matches!(s, IrShellStmt::TimedMatchRegex { .. }));
+        let IrShellStmt::TimedMatchRegex { timeout, .. } = timed.unwrap() else {
+            unreachable!();
+        };
+        assert_eq!(timeout.raw_duration(), Duration::from_secs(5));
+        assert_eq!(timeout.adjusted_duration(), Duration::from_secs(15));
+    }
+
+    #[test]
+    fn multiplier_scales_inline_timed_literal_match() {
+        let suite = resolve_source_with_multiplier(
+            &[(
+                "tests/a",
+                r#"test "t" {
+  """
+  Doc.
+  """
+  shell s {
+    > echo hi
+    <~5s= hi
+  }
+}
+"#,
+            )],
+            0.5,
+        );
+        let stmts = first_shell_stmts(&suite.plans[0]);
+        let timed = stmts
+            .iter()
+            .find(|s| matches!(s, IrShellStmt::TimedMatchLiteral { .. }));
+        let IrShellStmt::TimedMatchLiteral { timeout, .. } = timed.unwrap() else {
+            unreachable!();
+        };
+        assert_eq!(timeout.raw_duration(), Duration::from_secs(5));
+        assert_eq!(timeout.adjusted_duration(), Duration::from_millis(2500));
+    }
+
+    #[test]
+    fn multiplier_does_not_scale_assertion_timeout() {
+        let suite = resolve_source_with_multiplier(
+            &[(
+                "tests/a",
+                r#"test "t" {
+  """
+  Doc.
+  """
+  shell s {
+    @5s
+    > echo hi
+  }
+}
+"#,
+            )],
+            3.0,
+        );
+        let stmts = first_shell_stmts(&suite.plans[0]);
+        let IrShellStmt::Timeout { timeout, .. } = &stmts[0] else {
+            panic!("expected Timeout stmt");
+        };
+        assert!(timeout.is_assertion());
+        assert_eq!(timeout.adjusted_duration(), Duration::from_secs(5));
+    }
+
+    #[test]
+    fn default_multiplier_leaves_tolerance_unscaled() {
+        let suite = resolve_source_with_multiplier(
+            &[(
+                "tests/a",
+                r#"test "t" {
+  """
+  Doc.
+  """
+  shell s {
+    ~10s
+    > echo hi
+  }
+}
+"#,
+            )],
+            1.0,
+        );
+        let stmts = first_shell_stmts(&suite.plans[0]);
+        let IrShellStmt::Timeout { timeout, .. } = &stmts[0] else {
+            panic!("expected Timeout stmt");
+        };
+        assert_eq!(timeout.adjusted_duration(), Duration::from_secs(10));
     }
 }

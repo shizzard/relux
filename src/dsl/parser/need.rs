@@ -18,7 +18,6 @@ pub fn need<'a>()
         .ignore_then(ws())
         .ignore_then(ident_aliased_effect_shell())
         .then(ws().ignore_then(overlay()).or_not())
-        .then_ignore(newline())
         .map_with(|(aliased, overlay), e| {
             let span = Span::from(e.span());
             Spanned::new(
@@ -31,6 +30,7 @@ pub fn need<'a>()
                 span,
             )
         })
+        .then_ignore(newline())
         .labelled("need declaration")
 }
 

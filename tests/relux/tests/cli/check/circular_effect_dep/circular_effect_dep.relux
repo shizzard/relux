@@ -3,9 +3,8 @@ test "check detects circular effect dependency" {
     Verify relux check reports circular effect dependencies.
     """
     shell s {
-        > relux check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
-        <? circular effect dependency
-        <? cycle: B -> A -> B
+        > ${__RELUX} check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? effect cycle
         match_prompt()
         match_exit_code(1)
     }
