@@ -80,10 +80,6 @@ pub enum LogEventKind {
     EffectTeardown {
         effect: String,
     },
-    EffectSkip {
-        effect: String,
-        reason: String,
-    },
     Sleep {
         duration: Duration,
     },

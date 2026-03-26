@@ -496,6 +496,9 @@ async fn cmd_run(matches: &clap::ArgMatches) {
     };
     report.eprint();
 
+    // HTML run summary (index.html)
+    relux::runtime::report::html::generate_run_summary(&run_dir, &results);
+
     // Optional artifact formats
     let suite_name = cfg.name.as_deref().unwrap_or("relux");
     if matches.get_flag("tap") {

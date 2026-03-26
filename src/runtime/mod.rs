@@ -14,8 +14,8 @@ use crate::dsl::resolver::ir::{IrNode, IrTest, IrTestItem, IrTimeout, Plan, Sour
 use crate::pure::{Env, VarScope};
 use crate::runtime::effect::EffectManager;
 use crate::runtime::effect::{CleanupSource, Warning};
-use crate::runtime::observe::event_log::EventCollector;
-use crate::runtime::observe::progress::ProgressTx;
+use crate::runtime::observe::event_log::{EventCollector, LogEventKind};
+use crate::runtime::observe::progress::{ProgressEvent, ProgressTx};
 use crate::runtime::report::result::{Failure, Outcome, TestResult};
 use crate::runtime::vm::Vm;
 use crate::runtime::vm::context::{ExecutionContext, Scope, ShellState};
@@ -473,6 +473,10 @@ async fn run_test(
     )
     .await;
 
+    if outcome.is_err() {
+        let _ = progress_tx.send(ProgressEvent::Failure);
+    }
+
     // Release effects (always runs, even after cancellation)
     let effect_warnings = test_manager.cleanup(test.needs()).await;
     warnings.extend(effect_warnings);
@@ -558,6 +562,16 @@ async fn run_test_body(
             vm_arc.lock().await.reset_for_export(scope.clone());
         }
         if let Some(alias) = need.alias() {
+            let source = vm_arc.lock().await.current_name();
+            event_collector
+                .push(
+                    alias,
+                    LogEventKind::ShellAlias {
+                        name: alias.to_string(),
+                        source,
+                    },
+                )
+                .await;
             shells.insert(alias.to_string(), vm_arc);
         }
     }
@@ -589,6 +603,7 @@ async fn run_test_body(
                 }
                 IrTestItem::Shell { block, .. } => {
                     let name = block.name().name().to_string();
+                    let _ = progress_tx.send(ProgressEvent::ShellSwitch(name.clone()));
                     if !shells.contains_key(&name) {
                         let shell_state = ShellState::new(name.clone(), None, None);
                         let ctx = ExecutionContext::new(
@@ -613,7 +628,17 @@ async fn run_test_body(
                         shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
                     }
                     let vm_arc = shells.get(&name).expect("shell just inserted above");
-                    vm_arc.lock().await.exec_stmts(block.body()).await?;
+                    let mut vm = vm_arc.lock().await;
+                    let display_name = vm.current_name().to_string();
+                    event_collector
+                        .push(
+                            &display_name,
+                            LogEventKind::ShellSwitch {
+                                name: display_name.clone(),
+                            },
+                        )
+                        .await;
+                    vm.exec_stmts(block.body()).await?;
                 }
                 IrTestItem::Cleanup { block, .. } => {
                     cleanup_block = Some(block.clone());
@@ -635,6 +660,15 @@ async fn run_test_body(
 
     // 6. Run test cleanup (fresh shell, best-effort)
     if let Some(cleanup) = &cleanup_block {
+        let _ = progress_tx.send(ProgressEvent::Cleanup);
+        event_collector
+            .push(
+                "__cleanup",
+                LogEventKind::Cleanup {
+                    shell: "__cleanup".to_string(),
+                },
+            )
+            .await;
         let shell_state = ShellState::new("__cleanup".to_string(), None, None);
         let ctx = ExecutionContext::new(
             scope.clone(),
@@ -657,6 +691,7 @@ async fn run_test_body(
         .await
         {
             if let Err(failure) = cleanup_vm.exec_stmts(cleanup.body()).await {
+                let _ = progress_tx.send(ProgressEvent::Warning("test cleanup failed".to_string()));
                 warnings.push(Warning::CleanupFailed {
                     source: CleanupSource::Test,
                     failure,

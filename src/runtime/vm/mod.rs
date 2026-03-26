@@ -75,7 +75,6 @@ pub struct Vm {
     pty: PtyShell,
     ctx: ExecutionContext,
     tables: Tables,
-    shell_name: String,
     shell_prompt: String,
     progress_tx: Option<ProgressTx>,
     event_collector: Option<EventCollector>,
@@ -117,7 +116,6 @@ impl Vm {
             pty,
             ctx,
             tables,
-            shell_name: shell_name.clone(),
             shell_prompt,
             progress_tx,
             event_collector,
@@ -140,11 +138,16 @@ impl Vm {
             })?;
 
         vm.emit_event(LogEventKind::ShellReady {
-            name: vm.shell_name.clone(),
+            name: vm.ctx.current_name().to_string(),
         })
         .await;
 
         Ok(vm)
+    }
+
+    /// Current display name for logging (resolves effect chain + alias).
+    pub fn current_name(&self) -> String {
+        self.ctx.current_name()
     }
 
     /// Reset the execution context for shell export (effect → test/parent effect).
@@ -158,7 +161,7 @@ impl Vm {
             if self.cancel.is_cancelled() {
                 return Err(Failure::Cancelled {
                     span: None,
-                    shell: Some(self.shell_name.clone()),
+                    shell: Some(self.ctx.current_name().to_string()),
                 });
             }
             last = self.exec_stmt(stmt).await?;
@@ -223,7 +226,7 @@ impl Vm {
                     .map_err(|e| Failure::Runtime {
                         message: format!("invalid fail regex: {}", regex_error_summary(&e)),
                         span: Some(ir_span.clone()),
-                        shell: Some(self.shell_name.clone()),
+                        shell: Some(self.ctx.current_name().to_string()),
                     })?;
                 let fp = Some(FailPattern::Regex(re));
                 self.ctx.set_fail_pattern(fp);
@@ -283,7 +286,7 @@ impl Vm {
                             assign.name().name()
                         ),
                         span: Some(assign.name().span().clone()),
-                        shell: Some(self.shell_name.clone()),
+                        shell: Some(self.ctx.current_name().to_string()),
                     });
                 }
                 self.emit_event(LogEventKind::VarAssign {
@@ -346,7 +349,7 @@ impl Vm {
                     .map_err(|e| Failure::Runtime {
                         message: format!("invalid regex: {}", regex_error_summary(&e)),
                         span: Some(pattern.span().clone()),
-                        shell: Some(self.shell_name.clone()),
+                        shell: Some(self.ctx.current_name().to_string()),
                     })?;
                 self.emit_event(LogEventKind::MatchStart {
                     pattern: pat.clone(),
@@ -408,7 +411,7 @@ impl Vm {
                     .map_err(|e| Failure::Runtime {
                         message: format!("invalid regex: {}", regex_error_summary(&e)),
                         span: Some(pattern.span().clone()),
-                        shell: Some(self.shell_name.clone()),
+                        shell: Some(self.ctx.current_name().to_string()),
                     })?;
                 self.emit_event(LogEventKind::MatchStart {
                     pattern: pat.clone(),
@@ -487,7 +490,7 @@ impl Vm {
             let ir_fn = result.as_ref().map_err(|e| Failure::Runtime {
                 message: format!("function resolution failed: {e:?}"),
                 span: Some(span.clone()),
-                shell: Some(self.shell_name.clone()),
+                shell: Some(self.ctx.current_name().to_string()),
             })?;
             match ir_fn {
                 IrFn::UserDefined { params, body, .. } => {
@@ -572,7 +575,7 @@ impl Vm {
             let ir_fn = result.as_ref().map_err(|e| Failure::Runtime {
                 message: format!("pure function resolution failed: {e:?}"),
                 span: Some(span.clone()),
-                shell: Some(self.shell_name.clone()),
+                shell: Some(self.ctx.current_name().to_string()),
             })?;
             let named_args: Vec<(String, String)> = match ir_fn {
                 IrPureFn::UserDefined { params, .. } => params
@@ -616,7 +619,7 @@ impl Vm {
                 call.args().len()
             ),
             span: Some(span.clone()),
-            shell: Some(self.shell_name.clone()),
+            shell: Some(self.ctx.current_name().to_string()),
         })
     }
 
@@ -656,7 +659,7 @@ impl Vm {
                     _ = self.cancel.cancelled() => {
                         return Err(Failure::Cancelled {
                             span: Some(span.clone()),
-                            shell: Some(self.shell_name.clone()),
+                            shell: Some(self.ctx.current_name().to_string()),
                         });
                     }
                 }
@@ -676,7 +679,7 @@ impl Vm {
                 Err(Failure::MatchTimeout {
                     pattern: pattern.to_string(),
                     span,
-                    shell: self.shell_name.clone(),
+                    shell: self.ctx.current_name().to_string(),
                 })
             }
         }
@@ -714,7 +717,7 @@ impl Vm {
                     _ = self.cancel.cancelled() => {
                         return Err(Failure::Cancelled {
                             span: Some(span.clone()),
-                            shell: Some(self.shell_name.clone()),
+                            shell: Some(self.ctx.current_name().to_string()),
                         });
                     }
                 }
@@ -734,7 +737,7 @@ impl Vm {
                 Err(Failure::MatchTimeout {
                     pattern: pattern.to_string(),
                     span,
-                    shell: self.shell_name.clone(),
+                    shell: self.ctx.current_name().to_string(),
                 })
             }
         }
@@ -761,7 +764,7 @@ impl Vm {
             pattern: hit.pattern,
             matched_line: hit.matched_text,
             span,
-            shell: self.shell_name.clone(),
+            shell: self.ctx.current_name().to_string(),
         }
     }
 
@@ -770,7 +773,7 @@ impl Vm {
             .send_bytes(data)
             .await
             .map_err(|e| Failure::ShellExited {
-                shell: self.shell_name.clone(),
+                shell: self.ctx.current_name().to_string(),
                 exit_code: e.raw_os_error(),
                 span,
             })
@@ -778,7 +781,7 @@ impl Vm {
 
     pub async fn shutdown(&mut self) {
         self.emit_event(LogEventKind::ShellTerminate {
-            name: self.shell_name.clone(),
+            name: self.ctx.current_name().to_string(),
         })
         .await;
         self.pty.shutdown().await;
@@ -788,7 +791,7 @@ impl Vm {
 impl Vm {
     async fn emit_event(&self, kind: LogEventKind) {
         if let Some(ec) = &self.event_collector {
-            ec.push(&self.shell_name, kind).await;
+            ec.push(&self.ctx.current_name(), kind).await;
         }
     }
 }
@@ -803,6 +806,14 @@ impl VmContext for Vm {
 
     async fn emit_log(&mut self, message: String) {
         self.emit_event(LogEventKind::Log { message }).await;
+    }
+
+    async fn emit_sleep(&mut self, duration: std::time::Duration) {
+        self.emit_event(LogEventKind::Sleep { duration }).await;
+    }
+
+    async fn emit_annotate(&mut self, text: String) {
+        self.emit_event(LogEventKind::Annotate { text }).await;
     }
 
     async fn match_literal(&mut self, pattern: &str, span: &IrSpan) -> Result<String, Failure> {

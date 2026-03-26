@@ -11,6 +11,8 @@ use crate::runtime::report::result::Failure;
 pub trait VmContext: Send {
     fn emit_progress(&self, event: ProgressEvent);
     async fn emit_log(&mut self, message: String);
+    async fn emit_sleep(&mut self, duration: std::time::Duration);
+    async fn emit_annotate(&mut self, text: String);
     async fn match_literal(&mut self, pattern: &str, span: &IrSpan) -> Result<String, Failure>;
     async fn send_line(&mut self, line: &str, span: &IrSpan) -> Result<(), Failure>;
     async fn send_raw(&mut self, data: &[u8], span: &IrSpan) -> Result<(), Failure>;
@@ -114,6 +116,7 @@ impl Bif for Sleep {
         let duration = humantime::parse_duration(args[0].trim())
             .map_err(|_| runtime_error(format!("invalid duration: `{}`", args[0]), span))?;
         vm.emit_progress(ProgressEvent::SleepStart);
+        vm.emit_sleep(duration).await;
         // TODO: select! with cancellation token to allow interrupting long sleeps
         tokio::time::sleep(duration).await;
         vm.emit_progress(ProgressEvent::SleepDone);
@@ -140,6 +143,7 @@ impl Bif for Annotate {
     ) -> Result<String, Failure> {
         let text = args[0].clone();
         vm.emit_progress(ProgressEvent::Annotation(text.clone()));
+        vm.emit_annotate(text.clone()).await;
         Ok(text)
     }
 }
@@ -330,6 +334,8 @@ mod tests {
     impl VmContext for DummyVm {
         fn emit_progress(&self, _event: ProgressEvent) {}
         async fn emit_log(&mut self, _message: String) {}
+        async fn emit_sleep(&mut self, _duration: std::time::Duration) {}
+        async fn emit_annotate(&mut self, _text: String) {}
 
         async fn match_literal(
             &mut self,

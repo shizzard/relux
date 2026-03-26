@@ -88,6 +88,9 @@ impl Scope {
 pub struct ShellState {
     pub name: String,
     pub alias: Option<String>,
+    /// Accumulated name path from effect export chain.
+    /// Each export pushes `"EffectName.shell_name"` onto this prefix.
+    pub name_prefix: Vec<String>,
     pub vars: VarScope,
     pub captures: Captures,
     pub timeout: Option<IrTimeout>,
@@ -100,6 +103,7 @@ impl ShellState {
         Self {
             name,
             alias,
+            name_prefix: Vec::new(),
             vars: VarScope::new(),
             captures: Captures::new(),
             timeout: None,
@@ -264,18 +268,23 @@ impl ExecutionContext {
     }
 
     /// Current display name for logging.
-    pub fn current_name(&self) -> &str {
-        if let Some(frame) = self.call_stack.last() {
-            return &frame.name;
+    /// Builds the full qualified name from the effect export chain:
+    /// e.g. `SetupDb.db.Db.db.mydb` for a 2-level effect chain with alias `mydb`.
+    pub fn current_name(&self) -> String {
+        let tail = self.shell.alias.as_deref().unwrap_or(&self.shell.name);
+        if self.shell.name_prefix.is_empty() {
+            tail.to_string()
+        } else {
+            format!("{}.{}", self.shell.name_prefix.join("."), tail)
         }
-        if let Some(ref alias) = self.shell.alias {
-            return alias;
-        }
-        &self.shell.name
     }
 
-    /// Reset for shell export (effect → test).
+    /// Reset for shell export (effect → test/parent effect).
+    /// Accumulates the current scope+shell name into the name prefix chain.
     pub fn reset_for_export(&mut self, new_scope: Scope) {
+        // Push "EffectName.shell_name" onto the prefix before switching scope
+        let segment = format!("{}.{}", self.scope.name(), self.shell.name);
+        self.shell.name_prefix.push(segment);
         self.scope = new_scope;
         self.shell.vars = VarScope::new();
         self.shell.captures = Captures::new();
@@ -543,13 +552,43 @@ mod tests {
     }
 
     #[test]
-    fn current_name_call_frame() {
+    fn current_name_with_prefix() {
         let mut ctx = test_ctx();
+        ctx.shell.name_prefix = vec!["SetupDb.db".into(), "Db.db".into()];
         ctx.shell.alias = Some("mydb".into());
-        ctx.push_call("helper".into(), vec![]);
-        assert_eq!(ctx.current_name(), "helper");
-        ctx.pop_call();
-        assert_eq!(ctx.current_name(), "mydb");
+        assert_eq!(ctx.current_name(), "SetupDb.db.Db.db.mydb");
+    }
+
+    #[test]
+    fn current_name_with_prefix_no_alias() {
+        let mut ctx = test_ctx();
+        ctx.shell.name_prefix = vec!["Db.db".into()];
+        assert_eq!(ctx.current_name(), "Db.db.sh");
+    }
+
+    #[test]
+    fn current_name_accumulated_via_export() {
+        let mut ctx = test_ctx();
+        ctx.scope = Scope::Effect {
+            name: "Db".into(),
+            vars: Arc::new(Mutex::new(VarScope::new())),
+            _timeout: None,
+            env_overlay: Arc::new(Env::new()),
+        };
+        ctx.shell.name = "db".into();
+        // First export: Db.db → SetupDb
+        ctx.reset_for_export(Scope::Effect {
+            name: "SetupDb".into(),
+            vars: Arc::new(Mutex::new(VarScope::new())),
+            _timeout: None,
+            env_overlay: Arc::new(Env::new()),
+        });
+        assert_eq!(ctx.shell.name_prefix, vec!["Db.db"]);
+        // Second export: SetupDb.db → test
+        ctx.reset_for_export(test_scope("my test"));
+        assert_eq!(ctx.shell.name_prefix, vec!["Db.db", "SetupDb.db"]);
+        ctx.shell.alias = Some("mydb".into());
+        assert_eq!(ctx.current_name(), "Db.db.SetupDb.db.mydb");
     }
 
     // ─── Captures ────────────────────────────────────────────

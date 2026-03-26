@@ -74,7 +74,6 @@ fn event_type_class(kind: &LogEventKind) -> (&str, &str) {
         LogEventKind::FailPatternTriggered { .. } => ("fail trigger", "err"),
         LogEventKind::EffectSetup { .. } => ("effect setup", ""),
         LogEventKind::EffectTeardown { .. } => ("effect teardown", ""),
-        LogEventKind::EffectSkip { .. } => ("effect skip", ""),
         LogEventKind::Sleep { .. } => ("sleep", ""),
         LogEventKind::Annotate { .. } => ("annotate", ""),
         LogEventKind::Log { .. } => ("log", ""),
@@ -162,11 +161,6 @@ fn event_data(kind: &LogEventKind) -> String {
         }
         LogEventKind::EffectSetup { effect } => html_escape(effect),
         LogEventKind::EffectTeardown { effect } => html_escape(effect),
-        LogEventKind::EffectSkip { effect, reason } => {
-            let mut out = html_escape(effect);
-            out.push_str(&render_value("reason", reason));
-            out
-        }
         LogEventKind::Sleep { duration } => format!("{duration:?}"),
         LogEventKind::Annotate { text } => html_escape(text),
         LogEventKind::Log { message } => html_escape(message),

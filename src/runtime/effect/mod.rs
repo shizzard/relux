@@ -13,8 +13,8 @@ use crate::pure::{Env, VarScope};
 use crate::runtime::effect::registry::{
     EffectHandle, EffectInstanceKey, EffectRegistry, EffectSlot,
 };
-use crate::runtime::observe::event_log::EventCollector;
-use crate::runtime::observe::progress::ProgressTx;
+use crate::runtime::observe::event_log::{EventCollector, LogEventKind};
+use crate::runtime::observe::progress::{ProgressEvent, ProgressTx};
 use crate::runtime::report::result::Failure;
 use crate::runtime::vm::Vm;
 use crate::runtime::vm::context::{ExecutionContext, Scope, ShellState};
@@ -113,6 +113,12 @@ impl EffectManager {
         warnings
     }
 
+    fn emit_progress(&self, event: ProgressEvent) {
+        if let Some(tx) = &self.progress_tx {
+            let _ = tx.send(event);
+        }
+    }
+
     async fn acquire(
         &self,
         key: &EffectInstanceKey,
@@ -137,6 +143,7 @@ impl EffectManager {
                     Ok(vm_arc)
                 }
                 Err(failure) => {
+                    self.emit_progress(ProgressEvent::Error(failure.summary()));
                     *guard = EffectSlot::Failed(failure.clone());
                     Err(failure)
                 }
@@ -145,6 +152,18 @@ impl EffectManager {
     }
 
     async fn bootstrap_effect(&self, need: &IrEffectNeed) -> Result<EffectHandle, Failure> {
+        let effect_name = need.effect().to_string();
+        self.emit_progress(ProgressEvent::EffectSetup(effect_name.clone()));
+        if let Some(ec) = &self.event_collector {
+            ec.push(
+                "",
+                LogEventKind::EffectSetup {
+                    effect: effect_name.clone(),
+                },
+            )
+            .await;
+        }
+
         let effect_result =
             self.tables
                 .effects
@@ -167,6 +186,17 @@ impl EffectManager {
         let mut shells: HashMap<String, Arc<TokioMutex<Vm>>> = HashMap::new();
         for (sub_need, vm_arc) in effect.needs().iter().zip(exported_deps) {
             if let Some(alias) = sub_need.alias() {
+                if let Some(ec) = &self.event_collector {
+                    let source = vm_arc.lock().await.current_name();
+                    ec.push(
+                        alias,
+                        LogEventKind::ShellAlias {
+                            name: alias.to_string(),
+                            source,
+                        },
+                    )
+                    .await;
+                }
                 shells.insert(alias.to_string(), vm_arc);
             }
         }
@@ -202,6 +232,7 @@ impl EffectManager {
                 }
                 IrEffectItem::Shell { block, .. } => {
                     let name = block.name().name().to_string();
+                    self.emit_progress(ProgressEvent::ShellSwitch(name.clone()));
                     if !shells.contains_key(&name) {
                         let shell_state =
                             ShellState::new(name.clone(), None, Some(env_overlay.clone()));
@@ -227,7 +258,18 @@ impl EffectManager {
                         shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
                     }
                     let vm_arc = shells.get(&name).expect("shell just inserted above");
-                    vm_arc.lock().await.exec_stmts(block.body()).await?;
+                    let mut vm = vm_arc.lock().await;
+                    let display_name = vm.current_name().to_string();
+                    if let Some(ec) = &self.event_collector {
+                        ec.push(
+                            &display_name,
+                            LogEventKind::ShellSwitch {
+                                name: display_name.clone(),
+                            },
+                        )
+                        .await;
+                    }
+                    vm.exec_stmts(block.body()).await?;
                 }
                 IrEffectItem::Cleanup { block, .. } => {
                     cleanup_block = Some(block.clone());
@@ -314,14 +356,37 @@ impl EffectManager {
                 if *refcount == 0 {
                     let effect_name = handle.scope.name().to_string();
 
+                    if let Some(ec) = &self.event_collector {
+                        ec.push(
+                            "",
+                            LogEventKind::EffectTeardown {
+                                effect: effect_name.clone(),
+                            },
+                        )
+                        .await;
+                    }
+
                     // 1. Shut down the exported VM
                     handle.exported_vm.lock().await.shutdown().await;
 
                     // 2. Run cleanup block in fresh shell (best-effort)
                     if let Some(cleanup_block) = &handle.cleanup {
+                        self.emit_progress(ProgressEvent::Cleanup);
+                        if let Some(ec) = &self.event_collector {
+                            ec.push(
+                                "__cleanup",
+                                LogEventKind::Cleanup {
+                                    shell: format!("{effect_name}.__cleanup"),
+                                },
+                            )
+                            .await;
+                        }
                         let cleanup_result =
                             self.run_cleanup_block(cleanup_block, &handle.scope).await;
                         if let Err(failure) = cleanup_result {
+                            self.emit_progress(ProgressEvent::Warning(format!(
+                                "effect {effect_name} cleanup failed"
+                            )));
                             warnings.push(Warning::CleanupFailed {
                                 source: CleanupSource::Effect { name: effect_name },
                                 failure,
