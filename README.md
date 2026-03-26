@@ -38,9 +38,6 @@ A1. [Best Practices](docs/tutorial/A1-best-practices.md) — all best-practices 
 
 - Per-shell command override: per-shell executable override via shell block attributes (global shell command now configurable in `Relux.toml`)
 - Custom scaffold templates: user-defined templates for `relux new --test` and `relux new --effect` via `Relux.toml`, replacing the built-in defaults
-- Make `sleep`, `log`, and `annotate` impure BIFs: these have observable side effects (time delay, output) and don't belong in pure context — move them from `lookup_pure` to `lookup` so they require a shell context
-- Unresolved function call diagnostics: emit an error when a function call in a test or effect body doesn't resolve to any known function — currently unresolved calls are silently skipped during plan building
-- Infallible pure BIFs: all pure built-in functions must be total — they must return a valid string for any input, never panic or error. This keeps marker evaluation infallible and ensures `# skip if` / `# run if` conditions always resolve cleanly
 - Effect-level timeouts: allow effects to declare a default timeout (similar to test-level `~timeout`) that applies to all match operations within the effect's shell blocks
 - Flaky marker support: implement `# flaky` marker semantics — automatically retry tests marked as flaky on failure, with configurable retry count
 
@@ -48,14 +45,8 @@ A1. [Best Practices](docs/tutorial/A1-best-practices.md) — all best-practices 
 
 - Interactive debugger: step through test scripts interactively with breakpoints
 - Multiple marker semantics: define AND/OR combination semantics when multiple condition markers are stacked on a single test or effect
-- Restrict operator expressions in `let`/`assign` RHS: shell operators (`>`, `<`, `<?`, etc.) produce values and are technically valid as `let`/assignment values, but assigning them is never useful — consider a warning or restriction
-- Marker lexer mode: replace the hand-rolled expression parser in `lex_marker_expr` with a proper Logos lexer mode, enabling per-expression span tracking inside condition markers
 
 ## Known Bugs
-
-- Cleanup ordering: all test and effect shells should be terminated before any cleanup block runs. Currently cleanup runs interleaved with shell termination. The correct order is: terminate all test shells, terminate all effect shells, then run cleanup blocks (test cleanup first, then effect cleanup in reverse topological order).
-- Cleanup variable scope: test-level and effect-level `let` variables should be available in their respective cleanup blocks. Currently cleanup blocks get a fresh empty scope and can only see overlay variables (for effects) and environment variables.
-- Effect setup failure reported as skip: when an effect's setup phase fails (e.g., match timeout), the dependent test is marked "skipped" instead of "failed". This hides real failures behind a "0 failed" summary.
 
 ## Tech Stack
 
