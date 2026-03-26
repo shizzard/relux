@@ -516,15 +516,15 @@ impl fmt::Display for SkipEvaluation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SkipEvaluation::Unconditional => write!(f, "unconditional skip"),
-            SkipEvaluation::Bare { value, met } => {
-                if *met {
-                    write!(f, "evaluated to non-empty: {value:?}")
-                } else {
+            SkipEvaluation::Bare { value, .. } => {
+                if value.is_empty() {
                     write!(f, "evaluated to empty")
+                } else {
+                    write!(f, "evaluated to non-empty: {value:?}")
                 }
             }
-            SkipEvaluation::Eq { lhs, rhs, met } => {
-                if *met {
+            SkipEvaluation::Eq { lhs, rhs, .. } => {
+                if lhs == rhs {
                     write!(f, "{lhs:?} == {rhs:?}")
                 } else {
                     write!(f, "{lhs:?} != {rhs:?}")

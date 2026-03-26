@@ -123,18 +123,6 @@ pub(crate) fn eval_marker(
         let should_skip = if is_skip { met } else { !met };
 
         if should_skip {
-            // Update `met` in the evaluation to reflect the final decision
-            let evaluation = match evaluation {
-                SkipEvaluation::Bare { value, .. } => SkipEvaluation::Bare { value, met },
-                SkipEvaluation::Eq { lhs, rhs, .. } => SkipEvaluation::Eq { lhs, rhs, met },
-                SkipEvaluation::Regex { value, pattern, .. } => SkipEvaluation::Regex {
-                    value,
-                    pattern,
-                    met,
-                },
-                other => other,
-            };
-
             return Ok(Some(SkipReport {
                 definition,
                 marker_span,
