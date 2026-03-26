@@ -3,7 +3,7 @@
 ## General
 
 - Line-oriented, newline-terminated statements (no `;`)
-- Comments: `#` to end of line
+- Comments: `//` to end of line
 - All values are strings
 - Every expression produces a string value
 - Blocks use `{ }`
@@ -77,47 +77,48 @@ test "<name>" {
 ## Condition Markers
 
 ```
-[kind]                                  # unconditional
-[kind modifier expr]                    # truthiness check
-[kind modifier expr = expr]             # equality comparison
-[kind modifier expr ? regex]            # regex match
+# kind                                  // unconditional
+# kind modifier expr                    // truthiness check
+# kind modifier expr = expr             // equality comparison
+# kind modifier expr ? regex            // regex match
 ```
 
 Where:
 - `kind`: `skip` | `run` | `flaky`
 - `modifier`: `if` | `unless`
 - `expr`: quoted string with interpolation (`"${VAR}"`, `"literal"`, `"${A}:${B}"`) or bare number (`42`)
-- `regex`: regex pattern with `${var}` interpolation, up to closing `]`
+- `regex`: regex pattern with `${var}` interpolation, to end of line
 
 Examples:
 ```
-[skip]
-[skip unless "${CI}"]
-[run if "${OS}" = "linux"]
-[run if "${COUNT}" = 0]
-[skip unless "${ARCH}" ? ^(x86_64|aarch64)$]
-[flaky if "${CI}" = "true"]
-[run if "${HOST}:${PORT}" = "localhost:8080"]
-[skip unless "${VER}" ? ^${MAJOR}\..*$]
+# skip
+# skip unless "${CI}"
+# run if "${OS}" = "linux"
+# run if "${COUNT}" = 0
+# skip unless "${ARCH}" ? ^(x86_64|aarch64)$
+# flaky if "${CI}" = "true"
+# run if "${HOST}:${PORT}" = "localhost:8080"
+# skip unless "${VER}" ? ^${MAJOR}\..*$
 ```
 
 - A bare marker (kind only, no modifier) is unconditional
 - One marker per line
 - Multiple markers stack with AND semantics (all must pass or test is skipped)
-- Placed immediately before `test` or `effect` declarations (not inside the body)
+- Placed immediately before `test`, `effect`, `fn`, or `pure fn` declarations (not inside the body)
+- When a function is skipped, all tests that call it are also skipped
 - Comments between markers and the declaration are allowed
 
-| Marker | Modifier | Condition | Meaning |
-|--------|----------|-----------|---------|
-| `skip` | _(none)_ | _(unconditional)_ | always skip |
-| `skip` | `if`     | truthy    | skip when condition is true |
-| `skip` | `unless` | falsy     | skip when condition is false |
-| `run`  | _(none)_ | _(unconditional)_ | no-op (always run) |
-| `run`  | `if`     | falsy     | skip when condition is false |
-| `run`  | `unless` | truthy    | skip when condition is true |
-| `flaky`| _(none)_ | _(unconditional)_ | always mark as flaky |
-| `flaky`| `if`     | truthy    | mark as flaky when condition is true |
-| `flaky`| `unless` | falsy     | mark as flaky when condition is false |
+| Marker    | Modifier | Condition | Meaning |
+|-----------|----------|-----------|---------|
+| `# skip`  | _(none)_ | _(unconditional)_ | always skip |
+| `# skip`  | `if`     | truthy    | skip when condition is true |
+| `# skip`  | `unless` | falsy     | skip when condition is false |
+| `# run`   | _(none)_ | _(unconditional)_ | no-op (always run) |
+| `# run`   | `if`     | falsy     | skip when condition is false |
+| `# run`   | `unless` | truthy    | skip when condition is true |
+| `# flaky` | _(none)_ | _(unconditional)_ | always mark as flaky |
+| `# flaky` | `if`     | truthy    | mark as flaky when condition is true |
+| `# flaky` | `unless` | falsy     | mark as flaky when condition is false |
 
 ### Truthiness
 
@@ -146,7 +147,8 @@ let <name> = <expression>   # declare from expression
 ```
 
 - Quoted values required for `let` assignments
-- Interpolation: `${name}`, `${1}`, `${2}`, etc.
+- Interpolation inside strings: `"${name}"`, `"${1}"`, `"${2}"`, etc.
+- Bare variable reference: `name`, `$1`, `$2`
 - Escape `$` with `$$`
 - Scoped to enclosing block; inner blocks can shadow outer variables
 - Environment variables are readable (base env available everywhere)
@@ -173,7 +175,7 @@ All operators are followed by a space, then payload to end of line.
 | `<? `    | regex to EOL | full match (`$0`) |
 | `<= `    | literal to EOL | matched text |
 
-- `<?` matches regex against shell output; sets `${1}`, `${2}`, etc. for capture groups
+- `<?` matches regex against shell output; sets `$1`, `$2`, etc. for capture groups
 - `<=` matches literal with variable substitution
 - Both block until match or timeout
 
@@ -218,8 +220,8 @@ Every expression produces a string value:
 | Expression | Value |
 |------------|-------|
 | `"<text>"` | string literal |
-| `${name}` | variable value |
-| `${1}`, `${2}` | regex capture group |
+| `name` | variable value |
+| `$1`, `$2` | regex capture group |
 | `<fn>(<args>)` | function return value |
 | `> <text>` / `=> <text>` | sent string |
 | `<? <regex>` | full match (`$0`) |

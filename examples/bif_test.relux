@@ -2,7 +2,7 @@ test "built-in functions" {
     shell s {
         ~5s
 
-        # ── String manipulation ──────────────────────────
+        // ── String manipulation ──────────────────────────
 
         let raw = "  hello world  "
         let trimmed = trim(raw)
@@ -20,7 +20,7 @@ test "built-in functions" {
         let size = len(trimmed)
         annotate(size)
 
-        # ── Split ────────────────────────────────────────
+        // ── Split ────────────────────────────────────────
 
         let csv = "one,two,three"
         let first = split(csv, ",", 0)
@@ -32,7 +32,7 @@ test "built-in functions" {
         let third = split(csv, ",", 2)
         annotate(third)
 
-        # ── Generators ──────────────────────────────────
+        // ── Generators ──────────────────────────────────
 
         let id = uuid()
         annotate(id)
@@ -55,13 +55,13 @@ test "built-in functions" {
         let r_bin = rand(8, "bin")
         annotate(r_bin)
 
-        # ── Sleep ────────────────────────────────────────
+        // ── Sleep ────────────────────────────────────────
 
         annotate("sleeping 5s")
         sleep("5s")
         annotate("awake")
 
-        # ── Log (placeholder) ───────────────────────────
+        // ── Log (placeholder) ───────────────────────────
 
         log("test completed")
     }

@@ -235,9 +235,9 @@ A common pattern is a function that runs a command, matches the output with `<?`
 fn capture_version() {
     > echo "version=3.2.1"
     <? ^version=(.+)$
-    let ver = ${1}
+    let ver = $1
     match_ok()
-    ${ver}
+    ver
 }
 
 test "capture return value from match" {
@@ -249,7 +249,7 @@ test "capture return value from match" {
 }
 ```
 
-The regex match sets `${1}` to `3.2.1`. The function saves the capture, cleans up the shell with `match_ok()`, and returns the saved value as the last expression.
+The regex match sets `$1` to `3.2.1`. The function saves the capture, cleans up the shell with `match_ok()`, and returns the saved value as the last expression.
 
 As later articles introduce new kinds of expressions, they will note what value each one returns — following the same pattern as the everything-has-a-value table.
 
@@ -310,7 +310,7 @@ test "nested function return value chains" {
 
 ### Captures do not survive function calls
 
-You might call a function that internally uses `<?` and expect the capture groups (`${1}`, `${2}`, ...) to be available in the caller afterward. This seems reasonable — the function ran a regex match, and captures are normally available after `<?`.
+You might call a function that internally uses `<?` and expect the capture groups (`$1`, `$2`, ...) to be available in the caller afterward. This seems reasonable — the function ran a regex match, and captures are normally available after `<?`.
 
 But captures are part of the variable scope. When a function returns, its entire scope — including captures — is discarded. The caller's captures are restored to whatever they were before the call:
 
@@ -318,23 +318,23 @@ But captures are part of the variable scope. When a function returns, its entire
 fn extract_port() {
     > echo "port=8080"
     <? ^port=(\d+)$
-    # The last expression is match_ok(), whose return value is the
-    # prompt string — not the captured port number.
+    // The last expression is match_ok(), whose return value is the
+    // prompt string — not the captured port number.
     match_ok()
 }
 
 test "captures do not survive function calls" {
     shell s {
-        # Wrong — ${1} holds the caller's capture state, not the function's:
+        // Wrong — $1 holds the caller's capture state, not the function's:
         extract_port()
         > echo "port=${1}"
-        <? ^port=8080          # ${1} is empty
+        <? ^port=8080          // $1 is empty
 
-        # Also wrong — the return value is the prompt string, because
-        # match_ok() is the last expression in extract_port():
+        // Also wrong — the return value is the prompt string, because
+        // match_ok() is the last expression in extract_port():
         let result = extract_port()
         > echo "result=${result}"
-        <? ^result=8080        # result is the prompt, not "8080"
+        <? ^result=8080        // result is the prompt, not "8080"
     }
 }
 ```
@@ -345,9 +345,9 @@ The fix is to design the function to explicitly return what you need. Save the c
 fn extract_port() {
     > echo "port=8080"
     <? ^port=(\d+)$
-    let port = ${1}
+    let port = $1
     match_ok()
-    ${port}
+    port
 }
 ```
 

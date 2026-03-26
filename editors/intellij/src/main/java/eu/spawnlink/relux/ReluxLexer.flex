@@ -53,9 +53,14 @@ CONDITION_OP = [=?]
 
 %%
 
-// Comments
+// Comments (// to end of line)
 <YYINITIAL> {
-    "#" [^\r\n]*                { return ReluxTokenTypes.COMMENT; }
+    "//" [^\r\n]*               { return ReluxTokenTypes.COMMENT; }
+}
+
+// Condition markers: # skip|run|flaky [if|unless ...]
+<YYINITIAL> {
+    "#" {LINE_SPACE} / ("skip"|"run"|"flaky") { yybegin(IN_CONDITION_MARKER); return ReluxTokenTypes.MARKER_PREFIX; }
 }
 
 // Docstrings
@@ -91,11 +96,7 @@ CONDITION_OP = [=?]
     \$                          { return ReluxTokenTypes.STRING; }
 }
 
-// Condition markers: [skip|run|flaky if|unless ...]
-<YYINITIAL> {
-    "["                         { yybegin(IN_CONDITION_MARKER); return ReluxTokenTypes.LBRACKET; }
-}
-
+// Condition marker body: skip|run|flaky if|unless ...
 <IN_CONDITION_MARKER> {
     "skip"                      { return ReluxTokenTypes.SKIP; }
     "run"                       { return ReluxTokenTypes.RUN; }
@@ -105,15 +106,16 @@ CONDITION_OP = [=?]
     {CONDITION_OP}              { return ReluxTokenTypes.CONDITION_OP; }
     \"                          { yybegin(IN_CONDITION_STRING); return ReluxTokenTypes.STRING; }
     {DIGIT}+                    { return ReluxTokenTypes.CONDITION_VALUE; }
-    [^\] \t\r\n=?\x22]+         { return ReluxTokenTypes.CONDITION_VALUE; }
+    [^ \t\r\n=?\x22]+          { return ReluxTokenTypes.CONDITION_VALUE; }
     {SPACE}                     { return TokenType.WHITE_SPACE; }
-    "]"                         { yybegin(YYINITIAL); return ReluxTokenTypes.RBRACKET; }
+    {CRLF}                      { yybegin(YYINITIAL); return TokenType.WHITE_SPACE; }
 }
 
 // Keywords (must come before identifiers)
 <YYINITIAL> {
     "test"                      { return ReluxTokenTypes.TEST; }
     "effect"                    { return ReluxTokenTypes.EFFECT; }
+    "pure"                      { return ReluxTokenTypes.PURE; }
     "fn"                        { return ReluxTokenTypes.FN; }
     "import"                    { return ReluxTokenTypes.IMPORT; }
     "shell"                     { return ReluxTokenTypes.SHELL; }

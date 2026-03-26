@@ -13,8 +13,7 @@ import org.jetbrains.annotations.Nullable;
 public class ReluxBraceMatcher implements PairedBraceMatcher {
     private static final BracePair[] PAIRS = new BracePair[]{
             new BracePair(ReluxTokenTypes.LBRACE, ReluxTokenTypes.RBRACE, true),
-            new BracePair(ReluxTokenTypes.LPAREN, ReluxTokenTypes.RPAREN, false),
-            new BracePair(ReluxTokenTypes.LBRACKET, ReluxTokenTypes.RBRACKET, false)
+            new BracePair(ReluxTokenTypes.LPAREN, ReluxTokenTypes.RPAREN, false)
     };
 
     @NotNull

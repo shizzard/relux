@@ -7,7 +7,7 @@ Syntax highlighting and editor support for the [Relux](https://github.com/spawnl
 - **Syntax Highlighting**: Keywords, operators, strings, comments, and special constructs
 - **Smart Editor Features**:
   - Bracket, brace, and parenthesis matching
-  - Line comment support (`# ...`)
+  - Line comment support (`// ...`)
   - Code folding for `test`, `effect`, `fn`, `shell`, and `cleanup` blocks
 - **Customizable Colors**: Configure syntax colors via Settings → Editor → Color Scheme → Relux
 
@@ -16,7 +16,7 @@ Syntax highlighting and editor support for the [Relux](https://github.com/spawnl
 - Keywords: `test`, `effect`, `fn`, `import`, `shell`, `let`, `need`, `as`, `cleanup`
 - Shell operators: `>`, `=>`, `<?`, `<=`, `<!?`, `<!=`, `!?`, `!=`
 - Timed operators: `<~5s?`, `<~10s=`, etc.
-- Condition markers: `[skip|run|flaky if|unless CONDITION]`
+- Condition markers: `# skip|run|flaky [if|unless CONDITION]`
 - String interpolation: `${var}`, `$0`, `$1`, etc.
 - Comments and docstrings
 

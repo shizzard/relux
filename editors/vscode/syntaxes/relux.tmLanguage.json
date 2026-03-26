@@ -23,8 +23,8 @@
   ],
   "repository": {
     "comment": {
-      "match": "#.*$",
-      "name": "comment.line.number-sign.relux"
+      "match": "//.*$",
+      "name": "comment.line.double-slash.relux"
     },
 
     "docstring": {
@@ -50,10 +50,11 @@
     },
 
     "fn-declaration": {
-      "match": "\\b(fn)\\s+([a-z_][a-zA-Z0-9_]*)\\b",
+      "match": "\\b(pure\\s+)?(fn)\\s+([a-z_][a-zA-Z0-9_]*)\\b",
       "captures": {
-        "1": { "name": "keyword.control.fn.relux" },
-        "2": { "name": "entity.name.function.relux" }
+        "1": { "name": "keyword.control.pure.relux" },
+        "2": { "name": "keyword.control.fn.relux" },
+        "3": { "name": "entity.name.function.relux" }
       }
     },
 
@@ -68,23 +69,19 @@
     "condition-marker": {
       "patterns": [
         {
-          "match": "(\\[)(skip|run|flaky)(\\])",
+          "match": "^\\s*(#)\\s+(skip|run|flaky)\\s*$",
           "captures": {
-            "1": { "name": "punctuation.section.bracket.relux" },
-            "2": { "name": "keyword.control.marker.relux" },
-            "3": { "name": "punctuation.section.bracket.relux" }
+            "1": { "name": "punctuation.definition.marker.relux" },
+            "2": { "name": "keyword.control.marker.relux" }
           }
         },
         {
-          "begin": "(\\[)(skip|run|flaky)\\s+(if|unless)\\s+",
-          "end": "(\\])",
+          "begin": "^\\s*(#)\\s+(skip|run|flaky)\\s+(if|unless)\\s+",
+          "end": "$",
           "beginCaptures": {
-            "1": { "name": "punctuation.section.bracket.relux" },
+            "1": { "name": "punctuation.definition.marker.relux" },
             "2": { "name": "keyword.control.marker.relux" },
             "3": { "name": "keyword.control.modifier.relux" }
-          },
-          "endCaptures": {
-            "1": { "name": "punctuation.section.bracket.relux" }
           },
           "patterns": [
             {
@@ -97,7 +94,7 @@
               "name": "constant.numeric.relux"
             },
             {
-              "match": "[^\\]\"=?\\s]+",
+              "match": "[^\"=?\\s]+",
               "name": "string.regexp.relux"
             }
           ]

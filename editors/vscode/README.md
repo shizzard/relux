@@ -9,7 +9,7 @@ Syntax highlighting for the [Relux](https://github.com/spawnlink/relux) DSL (`.r
 - String and doc-string highlighting with interpolation support (`${var}`, `$1`)
 - Regex pattern highlighting for match/fail operators
 - Timeout duration highlighting (`~5s`, `~2h 30m`)
-- Comment highlighting (`# ...`)
+- Comment highlighting (`// ...`)
 - Bracket matching, auto-closing, and folding
 
 ## Local installation

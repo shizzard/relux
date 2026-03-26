@@ -51,7 +51,7 @@ public class ReluxColorSettingsPage implements ColorSettingsPage {
     @Override
     public String getDemoText() {
         return """
-                # Relux syntax demo
+                // Relux syntax demo
                 import lib/module1 {
                     function1, function2, Effect1 as E1
                 }
@@ -59,8 +59,8 @@ public class ReluxColorSettingsPage implements ColorSettingsPage {
                 fn example_function(arg1, arg2) {
                     > echo "arg: ${arg1}"
                     <? match regex here (\\d+)
-                    let captured = ${1}
-                    ${captured}
+                    let captured = $1
+                    captured
                 }
 
                 effect StartServer -> server {
@@ -78,7 +78,7 @@ public class ReluxColorSettingsPage implements ColorSettingsPage {
                     }
                 }
 
-                [skip unless CI]
+                # skip unless "${CI}"
                 test "Example test" {
                     \"""
                     Test description goes here

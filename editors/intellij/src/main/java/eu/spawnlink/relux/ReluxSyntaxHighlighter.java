@@ -94,6 +94,7 @@ public class ReluxSyntaxHighlighter extends SyntaxHighlighterBase {
         // Keywords
         if (tokenType.equals(ReluxTokenTypes.TEST) ||
             tokenType.equals(ReluxTokenTypes.EFFECT) ||
+            tokenType.equals(ReluxTokenTypes.PURE) ||
             tokenType.equals(ReluxTokenTypes.FN) ||
             tokenType.equals(ReluxTokenTypes.IMPORT) ||
             tokenType.equals(ReluxTokenTypes.SHELL) ||
@@ -176,12 +177,12 @@ public class ReluxSyntaxHighlighter extends SyntaxHighlighterBase {
             return STRING_KEYS;
         }
 
-        // Punctuation
-        if (tokenType.equals(ReluxTokenTypes.LBRACKET) ||
-            tokenType.equals(ReluxTokenTypes.RBRACKET)) {
-            return BRACKETS_KEYS;
+        // Marker prefix (#)
+        if (tokenType.equals(ReluxTokenTypes.MARKER_PREFIX)) {
+            return KEYWORD_KEYS;
         }
 
+        // Punctuation
         if (tokenType.equals(ReluxTokenTypes.LBRACE) ||
             tokenType.equals(ReluxTokenTypes.RBRACE)) {
             return BRACES_KEYS;

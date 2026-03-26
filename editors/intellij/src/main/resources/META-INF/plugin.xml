@@ -11,7 +11,7 @@
         <ul>
             <li>Syntax highlighting for keywords, operators, and special constructs</li>
             <li>Bracket, brace, and parenthesis matching</li>
-            <li>Line comment support (# ...)</li>
+            <li>Line comment support (// ...)</li>
             <li>Code folding for test, effect, fn, shell, and cleanup blocks</li>
             <li>Customizable color scheme</li>
         </ul>

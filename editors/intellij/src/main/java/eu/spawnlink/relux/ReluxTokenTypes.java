@@ -9,6 +9,7 @@ public interface ReluxTokenTypes {
     // Keywords
     IElementType TEST = new ReluxElementType("TEST");
     IElementType EFFECT = new ReluxElementType("EFFECT");
+    IElementType PURE = new ReluxElementType("PURE");
     IElementType FN = new ReluxElementType("FN");
     IElementType IMPORT = new ReluxElementType("IMPORT");
     IElementType SHELL = new ReluxElementType("SHELL");
@@ -42,9 +43,10 @@ public interface ReluxTokenTypes {
     IElementType RBRACE = new ReluxElementType("RBRACE");
     IElementType LPAREN = new ReluxElementType("LPAREN");
     IElementType RPAREN = new ReluxElementType("RPAREN");
-    IElementType LBRACKET = new ReluxElementType("LBRACKET");
-    IElementType RBRACKET = new ReluxElementType("RBRACKET");
     IElementType COMMA = new ReluxElementType("COMMA");
+
+    // Condition marker prefix (#)
+    IElementType MARKER_PREFIX = new ReluxElementType("MARKER_PREFIX");
 
     // Literals
     IElementType NUMBER = new ReluxElementType("NUMBER");

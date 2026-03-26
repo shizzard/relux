@@ -26,7 +26,7 @@
 - Inner blocks can shadow outer variables with a new `let` declaration
 - Reassignment (`x = expr`) mutates an existing variable from an outer scope
 - Environment variables from the host process are available as pre-set variables in all scopes (read-only — `let` creates a shadow, not a modification of the process environment)
-- Regex capture groups (`${1}`, `${2}`, ...) are set after a `<?` match and remain in scope until overwritten by the next `<?`
+- Regex capture groups (`$1`, `$2`, ...) are set after a `<?` match and remain in scope until overwritten by the next `<?`
 
 ## Functions
 
@@ -77,12 +77,13 @@
 
 ## Condition Markers
 
-- Condition markers are placed immediately before `test` or `effect` declarations
+- Condition markers are placed immediately before `test`, `effect`, `fn`, or `pure fn` declarations
 - Condition markers evaluate **before** any shells are spawned
   - Test-level markers are checked before `execute_effects`
   - Effect-level markers are checked before the effect's shells are created
+  - Function-level markers are checked during resolution; a skipped function causes all tests that call it to be skipped
 - A bare marker (kind only, no modifier) is unconditional:
-  - `[skip]` always skips, `[flaky]` always marks flaky, `[run]` is a no-op
+  - `# skip` always skips, `# flaky` always marks flaky, `# run` is a no-op
 - A conditional marker requires a modifier (`if`/`unless`) and an expression
 - Expressions are quoted strings with `${VAR}` interpolation or bare numbers:
   - `"${CI}"` — environment variable reference
@@ -103,12 +104,13 @@
   - `flaky`: marks the test as flaky (skip semantics for now; retry is a future feature)
 - Multiple markers stack with AND semantics: all conditions must pass or the test is skipped
 - When an effect is skipped, all tests depending on it are also skipped
+- When a function is skipped, all tests that call it are also skipped
 
 ## Tests
 
 - A test is the top-level unit of execution
 - Tests are independent — no test depends on another test's execution or side effects
-- Condition markers (`[skip/run/flaky ...]`) are placed immediately before the `test` declaration
+- Condition markers (`# skip/run/flaky ...`) are placed immediately before the `test` declaration
 - Test structure (in order):
   1. Doc string (optional `"""..."""`)
   2. `need` declarations (effect dependencies)

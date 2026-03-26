@@ -80,24 +80,24 @@ Literal match `<=` is a simple substring search. It does exactly one thing and i
 
 ### Always save captures to named variables
 
-Capture groups like `${1}` are convenient — you match a pattern, and the extracted value is right there. It is tempting to use `${1}` directly in several places without saving it to a named variable first.
+Capture groups like `$1` are convenient — you match a pattern, and the extracted value is right there. It is tempting to use `$1` directly in several places without saving it to a named variable first.
 
-The problem is not with the code as you write it today. The problem is with the code as someone changes it five years from now. Test code is still code — it evolves, gets refactored, gets extended. Capture groups are silently replaced on every `<?` match. If someone inserts a new regex match between your capture and its use — a perfectly reasonable edit — `${1}` now refers to something completely different. No error, no warning, just a test that fails in a confusing way that takes hours to debug.
+The problem is not with the code as you write it today. The problem is with the code as someone changes it five years from now. Test code is still code — it evolves, gets refactored, gets extended. Capture groups are silently replaced on every `<?` match. If someone inserts a new regex match between your capture and its use — a perfectly reasonable edit — `$1` now refers to something completely different. No error, no warning, just a test that fails in a confusing way that takes hours to debug.
 
 Save the capture to a named variable immediately after the match, before doing anything else. Then use the named variable everywhere:
 
 ```relux
-# Fragile — ${1} can be silently replaced by a later edit:
+// Fragile — $1 can be silently replaced by a later edit:
 <? ^port=(\d+)$
 > curl http://localhost:${1}/health
 
-# Durable — the port is safe no matter what happens next:
+// Durable — the port is safe no matter what happens next:
 <? ^port=(\d+)$
-let port = ${1}
+let port = $1
 > curl http://localhost:${port}/health
 ```
 
-The named variable survives any number of subsequent matches. It makes the code self-documenting (the name `port` says more than `${1}`), and it insulates the test from future edits.
+The named variable survives any number of subsequent matches. It makes the code self-documenting (the name `port` says more than `$1`), and it insulates the test from future edits.
 
 ### Anchor your patterns
 
@@ -106,10 +106,10 @@ A regex without anchors will match anywhere in the remaining buffer — the echo
 Use `^` and `$` to pin your match to a specific line:
 
 ```relux
-# Might match the echoed command or something unexpected:
+// Might match the echoed command or something unexpected:
 <? version=\d+
 
-# Matches exactly one complete line:
+// Matches exactly one complete line:
 <? ^version=\d+$
 ```
 
@@ -129,7 +129,7 @@ When the variable comes from your own `let` and you know the value, this is fine
 
 ### Captures do not survive function calls
 
-You might call a function that internally uses `<?` and expect the capture groups (`${1}`, `${2}`, ...) to be available in the caller afterward. This seems reasonable — the function ran a regex match, and captures are normally available after `<?`.
+You might call a function that internally uses `<?` and expect the capture groups (`$1`, `$2`, ...) to be available in the caller afterward. This seems reasonable — the function ran a regex match, and captures are normally available after `<?`.
 
 But captures are part of the variable scope. When a function returns, its entire scope — including captures — is discarded. The caller's captures are restored to whatever they were before the call:
 
@@ -137,23 +137,23 @@ But captures are part of the variable scope. When a function returns, its entire
 fn extract_port() {
     > echo "port=8080"
     <? ^port=(\d+)$
-    # The last expression is match_ok(), whose return value is the
-    # prompt string — not the captured port number.
+    // The last expression is match_ok(), whose return value is the
+    // prompt string — not the captured port number.
     match_ok()
 }
 
 test "captures do not survive function calls" {
     shell s {
-        # Wrong — ${1} holds the caller's capture state, not the function's:
+        // Wrong — $1 holds the caller's capture state, not the function's:
         extract_port()
         > echo "port=${1}"
-        <? ^port=8080          # ${1} is empty
+        <? ^port=8080          // $1 is empty
 
-        # Also wrong — the return value is the prompt string, because
-        # match_ok() is the last expression in extract_port():
+        // Also wrong — the return value is the prompt string, because
+        // match_ok() is the last expression in extract_port():
         let result = extract_port()
         > echo "result=${result}"
-        <? ^result=8080        # result is the prompt, not "8080"
+        <? ^result=8080        // result is the prompt, not "8080"
     }
 }
 ```
@@ -164,9 +164,9 @@ The fix is to design the function to explicitly return what you need. Save the c
 fn extract_port() {
     > echo "port=8080"
     <? ^port=(\d+)$
-    let port = ${1}
+    let port = $1
     match_ok()
-    ${port}
+    port
 }
 ```
 
@@ -179,14 +179,14 @@ This is consistent with the scoping model: functions cannot modify the caller's 
 When a function interacts with the shell — sending commands and matching output — it should leave the shell in a known state before returning. That means: consume the prompt and verify the exit code with `match_ok()` (or the appropriate `match_not_ok` variant) after the last command.
 
 ```relux
-# Leaves the shell in an unknown state — the caller must
-# know what output is left in the buffer:
+// Leaves the shell in an unknown state — the caller must
+// know what output is left in the buffer:
 fn check_server() {
     > curl -s http://localhost:8080/health
     <= healthy
 }
 
-# Leaves the shell clean — prompt consumed, exit code verified:
+// Leaves the shell clean — prompt consumed, exit code verified:
 fn check_server() {
     > curl -s http://localhost:8080/health
     <= healthy
@@ -428,9 +428,9 @@ If you can set it up, use an effect. If you can only check for it, use a marker.
 
 ### Choose the marker that reads like intent
 
-`[run if "${CI}"]` and `[skip unless "${CI}"]` are logically identical — both skip the test when `CI` is not set. The difference is how they communicate intent to someone reading the test file.
+`# run if "${CI}"` and `# skip unless "${CI}"` are logically identical — both skip the test when `CI` is not set. The difference is how they communicate intent to someone reading the test file.
 
-Use `[run if ...]` when the condition describes the *target environment*: "this test runs in CI." Use `[skip unless ...]` when the condition describes a *requirement*: "skip this test unless docker is available." The marker should read like a sentence that explains *why* the test might not run.
+Use `# run if ...` when the condition describes the *target environment*: "this test runs in CI." Use `# skip unless ...` when the condition describes a *requirement*: "skip this test unless docker is available." The marker should read like a sentence that explains *why* the test might not run.
 
 ### Understand effect skip propagation
 

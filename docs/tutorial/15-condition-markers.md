@@ -11,7 +11,7 @@ Condition markers solve this in two ways. First, they let you **categorize tests
 Here is a test that only runs when `docker` is available:
 
 ```relux
-[skip unless which("docker")]
+# skip unless which("docker")
 test "build container image" {
     shell s {
         > docker build -t myapp .
@@ -26,7 +26,7 @@ When `docker` is in PATH, the test runs normally. When it is not, Relux skips th
 And here is a test that only runs in CI:
 
 ```relux
-[run if "${CI}"]
+# run if "${CI}"
 test "full regression suite" {
     shell s {
         > ./run-all-benchmarks.sh
@@ -42,10 +42,10 @@ Locally, where `CI` is not set, this test is silently skipped. On the build serv
 
 The simplest form of a marker has no condition at all. There are three kinds:
 
-**`[skip]`** unconditionally skips the test. This is useful for temporarily disabling a test without deleting or commenting it out:
+**`# skip`** unconditionally skips the test. This is useful for temporarily disabling a test without deleting or commenting it out:
 
 ```relux
-[skip]
+# skip
 test "work in progress" {
     shell s {
         > echo hello
@@ -56,10 +56,10 @@ test "work in progress" {
 
 The test appears in the results as skipped. When you are ready to re-enable it, remove the marker.
 
-**`[flaky]`** marks a test as known-unstable. Currently this skips the test (retry support is a planned feature):
+**`# flaky`** marks a test as known-unstable. Currently this skips the test (retry support is a planned feature):
 
 ```relux
-[flaky]
+# flaky
 test "timing sensitive" {
     shell s {
         > echo hello
@@ -68,7 +68,7 @@ test "timing sensitive" {
 }
 ```
 
-**`[run]`** without a condition is a no-op — the test runs as it normally would. On its own it has no effect, but it becomes useful with a condition attached, as shown below.
+**`# run`** without a condition is a no-op — the test runs as it normally would. On its own it has no effect, but it becomes useful with a condition attached, as shown below.
 
 ## Conditional markers
 
@@ -79,7 +79,7 @@ A condition adds an `if` or `unless` modifier and an expression to the marker. T
 The simplest conditional form checks whether an [environment variable](06-variables.md#relux-environment-variables) is set and non-empty:
 
 ```relux
-[skip if "${MY_VAR}"]
+# skip if "${MY_VAR}"
 test "skipped when MY_VAR is set" {
     shell s {
         > echo hello
@@ -93,7 +93,7 @@ The truthiness rule is straightforward: an empty string or an unset variable is 
 The `unless` modifier inverts the check:
 
 ```relux
-[skip unless "${CI}"]
+# skip unless "${CI}"
 test "only runs in CI" {
     shell s {
         > echo hello
@@ -107,7 +107,7 @@ This skips the test unless `CI` is set — the common pattern for CI-only tests.
 The `run` kind works the other way around. Where `skip` says "do not run this test when the condition is met", `run` says "only run this test when the condition is met":
 
 ```relux
-[run if "${MY_VAR}"]
+# run if "${MY_VAR}"
 test "only runs when MY_VAR is set" {
     shell s {
         > echo hello
@@ -119,7 +119,7 @@ test "only runs when MY_VAR is set" {
 And its inverse:
 
 ```relux
-[run unless "${MY_VAR}"]
+# run unless "${MY_VAR}"
 test "runs when MY_VAR is not set" {
     shell s {
         > echo hello
@@ -128,14 +128,14 @@ test "runs when MY_VAR is not set" {
 }
 ```
 
-Note that `[run if "${X}"]` and `[skip unless "${X}"]` are logically equivalent — both skip the test when `X` is unset. The choice between them is about readability, which the best practices section below discusses.
+Note that `# run if "${X}"` and `# skip unless "${X}"` are logically equivalent — both skip the test when `X` is unset. The choice between them is about readability, which the best practices section below discusses.
 
 ### Equality comparisons
 
 When truthiness is not enough, you can compare a variable against a specific value using `=`:
 
 ```relux
-[skip if "${MY_VAR}" = "yes"]
+# skip if "${MY_VAR}" = "yes"
 test "skipped when MY_VAR is exactly yes" {
     shell s {
         > echo hello
@@ -147,7 +147,7 @@ test "skipped when MY_VAR is exactly yes" {
 Both sides of the `=` support [variable interpolation](06-variables.md#string-interpolation). You can build compound values:
 
 ```relux
-[run if "${HOST}:${PORT}" = "localhost:8080"]
+# run if "${HOST}:${PORT}" = "localhost:8080"
 test "only on local dev server" {
     shell s {
         > curl localhost:8080/health
@@ -160,7 +160,7 @@ test "only on local dev server" {
 Numbers are allowed too — they are compared as strings:
 
 ```relux
-[run if "${COUNT}" = 0]
+# run if "${COUNT}" = 0
 test "only when count is zero" {
     shell s {
         > echo "starting fresh"
@@ -174,7 +174,7 @@ test "only when count is zero" {
 For more flexible matching, the `?` operator tests a value against a regex pattern:
 
 ```relux
-[skip unless "${MY_VAR}" ? ^(yes|true)$]
+# skip unless "${MY_VAR}" ? ^(yes|true)$
 test "requires MY_VAR to be yes or true" {
     shell s {
         > echo hello
@@ -186,7 +186,7 @@ test "requires MY_VAR to be yes or true" {
 The regex pattern supports variable interpolation as well:
 
 ```relux
-[skip unless "${ARCH}" ? ^(x86_64|aarch64)$]
+# skip unless "${ARCH}" ? ^(x86_64|aarch64)$
 test "only on 64-bit architectures" {
     shell s {
         > echo hello
@@ -202,7 +202,7 @@ Marker expressions are not limited to variable interpolation. You can call [pure
 The [built-in function](05-built-in-functions.md) `which()` checks whether an executable exists in PATH — it returns the path if found, or an empty string (falsy) if not:
 
 ```relux
-[skip unless which("docker")]
+# skip unless which("docker")
 test "needs docker" {
     shell s {
         > docker ps
@@ -219,7 +219,7 @@ pure fn always_true() {
     "yes"
 }
 
-[skip if always_true()]
+# skip if always_true()
 test "always skipped by custom function" {
     shell s {
         > echo hello
@@ -235,7 +235,7 @@ pure fn normalize(val) {
     lower(val)
 }
 
-[skip unless normalize("${TARGET_OS}") ? ^(linux|darwin)$]
+# skip unless normalize("${TARGET_OS}") ? ^(linux|darwin)$
 test "only on Linux or macOS" {
     shell s {
         > echo hello
@@ -251,8 +251,8 @@ The function argument uses variable interpolation, and the regex tests the lower
 A test or effect can carry more than one marker:
 
 ```relux
-[skip unless "${CI}"]
-[skip if "${SKIP_ME}"]
+# skip unless "${CI}"
+# skip if "${SKIP_ME}"
 test "CI only, unless explicitly skipped" {
     shell s {
         > echo hello
@@ -263,12 +263,38 @@ test "CI only, unless explicitly skipped" {
 
 The exact combination semantics for multiple markers are not yet established and are the subject of an upcoming RFC. For now, keep things simple: use a single marker per test or effect when possible, and use regex patterns to express complex conditions within one marker.
 
+## Markers on functions
+
+Markers work on [functions](08-functions.md) and [pure functions](12-pure-functions.md) too:
+
+```relux
+# skip unless which("jq")
+fn parse_json(input) {
+    > echo '${input}' | jq -r '.name'
+    <? ^.+$
+    let name = $0
+    match_prompt()
+    name
+}
+
+test "extract name from JSON" {
+    shell s {
+        let name = parse_json('{"name": "alice"}')
+        > echo "${name}"
+        <? ^alice$
+        match_prompt()
+    }
+}
+```
+
+The key behavior: **when a function is skipped, all tests that call it are also skipped.** In the example above, if `jq` is not installed, the `parse_json` function is skipped, which propagates to every test that calls it. The test is reported as skipped — no shell is spawned, no confusing failure appears. This works the same way for both `fn` and `pure fn`.
+
 ## Markers on effects
 
 Markers work on [effects](11-effects-and-dependencies.md) too. This is particularly useful for effects that provision heavy infrastructure:
 
 ```relux
-[skip if "${SKIP_EFFECT}"]
+# skip if "${SKIP_EFFECT}"
 effect Guarded -> s {
     shell s {
         > echo "effect ran"
@@ -306,9 +332,9 @@ If you can set it up, use an [effect](11-effects-and-dependencies.md). If you ca
 
 ### Choose the marker that reads like intent
 
-`[run if "${CI}"]` and `[skip unless "${CI}"]` are logically identical — both skip the test when `CI` is not set. The difference is how they communicate intent to someone reading the test file.
+`# run if "${CI}"` and `# skip unless "${CI}"` are logically identical — both skip the test when `CI` is not set. The difference is how they communicate intent to someone reading the test file.
 
-Use `[run if ...]` when the condition describes the *target environment*: "this test runs in CI." Use `[skip unless ...]` when the condition describes a *requirement*: "skip this test unless docker is available." The marker should read like a sentence that explains *why* the test might not run.
+Use `# run if ...` when the condition describes the *target environment*: "this test runs in CI." Use `# skip unless ...` when the condition describes a *requirement*: "skip this test unless docker is available." The marker should read like a sentence that explains *why* the test might not run.
 
 ### Understand effect skip propagation
 
@@ -316,11 +342,11 @@ Putting a marker on an effect skips every test that depends on it. This is power
 
 ## Try it yourself
 
-1. Write a test that only runs on macOS. Use a pure function that calls `which("sw_vers")` (a macOS-specific binary) to detect the platform, and a `[skip unless ...]` marker.
+1. Write a test that only runs on macOS. Use a pure function that calls `which("sw_vers")` (a macOS-specific binary) to detect the platform, and a `# skip unless ...` marker.
 
-2. Write an effect `DockerReady` that guards itself with `[skip unless which("docker")]`. Have it start a container in its shell block. Then write a test that `need`s `DockerReady` — verify that the test is skipped when docker is not available, without needing its own marker.
+2. Write an effect `DockerReady` that guards itself with `# skip unless which("docker")`. Have it start a container in its shell block. Then write a test that `need`s `DockerReady` — verify that the test is skipped when docker is not available, without needing its own marker.
 
-3. Write a test with two markers: one that restricts it to CI (`[run if "${CI}"]`) and one that skips it when a feature flag is disabled (`[skip unless "${ENABLE_SLOW_TESTS}"]`). Think about what happens in each combination of those two variables.
+3. Write a test with two markers: one that restricts it to CI (`# run if "${CI}"`) and one that skips it when a feature flag is disabled (`# skip unless "${ENABLE_SLOW_TESTS}"`). Think about what happens in each combination of those two variables.
 
 ---
 
