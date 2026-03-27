@@ -86,7 +86,7 @@ pub struct Vm {
     tables: Tables,
     pub events: EventSink,
     shell_prompt: String,
-    cancel: CancellationToken,
+    pub(crate) cancel: CancellationToken,
 }
 
 impl Vm {

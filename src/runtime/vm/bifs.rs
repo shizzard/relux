@@ -92,8 +92,17 @@ impl Bif for Sleep {
             .map_err(|_| runtime_error(format!("invalid duration: `{}`", args[0]), span))?;
         let shell = vm.current_name();
         vm.events.emit_sleep_start(&shell, duration);
-        // TODO: select! with cancellation token to allow interrupting long sleeps
-        tokio::time::sleep(duration).await;
+        tokio::select! {
+            _ = tokio::time::sleep(duration) => {}
+            _ = vm.cancel.cancelled() => {
+                let shell = vm.current_name();
+                vm.events.emit_sleep_done(&shell);
+                return Err(Failure::Cancelled {
+                    span: Some(span.clone()),
+                    shell: Some(shell),
+                });
+            }
+        }
         let shell = vm.current_name();
         vm.events.emit_sleep_done(&shell);
         Ok(String::new())

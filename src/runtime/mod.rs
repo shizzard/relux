@@ -8,9 +8,15 @@ use std::time::Duration;
 use std::time::Instant;
 
 use std::collections::VecDeque;
+use std::sync::OnceLock;
 
 use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
+
+pub(crate) enum CancelReason {
+    SuiteTimeout,
+    FailFast,
+}
 
 use crate::diagnostics::Cause;
 use crate::diagnostics::CauseId;
@@ -205,12 +211,16 @@ pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> Vec<TestResult> {
     eprintln!("\nrunning {} tests", suite.plans.len());
 
     let cancel = CancellationToken::new();
+    let cancel_reason: Arc<OnceLock<CancelReason>> = Arc::new(OnceLock::new());
 
     // Spawn suite timeout watchdog
     let watchdog = run_ctx.suite_timeout.map(|timeout| {
         let watchdog_cancel = cancel.clone();
+        let watchdog_reason = cancel_reason.clone();
         tokio::spawn(async move {
             tokio::time::sleep(timeout).await;
+            // First canceller wins; ignore if already set
+            let _ = watchdog_reason.set(CancelReason::SuiteTimeout);
             watchdog_cancel.cancel();
         })
     });
@@ -220,7 +230,7 @@ pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> Vec<TestResult> {
         Arc::new(std::sync::Mutex::new(suite.plans.iter().collect()));
 
     // Run single worker (future: spawn N workers for concurrency)
-    let results = run_worker(queue, cancel, suite, run_ctx, &base_env).await;
+    let results = run_worker(queue, cancel, cancel_reason, suite, run_ctx, &base_env).await;
 
     // Abort suite timeout watchdog if it's still running
     if let Some(handle) = watchdog {
@@ -233,6 +243,7 @@ pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> Vec<TestResult> {
 async fn run_worker<'a>(
     queue: Arc<std::sync::Mutex<VecDeque<&'a Plan>>>,
     cancel: CancellationToken,
+    cancel_reason: Arc<OnceLock<CancelReason>>,
     suite: &'a Suite,
     run_ctx: &RunContext,
     base_env: &Arc<Env>,
@@ -320,19 +331,19 @@ async fn run_worker<'a>(
         results.push(result);
 
         if failed && run_ctx.strategy == RunStrategy::FailFast {
+            // First canceller wins; ignore if already set
+            let _ = cancel_reason.set(CancelReason::FailFast);
             cancel.cancel();
             break;
         }
     }
 
     // Drain remaining queue as skipped
-    // TODO: track cancellation reason explicitly (e.g. CancelReason enum) —
-    // the heuristic below is wrong when suite timeout fires during fail-fast mode
     let skip_reason = if cancel.is_cancelled() {
-        if run_ctx.strategy == RunStrategy::FailFast {
-            "fail fast"
-        } else {
-            "suite timeout"
+        match cancel_reason.get() {
+            Some(CancelReason::FailFast) => "fail fast",
+            Some(CancelReason::SuiteTimeout) => "suite timeout",
+            None => "cancelled",
         }
     } else {
         return results; // queue was exhausted normally, nothing to drain

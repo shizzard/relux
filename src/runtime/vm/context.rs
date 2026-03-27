@@ -64,7 +64,6 @@ pub enum Scope {
     Effect {
         name: String,
         vars: Arc<Mutex<VarScope>>,
-        // TODO: effect-level default timeout (not yet implemented in DSL)
         _timeout: Option<IrTimeout>,
         env_overlay: Arc<Env>,
     },
