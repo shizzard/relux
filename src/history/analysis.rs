@@ -58,6 +58,29 @@ pub(crate) struct TestMeta {
     pub duration_ms: u64,
     pub failure_type: Option<String>,
     pub failure_summary: Option<String>,
+    pub flaky_retries: u32,
+}
+
+impl TestMeta {
+    pub fn lower_outcome(&self) -> &str {
+        if self.flaky_retries > 0 {
+            "fail"
+        } else {
+            &self.outcome
+        }
+    }
+
+    pub fn upper_outcome(&self) -> &str {
+        &self.outcome
+    }
+
+    pub fn inner_flips(&self) -> usize {
+        if self.lower_outcome() != self.upper_outcome() {
+            1
+        } else {
+            0
+        }
+    }
 }
 
 // ─── LoadedRunsCollection ──────────────────────────────────────
@@ -92,6 +115,7 @@ impl LoadedRunsCollection {
                     duration_ms: entry.duration_ms,
                     failure_type: entry.failure_type,
                     failure_summary: entry.failure_summary,
+                    flaky_retries: entry.flaky_retries,
                 };
                 tests.entry(key).or_default().insert(run_id.clone(), meta);
             }
@@ -160,6 +184,7 @@ pub struct FlakyRecord {
     pub pass: usize,
     pub fail: usize,
     pub rate: f64,
+    pub avg_retries: f64,
 }
 
 impl PartialEq for FlakyRecord {
@@ -195,15 +220,18 @@ impl Preaggregate for FlakyPreaggregate {
         coll.tests
             .iter()
             .filter_map(|(key, runs_map)| {
-                let outcomes: Vec<&str> = coll
+                let metas: Vec<&TestMeta> = coll
                     .run_order
                     .iter()
-                    .filter_map(|rid| runs_map.get(rid).map(|m| m.outcome.as_str()))
+                    .filter_map(|rid| runs_map.get(rid))
+                    .filter(|m| m.outcome != "skipped")
                     .collect();
 
-                let mut flips = 0;
-                for w in outcomes.windows(2) {
-                    if w[0] != w[1] && w[0] != "skipped" && w[1] != "skipped" {
+                let mut flips: usize = metas.iter().map(|m| m.inner_flips()).sum();
+                for w in metas.windows(2) {
+                    let prev_upper = w[0].upper_outcome();
+                    let next_lower = w[1].lower_outcome();
+                    if prev_upper != next_lower {
                         flips += 1;
                     }
                 }
@@ -212,11 +240,18 @@ impl Preaggregate for FlakyPreaggregate {
                     return None;
                 }
 
-                let pass = outcomes.iter().filter(|&&o| o == "pass").count();
-                let fail = outcomes.iter().filter(|&&o| o == "fail").count();
-                let non_skipped = outcomes.iter().filter(|&&o| o != "skipped").count();
-                let rate = if non_skipped > 1 {
-                    (flips as f64 / (non_skipped - 1) as f64) * 100.0
+                let pass = metas.iter().filter(|m| m.outcome == "pass").count();
+                let fail = metas.iter().filter(|m| m.outcome == "fail").count();
+                let total_retries: u32 = metas.iter().map(|m| m.flaky_retries).sum();
+                let avg_retries = if !metas.is_empty() {
+                    total_retries as f64 / metas.len() as f64
+                } else {
+                    0.0
+                };
+                let inner_flip_count: usize = metas.iter().map(|m| m.inner_flips()).sum();
+                let transition_points = metas.len().saturating_sub(1) + inner_flip_count;
+                let rate = if transition_points > 0 {
+                    (flips as f64 / transition_points as f64) * 100.0
                 } else {
                     0.0
                 };
@@ -228,6 +263,7 @@ impl Preaggregate for FlakyPreaggregate {
                         pass,
                         fail,
                         rate,
+                        avg_retries,
                     },
                 ))
             })
@@ -649,6 +685,7 @@ pub(crate) mod tests {
             } else {
                 None
             },
+            flaky_retries: 0,
         }
     }
 
@@ -713,6 +750,7 @@ pub(crate) mod tests {
         assert_eq!(a.flips, 2);
         assert_eq!(a.pass, 3);
         assert_eq!(a.fail, 1);
+        assert!((a.avg_retries - 0.0).abs() < 0.01);
 
         let (_, c) = find_entry(&entries, "c.relux/c-relux").unwrap();
         assert_eq!(c.flips, 2);
@@ -816,6 +854,127 @@ pub(crate) mod tests {
             assert_eq!(run.summary.tests.len(), 1);
             assert_eq!(run.summary.tests[0].path, "a.relux");
         }
+    }
+
+    fn make_test_with_retries(
+        path: &str,
+        outcome: &str,
+        duration_ms: u64,
+        flaky_retries: u32,
+    ) -> TestEntry {
+        let mut entry = make_test(path, outcome, duration_ms);
+        entry.flaky_retries = flaky_retries;
+        entry
+    }
+
+    #[test]
+    fn flaky_detects_retried_passes_as_flaky() {
+        // A test that always passes but with retries — no cross-run flips,
+        // but inner_flips should detect it as flaky.
+        let runs = vec![
+            make_run(
+                "run1",
+                "2026-03-01T00:00:00Z",
+                vec![make_test_with_retries("f.relux", "pass", 100, 2)],
+            ),
+            make_run(
+                "run2",
+                "2026-03-02T00:00:00Z",
+                vec![make_test_with_retries("f.relux", "pass", 100, 1)],
+            ),
+        ];
+
+        let mut coll = LoadedRunsCollection::new(runs);
+        let entries = coll.truncate::<FlakyPreaggregate>(None);
+
+        assert_eq!(entries.len(), 1);
+        let (_, rec) = find_entry(&entries, "f.relux/f-relux").unwrap();
+        // Each run has inner_flips=1 (lower=fail, upper=pass), total=2
+        // Cross-run: run1 upper=pass, run2 lower=fail → 1 more flip
+        assert_eq!(rec.flips, 3);
+        assert_eq!(rec.pass, 2);
+        assert_eq!(rec.fail, 0);
+        assert!((rec.avg_retries - 1.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn flaky_retried_pass_then_clean_pass_counts_cross_flip() {
+        // run1: pass with retries (lower=fail, upper=pass) → 1 inner flip
+        // run2: clean pass (lower=pass, upper=pass) → 0 inner flips
+        // Cross: run1 upper=pass vs run2 lower=pass → no cross flip
+        // Total: 1 flip
+        let runs = vec![
+            make_run(
+                "run1",
+                "2026-03-01T00:00:00Z",
+                vec![make_test_with_retries("g.relux", "pass", 100, 2)],
+            ),
+            make_run(
+                "run2",
+                "2026-03-02T00:00:00Z",
+                vec![make_test("g.relux", "pass", 100)],
+            ),
+        ];
+
+        let mut coll = LoadedRunsCollection::new(runs);
+        let entries = coll.truncate::<FlakyPreaggregate>(None);
+
+        assert_eq!(entries.len(), 1);
+        let (_, rec) = find_entry(&entries, "g.relux/g-relux").unwrap();
+        assert_eq!(rec.flips, 1);
+        assert!((rec.avg_retries - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn flaky_clean_pass_then_retried_pass_counts_cross_flip() {
+        // run1: clean pass (upper=pass)
+        // run2: pass with retries (lower=fail) → cross flip + inner flip
+        let runs = vec![
+            make_run(
+                "run1",
+                "2026-03-01T00:00:00Z",
+                vec![make_test("h.relux", "pass", 100)],
+            ),
+            make_run(
+                "run2",
+                "2026-03-02T00:00:00Z",
+                vec![make_test_with_retries("h.relux", "pass", 100, 1)],
+            ),
+        ];
+
+        let mut coll = LoadedRunsCollection::new(runs);
+        let entries = coll.truncate::<FlakyPreaggregate>(None);
+
+        assert_eq!(entries.len(), 1);
+        let (_, rec) = find_entry(&entries, "h.relux/h-relux").unwrap();
+        // inner: 1 (run2), cross: 1 (pass→fail)
+        assert_eq!(rec.flips, 2);
+    }
+
+    #[test]
+    fn flaky_failed_with_retries_no_inner_flip() {
+        // Test that failed even after retries: lower=fail, upper=fail → 0 inner flips
+        let runs = vec![
+            make_run(
+                "run1",
+                "2026-03-01T00:00:00Z",
+                vec![make_test("i.relux", "pass", 100)],
+            ),
+            make_run(
+                "run2",
+                "2026-03-02T00:00:00Z",
+                vec![make_test_with_retries("i.relux", "fail", 100, 3)],
+            ),
+        ];
+
+        let mut coll = LoadedRunsCollection::new(runs);
+        let entries = coll.truncate::<FlakyPreaggregate>(None);
+
+        assert_eq!(entries.len(), 1);
+        let (_, rec) = find_entry(&entries, "i.relux/i-relux").unwrap();
+        // inner: 0 (fail→fail), cross: 1 (pass→fail)
+        assert_eq!(rec.flips, 1);
+        assert!((rec.avg_retries - 1.5).abs() < 0.01);
     }
 
     #[test]

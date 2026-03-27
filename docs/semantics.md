@@ -101,7 +101,7 @@
 - Kind semantics:
   - `skip`: skips the test/effect when the condition is met
   - `run`: skips the test/effect when the condition is NOT met (inverse of `skip`)
-  - `flaky`: marks the test as flaky (skip semantics for now; retry is a future feature)
+  - `flaky`: marks the test as flaky — with `[flaky].max_retries > 0` in `Relux.toml`, a failing flaky test is retried from scratch with exponentially increasing tolerance timeouts (`base × m^(retry-1)`). With `max_retries = 0` (default), the marker is documentary only
 - Multiple markers stack with AND semantics: all conditions must pass or the test is skipped
 - When an effect is skipped, all tests depending on it are also skipped
 - When a function is skipped, all tests that call it are also skipped

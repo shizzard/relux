@@ -18,10 +18,17 @@ use super::LoweringContext;
 use super::expr::IrPureExpr;
 use super::interpolation::IrInterpolation;
 
+/// Result of evaluating condition markers on a definition.
+pub(crate) struct MarkerResult {
+    pub skip: Option<SkipReport>,
+    pub flaky: bool,
+}
+
 /// Evaluate condition markers on a definition.
 ///
 /// Requires: scope already pushed on `ctx` (for resolving pure fn calls).
-/// Returns `Ok(Some(SkipReport))` if a marker triggers skip, `Ok(None)` otherwise.
+/// Returns `Ok(MarkerResult)` with skip/flaky status. `skip` is `Some` if a
+/// marker triggers skip. `flaky` is true if a flaky marker's condition is met.
 /// Returns `Err(LoweringBail)` if marker lowering fails (e.g., invalid regex, undefined fn).
 pub(crate) fn eval_marker(
     markers: &[crate::Spanned<AstMarkerDecl>],
@@ -29,30 +36,45 @@ pub(crate) fn eval_marker(
     env: &Arc<Env>,
     file_id: &FileId,
     ctx: &mut LoweringContext,
-) -> Result<Option<SkipReport>, LoweringBail> {
+) -> Result<MarkerResult, LoweringBail> {
     let fns = ctx.pure_functions().clone();
+    let mut flaky = false;
 
     for marker in markers {
         let decl = &marker.node;
         let marker_span = IrSpan::new(file_id.clone(), decl.span);
 
-        let is_skip = match &decl.kind {
-            AstMarkerKind::Skip { .. } => true,
-            AstMarkerKind::Run { .. } => false,
-            AstMarkerKind::Flaky { .. } => continue,
+        // Determine marker kind: skip, run, or flaky
+        enum MarkerAction {
+            Skip,
+            Run,
+            Flaky,
+        }
+        let action = match &decl.kind {
+            AstMarkerKind::Skip { .. } => MarkerAction::Skip,
+            AstMarkerKind::Run { .. } => MarkerAction::Run,
+            AstMarkerKind::Flaky { .. } => MarkerAction::Flaky,
         };
 
         let Some(condition) = &decl.condition else {
-            // No condition
-            if is_skip {
-                return Ok(Some(SkipReport {
-                    definition,
-                    marker_span,
-                    evaluation: SkipEvaluation::Unconditional,
-                }));
+            // No condition — unconditional marker
+            match action {
+                MarkerAction::Skip => {
+                    return Ok(MarkerResult {
+                        skip: Some(SkipReport {
+                            definition,
+                            marker_span,
+                            evaluation: SkipEvaluation::Unconditional,
+                        }),
+                        flaky,
+                    });
+                }
+                MarkerAction::Run => continue, // @run with no condition = always run
+                MarkerAction::Flaky => {
+                    flaky = true;
+                    continue;
+                }
             }
-            // @run with no condition = always run
-            continue;
         };
 
         let negate = matches!(&condition.modifier, AstCondModifier::Unless { .. });
@@ -127,18 +149,33 @@ pub(crate) fn eval_marker(
             met = !met;
         }
 
-        let should_skip = if is_skip { met } else { !met };
-
-        if should_skip {
-            return Ok(Some(SkipReport {
-                definition,
-                marker_span,
-                evaluation,
-            }));
+        match action {
+            MarkerAction::Skip | MarkerAction::Run => {
+                let should_skip = match action {
+                    MarkerAction::Skip => met,
+                    MarkerAction::Run => !met,
+                    _ => unreachable!(),
+                };
+                if should_skip {
+                    return Ok(MarkerResult {
+                        skip: Some(SkipReport {
+                            definition,
+                            marker_span,
+                            evaluation,
+                        }),
+                        flaky,
+                    });
+                }
+            }
+            MarkerAction::Flaky => {
+                if met {
+                    flaky = true;
+                }
+            }
         }
     }
 
-    Ok(None)
+    Ok(MarkerResult { skip: None, flaky })
 }
 
 #[cfg(test)]
@@ -730,7 +767,7 @@ test "t" {
     }
 
     #[test]
-    fn marker_flaky_ignored() {
+    fn marker_flaky_unconditional_sets_flag() {
         let suite = resolve_source_no_env(&[(
             "tests/a",
             r#"# flaky
@@ -742,6 +779,112 @@ test "t" {
 "#,
         )]);
         assert!(is_runnable(&suite.plans[0]));
+        assert!(is_flaky(&suite.plans[0]));
+    }
+
+    #[test]
+    fn marker_flaky_if_truthy_sets_flag() {
+        let mut env = HashMap::new();
+        env.insert("CI".into(), "true".into());
+        let suite = resolve_source(
+            &[(
+                "tests/a",
+                r#"# flaky if CI
+test "t" {
+  shell sh {
+    > echo hello
+  }
+}
+"#,
+            )],
+            env,
+        );
+        assert!(is_runnable(&suite.plans[0]));
+        assert!(is_flaky(&suite.plans[0]));
+    }
+
+    #[test]
+    fn marker_flaky_if_falsy_not_flaky() {
+        let suite = resolve_source_no_env(&[(
+            "tests/a",
+            r#"# flaky if CI
+test "t" {
+  shell sh {
+    > echo hello
+  }
+}
+"#,
+        )]);
+        assert!(is_runnable(&suite.plans[0]));
+        assert!(!is_flaky(&suite.plans[0]));
+    }
+
+    #[test]
+    fn marker_flaky_unless_empty_is_flaky() {
+        let suite = resolve_source_no_env(&[(
+            "tests/a",
+            r#"# flaky unless UNSET
+test "t" {
+  shell sh {
+    > echo hello
+  }
+}
+"#,
+        )]);
+        assert!(is_runnable(&suite.plans[0]));
+        assert!(is_flaky(&suite.plans[0]));
+    }
+
+    #[test]
+    fn marker_flaky_unless_truthy_not_flaky() {
+        let mut env = HashMap::new();
+        env.insert("STABLE".into(), "yes".into());
+        let suite = resolve_source(
+            &[(
+                "tests/a",
+                r#"# flaky unless STABLE
+test "t" {
+  shell sh {
+    > echo hello
+  }
+}
+"#,
+            )],
+            env,
+        );
+        assert!(is_runnable(&suite.plans[0]));
+        assert!(!is_flaky(&suite.plans[0]));
+    }
+
+    #[test]
+    fn marker_flaky_with_skip_skip_wins() {
+        let suite = resolve_source_no_env(&[(
+            "tests/a",
+            r#"# flaky
+# skip
+test "t" {
+  shell sh {
+    > echo hello
+  }
+}
+"#,
+        )]);
+        assert!(is_skipped(&suite.plans[0]));
+    }
+
+    #[test]
+    fn marker_no_flaky_by_default() {
+        let suite = resolve_source_no_env(&[(
+            "tests/a",
+            r#"test "t" {
+  shell sh {
+    > echo hello
+  }
+}
+"#,
+        )]);
+        assert!(is_runnable(&suite.plans[0]));
+        assert!(!is_flaky(&suite.plans[0]));
     }
 
     // ─── Marker on fn/effect ───────────────────────────────────

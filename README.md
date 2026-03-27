@@ -39,7 +39,6 @@ A1. [Best Practices](docs/tutorial/A1-best-practices.md) — all best-practices 
 - Per-shell command override: per-shell executable override via shell block attributes (global shell command now configurable in `Relux.toml`)
 - Custom scaffold templates: user-defined templates for `relux new --test` and `relux new --effect` via `Relux.toml`, replacing the built-in defaults
 - Effect-level timeouts: allow effects to declare a default timeout (similar to test-level `~timeout`) that applies to all match operations within the effect's shell blocks
-- Flaky marker support: implement `# flaky` marker semantics — automatically retry tests marked as flaky on failure, with configurable retry count
 
 ## Planned RFCs
 

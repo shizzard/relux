@@ -76,6 +76,7 @@ pub struct RunContext {
     pub test_timeout: Option<IrTimeout>,
     pub suite_timeout: Option<Duration>,
     pub strategy: RunStrategy,
+    pub flaky: crate::core::config::FlakyConfig,
 }
 
 // ─── Environment Helpers ────────────────────────────────────
@@ -270,7 +271,7 @@ async fn run_worker<'a>(
                 warnings: plan_warnings,
             } => {
                 let tags = format_cause_tags(&[], plan_warnings, &suite.causes);
-                run_test_cancellable(
+                let mut result = run_test_cancellable(
                     meta,
                     test,
                     run_ctx,
@@ -280,8 +281,49 @@ async fn run_worker<'a>(
                     &cancel,
                     &suite.tables,
                     &suite.causes,
+                    1.0,
                 )
-                .await
+                .await;
+
+                // Flaky retry loop
+                if meta.flaky()
+                    && result.is_failure()
+                    && run_ctx.flaky.max_retries > 0
+                    && !cancel.is_cancelled()
+                {
+                    let mut retries = 0u32;
+                    for retry in 1..=run_ctx.flaky.max_retries {
+                        if cancel.is_cancelled() {
+                            break;
+                        }
+                        retries += 1;
+                        let flaky_m = run_ctx.flaky.timeout_multiplier.powi(retry as i32);
+                        let retry_test_path = format!("{test_path}-flaky-rerun-{retry}");
+                        result = run_test_cancellable(
+                            meta,
+                            test,
+                            run_ctx,
+                            base_env,
+                            &retry_test_path,
+                            &tags,
+                            &cancel,
+                            &suite.tables,
+                            &suite.causes,
+                            flaky_m,
+                        )
+                        .await;
+                        if !result.is_failure() {
+                            break;
+                        }
+                    }
+                    result.flaky_retries = retries;
+                    // Restore original test_path — the retry's log_dir is
+                    // intentionally kept so logs from the final attempt are
+                    // accessible, but the canonical test identity stays stable.
+                    result.test_path = test_path.clone();
+                }
+
+                result
             }
             Plan::Skipped {
                 meta,
@@ -302,6 +344,7 @@ async fn run_worker<'a>(
                     progress: String::new(),
                     log_dir: None,
                     warnings: Vec::new(),
+                    flaky_retries: 0,
                 }
             }
             Plan::Invalid {
@@ -323,6 +366,7 @@ async fn run_worker<'a>(
                     progress: String::new(),
                     log_dir: None,
                     warnings: Vec::new(),
+                    flaky_retries: 0,
                 }
             }
         };
@@ -369,6 +413,7 @@ async fn run_worker<'a>(
             progress: String::new(),
             log_dir: None,
             warnings: Vec::new(),
+            flaky_retries: 0,
         });
     }
 
@@ -388,14 +433,20 @@ async fn run_test_cancellable(
     cancel: &CancellationToken,
     tables: &crate::dsl::resolver::ir::Tables,
     _causes: &CauseTable,
+    flaky_timeout_multiplier: f64,
 ) -> TestResult {
     // Create a child token for test-level timeout
     let test_cancel = cancel.child_token();
 
     let effective_timeout = meta
         .timeout()
-        .map(|t| t.adjusted_duration())
-        .or_else(|| run_ctx.test_timeout.as_ref().map(|t| t.adjusted_duration()));
+        .map(|t| t.adjusted_duration_with_flaky(flaky_timeout_multiplier))
+        .or_else(|| {
+            run_ctx
+                .test_timeout
+                .as_ref()
+                .map(|t| t.adjusted_duration_with_flaky(flaky_timeout_multiplier))
+        });
 
     // Spawn test-level timeout watchdog
     let test_watchdog = effective_timeout.map(|timeout| {
@@ -415,6 +466,7 @@ async fn run_test_cancellable(
         cause_tags,
         &test_cancel,
         tables,
+        flaky_timeout_multiplier,
     )
     .await;
 
@@ -452,6 +504,7 @@ async fn run_test(
     cause_tags: &str,
     cancel: &CancellationToken,
     tables: &crate::dsl::resolver::ir::Tables,
+    flaky_timeout_multiplier: f64,
 ) -> TestResult {
     let test_start = Instant::now();
     let source_table = &tables.sources;
@@ -489,6 +542,7 @@ async fn run_test(
         env: test_env.clone(),
         cancel: cancel.clone(),
         test_start,
+        flaky_timeout_multiplier,
     };
 
     // Create a per-test EffectManager
@@ -539,6 +593,7 @@ async fn run_test(
             progress: progress_string,
             log_dir: Some(log_dir),
             warnings,
+            flaky_retries: 0,
         },
         Err(failure) => TestResult {
             test_name: meta.name().to_string(),
@@ -548,6 +603,7 @@ async fn run_test(
             progress: progress_string,
             log_dir: Some(log_dir),
             warnings,
+            flaky_retries: 0,
         },
     }
 }

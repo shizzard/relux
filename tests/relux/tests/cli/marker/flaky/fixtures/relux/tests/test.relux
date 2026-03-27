@@ -1,7 +1,6 @@
 # flaky
-test "flaky test" {
+test "flaky test" ~50ms {
     shell s {
-        > echo hello
-        <? ^hello$
+        sleep("90ms")
     }
 }

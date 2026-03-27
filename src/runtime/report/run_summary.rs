@@ -34,6 +34,8 @@ pub struct TestEntry {
     pub failure_summary: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skip_reason: Option<String>,
+    #[serde(default)]
+    pub flaky_retries: u32,
 }
 
 pub fn write_run_summary(
@@ -104,6 +106,7 @@ fn build_summary(run_id: &str, results: &[TestResult], total_duration: Duration)
                 failure_type,
                 failure_summary,
                 skip_reason,
+                flaky_retries: r.flaky_retries,
             }
         })
         .collect();
@@ -127,6 +130,7 @@ mod tests {
             progress: String::new(),
             log_dir: None,
             warnings: Vec::new(),
+            flaky_retries: 0,
         }
     }
 

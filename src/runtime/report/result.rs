@@ -224,6 +224,7 @@ pub struct TestResult {
     pub progress: String,
     pub log_dir: Option<PathBuf>,
     pub warnings: Vec<crate::runtime::effect::Warning>,
+    pub flaky_retries: u32,
 }
 
 impl TestResult {
@@ -255,10 +256,12 @@ impl RunReport<'_> {
         let mut failed = 0usize;
         let mut skipped = 0usize;
         let mut invalid = 0usize;
+        let mut flaky_retries = 0u32;
         let mut total_duration = Duration::ZERO;
 
         for result in self.results {
             total_duration += result.duration;
+            flaky_retries += result.flaky_retries;
             match &result.outcome {
                 Outcome::Pass => passed += 1,
                 Outcome::Fail(f) => {
@@ -289,6 +292,9 @@ impl RunReport<'_> {
         }
         if skipped > 0 {
             summary.push_str(&format!("; {skipped} skipped"));
+        }
+        if flaky_retries > 0 {
+            summary.push_str(&format!("; {flaky_retries} flaky retries"));
         }
         summary.push_str(&format!(
             "; finished in {}\n",
@@ -409,6 +415,7 @@ mod tests {
             progress: String::new(),
             log_dir: Some(PathBuf::from("/tmp/runs/run-001/my_test")),
             warnings: Vec::new(),
+            flaky_retries: 0,
         };
         assert_eq!(
             log_link(run_dir, &result),
@@ -428,6 +435,7 @@ mod tests {
             progress: String::new(),
             log_dir: None,
             warnings: Vec::new(),
+            flaky_retries: 0,
         };
         assert_eq!(log_link(run_dir, &result), None);
     }

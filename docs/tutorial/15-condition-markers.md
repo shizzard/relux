@@ -56,7 +56,7 @@ test "work in progress" {
 
 The test appears in the results as skipped. When you are ready to re-enable it, remove the marker.
 
-**`# flaky`** marks a test as known-unstable. Currently this skips the test (retry support is a planned feature):
+**`# flaky`** marks a test as known-unstable. When `[flaky].max_retries` is set in `Relux.toml`, a failing flaky test is retried from scratch with exponentially increasing tolerance timeouts. With the default `max_retries = 0`, the marker is documentary only and the test runs normally:
 
 ```relux
 # flaky
@@ -67,6 +67,22 @@ test "timing sensitive" {
     }
 }
 ```
+
+Configure retry behavior in `Relux.toml`:
+
+```toml
+[flaky]
+max_retries = 3           # retry up to 3 times on failure
+timeout_multiplier = 1.5   # tolerance timeouts scale by 1.5^retry
+```
+
+Or override from the command line:
+
+```bash
+relux run --flaky-retries 3 --flaky-multiplier 2.0
+```
+
+Each retry runs the test from scratch — fresh shell, fresh effects. Tolerance timeouts (`~`) are scaled by `multiplier^(retry-1)`; assertion timeouts (`@`) are never scaled. If any retry passes, the test is reported as passed. If all retries are exhausted, it is reported as failed.
 
 **`# run`** without a condition is a no-op — the test runs as it normally would. On its own it has no effect, but it becomes useful with a condition attached, as shown below.
 

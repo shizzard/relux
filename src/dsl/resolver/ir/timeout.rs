@@ -63,6 +63,18 @@ impl IrTimeout {
         }
     }
 
+    /// The effective duration after both static and flaky multiplier adjustment.
+    pub fn adjusted_duration_with_flaky(&self, flaky_multiplier: f64) -> Duration {
+        match self {
+            Self::Tolerance {
+                duration,
+                multiplier,
+                ..
+            } => duration.mul_f64(*multiplier * flaky_multiplier),
+            Self::Assertion { duration, .. } => *duration,
+        }
+    }
+
     /// Whether this is an assertion timeout.
     pub fn is_assertion(&self) -> bool {
         matches!(self, Self::Assertion { .. })
@@ -179,5 +191,27 @@ mod tests {
     fn tolerance_scaled_fractional() {
         let t = IrTimeout::tolerance_scaled(Duration::from_secs(10), 0.5);
         assert_eq!(t.adjusted_duration(), Duration::from_secs(5));
+    }
+
+    #[test]
+    fn tolerance_flaky_multiplier() {
+        let t = IrTimeout::tolerance_scaled(Duration::from_secs(5), 2.0);
+        // base=5s, static_m=2.0, flaky_m=1.5 → 5*2.0*1.5 = 15s
+        assert_eq!(t.adjusted_duration_with_flaky(1.5), Duration::from_secs(15));
+    }
+
+    #[test]
+    fn assertion_ignores_flaky_multiplier() {
+        let t = IrTimeout::Assertion {
+            duration: Duration::from_secs(5),
+            span: IrSpan::synthetic(),
+        };
+        assert_eq!(t.adjusted_duration_with_flaky(2.0), Duration::from_secs(5));
+    }
+
+    #[test]
+    fn tolerance_flaky_multiplier_unit() {
+        let t = IrTimeout::tolerance_scaled(Duration::from_secs(10), 1.0);
+        assert_eq!(t.adjusted_duration_with_flaky(1.0), Duration::from_secs(10));
     }
 }

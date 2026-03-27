@@ -105,6 +105,37 @@ fn cli() -> Command {
                         .long("manifest")
                         .help("Path to the suite manifest file (default: auto-discover Relux.toml)")
                         .value_parser(value_parser!(PathBuf)),
+                )
+                .arg(
+                    Arg::new("flaky-retries")
+                        .long("flaky-retries")
+                        .help("Maximum number of retries for flaky-marked tests")
+                        .value_parser(clap::value_parser!(u32).range(1..)),
+                )
+                .arg(
+                    Arg::new("flaky-multiplier")
+                        .long("flaky-multiplier")
+                        .help("Exponential timeout multiplier base for flaky retries (default: 1.5)")
+                        .value_parser(|s: &str| {
+                            let v: f64 = s.parse().map_err(|e: std::num::ParseFloatError| e.to_string())?;
+                            if v <= 1.0 {
+                                Err("multiplier must be greater than 1.0".to_string())
+                            } else {
+                                Ok(v)
+                            }
+                        }),
+                )
+                .arg(
+                    Arg::new("test-timeout")
+                        .long("test-timeout")
+                        .help("Override per-test timeout (humantime string, e.g. '5m', '30s')")
+                        .value_name("DURATION"),
+                )
+                .arg(
+                    Arg::new("suite-timeout")
+                        .long("suite-timeout")
+                        .help("Override suite timeout (humantime string, e.g. '1h', '30m')")
+                        .value_name("DURATION"),
                 ),
         )
         .subcommand(
@@ -446,6 +477,17 @@ async fn cmd_run(matches: &clap::ArgMatches) {
         .get_one("multiplier")
         .expect("clap default guarantees presence");
 
+    let flaky_config = {
+        let mut fc = cfg.flaky.clone();
+        if let Some(&retries) = matches.get_one::<u32>("flaky-retries") {
+            fc.max_retries = retries;
+        }
+        if let Some(&m) = matches.get_one::<f64>("flaky-multiplier") {
+            fc.timeout_multiplier = m;
+        }
+        fc
+    };
+
     let loader = build_source_loader(&project_root);
     let env = Arc::new(Env::capture());
 
@@ -471,10 +513,27 @@ async fn cmd_run(matches: &clap::ArgMatches) {
     }
 
     let default_timeout = IrTimeout::tolerance_scaled(cfg.timeout.match_timeout, multiplier);
-    let test_timeout = cfg
-        .timeout
-        .test
+
+    let test_timeout = matches
+        .get_one::<String>("test-timeout")
+        .map(|s| {
+            humantime::parse_duration(s).unwrap_or_else(|e| {
+                eprintln!("error: invalid --test-timeout: {e}");
+                process::exit(1);
+            })
+        })
+        .or(cfg.timeout.test)
         .map(|d| IrTimeout::tolerance_scaled(d, multiplier));
+
+    let suite_timeout = matches
+        .get_one::<String>("suite-timeout")
+        .map(|s| {
+            humantime::parse_duration(s).unwrap_or_else(|e| {
+                eprintln!("error: invalid --suite-timeout: {e}");
+                process::exit(1);
+            })
+        })
+        .or(cfg.timeout.suite);
 
     let run_ctx = RunContext {
         run_id: run_id.clone(),
@@ -485,8 +544,9 @@ async fn cmd_run(matches: &clap::ArgMatches) {
         shell_prompt: cfg.shell.prompt.clone(),
         default_timeout,
         test_timeout,
-        suite_timeout: cfg.timeout.suite,
+        suite_timeout,
         strategy,
+        flaky: flaky_config,
     };
 
     let results = relux::runtime::execute(&suite, &run_ctx).await;

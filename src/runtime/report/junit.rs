@@ -200,6 +200,7 @@ mod tests {
             progress: String::new(),
             log_dir,
             warnings: Vec::new(),
+            flaky_retries: 0,
         }
     }
 

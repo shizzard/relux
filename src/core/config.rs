@@ -34,6 +34,22 @@ where
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct FlakyConfig {
+    pub max_retries: u32,
+    pub timeout_multiplier: f64,
+}
+
+impl Default for FlakyConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: 0,
+            timeout_multiplier: 1.5,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Default)]
 pub struct ReluxConfig {
     pub name: Option<String>,
@@ -41,6 +57,8 @@ pub struct ReluxConfig {
     pub shell: ShellConfig,
     #[serde(default)]
     pub timeout: TimeoutConfig,
+    #[serde(default)]
+    pub flaky: FlakyConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -201,5 +219,35 @@ suite = "30m"
         let config: ReluxConfig = toml::from_str("").unwrap();
         assert_eq!(config.shell.command, "/bin/sh");
         assert_eq!(config.timeout.match_timeout, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn parse_flaky_defaults() {
+        let config: ReluxConfig = toml::from_str("").unwrap();
+        assert_eq!(config.flaky.max_retries, 0);
+        assert_eq!(config.flaky.timeout_multiplier, 1.5);
+    }
+
+    #[test]
+    fn parse_flaky_custom() {
+        let toml_str = r#"
+[flaky]
+max_retries = 3
+timeout_multiplier = 2.0
+"#;
+        let config: ReluxConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.flaky.max_retries, 3);
+        assert_eq!(config.flaky.timeout_multiplier, 2.0);
+    }
+
+    #[test]
+    fn parse_flaky_partial() {
+        let toml_str = r#"
+[flaky]
+max_retries = 5
+"#;
+        let config: ReluxConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.flaky.max_retries, 5);
+        assert_eq!(config.flaky.timeout_multiplier, 1.5);
     }
 }

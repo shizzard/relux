@@ -690,16 +690,18 @@ impl LoweringContext {
             &file_id,
             self,
         ) {
-            Ok(Some(skip)) => {
-                let bail = LoweringBail::skip(skip);
-                let cause_id = bail.cause_id();
-                self.register_cause(cause_id, Cause::from_bail(&bail));
-                self.pop_scope();
-                self.pop_fn();
-                self.tables.fns.insert(fn_id.clone(), Err(bail.clone()));
-                return Err(bail);
+            Ok(result) => {
+                if let Some(skip) = result.skip {
+                    let bail = LoweringBail::skip(skip);
+                    let cause_id = bail.cause_id();
+                    self.register_cause(cause_id, Cause::from_bail(&bail));
+                    self.pop_scope();
+                    self.pop_fn();
+                    self.tables.fns.insert(fn_id.clone(), Err(bail.clone()));
+                    return Err(bail);
+                }
+                // Flaky on fns is ignored (only meaningful on tests)
             }
-            Ok(None) => {}
             Err(bail) => {
                 let cause_id = bail.cause_id();
                 self.register_cause(cause_id, Cause::from_bail(&bail));
@@ -789,18 +791,19 @@ impl LoweringContext {
             &file_id,
             self,
         ) {
-            Ok(Some(skip)) => {
-                let bail = LoweringBail::skip(skip);
-                let cause_id = bail.cause_id();
-                self.register_cause(cause_id, Cause::from_bail(&bail));
-                self.pop_scope();
-                self.pop_fn();
-                self.tables
-                    .pure_fns
-                    .insert(fn_id.clone(), Err(bail.clone()));
-                return Err(bail);
+            Ok(result) => {
+                if let Some(skip) = result.skip {
+                    let bail = LoweringBail::skip(skip);
+                    let cause_id = bail.cause_id();
+                    self.register_cause(cause_id, Cause::from_bail(&bail));
+                    self.pop_scope();
+                    self.pop_fn();
+                    self.tables
+                        .pure_fns
+                        .insert(fn_id.clone(), Err(bail.clone()));
+                    return Err(bail);
+                }
             }
-            Ok(None) => {}
             Err(bail) => {
                 let cause_id = bail.cause_id();
                 self.register_cause(cause_id, Cause::from_bail(&bail));
@@ -888,18 +891,19 @@ impl LoweringContext {
             &file_id,
             self,
         ) {
-            Ok(Some(skip)) => {
-                let bail = LoweringBail::skip(skip);
-                let cause_id = bail.cause_id();
-                self.register_cause(cause_id, Cause::from_bail(&bail));
-                self.pop_scope();
-                self.pop_effect();
-                self.tables
-                    .effects
-                    .insert(effect_id.clone(), Err(bail.clone()));
-                return Err(bail);
+            Ok(result) => {
+                if let Some(skip) = result.skip {
+                    let bail = LoweringBail::skip(skip);
+                    let cause_id = bail.cause_id();
+                    self.register_cause(cause_id, Cause::from_bail(&bail));
+                    self.pop_scope();
+                    self.pop_effect();
+                    self.tables
+                        .effects
+                        .insert(effect_id.clone(), Err(bail.clone()));
+                    return Err(bail);
+                }
             }
-            Ok(None) => {}
             Err(bail) => {
                 let cause_id = bail.cause_id();
                 self.register_cause(cause_id, Cause::from_bail(&bail));
@@ -1158,6 +1162,10 @@ pub(crate) mod test_helpers {
 
     pub fn is_invalid(plan: &Plan) -> bool {
         matches!(plan, Plan::Invalid { .. })
+    }
+
+    pub fn is_flaky(plan: &Plan) -> bool {
+        plan.meta().flaky()
     }
 }
 

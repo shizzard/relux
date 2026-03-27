@@ -130,7 +130,7 @@ pub fn format_flaky_human(
     let (idx, legend) = build_file_index(&display_refs);
 
     let mut builder = Builder::default();
-    builder.push_record(["Test", "Flips", "Pass", "Fail", "Rate"]);
+    builder.push_record(["Test", "Flips", "Pass", "Fail", "Rate", "Avg Retries"]);
     for (key, rec) in entries {
         let display_id = key.to_string();
         builder.push_record([
@@ -139,6 +139,7 @@ pub fn format_flaky_human(
             rec.pass.to_string(),
             rec.fail.to_string(),
             format!("{:.1}%", rec.rate),
+            format!("{:.1}", rec.avg_retries),
         ]);
     }
 
@@ -163,6 +164,7 @@ pub fn format_flaky_toml(
         pass: usize,
         fail: usize,
         rate: f64,
+        avg_retries: f64,
     }
 
     let report = FlakyReport {
@@ -177,6 +179,7 @@ pub fn format_flaky_toml(
                 pass: r.pass,
                 fail: r.fail,
                 rate: r.rate,
+                avg_retries: r.avg_retries,
             })
             .collect(),
     };

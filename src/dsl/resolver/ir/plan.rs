@@ -29,6 +29,7 @@ pub struct TestMeta {
     name: String,
     docstring: Option<String>,
     timeout: Option<IrTimeout>,
+    flaky: bool,
     span: IrSpan,
 }
 
@@ -43,6 +44,7 @@ impl TestMeta {
             name: name.into(),
             docstring,
             timeout,
+            flaky: false,
             span,
         }
     }
@@ -57,6 +59,14 @@ impl TestMeta {
 
     pub fn timeout(&self) -> Option<&IrTimeout> {
         self.timeout.as_ref()
+    }
+
+    pub fn flaky(&self) -> bool {
+        self.flaky
+    }
+
+    pub fn set_flaky(&mut self, flaky: bool) {
+        self.flaky = flaky;
     }
 }
 
@@ -124,7 +134,7 @@ pub(crate) fn build_plan(
         .timeout
         .as_ref()
         .map(|t| IrTimeout::lower(&t.node, file_id, ctx).unwrap());
-    let meta = TestMeta::new(
+    let mut meta = TestMeta::new(
         def.name.node.clone(),
         docstring,
         timeout,
@@ -158,17 +168,19 @@ pub(crate) fn build_plan(
         module: module_path.clone(),
     };
     match super::marker::eval_marker(&def.markers, definition, &env, file_id, ctx) {
-        Ok(Some(skip)) => {
-            let cause_id = skip.cause_id();
-            ctx.register_cause(cause_id.clone(), Cause::skip(skip));
-            ctx.pop_scope();
-            return Plan::Skipped {
-                meta,
-                causes: vec![cause_id],
-                warnings: vec![],
-            };
+        Ok(result) => {
+            if let Some(skip) = result.skip {
+                let cause_id = skip.cause_id();
+                ctx.register_cause(cause_id.clone(), Cause::skip(skip));
+                ctx.pop_scope();
+                return Plan::Skipped {
+                    meta,
+                    causes: vec![cause_id],
+                    warnings: vec![],
+                };
+            }
+            meta.set_flaky(result.flaky);
         }
-        Ok(None) => {}
         Err(bail) => {
             let cause_id = bail.cause_id();
             ctx.register_cause(cause_id.clone(), Cause::from_bail(&bail));

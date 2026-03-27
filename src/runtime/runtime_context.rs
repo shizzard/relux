@@ -26,6 +26,7 @@ pub struct RuntimeContext {
     pub env: Arc<Env>,
     pub cancel: CancellationToken,
     pub test_start: Instant,
+    pub flaky_timeout_multiplier: f64,
 }
 
 impl RuntimeContext {

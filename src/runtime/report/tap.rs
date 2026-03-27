@@ -181,6 +181,7 @@ mod tests {
             progress: String::new(),
             log_dir: log_dir.map(PathBuf::from),
             warnings: Vec::new(),
+            flaky_retries: 0,
         }
     }
 
@@ -194,6 +195,7 @@ mod tests {
             progress: String::new(),
             log_dir: log_dir.map(PathBuf::from),
             warnings: Vec::new(),
+            flaky_retries: 0,
         }
     }
 
@@ -207,6 +209,7 @@ mod tests {
             progress: String::new(),
             log_dir: None,
             warnings: Vec::new(),
+            flaky_retries: 0,
         }
     }
 

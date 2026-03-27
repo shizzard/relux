@@ -87,6 +87,7 @@ pub struct Vm {
     pub events: EventSink,
     shell_prompt: String,
     pub(crate) cancel: CancellationToken,
+    flaky_timeout_multiplier: f64,
 }
 
 impl Vm {
@@ -125,12 +126,18 @@ impl Vm {
             events: events.clone(),
             shell_prompt,
             cancel,
+            flaky_timeout_multiplier: rt_ctx.flaky_timeout_multiplier,
         };
 
         events.emit_shell_spawn(&shell_name, &shell_command);
 
         vm.pty
-            .init_prompt(&vm.shell_prompt, vm.ctx.timeout().adjusted_duration())
+            .init_prompt(
+                &vm.shell_prompt,
+                vm.ctx
+                    .timeout()
+                    .adjusted_duration_with_flaky(vm.flaky_timeout_multiplier),
+            )
             .await
             .map_err(|_| Failure::Runtime {
                 message: "shell did not produce prompt during init".to_string(),
@@ -305,7 +312,10 @@ impl Vm {
                 Ok(data)
             }
             IrShellStmt::MatchLiteral { pattern, .. } => {
-                let timeout = self.ctx.timeout().adjusted_duration();
+                let timeout = self
+                    .ctx
+                    .timeout()
+                    .adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
                 let pat = interpolate_ir(pattern, &self.ctx).await;
                 self.emit_interpolation(pattern, &pat).await;
                 let shell = self.ctx.current_name();
@@ -323,7 +333,10 @@ impl Vm {
                 Ok(pat)
             }
             IrShellStmt::MatchRegex { pattern, .. } => {
-                let timeout = self.ctx.timeout().adjusted_duration();
+                let timeout = self
+                    .ctx
+                    .timeout()
+                    .adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
                 let pat = interpolate_ir(pattern, &self.ctx).await;
                 self.emit_interpolation(pattern, &pat).await;
                 let re = RegexBuilder::new(&pat)
@@ -357,7 +370,7 @@ impl Vm {
             IrShellStmt::TimedMatchLiteral {
                 timeout, pattern, ..
             } => {
-                let dur = timeout.adjusted_duration();
+                let dur = timeout.adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
                 let pat = interpolate_ir(pattern, &self.ctx).await;
                 self.emit_interpolation(pattern, &pat).await;
                 let shell = self.ctx.current_name();
@@ -377,7 +390,7 @@ impl Vm {
             IrShellStmt::TimedMatchRegex {
                 timeout, pattern, ..
             } => {
-                let dur = timeout.adjusted_duration();
+                let dur = timeout.adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
                 let pat = interpolate_ir(pattern, &self.ctx).await;
                 self.emit_interpolation(pattern, &pat).await;
                 let re = RegexBuilder::new(&pat)
@@ -585,7 +598,10 @@ impl Vm {
         let shell = self.ctx.current_name();
         self.events.emit_match_start(&shell, pattern, false);
         let match_start = Instant::now();
-        let timeout = self.ctx.timeout().adjusted_duration();
+        let timeout = self
+            .ctx
+            .timeout()
+            .adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
         let (mat, snapshot) = self
             .wait_consume_literal(pattern, timeout, span.clone())
             .await?;

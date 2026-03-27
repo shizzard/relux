@@ -1,11 +1,25 @@
-test "flaky marker skips the test" {
+test "flaky marker with no retries fails on first attempt" {
     """
-    Verify flaky marker causes the test to be reported as skipped.
-    # TODO: flaky marker not yet implemented in new resolver — test just passes
+    With max_retries=0 (default), flaky marker is documentary only.
+    The fixture test genuinely fails (50ms timeout, 90ms sleep),
+    so with no retries it should report a failure.
     """
     shell s {
         > ${__RELUX} run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
-        <? 1 passed
+        <? 1 failed
+        match_not_ok(1)
+    }
+}
+
+test "flaky retries recovers on third attempt" {
+    """
+    With --flaky-retries 3, the fixture test fails twice (timeout too short)
+    then passes on the third attempt (timeout scaled by 1.5^2 = 2.25x).
+    """
+    shell s {
+        > ${__RELUX} run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml --flaky-retries 3 2>&1
+        <? flaky-rerun-2.*ok
+        <? 1 passed.*2 flaky retries
         match_ok()
     }
 }
