@@ -26,3 +26,5 @@ Substantial changes to Relux are proposed and discussed through RFCs (Requests f
 | R002 | Best-Effort Cleanup | accepted |
 | R003 | Lexer/Parser Rework | implemented |
 | R004 | Resolver Rework | implemented |
+| R005 | Runtime Rework | implemented |
+| R006 | Multiple Marker Semantics | draft |

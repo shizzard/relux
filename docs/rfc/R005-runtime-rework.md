@@ -1,6 +1,6 @@
 # R005: Runtime Rework
 
-- **Status**: draft
+- **Status**: implemented
 - **Created**: 2026-03-25
 
 ## Motivation
