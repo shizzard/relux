@@ -3,7 +3,7 @@ test "fail-fast stops after first failure" ~300ms {
     Verify relux run --strategy fail-fast stops after the first test failure.
     """
     shell s {
-        > ${__RELUX} run --strategy fail-fast --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        > ${__RELUX} run --progress plain --strategy fail-fast --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? 1 failed
         match_prompt()
         match_exit_code(1)

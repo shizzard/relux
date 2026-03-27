@@ -11,15 +11,15 @@ test "rerun re-runs only failed tests" {
              invalid remain. Both are still rerun.
     """
     shell s {
-        > TRIGGER=error ${__RELUX} run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        > TRIGGER=error ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? 1 passed.*1 failed.*1 invalid.*1 skipped
         match_not_ok()
 
-        > TRIGGER=success ${__RELUX} run --rerun --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        > TRIGGER=success ${__RELUX} run --progress plain --rerun --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? 1 passed.*0 failed.*1 invalid.*1 skipped
         match_not_ok()
 
-        > ${__RELUX} run --rerun --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        > ${__RELUX} run --progress plain --rerun --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? 0 passed.*0 failed.*1 invalid.*1 skipped
         match_not_ok()
     }

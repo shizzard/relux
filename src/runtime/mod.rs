@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -63,6 +62,18 @@ pub enum RunStrategy {
     FailFast,
 }
 
+// ─── ProgressMode ───────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProgressMode {
+    /// Detect TTY on stderr; use TUI if interactive, plain otherwise.
+    Auto,
+    /// Always use plain output (result lines only, no cursor control).
+    Plain,
+    /// Always use TUI (live progress, even if not a TTY).
+    Tui,
+}
+
 // ─── RunContext ─────────────────────────────────────────────
 
 pub struct RunContext {
@@ -77,6 +88,8 @@ pub struct RunContext {
     pub suite_timeout: Option<Duration>,
     pub strategy: RunStrategy,
     pub flaky: crate::core::config::FlakyConfig,
+    pub jobs: usize,
+    pub progress: ProgressMode,
 }
 
 // ─── Environment Helpers ────────────────────────────────────
@@ -99,8 +112,8 @@ fn build_env(ctx: &RunContext) -> Arc<Env> {
     Arc::new(env)
 }
 
-fn make_test_env(base: &Arc<Env>, test_file: &Path) -> Arc<Env> {
-    let mut env = base.as_ref().clone();
+fn make_test_env(base: &Env, test_file: &Path) -> Arc<Env> {
+    let mut env = base.clone();
     if let Some(dir) = test_file.parent() {
         env.insert("__RELUX_TEST_ROOT".into(), dir.display().to_string());
     }
@@ -206,10 +219,21 @@ pub fn slugify(name: &str) -> String {
 
 // ─── Execute (Suite Entry Point) ────────────────────────────
 
-pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> Vec<TestResult> {
-    let base_env = build_env(run_ctx);
+pub struct ExecuteResult {
+    pub results: Vec<TestResult>,
+    pub wall_duration: Duration,
+}
 
-    eprintln!("\nrunning {} tests", suite.plans.len());
+pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> ExecuteResult {
+    let wall_start = Instant::now();
+    let base_env = build_env(run_ctx);
+    let jobs = run_ctx.jobs;
+
+    if jobs > 1 {
+        eprintln!("\nrunning {} tests ({jobs} workers)", suite.plans.len());
+    } else {
+        eprintln!("\nrunning {} tests", suite.plans.len());
+    }
 
     let cancel = CancellationToken::new();
     let cancel_reason: Arc<OnceLock<CancelReason>> = Arc::new(OnceLock::new());
@@ -220,49 +244,92 @@ pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> Vec<TestResult> {
         let watchdog_reason = cancel_reason.clone();
         tokio::spawn(async move {
             tokio::time::sleep(timeout).await;
-            // First canceller wins; ignore if already set
             let _ = watchdog_reason.set(CancelReason::SuiteTimeout);
             watchdog_cancel.cancel();
         })
     });
 
-    // Build shared test queue
-    let queue: Arc<std::sync::Mutex<VecDeque<&Plan>>> =
-        Arc::new(std::sync::Mutex::new(suite.plans.iter().collect()));
+    // Spawn TUI renderer
+    let is_tty = match run_ctx.progress {
+        ProgressMode::Auto => std::io::IsTerminal::is_terminal(&std::io::stderr()),
+        ProgressMode::Plain => false,
+        ProgressMode::Tui => true,
+    };
+    let (tui_tx, tui_rx) = observe::tui::channel();
+    let tui_handle = observe::tui::spawn_tui(tui_rx, jobs, is_tty);
 
-    // Run single worker (future: spawn N workers for concurrency)
-    let results = run_worker(queue, cancel, cancel_reason, suite, run_ctx, &base_env).await;
+    // Build shared test queue with original indices for deterministic ordering
+    let queue: Arc<std::sync::Mutex<VecDeque<(usize, &Plan)>>> = Arc::new(std::sync::Mutex::new(
+        suite.plans.iter().enumerate().collect(),
+    ));
+
+    // Spawn N workers as concurrent futures
+    let mut worker_futs = Vec::with_capacity(jobs);
+    for slot in 0..jobs {
+        let ctx = WorkerContext {
+            queue: queue.clone(),
+            cancel: cancel.clone(),
+            cancel_reason: cancel_reason.clone(),
+            suite,
+            run_ctx,
+            base_env: base_env.clone(),
+            tui_tx: tui_tx.clone(),
+        };
+        worker_futs.push(run_worker(ctx, slot));
+    }
+
+    // Await all workers concurrently
+    let worker_results = futures::future::join_all(worker_futs).await;
+
+    // Drop our copy of tui_tx so the renderer can finish
+    drop(tui_tx);
+    tui_handle.await.ok();
 
     // Abort suite timeout watchdog if it's still running
     if let Some(handle) = watchdog {
         handle.abort();
     }
 
-    results
+    // Merge and sort results by original plan index
+    let mut all_results: Vec<(usize, TestResult)> = worker_results.into_iter().flatten().collect();
+    all_results.sort_by_key(|(idx, _)| *idx);
+    ExecuteResult {
+        results: all_results.into_iter().map(|(_, r)| r).collect(),
+        wall_duration: wall_start.elapsed(),
+    }
 }
 
-async fn run_worker<'a>(
-    queue: Arc<std::sync::Mutex<VecDeque<&'a Plan>>>,
+struct WorkerContext<'a> {
+    queue: Arc<std::sync::Mutex<VecDeque<(usize, &'a Plan)>>>,
     cancel: CancellationToken,
     cancel_reason: Arc<OnceLock<CancelReason>>,
     suite: &'a Suite,
-    run_ctx: &RunContext,
-    base_env: &Arc<Env>,
-) -> Vec<TestResult> {
+    run_ctx: &'a RunContext,
+    base_env: Arc<Env>,
+    tui_tx: observe::tui::TuiTx,
+}
+
+async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResult)> {
     let mut results = Vec::new();
+    let mut generation: u64 = 0;
     loop {
-        if cancel.is_cancelled() {
+        if ctx.cancel.is_cancelled() {
             break;
         }
 
-        let plan = {
-            let mut q = queue.lock().expect("queue lock poisoned");
+        let entry = {
+            let mut q = ctx.queue.lock().expect("queue lock poisoned");
             q.pop_front()
         };
-        let Some(plan) = plan else { break };
+        let Some((plan_idx, plan)) = entry else {
+            break;
+        };
 
-        let test_path =
-            test_path_from_meta(&suite.tables.sources, plan.meta(), &run_ctx.project_root);
+        let test_path = test_path_from_meta(
+            &ctx.suite.tables.sources,
+            plan.meta(),
+            &ctx.run_ctx.project_root,
+        );
 
         let result = match plan {
             Plan::Runnable {
@@ -270,46 +337,60 @@ async fn run_worker<'a>(
                 test,
                 warnings: plan_warnings,
             } => {
-                let tags = format_cause_tags(&[], plan_warnings, &suite.causes);
+                let tags = format_cause_tags(&[], plan_warnings, &ctx.suite.causes);
+                let display_id = test_display_id(&test_path, meta.name());
+                generation += 1;
+                let _ = ctx.tui_tx.send(observe::tui::TuiEvent::TestStarted {
+                    slot,
+                    test_id: display_id.clone(),
+                    generation,
+                });
+
                 let mut result = run_test_cancellable(
                     meta,
                     test,
-                    run_ctx,
-                    base_env,
+                    ctx.run_ctx,
+                    ctx.base_env.clone(),
                     &test_path,
                     &tags,
-                    &cancel,
-                    &suite.tables,
-                    &suite.causes,
+                    &ctx.cancel,
+                    &ctx.suite.tables,
+                    &ctx.suite.causes,
                     1.0,
+                    slot,
+                    &ctx.tui_tx,
+                    generation,
                 )
                 .await;
 
                 // Flaky retry loop
                 if meta.flaky()
                     && result.is_failure()
-                    && run_ctx.flaky.max_retries > 0
-                    && !cancel.is_cancelled()
+                    && ctx.run_ctx.flaky.max_retries > 0
+                    && !ctx.cancel.is_cancelled()
                 {
                     let mut retries = 0u32;
-                    for retry in 1..=run_ctx.flaky.max_retries {
-                        if cancel.is_cancelled() {
+                    for retry in 1..=ctx.run_ctx.flaky.max_retries {
+                        if ctx.cancel.is_cancelled() {
                             break;
                         }
                         retries += 1;
-                        let flaky_m = run_ctx.flaky.timeout_multiplier.powi(retry as i32);
+                        let flaky_m = ctx.run_ctx.flaky.timeout_multiplier.powi(retry as i32);
                         let retry_test_path = format!("{test_path}-flaky-rerun-{retry}");
                         result = run_test_cancellable(
                             meta,
                             test,
-                            run_ctx,
-                            base_env,
+                            ctx.run_ctx,
+                            ctx.base_env.clone(),
                             &retry_test_path,
                             &tags,
-                            &cancel,
-                            &suite.tables,
-                            &suite.causes,
+                            &ctx.cancel,
+                            &ctx.suite.tables,
+                            &ctx.suite.causes,
                             flaky_m,
+                            slot,
+                            &ctx.tui_tx,
+                            generation,
                         )
                         .await;
                         if !result.is_failure() {
@@ -317,10 +398,19 @@ async fn run_worker<'a>(
                         }
                     }
                     result.flaky_retries = retries;
-                    // Restore original test_path — the retry's log_dir is
-                    // intentionally kept so logs from the final attempt are
-                    // accessible, but the canonical test identity stays stable.
                     result.test_path = test_path.clone();
+                }
+
+                // Send finish event and get progress string back
+                let (progress_oneshot_tx, progress_oneshot_rx) = tokio::sync::oneshot::channel();
+                let result_line = format_result_line(&display_id, &result, &tags);
+                let _ = ctx.tui_tx.send(observe::tui::TuiEvent::TestFinished {
+                    slot,
+                    result_line,
+                    progress_tx: progress_oneshot_tx,
+                });
+                if let Ok(progress) = progress_oneshot_rx.await {
+                    result.progress = progress;
                 }
 
                 result
@@ -330,12 +420,15 @@ async fn run_worker<'a>(
                 causes,
                 warnings,
             } => {
-                let tags = format_cause_tags(causes, warnings, &suite.causes);
+                let tags = format_cause_tags(causes, warnings, &ctx.suite.causes);
                 let display_id = test_display_id(&test_path, meta.name());
-                eprintln!(
+                let result_line = format!(
                     "test {display_id}: {}{tags}",
                     colored::Colorize::yellow("skipped")
                 );
+                let _ = ctx
+                    .tui_tx
+                    .send(observe::tui::TuiEvent::Skipped { result_line });
                 TestResult {
                     test_name: meta.name().to_string(),
                     test_path: test_path.clone(),
@@ -352,12 +445,15 @@ async fn run_worker<'a>(
                 causes,
                 warnings,
             } => {
-                let tags = format_cause_tags(causes, warnings, &suite.causes);
+                let tags = format_cause_tags(causes, warnings, &ctx.suite.causes);
                 let display_id = test_display_id(&test_path, meta.name());
-                eprintln!(
+                let result_line = format!(
                     "test {display_id}: {}{tags}",
                     colored::Colorize::red("INVALID")
                 );
+                let _ = ctx
+                    .tui_tx
+                    .send(observe::tui::TuiEvent::Skipped { result_line });
                 TestResult {
                     test_name: meta.name().to_string(),
                     test_path: test_path.clone(),
@@ -372,52 +468,75 @@ async fn run_worker<'a>(
         };
 
         let failed = matches!(result.outcome, Outcome::Fail(_));
-        results.push(result);
+        results.push((plan_idx, result));
 
-        if failed && run_ctx.strategy == RunStrategy::FailFast {
-            // First canceller wins; ignore if already set
-            let _ = cancel_reason.set(CancelReason::FailFast);
-            cancel.cancel();
+        if failed && ctx.run_ctx.strategy == RunStrategy::FailFast {
+            let _ = ctx.cancel_reason.set(CancelReason::FailFast);
+            ctx.cancel.cancel();
             break;
         }
     }
 
     // Drain remaining queue as skipped
-    let skip_reason = if cancel.is_cancelled() {
-        match cancel_reason.get() {
+    let skip_reason = if ctx.cancel.is_cancelled() {
+        match ctx.cancel_reason.get() {
             Some(CancelReason::FailFast) => "fail fast",
             Some(CancelReason::SuiteTimeout) => "suite timeout",
             None => "cancelled",
         }
     } else {
-        return results; // queue was exhausted normally, nothing to drain
+        return results;
     };
 
-    let remaining: Vec<&Plan> = {
-        let mut q = queue.lock().expect("queue lock poisoned");
+    let remaining: Vec<(usize, &Plan)> = {
+        let mut q = ctx.queue.lock().expect("queue lock poisoned");
         q.drain(..).collect()
     };
-    for plan in remaining {
-        let test_path =
-            test_path_from_meta(&suite.tables.sources, plan.meta(), &run_ctx.project_root);
+    for (plan_idx, plan) in remaining {
+        let test_path = test_path_from_meta(
+            &ctx.suite.tables.sources,
+            plan.meta(),
+            &ctx.run_ctx.project_root,
+        );
         let display_id = test_display_id(&test_path, plan.meta().name());
-        eprintln!(
+        let result_line = format!(
             "test {display_id}: {}",
             colored::Colorize::yellow("skipped")
         );
-        results.push(TestResult {
-            test_name: plan.meta().name().to_string(),
-            test_path,
-            outcome: Outcome::Skipped(skip_reason.to_string()),
-            duration: Duration::ZERO,
-            progress: String::new(),
-            log_dir: None,
-            warnings: Vec::new(),
-            flaky_retries: 0,
-        });
+        let _ = ctx
+            .tui_tx
+            .send(observe::tui::TuiEvent::Skipped { result_line });
+        results.push((
+            plan_idx,
+            TestResult {
+                test_name: plan.meta().name().to_string(),
+                test_path,
+                outcome: Outcome::Skipped(skip_reason.to_string()),
+                duration: Duration::ZERO,
+                progress: String::new(),
+                log_dir: None,
+                warnings: Vec::new(),
+                flaky_retries: 0,
+            },
+        ));
     }
 
     results
+}
+
+fn format_result_line(display_id: &str, result: &TestResult, cause_tags: &str) -> String {
+    use crate::runtime::report::result::format_duration;
+    use colored::Colorize;
+    let outcome_str = match &result.outcome {
+        Outcome::Pass => format!("{}", "ok".green()),
+        Outcome::Fail(_) => format!("{}", "FAILED".red()),
+        Outcome::Skipped(_) => format!("{}", "skipped".yellow()),
+        Outcome::Invalid(_) => format!("{}", "INVALID".red()),
+    };
+    format!(
+        "test {display_id}: {outcome_str} ({}){cause_tags}",
+        format_duration(result.duration)
+    )
 }
 
 /// Run a single test with cancellation support. On cancellation, cleanup
@@ -427,13 +546,16 @@ async fn run_test_cancellable(
     meta: &crate::dsl::resolver::ir::TestMeta,
     test: &IrTest,
     run_ctx: &RunContext,
-    base_env: &Arc<Env>,
+    base_env: Arc<Env>,
     test_path: &str,
     cause_tags: &str,
     cancel: &CancellationToken,
     tables: &crate::dsl::resolver::ir::Tables,
     _causes: &CauseTable,
     flaky_timeout_multiplier: f64,
+    slot: usize,
+    tui_tx: &observe::tui::TuiTx,
+    generation: u64,
 ) -> TestResult {
     // Create a child token for test-level timeout
     let test_cancel = cancel.child_token();
@@ -467,6 +589,9 @@ async fn run_test_cancellable(
         &test_cancel,
         tables,
         flaky_timeout_multiplier,
+        slot,
+        tui_tx,
+        generation,
     )
     .await;
 
@@ -494,36 +619,54 @@ async fn run_test_cancellable(
 
 // ─── Run Test ───────────────────────────────────────────────
 
+/// Create a ProgressTx that forwards events to the TUI renderer tagged with slot.
+fn make_tui_progress_tx(
+    tui_tx: &observe::tui::TuiTx,
+    slot: usize,
+    generation: u64,
+) -> observe::progress::ProgressTx {
+    let (tx, mut rx) = observe::progress::channel();
+    let tui_tx = tui_tx.clone();
+    tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            let _ = tui_tx.send(observe::tui::TuiEvent::Progress {
+                slot,
+                event,
+                generation,
+            });
+        }
+    });
+    tx
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_test(
     meta: &crate::dsl::resolver::ir::TestMeta,
     test: &IrTest,
     run_ctx: &RunContext,
-    base_env: &Arc<Env>,
+    base_env: Arc<Env>,
     test_path: &str,
-    cause_tags: &str,
+    _cause_tags: &str,
     cancel: &CancellationToken,
     tables: &crate::dsl::resolver::ir::Tables,
     flaky_timeout_multiplier: f64,
+    slot: usize,
+    tui_tx: &observe::tui::TuiTx,
+    generation: u64,
 ) -> TestResult {
     let test_start = Instant::now();
     let source_table = &tables.sources;
     let log_dir = test_log_dir(&run_ctx.run_dir, source_table, meta, &run_ctx.project_root);
     let _ = std::fs::create_dir_all(&log_dir);
 
-    let display_id = test_display_id(test_path, meta.name());
-    eprint!("test {display_id}: ");
-    let _ = std::io::stderr().flush();
-
-    let (progress_tx, progress_rx) = observe::progress::channel();
-    let printer_handle = observe::progress::spawn_printer(progress_rx);
+    let progress_tx = make_tui_progress_tx(tui_tx, slot, generation);
 
     let file_id = meta.span().file();
     let source_file = source_table
         .get(file_id)
         .map(|sf| sf.path.clone())
         .unwrap_or_else(|| file_id.path().clone());
-    let test_env = make_test_env(base_env, &source_file);
+    let test_env = make_test_env(&base_env, &source_file);
     let mut warnings = Vec::new();
 
     let shell_config = ShellConfig {
@@ -561,22 +704,12 @@ async fn run_test(
     // Collect events (consumes the EventSink, releasing its ProgressTx)
     let log_events = events.take();
 
-    // Drop all remaining ProgressTx holders so the printer task can finish
+    // Drop all remaining ProgressTx holders so the forwarder task can finish
     drop(test_manager);
     drop(rt_ctx);
     drop(progress_tx);
-    let progress_string = printer_handle.await.unwrap_or_default();
     let duration = test_start.elapsed();
 
-    {
-        use crate::runtime::report::result::format_duration;
-        use colored::Colorize;
-        let suffix = match &outcome {
-            Ok(()) => format!(" {} ({})", "ok".green(), format_duration(duration)),
-            Err(_) => format!(" {} ({})", "FAILED".red(), format_duration(duration)),
-        };
-        eprintln!("{suffix}{cause_tags}");
-    }
     crate::runtime::report::html::generate_html_logs(
         &log_dir,
         meta.name(),
@@ -590,7 +723,7 @@ async fn run_test(
             test_path: test_path.to_string(),
             outcome: Outcome::Pass,
             duration,
-            progress: progress_string,
+            progress: String::new(),
             log_dir: Some(log_dir),
             warnings,
             flaky_retries: 0,
@@ -600,7 +733,7 @@ async fn run_test(
             test_path: test_path.to_string(),
             outcome: Outcome::Fail(failure),
             duration,
-            progress: progress_string,
+            progress: String::new(),
             log_dir: Some(log_dir),
             warnings,
             flaky_retries: 0,

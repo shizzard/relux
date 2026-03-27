@@ -38,6 +38,9 @@ prompt = "relux> "
 match = "5s"
 test = "5m"
 suite = "30m"
+
+[run]
+jobs = 1
 ```
 
 ### Root-level fields
@@ -62,6 +65,12 @@ All durations use `humantime` format (e.g. `5s`, `1m30s`, `2h`).
 | `match`   | duration         | `5s`    | Per-match timeout                            |
 | `test`    | duration or null | —       | Max wall-clock time per test                 |
 | `suite`   | duration or null | —       | Max wall-clock time for the entire test run  |
+
+### `[run]` section
+
+| Field  | Type    | Default | Description                                   |
+|--------|---------|---------|-----------------------------------------------|
+| `jobs` | integer | `1`     | Number of parallel test workers               |
 
 ## Project structure
 
@@ -114,14 +123,19 @@ Library files from `relux/lib/` are always loaded regardless of which paths are 
 
 Exits with code 1 if any test fails.
 
-| Flag                          | Description                                                  |
-|-------------------------------|--------------------------------------------------------------|
-| `--tap`                       | Generate TAP artifact file in the run directory              |
-| `--junit`                     | Generate JUnit XML artifact file in the run directory        |
-| `-m`, `--timeout-multiplier`  | Scale all timeout values (default: `1.0`)                    |
-| `--progress <level>`          | Output verbosity: `quiet`, `basic`, `verbose` (default: `basic`) |
-| `--strategy <mode>`           | `all` (default) or `fail-fast`                               |
-| `--rerun`                     | Re-run only failed tests from the latest run                 |
+| Flag                          | Description                                                        |
+|-------------------------------|--------------------------------------------------------------------|
+| `-j`, `--jobs`                | Number of parallel test workers (default: `1`)                     |
+| `--tap`                       | Generate TAP artifact file in the run directory                    |
+| `--junit`                     | Generate JUnit XML artifact file in the run directory              |
+| `-m`, `--timeout-multiplier`  | Scale tolerance (`~`) timeout values (default: `1.0`)              |
+| `--progress <mode>`           | Display mode: `auto` (default), `plain`, `tui`                     |
+| `--strategy <mode>`           | `all` (default) or `fail-fast`                                     |
+| `--rerun`                     | Re-run only failed tests from the latest run                       |
+| `--flaky-retries`             | Max retries for `@flaky`-marked tests                              |
+| `--flaky-multiplier`          | Exponential timeout multiplier base for flaky retries (default: `1.5`) |
+| `--test-timeout`              | Override per-test timeout (humantime string)                       |
+| `--suite-timeout`             | Override suite timeout (humantime string)                          |
 
 ### `relux check [paths...]`
 

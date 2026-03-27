@@ -8,3 +8,6 @@
 # match = "5s"
 # test = "5m"
 # suite = "30m"
+
+[run]
+jobs = 20

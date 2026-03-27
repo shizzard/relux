@@ -50,6 +50,18 @@ impl Default for FlakyConfig {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct RunConfig {
+    pub jobs: usize,
+}
+
+impl Default for RunConfig {
+    fn default() -> Self {
+        Self { jobs: 1 }
+    }
+}
+
 #[derive(Debug, Deserialize, Default)]
 pub struct ReluxConfig {
     pub name: Option<String>,
@@ -59,6 +71,8 @@ pub struct ReluxConfig {
     pub timeout: TimeoutConfig,
     #[serde(default)]
     pub flaky: FlakyConfig,
+    #[serde(default)]
+    pub run: RunConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -249,5 +263,17 @@ max_retries = 5
         let config: ReluxConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(config.flaky.max_retries, 5);
         assert_eq!(config.flaky.timeout_multiplier, 1.5);
+    }
+
+    #[test]
+    fn parse_run_defaults() {
+        let config: ReluxConfig = toml::from_str("").unwrap();
+        assert_eq!(config.run.jobs, 1);
+    }
+
+    #[test]
+    fn parse_run_jobs() {
+        let config: ReluxConfig = toml::from_str("[run]\njobs = 4\n").unwrap();
+        assert_eq!(config.run.jobs, 4);
     }
 }

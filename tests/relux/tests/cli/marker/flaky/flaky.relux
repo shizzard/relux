@@ -5,7 +5,7 @@ test "flaky marker with no retries fails on first attempt" {
     so with no retries it should report a failure.
     """
     shell s {
-        > ${__RELUX} run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? 1 failed
         match_not_ok(1)
     }
@@ -17,8 +17,7 @@ test "flaky retries recovers on third attempt" {
     then passes on the third attempt (timeout scaled by 1.5^2 = 2.25x).
     """
     shell s {
-        > ${__RELUX} run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml --flaky-retries 3 2>&1
-        <? flaky-rerun-2.*ok
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml --flaky-retries 3 2>&1
         <? 1 passed.*2 flaky retries
         match_ok()
     }

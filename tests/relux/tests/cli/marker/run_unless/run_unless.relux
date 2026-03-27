@@ -3,7 +3,7 @@ test "run unless: skips when var is set" {
     Verify run-unless marker skips the test when the condition variable is set.
     """
     shell s {
-        > MY_VAR=1 ${__RELUX} run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        > MY_VAR=1 ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? 1 skipped
         match_ok()
     }
@@ -14,7 +14,7 @@ test "run unless: runs when var is unset" {
     Verify run-unless marker runs the test when the condition variable is unset.
     """
     shell s {
-        > ${__RELUX} run --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? 1 passed
         match_ok()
     }

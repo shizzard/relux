@@ -34,3 +34,4 @@ bytes = "~1.11"
 thiserror = "~2"
 elsa = "~1.11"
 tokio-util = { version = "~0.7", features = ["rt"] }
+futures = "0.3.32"

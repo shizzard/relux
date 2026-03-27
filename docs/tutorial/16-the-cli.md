@@ -100,19 +100,38 @@ relux run relux/tests/smoke/
 relux run relux/tests/auth/login.relux relux/tests/auth/signup.relux
 ```
 
+### Parallel execution
+
+By default tests run sequentially. The `-j` (or `--jobs`) flag sets the number of parallel workers:
+
+```bash
+relux run -j 4
+```
+
+You can also set the default in `Relux.toml`:
+
+```toml
+[run]
+jobs = 4
+```
+
+The CLI flag overrides the config value. Each test gets its own isolated set of effects — parallel tests never share state.
+
+When running in parallel, the final summary reports both wall-clock time and cumulative (sum of all workers) time.
+
 ### Progress and strategy
 
 Two flags control the experience during a run:
 
 ```bash
-relux run --progress verbose --strategy fail-fast
+relux run --progress tui --strategy fail-fast
 ```
 
-**`--progress`** controls how much output you see while tests are running:
+**`--progress`** controls the progress display mode:
 
-- `quiet` — minimal output, just the final summary
-- `basic` — standard progress reporting (default)
-- `verbose` — detailed real-time output including shell I/O
+- `auto` — show a live TUI when connected to a TTY, plain output otherwise (default)
+- `plain` — print only result lines as tests finish, no live progress
+- `tui` — force the live TUI even when not connected to a TTY
 
 **`--strategy`** controls what happens when a test fails:
 
@@ -173,17 +192,46 @@ relux run --tap --junit
 
 Both flags can be used together. They are independent of each other and of the console output.
 
+### Flaky retries
+
+Tests marked with the `@flaky` [condition marker](15-condition-markers.md) can be automatically retried on failure. The `--flaky-retries` flag sets the maximum retry count:
+
+```bash
+relux run --flaky-retries 3
+```
+
+By default, each retry applies an exponential timeout multiplier so that tolerance timeouts grow across attempts. The `--flaky-multiplier` flag controls the base of that multiplier (default: `1.5`):
+
+```bash
+relux run --flaky-retries 3 --flaky-multiplier 2.0
+```
+
+### Timeout overrides
+
+You can override the per-test and suite timeouts from the command line, without editing `Relux.toml`:
+
+```bash
+relux run --test-timeout 2m --suite-timeout 1h
+```
+
+These accept the same humantime format as the config file (`5s`, `1m30s`, `2h`).
+
 ### All `run` flags
 
-| Flag                   | Short | Default       | Purpose                                       |
-|------------------------|-------|---------------|-----------------------------------------------|
-| `--progress`           |       | `basic`       | Output verbosity: `quiet`, `basic`, `verbose` |
-| `--strategy`           |       | `all`         | Run strategy: `all` or `fail-fast`            |
-| `--timeout-multiplier` | `-m`  | `1.0`         | Scale tolerance (`~`) timeouts by this factor |
-| `--rerun`              |       |               | Re-run only failed tests from the latest run  |
-| `--tap`                |       |               | Generate TAP artifact file                    |
-| `--junit`              |       |               | Generate JUnit XML artifact file              |
-| `--manifest`           |       | auto-discover | Path to `Relux.toml`                          |
+| Flag                   | Short | Default       | Purpose                                            |
+|------------------------|-------|---------------|----------------------------------------------------|
+| `--jobs`               | `-j`  | `1`           | Number of parallel test workers                    |
+| `--progress`           |       | `auto`        | Display mode: `auto`, `plain`, `tui`               |
+| `--strategy`           |       | `all`         | Run strategy: `all` or `fail-fast`                 |
+| `--timeout-multiplier` | `-m`  | `1.0`         | Scale tolerance (`~`) timeouts by this factor      |
+| `--rerun`              |       |               | Re-run only failed tests from the latest run       |
+| `--tap`                |       |               | Generate TAP artifact file                         |
+| `--junit`              |       |               | Generate JUnit XML artifact file                   |
+| `--flaky-retries`      |       |               | Max retries for `@flaky`-marked tests              |
+| `--flaky-multiplier`   |       | `1.5`         | Exponential timeout multiplier base for retries    |
+| `--test-timeout`       |       | from config   | Override per-test timeout (humantime string)       |
+| `--suite-timeout`      |       | from config   | Override suite timeout (humantime string)          |
+| `--manifest`           |       | auto-discover | Path to `Relux.toml`                               |
 
 ## `relux history`
 

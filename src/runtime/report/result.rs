@@ -248,6 +248,8 @@ pub struct RunReport<'a> {
     pub source_table: &'a SourceTable,
     pub run_dir: &'a Path,
     pub project_root: &'a Path,
+    pub wall_duration: Duration,
+    pub jobs: usize,
 }
 
 impl RunReport<'_> {
@@ -296,10 +298,18 @@ impl RunReport<'_> {
         if flaky_retries > 0 {
             summary.push_str(&format!("; {flaky_retries} flaky retries"));
         }
-        summary.push_str(&format!(
-            "; finished in {}\n",
-            format_duration(total_duration)
-        ));
+        if self.jobs > 1 {
+            summary.push_str(&format!(
+                "; finished in {} ({} cumulative)\n",
+                format_duration(self.wall_duration),
+                format_duration(total_duration)
+            ));
+        } else {
+            summary.push_str(&format!(
+                "; finished in {}\n",
+                format_duration(self.wall_duration)
+            ));
+        }
         eprint!("{summary}");
         eprintln!(
             "  Test logs: file://{}",

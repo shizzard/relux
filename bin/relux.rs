@@ -83,9 +83,9 @@ fn cli() -> Command {
                 .arg(
                     Arg::new("progress")
                         .long("progress")
-                        .help("Real-time output verbosity")
-                        .value_parser(["quiet", "basic", "verbose"])
-                        .default_value("basic"),
+                        .help("Progress display mode: auto (TUI if TTY), plain (results only), tui (force TUI)")
+                        .value_parser(["auto", "plain", "tui"])
+                        .default_value("auto"),
                 )
                 .arg(
                     Arg::new("strategy")
@@ -110,7 +110,7 @@ fn cli() -> Command {
                     Arg::new("flaky-retries")
                         .long("flaky-retries")
                         .help("Maximum number of retries for flaky-marked tests")
-                        .value_parser(clap::value_parser!(u32).range(1..)),
+                        .value_parser(clap::value_parser!(u32)),
                 )
                 .arg(
                     Arg::new("flaky-multiplier")
@@ -124,6 +124,13 @@ fn cli() -> Command {
                                 Ok(v)
                             }
                         }),
+                )
+                .arg(
+                    Arg::new("jobs")
+                        .short('j')
+                        .long("jobs")
+                        .help("Number of parallel test workers (default: 1)")
+                        .value_parser(clap::value_parser!(usize)),
                 )
                 .arg(
                     Arg::new("test-timeout")
@@ -323,6 +330,9 @@ fn cmd_new_project() {
 # match = "5s"
 # test = "5m"
 # suite = "30m"
+
+# [run]
+# jobs = 1
 "#,
         command = config::DEFAULT_SHELL_COMMAND,
         prompt = config::DEFAULT_SHELL_PROMPT,
@@ -496,6 +506,11 @@ async fn cmd_run(matches: &clap::ArgMatches) {
         Some("fail-fast") => RunStrategy::FailFast,
         _ => RunStrategy::All,
     };
+    let progress = match matches.get_one::<String>("progress").map(|s| s.as_str()) {
+        Some("plain") => relux::runtime::ProgressMode::Plain,
+        Some("tui") => relux::runtime::ProgressMode::Tui,
+        _ => relux::runtime::ProgressMode::Auto,
+    };
 
     let run_id = generate_run_id();
     let timestamp = chrono::Utc::now().format("%Y-%m-%d-%H-%M-%S").to_string();
@@ -535,6 +550,12 @@ async fn cmd_run(matches: &clap::ArgMatches) {
         })
         .or(cfg.timeout.suite);
 
+    let jobs = matches
+        .get_one::<usize>("jobs")
+        .copied()
+        .unwrap_or(cfg.run.jobs)
+        .max(1);
+
     let run_ctx = RunContext {
         run_id: run_id.clone(),
         run_dir: run_dir.clone(),
@@ -547,9 +568,12 @@ async fn cmd_run(matches: &clap::ArgMatches) {
         suite_timeout,
         strategy,
         flaky: flaky_config,
+        jobs,
+        progress,
     };
 
-    let results = relux::runtime::execute(&suite, &run_ctx).await;
+    let exec = relux::runtime::execute(&suite, &run_ctx).await;
+    let results = exec.results;
 
     // Summary
     let total_duration: std::time::Duration = results.iter().map(|r| r.duration).sum();
@@ -566,6 +590,8 @@ async fn cmd_run(matches: &clap::ArgMatches) {
         source_table: &suite.tables.sources,
         run_dir: &run_dir,
         project_root: &project_root,
+        wall_duration: exec.wall_duration,
+        jobs,
     };
     report.eprint();
 
