@@ -47,7 +47,7 @@ fn test_preamble<'a>()
 
 // ─── L6: Test Definition ───────────────────────────────────
 
-/// `[preamble] test "name" [timeout] { docstring, needs, lets, shells, cleanup }` — test definition.
+/// `[preamble] test "name" [timeout] { docstring, lets, needs, shells, cleanup }` — test definition.
 pub fn def_test<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstTestDef>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     // Header: test "name" [~5s] {
@@ -181,8 +181,8 @@ pub fn def_test<'a>()
 
     header
         .then(doc_section)
-        .then(need_section)
         .then(let_section)
+        .then(need_section)
         .then(shell_section)
         .then(cleanup_section)
         .then_ignore(
@@ -195,7 +195,7 @@ pub fn def_test<'a>()
         )
         .then_ignore(punctuation_brace_close())
         .map_with(
-            |(((((((markers, name), timeout_opt), docs), needs), lets), shells), cleanup), e| {
+            |(((((((markers, name), timeout_opt), docs), lets), needs), shells), cleanup), e| {
                 let outer_span = Span::from(e.span());
 
                 let timeout = timeout_opt;
@@ -205,13 +205,13 @@ pub fn def_test<'a>()
                     let item_span = *item.span();
                     body.push(Spanned::new(item, item_span));
                 }
-                for item in needs {
+                for item in lets {
                     if !is_sentinel_comment(&item) {
                         let item_span = *item.span();
                         body.push(Spanned::new(item, item_span));
                     }
                 }
-                for item in lets {
+                for item in needs {
                     if !is_sentinel_comment(&item) {
                         let item_span = *item.span();
                         body.push(Spanned::new(item, item_span));
@@ -445,8 +445,8 @@ test "my test" {
             r#"# skip
 test "full test" ~10s {
   """docstring here"""
-  need Db
   let port = "5432"
+  need Db
   shell main {
     > echo hello
   }
@@ -505,10 +505,10 @@ test "my test" {
     fn test_with_comments_between_sections() {
         let t = parse_test(
             r#"test "my test" {
-  // need section
-  need Db
   // let section
   let x = "val"
+  // need section
+  need Db
   // shell section
   shell main {
     > echo hello
@@ -575,9 +575,9 @@ test "my test" {
         let t = parse_test(
             r#"test "my test" {
 
-  need Db
-
   let x = "val"
+
+  need Db
 
   shell main {
     > echo hello

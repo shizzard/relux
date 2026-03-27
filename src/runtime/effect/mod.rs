@@ -55,10 +55,13 @@ impl EffectManager {
 
     /// Acquire all needs. Each need recursively acquires its own
     /// dependencies before bootstrapping itself.
+    /// `caller_vars` contains the caller's accumulated variable scope,
+    /// allowing overlay expressions to reference the caller's `let` bindings.
     #[allow(clippy::type_complexity)]
     pub fn instantiate<'a>(
         &'a self,
         needs: &'a [IrEffectNeed],
+        caller_vars: &'a VarScope,
     ) -> std::pin::Pin<
         Box<
             dyn std::future::Future<Output = Result<Vec<Arc<TokioMutex<Vm>>>, Failure>> + Send + 'a,
@@ -68,7 +71,7 @@ impl EffectManager {
             let mut vms = Vec::with_capacity(needs.len());
             for need in needs {
                 let key = EffectInstanceKey::from(need);
-                vms.push(self.acquire(&key, need).await?);
+                vms.push(self.acquire(&key, need, caller_vars).await?);
             }
             Ok(vms)
         })
@@ -89,6 +92,7 @@ impl EffectManager {
         &self,
         key: &EffectInstanceKey,
         need: &IrEffectNeed,
+        caller_vars: &VarScope,
     ) -> Result<Arc<TokioMutex<Vm>>, Failure> {
         let slot = self.registry.slot(key);
         let mut guard = slot.lock().await;
@@ -99,7 +103,7 @@ impl EffectManager {
                 Ok(handle.exported_vm.clone())
             }
             EffectSlot::Failed(failure) => Err(failure.clone()),
-            EffectSlot::Empty => match self.bootstrap_effect(need).await {
+            EffectSlot::Empty => match self.bootstrap_effect(need, caller_vars).await {
                 Ok(handle) => {
                     let vm_arc = handle.exported_vm.clone();
                     *guard = EffectSlot::Ready {
@@ -117,7 +121,11 @@ impl EffectManager {
         }
     }
 
-    async fn bootstrap_effect(&self, need: &IrEffectNeed) -> Result<EffectHandle, Failure> {
+    async fn bootstrap_effect(
+        &self,
+        need: &IrEffectNeed,
+        caller_vars: &VarScope,
+    ) -> Result<EffectHandle, Failure> {
         let effect_name = need.effect().to_string();
         self.rt_ctx.events.emit_effect_setup("", &effect_name);
 
@@ -137,10 +145,30 @@ impl EffectManager {
             shell: None,
         })?;
 
-        // 1. Recursively instantiate sub-dependencies
-        let exported_deps = self.instantiate(effect.needs()).await?;
+        // 1. Evaluate overlay using caller's variable scope
+        let env_overlay = self.eval_overlay(need, caller_vars).await?;
+        let env_overlay = Arc::new(env_overlay);
 
-        // 2. Build shell map from dependency exported shells
+        // 2. Create effect scope
+        let scope = Scope::Effect {
+            name: effect.name().name().to_string(),
+            vars: Arc::new(TokioMutex::new(VarScope::new())),
+            _timeout: None,
+            env_overlay: env_overlay.clone(),
+        };
+
+        // 3. Evaluate effect-level lets into scope (parser enforces lets before needs)
+        for item in effect.body() {
+            if let IrEffectItem::Let { stmt, .. } = item {
+                self.eval_effect_let(stmt, &scope, &env_overlay).await;
+            }
+        }
+
+        // 4. Recursively instantiate sub-dependencies (effect's vars available to sub-overlays)
+        let effect_vars = scope.vars().lock().await.clone();
+        let exported_deps = self.instantiate(effect.needs(), &effect_vars).await?;
+
+        // 5. Build shell map from dependency exported shells
         let mut shells: HashMap<String, Arc<TokioMutex<Vm>>> = HashMap::new();
         for (sub_need, vm_arc) in effect.needs().iter().zip(exported_deps) {
             if let Some(alias) = sub_need.alias() {
@@ -150,19 +178,7 @@ impl EffectManager {
             }
         }
 
-        // 3. Evaluate overlay → build env_overlay
-        let env_overlay = self.eval_overlay(need).await?;
-        let env_overlay = Arc::new(env_overlay);
-
-        // 4. Create effect scope
-        let scope = Scope::Effect {
-            name: effect.name().name().to_string(),
-            vars: Arc::new(TokioMutex::new(VarScope::new())),
-            _timeout: None,
-            env_overlay: env_overlay.clone(),
-        };
-
-        // 4b. Reset imported VMs
+        // 5b. Reset imported VMs
         let mut reset_seen = HashSet::new();
         for vm_arc in shells.values() {
             let ptr = Arc::as_ptr(vm_arc) as usize;
@@ -171,14 +187,13 @@ impl EffectManager {
             }
         }
 
-        // 5. Walk IrEffectItems
+        // 6. Walk IrEffectItems (lets already evaluated, needs already instantiated)
         let mut cleanup_block = None;
         for item in effect.body() {
             match item {
-                IrEffectItem::Comment { .. } | IrEffectItem::Need { .. } => continue,
-                IrEffectItem::Let { stmt, .. } => {
-                    self.eval_effect_let(stmt, &scope, &env_overlay).await;
-                }
+                IrEffectItem::Comment { .. }
+                | IrEffectItem::Need { .. }
+                | IrEffectItem::Let { .. } => continue,
                 IrEffectItem::Shell { block, .. } => {
                     let name = block.name().name().to_string();
                     self.rt_ctx.events.emit_shell_switch(&name);
@@ -237,13 +252,16 @@ impl EffectManager {
         })
     }
 
-    async fn eval_overlay(&self, need: &IrEffectNeed) -> Result<Env, Failure> {
+    async fn eval_overlay(
+        &self,
+        need: &IrEffectNeed,
+        caller_vars: &VarScope,
+    ) -> Result<Env, Failure> {
         let mut overlay = Env::new();
-        let vars = VarScope::new();
         for entry in need.overlay() {
             let value = crate::pure::evaluator::eval_pure_expr(
                 entry.value(),
-                &vars,
+                caller_vars,
                 &self.rt_ctx.env,
                 &self.rt_ctx.tables.pure_fns,
             );
@@ -253,7 +271,7 @@ impl EffectManager {
     }
 
     async fn eval_effect_let(&self, stmt: &IrPureLetStmt, scope: &Scope, _env_overlay: &Arc<Env>) {
-        let vars = VarScope::new();
+        let mut vars = scope.vars().lock().await;
         let value = if let Some(expr) = stmt.value() {
             crate::pure::evaluator::eval_pure_expr(
                 expr,
@@ -264,11 +282,7 @@ impl EffectManager {
         } else {
             String::new()
         };
-        scope
-            .vars()
-            .lock()
-            .await
-            .insert(stmt.name().name().to_string(), value);
+        vars.insert(stmt.name().name().to_string(), value);
     }
 
     fn run_cleanup<'a>(

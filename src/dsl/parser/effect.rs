@@ -47,7 +47,7 @@ fn effect_preamble<'a>()
 
 // ─── L6: Effect Definition ─────────────────────────────────
 
-/// `[preamble] effect Name -> shell { needs, lets, shells, cleanup }` — effect definition.
+/// `[preamble] effect Name -> shell { lets, needs, shells, cleanup }` — effect definition.
 pub fn def_effect<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstEffectDef>, extra::Err<Rich<'a, Token<'a>>>> + Clone
 {
@@ -163,8 +163,8 @@ pub fn def_effect<'a>()
     });
 
     header
-        .then(need_section)
         .then(let_section)
+        .then(need_section)
         .then(shell_section)
         .then(cleanup_section)
         .then_ignore(
@@ -177,16 +177,16 @@ pub fn def_effect<'a>()
         )
         .then_ignore(punctuation_brace_close())
         .map_with(
-            |((((((markers, name), exported_shell), needs), lets), shells), cleanup), e| {
+            |((((((markers, name), exported_shell), lets), needs), shells), cleanup), e| {
                 let outer_span = Span::from(e.span());
                 let mut body = Vec::new();
-                for item in needs {
+                for item in lets {
                     if !is_sentinel_comment(&item) {
                         let item_span = *item.span();
                         body.push(Spanned::new(item, item_span));
                     }
                 }
-                for item in lets {
+                for item in needs {
                     if !is_sentinel_comment(&item) {
                         let item_span = *item.span();
                         body.push(Spanned::new(item, item_span));
@@ -328,8 +328,8 @@ effect Db -> db {
     fn effect_all_sections() {
         let e = parse_effect(
             r#"effect App -> app {
-  need Db
   let port = "8080"
+  need Db
   shell app {
     > echo start
   }
@@ -410,9 +410,9 @@ effect Db -> db {
         let e = parse_effect(
             r#"effect App -> app {
 
-  need Db
-
   let port = "8080"
+
+  need Db
 
   shell app {
     > echo start

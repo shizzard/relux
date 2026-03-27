@@ -9,7 +9,7 @@ pub mod evaluator;
 ///
 /// Used by the evaluator for per-call variable frames and
 /// by the runtime's `ExecutionContext` for its frame variables.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct VarScope {
     vars: HashMap<String, String>,
 }

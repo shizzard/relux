@@ -624,10 +624,29 @@ async fn run_test_body(
         timeout: meta.timeout().cloned(),
     };
 
-    // 2. Instantiate effects
-    let exported = manager.instantiate(test.needs()).await?;
+    // 2. Evaluate test-level lets into scope (parser enforces lets come before needs)
+    for item in test.body() {
+        if let IrTestItem::Let { stmt, .. } = item {
+            let mut vars = scope.vars().lock().await;
+            let value = if let Some(expr) = stmt.value() {
+                crate::pure::evaluator::eval_pure_expr(
+                    expr,
+                    &vars,
+                    &rt_ctx.env,
+                    &rt_ctx.tables.pure_fns,
+                )
+            } else {
+                String::new()
+            };
+            vars.insert(stmt.name().name().to_string(), value);
+        }
+    }
 
-    // 3. Build shell map from exported effect shells
+    // 3. Instantiate effects (overlays can now see test-level vars)
+    let caller_vars = scope.vars().lock().await.clone();
+    let exported = manager.instantiate(test.needs(), &caller_vars).await?;
+
+    // 4. Build shell map from exported effect shells
     let mut shells: HashMap<String, Arc<TokioMutex<Vm>>> = HashMap::new();
     let mut reset_seen = HashSet::new();
     for (need, vm_arc) in test.needs().iter().zip(exported) {
@@ -642,31 +661,14 @@ async fn run_test_body(
         }
     }
 
-    // 4. Walk IrTestItems
+    // 5. Walk IrTestItems (lets already evaluated, needs already instantiated)
     let mut cleanup_block = None;
     let body_result: Result<(), Failure> = async {
         for item in test.body() {
             match item {
                 IrTestItem::Comment { .. } | IrTestItem::DocString { .. } => continue,
                 IrTestItem::Need { .. } => continue,
-                IrTestItem::Let { stmt, .. } => {
-                    let vars = VarScope::new();
-                    let value = if let Some(expr) = stmt.value() {
-                        crate::pure::evaluator::eval_pure_expr(
-                            expr,
-                            &vars,
-                            &rt_ctx.env,
-                            &rt_ctx.tables.pure_fns,
-                        )
-                    } else {
-                        String::new()
-                    };
-                    scope
-                        .vars()
-                        .lock()
-                        .await
-                        .insert(stmt.name().name().to_string(), value);
-                }
+                IrTestItem::Let { .. } => continue,
                 IrTestItem::Shell { block, .. } => {
                     let name = block.name().name().to_string();
                     rt_ctx.events.emit_shell_switch(&name);
