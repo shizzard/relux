@@ -2,7 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use regex::RegexBuilder;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 use tokio::process::Child;
 use tokio::sync::Mutex;
 

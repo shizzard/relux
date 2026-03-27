@@ -1,18 +1,26 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::time::Duration;
 
 use serde::Serialize;
 use tabled::builder::Builder;
+use tabled::settings::Alignment;
+use tabled::settings::Modify;
+use tabled::settings::Style;
+use tabled::settings::Width;
 use tabled::settings::object::Columns;
 use tabled::settings::span::Span;
-use tabled::settings::{Alignment, Modify, Style, Width};
 
 use crate::runtime::report::result::format_duration;
 
-use super::analysis::{
-    DurationRecord, DurationStats, FailureModeEntry, FailureRecord, FirstFailRecord, FlakyRecord,
-    LoadedRunsCollection, TestKey,
-};
+use super::analysis::DurationRecord;
+use super::analysis::DurationStats;
+use super::analysis::FailureModeEntry;
+use super::analysis::FailureRecord;
+use super::analysis::FirstFailRecord;
+use super::analysis::FlakyRecord;
+use super::analysis::LoadedRunsCollection;
+use super::analysis::TestKey;
 
 // ─── Shared Helpers ────────────────────────────────────────────
 
@@ -446,10 +454,11 @@ pub fn format_durations_toml(
 
 #[cfg(test)]
 mod tests {
+    use super::super::analysis::DurationAggregate;
+    use super::super::analysis::DurationPreaggregate;
+    use super::super::analysis::FlakyPreaggregate;
+    use super::super::analysis::LoadedRunsCollection;
     use super::super::analysis::tests::sample_runs;
-    use super::super::analysis::{
-        DurationAggregate, DurationPreaggregate, FlakyPreaggregate, LoadedRunsCollection,
-    };
     use super::*;
 
     #[test]

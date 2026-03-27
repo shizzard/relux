@@ -1,15 +1,22 @@
 use chumsky::prelude::*;
 
+use crate::Span;
+use crate::Spanned;
 use crate::dsl::lexer::Token;
-use crate::{Span, Spanned};
 
 use super::ParserInput;
-use super::ast::{AstCondModifier, AstMarkerCond, AstMarkerCondBody, AstMarkerDecl, AstMarkerKind};
+use super::ast::AstCondModifier;
+use super::ast::AstMarkerCond;
+use super::ast::AstMarkerCondBody;
+use super::ast::AstMarkerDecl;
+use super::ast::AstMarkerKind;
 use super::expr::expr;
 use super::interpolation::interp_regex;
-use super::prefix::{prefix_comment, prefix_marker};
+use super::prefix::prefix_comment;
+use super::prefix::prefix_marker;
 use super::token::text;
-use super::ws::{newline, ws};
+use super::ws::newline;
+use super::ws::ws;
 
 // ─── L4: Annotation Combinators ─────────────────────────────
 
@@ -161,8 +168,10 @@ pub fn marker<'a>()
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::parser::ast::{AstExpr, AstStringPart};
-    use crate::dsl::parser::{lex_to_pairs, make_input};
+    use crate::dsl::parser::ast::AstExpr;
+    use crate::dsl::parser::ast::AstStringPart;
+    use crate::dsl::parser::lex_to_pairs;
+    use crate::dsl::parser::make_input;
 
     fn parse_comment(source: &str) -> String {
         let pairs = lex_to_pairs(source);

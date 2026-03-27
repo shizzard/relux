@@ -2,9 +2,11 @@ use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::runtime::report::result::{Outcome, TestResult};
+use crate::runtime::report::result::Outcome;
+use crate::runtime::report::result::TestResult;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RunSummary {

@@ -23,8 +23,10 @@ mod ws;
 pub use ast::*;
 pub use error::ParseError;
 
-use chumsky::error::{RichPattern, RichReason};
-use chumsky::input::{Input as _, MappedInput};
+use chumsky::error::RichPattern;
+use chumsky::error::RichReason;
+use chumsky::input::Input as _;
+use chumsky::input::MappedInput;
 use chumsky::prelude::*;
 
 use crate::dsl::lexer::Token;

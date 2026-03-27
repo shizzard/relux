@@ -1,13 +1,15 @@
 use chumsky::prelude::*;
 
+use crate::Span;
+use crate::Spanned;
 use crate::dsl::lexer::Token;
-use crate::{Span, Spanned};
 
 use super::ParserInput;
 use super::ast::AstNeedDecl;
 use super::ident::ident_aliased_effect_shell;
 use super::overlay::overlay;
-use super::ws::{newline, ws};
+use super::ws::newline;
+use super::ws::ws;
 
 // ─── L5: Need Combinator ───────────────────────────────────
 
@@ -37,7 +39,8 @@ pub fn need<'a>()
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::parser::{lex_to_pairs, make_input};
+    use crate::dsl::parser::lex_to_pairs;
+    use crate::dsl::parser::make_input;
 
     fn parse_need(source: &str) -> AstNeedDecl {
         let pairs = lex_to_pairs(source);

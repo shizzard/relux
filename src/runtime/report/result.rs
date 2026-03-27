@@ -1,5 +1,6 @@
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use colored::Colorize;
@@ -103,7 +104,8 @@ impl Failure {
 
 impl From<&Failure> for crate::core::error::DiagnosticReport {
     fn from(failure: &Failure) -> Self {
-        use crate::core::error::{DiagnosticReport, Severity};
+        use crate::core::error::DiagnosticReport;
+        use crate::core::error::Severity;
         match failure {
             Failure::MatchTimeout {
                 pattern,

@@ -1,10 +1,12 @@
 use std::collections::HashSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 use crate::core::config;
 use crate::dsl::discover_relux_files;
-use crate::runtime::report::run_summary::{RunSummary, read_run_summary};
+use crate::runtime::report::run_summary::RunSummary;
+use crate::runtime::report::run_summary::read_run_summary;
 
 pub struct LoadedRun {
     pub dir: PathBuf,

@@ -1,11 +1,14 @@
 use chumsky::prelude::*;
 
+use crate::Span;
+use crate::Spanned;
 use crate::dsl::lexer::Token;
-use crate::{Span, Spanned};
 
 use super::ParserInput;
-use super::ast::{AstInterpolation, AstStringPart};
-use super::ident::{expr_numeric, ident_var};
+use super::ast::AstInterpolation;
+use super::ast::AstStringPart;
+use super::ident::expr_numeric;
+use super::ident::ident_var;
 
 // ─── Escape Table ───────────────────────────────────────────
 
@@ -199,7 +202,8 @@ pub fn interp_regex<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::parser::{lex_to_pairs, make_input};
+    use crate::dsl::parser::lex_to_pairs;
+    use crate::dsl::parser::make_input;
 
     fn parse_literal(source: &str) -> AstInterpolation {
         // Simulate a payload terminated by newline

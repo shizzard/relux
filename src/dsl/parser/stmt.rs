@@ -1,21 +1,33 @@
 use chumsky::prelude::*;
 
+use crate::Span;
+use crate::Spanned;
 use crate::dsl::lexer::Token;
-use crate::{Span, Spanned};
 
 use super::ParserInput;
 use super::annotation::comment;
-use super::ast::{AstAssignStmt, AstInterpolation, AstLetStmt, AstStmt, AstStringPart};
+use super::ast::AstAssignStmt;
+use super::ast::AstInterpolation;
+use super::ast::AstLetStmt;
+use super::ast::AstStmt;
+use super::ast::AstStringPart;
 use super::expr::expr;
 use super::ident::ident_var;
-use super::interpolation::{interp_literal, interp_regex};
-use super::operator::{
-    op_fail_literal, op_fail_regex, op_match_literal, op_match_regex, op_send, op_send_raw,
-    op_timed_match_literal, op_timed_match_regex,
-};
+use super::interpolation::interp_literal;
+use super::interpolation::interp_regex;
+use super::operator::op_fail_literal;
+use super::operator::op_fail_regex;
+use super::operator::op_match_literal;
+use super::operator::op_match_regex;
+use super::operator::op_send;
+use super::operator::op_send_raw;
+use super::operator::op_timed_match_literal;
+use super::operator::op_timed_match_regex;
 use super::timeout::timeout;
 use super::token::keyword;
-use super::ws::{leading_ws, newline, ws};
+use super::ws::leading_ws;
+use super::ws::newline;
+use super::ws::ws;
 
 // ─── L4: Statement Combinators ──────────────────────────────
 
@@ -302,8 +314,11 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::dsl::parser::ast::{AstExpr, AstStmt, AstTimeout};
-    use crate::dsl::parser::{lex_to_pairs, make_input};
+    use crate::dsl::parser::ast::AstExpr;
+    use crate::dsl::parser::ast::AstStmt;
+    use crate::dsl::parser::ast::AstTimeout;
+    use crate::dsl::parser::lex_to_pairs;
+    use crate::dsl::parser::make_input;
 
     fn parse_stmt(source: &str) -> AstStmt {
         let pairs = lex_to_pairs(source);

@@ -4,8 +4,12 @@ use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
-use crate::runtime::observe::event_log::{BufferSnapshot, LogEvent, LogEventKind};
-use crate::runtime::report::result::{Outcome, TestResult, format_duration};
+use crate::runtime::observe::event_log::BufferSnapshot;
+use crate::runtime::observe::event_log::LogEvent;
+use crate::runtime::observe::event_log::LogEventKind;
+use crate::runtime::report::result::Outcome;
+use crate::runtime::report::result::TestResult;
+use crate::runtime::report::result::format_duration;
 
 const CSS: &str = r#"
 :root{--bg:#fff;--fg:#222;--muted:#888;--ts-fg:#999;--send:#1a6dcc;--recv:#1a8a3f;
@@ -74,7 +78,8 @@ fn event_type_class(kind: &LogEventKind) -> (&str, &str) {
         LogEventKind::FailPatternTriggered { .. } => ("fail trigger", "err"),
         LogEventKind::EffectSetup { .. } => ("effect setup", ""),
         LogEventKind::EffectTeardown { .. } => ("effect teardown", ""),
-        LogEventKind::Sleep { .. } => ("sleep", ""),
+        LogEventKind::SleepStart { .. } => ("sleep start", ""),
+        LogEventKind::SleepDone => ("sleep done", ""),
         LogEventKind::Annotate { .. } => ("annotate", ""),
         LogEventKind::Log { .. } => ("log", ""),
         LogEventKind::VarLet { .. } => ("var let", ""),
@@ -90,6 +95,9 @@ fn event_type_class(kind: &LogEventKind) -> (&str, &str) {
         LogEventKind::TimeoutSet { .. } => ("timeout set", ""),
         LogEventKind::StringEval { .. } => ("string eval", ""),
         LogEventKind::Interpolation { .. } => ("string interp", ""),
+        LogEventKind::Failure => ("failure", "err"),
+        LogEventKind::Error { .. } => ("error", "err"),
+        LogEventKind::Warning { .. } => ("warning", "err"),
     }
 }
 
@@ -161,7 +169,8 @@ fn event_data(kind: &LogEventKind) -> String {
         }
         LogEventKind::EffectSetup { effect } => html_escape(effect),
         LogEventKind::EffectTeardown { effect } => html_escape(effect),
-        LogEventKind::Sleep { duration } => format!("{duration:?}"),
+        LogEventKind::SleepStart { duration } => format!("{duration:?}"),
+        LogEventKind::SleepDone => String::new(),
         LogEventKind::Annotate { text } => html_escape(text),
         LogEventKind::Log { message } => html_escape(message),
         LogEventKind::VarLet { name, value } => {
@@ -216,6 +225,9 @@ fn event_data(kind: &LogEventKind) -> String {
             out.push_str(&render_kv(bindings));
             out
         }
+        LogEventKind::Failure => String::new(),
+        LogEventKind::Error { message } => html_escape(message),
+        LogEventKind::Warning { message } => html_escape(message),
     }
 }
 

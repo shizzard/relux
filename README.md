@@ -40,7 +40,6 @@ A1. [Best Practices](docs/tutorial/A1-best-practices.md) — all best-practices 
 - Custom scaffold templates: user-defined templates for `relux new --test` and `relux new --effect` via `Relux.toml`, replacing the built-in defaults
 - Effect-level timeouts: allow effects to declare a default timeout (similar to test-level `~timeout`) that applies to all match operations within the effect's shell blocks
 - Flaky marker support: implement `# flaky` marker semantics — automatically retry tests marked as flaky on failure, with configurable retry count
-- Unified event system: refactor logging to produce a single event at each point and render it differently for each consumer (progress line, rich HTML logs, shell logs)
 
 ## Planned RFCs
 

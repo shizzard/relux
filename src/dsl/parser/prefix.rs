@@ -22,7 +22,8 @@ pub fn prefix_marker<'a>()
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::parser::{lex_to_pairs, make_input};
+    use crate::dsl::parser::lex_to_pairs;
+    use crate::dsl::parser::make_input;
 
     #[test]
     fn comment_prefix() {

@@ -1,10 +1,14 @@
 use crate::core::table::FileId;
-use crate::diagnostics::{IrSpan, LoweringBail};
-use crate::dsl::parser::ast::{AstFnDef, AstPureFnDef};
+use crate::diagnostics::IrSpan;
+use crate::diagnostics::LoweringBail;
+use crate::dsl::parser::ast::AstFnDef;
+use crate::dsl::parser::ast::AstPureFnDef;
 
+use super::IrNodeLowering;
+use super::LoweringContext;
 use super::ident::IrIdent;
-use super::stmt::{IrPureStmt, IrShellStmt};
-use super::{IrNodeLowering, LoweringContext};
+use super::stmt::IrPureStmt;
+use super::stmt::IrShellStmt;
 
 /// IrFn is an enum because builtins have no AST source.
 /// IrNode is NOT implemented — Builtin has no span.
@@ -190,7 +194,11 @@ mod tests {
 
     // ─── Function lowering (cacheable) ────────────────────────
 
-    use crate::diagnostics::{CycleReport, FnId, InvalidReport, LoweringBail, ModulePath};
+    use crate::diagnostics::CycleReport;
+    use crate::diagnostics::FnId;
+    use crate::diagnostics::InvalidReport;
+    use crate::diagnostics::LoweringBail;
+    use crate::diagnostics::ModulePath;
     use crate::dsl::resolver::lower::test_helpers::*;
 
     #[test]

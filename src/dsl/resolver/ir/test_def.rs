@@ -1,12 +1,18 @@
 use crate::core::table::FileId;
-use crate::diagnostics::{InvalidReport, IrSpan, LoweringBail};
-use crate::dsl::parser::ast::{AstTestDef, AstTestItem};
+use crate::diagnostics::InvalidReport;
+use crate::diagnostics::IrSpan;
+use crate::diagnostics::LoweringBail;
+use crate::dsl::parser::ast::AstTestDef;
+use crate::dsl::parser::ast::AstTestItem;
 
-use super::block::{IrCleanupBlock, IrShellBlock};
+use super::IrNode;
+use super::IrNodeLowering;
+use super::LoweringContext;
+use super::block::IrCleanupBlock;
+use super::block::IrShellBlock;
 use super::comment::IrComment;
 use super::effect::IrEffectNeed;
 use super::stmt::IrPureLetStmt;
-use super::{IrNode, IrNodeLowering, LoweringContext};
 
 // ─── IrTestItem ──────────────────────────────────────────────
 
@@ -174,7 +180,8 @@ impl IrNodeLowering for IrTest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diagnostics::{FnId, ModulePath};
+    use crate::diagnostics::FnId;
+    use crate::diagnostics::ModulePath;
     use crate::dsl::resolver::lower::test_helpers::*;
 
     // ─── Test lowering ────────────────────────────────────────

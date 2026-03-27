@@ -1,10 +1,18 @@
 use std::path::Path;
 
-use quick_junit::{NonSuccessKind, Property, Report, TestCase, TestCaseStatus, TestSuite};
+use quick_junit::NonSuccessKind;
+use quick_junit::Property;
+use quick_junit::Report;
+use quick_junit::TestCase;
+use quick_junit::TestCaseStatus;
+use quick_junit::TestSuite;
 
 use crate::diagnostics::IrSpan;
 use crate::dsl::resolver::ir::SourceTable;
-use crate::runtime::report::result::{Failure, Outcome, TestResult, log_link};
+use crate::runtime::report::result::Failure;
+use crate::runtime::report::result::Outcome;
+use crate::runtime::report::result::TestResult;
+use crate::runtime::report::result::log_link;
 
 pub fn generate_junit(
     run_dir: &Path,
@@ -148,9 +156,13 @@ fn line_number(source: &str, offset: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::table::{FileId, SharedTable, SourceFile};
+    use crate::core::table::FileId;
+    use crate::core::table::SharedTable;
+    use crate::core::table::SourceFile;
     use crate::diagnostics::IrSpan;
-    use crate::runtime::report::result::{Failure, Outcome, TestResult};
+    use crate::runtime::report::result::Failure;
+    use crate::runtime::report::result::Outcome;
+    use crate::runtime::report::result::TestResult;
     use std::path::PathBuf;
     use std::time::Duration;
 

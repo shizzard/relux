@@ -1,14 +1,20 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use crate::core::table::{FileId, SharedTable, SourceFile};
-use crate::diagnostics::{
-    EffectId as IrEffectId, EffectName, FnId as IrFnId, IrSpan, LoweringBail, ModulePath,
-};
+use crate::core::table::FileId;
+use crate::core::table::SharedTable;
+use crate::core::table::SourceFile;
+use crate::diagnostics::EffectId as IrEffectId;
+use crate::diagnostics::EffectName;
+use crate::diagnostics::FnId as IrFnId;
+use crate::diagnostics::IrSpan;
+use crate::diagnostics::LoweringBail;
+use crate::diagnostics::ModulePath;
 use crate::dsl::parser::ast::AstModule;
 
 use super::effect::IrEffect;
-use super::func::{IrFn, IrPureFn};
+use super::func::IrFn;
+use super::func::IrPureFn;
 
 // ─── Local Keys ─────────────────────────────────────────────
 

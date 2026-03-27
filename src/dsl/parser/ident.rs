@@ -1,7 +1,8 @@
 use chumsky::prelude::*;
 
+use crate::Span;
+use crate::Spanned;
 use crate::dsl::lexer::Token;
-use crate::{Span, Spanned};
 
 use super::ParserInput;
 use super::ast::AstIdent;
@@ -155,7 +156,8 @@ pub fn ident_aliased_effect_shell<'a>()
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::parser::{lex_to_pairs, make_input};
+    use crate::dsl::parser::lex_to_pairs;
+    use crate::dsl::parser::make_input;
 
     #[test]
     fn valid_var_idents() {

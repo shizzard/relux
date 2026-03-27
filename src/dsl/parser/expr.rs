@@ -1,13 +1,21 @@
 use chumsky::prelude::*;
 
+use crate::Span;
+use crate::Spanned;
 use crate::dsl::lexer::Token;
-use crate::{Span, Spanned};
 
 use super::ParserInput;
-use super::ast::{AstCallExpr, AstExpr, AstInterpolation, AstStringPart};
-use super::ident::{expr_numeric, ident_fn, ident_var};
+use super::ast::AstCallExpr;
+use super::ast::AstExpr;
+use super::ast::AstInterpolation;
+use super::ast::AstStringPart;
+use super::ident::expr_numeric;
+use super::ident::ident_fn;
+use super::ident::ident_var;
 use super::interpolation::interp_literal;
-use super::punctuation::{punctuation_comma, punctuation_paren_close, punctuation_paren_open};
+use super::punctuation::punctuation_comma;
+use super::punctuation::punctuation_paren_close;
+use super::punctuation::punctuation_paren_open;
 use super::ws::ws;
 
 /// Plain string: `"..."` — all tokens between quotes are literal text (no interpolation).
@@ -130,7 +138,8 @@ pub fn expr<'a>()
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::parser::{lex_to_pairs, make_input};
+    use crate::dsl::parser::lex_to_pairs;
+    use crate::dsl::parser::make_input;
 
     fn parse_expr(source: &str) -> AstExpr {
         let pairs = lex_to_pairs(source);

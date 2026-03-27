@@ -1,7 +1,12 @@
-use super::{Env, VarScope};
-use crate::dsl::resolver::ir::{
-    IrInterpolation, IrPureCallExpr, IrPureExpr, IrPureFn, IrPureStmt, IrStringPart, PureFnTable,
-};
+use super::Env;
+use super::VarScope;
+use crate::dsl::resolver::ir::IrInterpolation;
+use crate::dsl::resolver::ir::IrPureCallExpr;
+use crate::dsl::resolver::ir::IrPureExpr;
+use crate::dsl::resolver::ir::IrPureFn;
+use crate::dsl::resolver::ir::IrPureStmt;
+use crate::dsl::resolver::ir::IrStringPart;
+use crate::dsl::resolver::ir::PureFnTable;
 
 // ─── Public API ─────────────────────────────────────────────
 
@@ -117,8 +122,12 @@ fn eval_body(body: &[IrPureStmt], scope: &mut VarScope, env: &Env, fns: &PureFnT
 mod tests {
     use super::*;
     use crate::core::table::FileId;
-    use crate::diagnostics::{FnId as DiagFnId, IrSpan, ModulePath};
-    use crate::dsl::resolver::ir::{IrIdent, IrPureAssignStmt, IrPureLetStmt};
+    use crate::diagnostics::FnId as DiagFnId;
+    use crate::diagnostics::IrSpan;
+    use crate::diagnostics::ModulePath;
+    use crate::dsl::resolver::ir::IrIdent;
+    use crate::dsl::resolver::ir::IrPureAssignStmt;
+    use crate::dsl::resolver::ir::IrPureLetStmt;
     use std::collections::HashMap;
     use std::path::PathBuf;
 

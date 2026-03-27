@@ -1,6 +1,13 @@
 use std::path::Path;
 
-use ariadne::{CharSet, Color, Config, IndexType, Label, Report, ReportKind, sources};
+use ariadne::CharSet;
+use ariadne::Color;
+use ariadne::Config;
+use ariadne::IndexType;
+use ariadne::Label;
+use ariadne::Report;
+use ariadne::ReportKind;
+use ariadne::sources;
 
 use crate::diagnostics::IrSpan;
 use crate::dsl::resolver::ir::SourceTable;

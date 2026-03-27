@@ -1,19 +1,29 @@
 use chumsky::prelude::*;
 
+use crate::Span;
+use crate::Spanned;
 use crate::dsl::lexer::Token;
-use crate::{Span, Spanned};
 
 use super::ParserInput;
-use super::annotation::{comment, marker};
-use super::ast::{AstFnDef, AstIdent, AstMarkerDecl, AstPureFnDef, AstStmt};
-use super::ident::{ident_fn, ident_var};
-use super::punctuation::{
-    punctuation_brace_close, punctuation_brace_open, punctuation_comma, punctuation_paren_close,
-    punctuation_paren_open,
-};
+use super::annotation::comment;
+use super::annotation::marker;
+use super::ast::AstFnDef;
+use super::ast::AstIdent;
+use super::ast::AstMarkerDecl;
+use super::ast::AstPureFnDef;
+use super::ast::AstStmt;
+use super::ident::ident_fn;
+use super::ident::ident_var;
+use super::punctuation::punctuation_brace_close;
+use super::punctuation::punctuation_brace_open;
+use super::punctuation::punctuation_comma;
+use super::punctuation::punctuation_paren_close;
+use super::punctuation::punctuation_paren_open;
 use super::stmt::stmt;
 use super::token::keyword;
-use super::ws::{leading_ws, newline, ws};
+use super::ws::leading_ws;
+use super::ws::newline;
+use super::ws::ws;
 
 /// Sentinel span for dummy blank-line comments.
 const SENTINEL: Span = Span::new(0, 0);
@@ -168,7 +178,8 @@ pub fn def_pure_fn<'a>()
 mod tests {
     use super::*;
     use crate::dsl::parser::ast::AstMarkerKind;
-    use crate::dsl::parser::{lex_to_pairs, make_input};
+    use crate::dsl::parser::lex_to_pairs;
+    use crate::dsl::parser::make_input;
 
     fn parse_fn(source: &str) -> AstFnDef {
         let pairs = lex_to_pairs(source);

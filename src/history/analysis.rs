@@ -1,6 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 use serde::Serialize;
 
@@ -605,7 +607,9 @@ pub(crate) fn linear_trend(values: &[u64]) -> String {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::runtime::report::run_summary::{RunMeta, RunSummary, TestEntry};
+    use crate::runtime::report::run_summary::RunMeta;
+    use crate::runtime::report::run_summary::RunSummary;
+    use crate::runtime::report::run_summary::TestEntry;
 
     use super::super::loader::LoadedRun;
 

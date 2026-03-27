@@ -1,10 +1,13 @@
 use std::time::Duration;
 
 use crate::core::table::FileId;
-use crate::diagnostics::{IrSpan, LoweringBail};
+use crate::diagnostics::IrSpan;
+use crate::diagnostics::LoweringBail;
 use crate::dsl::parser::ast::AstTimeout;
 
-use super::{IrNode, IrNodeLowering, LoweringContext};
+use super::IrNode;
+use super::IrNodeLowering;
+use super::LoweringContext;
 
 #[derive(Debug, Clone)]
 pub enum IrTimeout {

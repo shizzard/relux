@@ -1,7 +1,8 @@
 use chumsky::prelude::*;
 
+use crate::Span;
+use crate::Spanned;
 use crate::dsl::lexer::Token;
-use crate::{Span, Spanned};
 
 use super::ParserInput;
 use super::ast::AstTimeout;
@@ -102,7 +103,8 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::dsl::parser::{lex_to_pairs, make_input};
+    use crate::dsl::parser::lex_to_pairs;
+    use crate::dsl::parser::make_input;
 
     #[test]
     fn send_operator() {

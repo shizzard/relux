@@ -1,7 +1,10 @@
 use crate::core::table::FileId;
-use crate::diagnostics::{IrSpan, LoweringBail};
+use crate::diagnostics::IrSpan;
+use crate::diagnostics::LoweringBail;
 
-use super::{IrNode, IrNodeLowering, LoweringContext};
+use super::IrNode;
+use super::IrNodeLowering;
+use super::LoweringContext;
 
 /// Stub IR node for comments. No fields beyond span — comments are
 /// passed through to the runtime, which can decide what (if anything)

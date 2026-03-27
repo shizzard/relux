@@ -1,8 +1,12 @@
 use crate::core::table::FileId;
-use crate::diagnostics::{IrSpan, LoweringBail};
-use crate::dsl::parser::ast::{AstInterpolation, AstStringPart};
+use crate::diagnostics::IrSpan;
+use crate::diagnostics::LoweringBail;
+use crate::dsl::parser::ast::AstInterpolation;
+use crate::dsl::parser::ast::AstStringPart;
 
-use super::{IrNode, IrNodeLowering, LoweringContext};
+use super::IrNode;
+use super::IrNodeLowering;
+use super::LoweringContext;
 
 #[derive(Debug, Clone)]
 pub struct IrInterpolation {
@@ -159,7 +163,8 @@ mod tests {
     // ─── Lowering tests (moved from lower.rs) ───────────────
 
     use crate::Span;
-    use crate::dsl::parser::ast::{AstInterpolation, AstStringPart};
+    use crate::dsl::parser::ast::AstInterpolation;
+    use crate::dsl::parser::ast::AstStringPart;
     use crate::dsl::resolver::lower::test_helpers::*;
 
     #[test]

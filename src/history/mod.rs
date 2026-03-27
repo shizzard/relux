@@ -2,22 +2,33 @@ pub mod analysis;
 pub mod format;
 pub mod loader;
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::process;
 
 use crate::core::config;
 
-use self::analysis::{
-    DurationAggregate, DurationPreaggregate, FailurePreaggregate, FirstFailPreaggregate,
-    FlakyPreaggregate, LoadedRunsCollection, compute_failure_modes,
-};
-use self::format::{
-    format_durations_human, format_durations_toml, format_failures_human, format_failures_toml,
-    format_first_fail_human, format_first_fail_toml, format_flaky_human, format_flaky_toml,
-};
-use crate::runtime::report::run_summary::{RunSummary, read_run_summary};
+use self::analysis::DurationAggregate;
+use self::analysis::DurationPreaggregate;
+use self::analysis::FailurePreaggregate;
+use self::analysis::FirstFailPreaggregate;
+use self::analysis::FlakyPreaggregate;
+use self::analysis::LoadedRunsCollection;
+use self::analysis::compute_failure_modes;
+use self::format::format_durations_human;
+use self::format::format_durations_toml;
+use self::format::format_failures_human;
+use self::format::format_failures_toml;
+use self::format::format_first_fail_human;
+use self::format::format_first_fail_toml;
+use self::format::format_flaky_human;
+use self::format::format_flaky_toml;
+use crate::runtime::report::run_summary::RunSummary;
+use crate::runtime::report::run_summary::read_run_summary;
 
-use self::loader::{filter_summaries, load_all_summaries, resolve_test_filters};
+use self::loader::filter_summaries;
+use self::loader::load_all_summaries;
+use self::loader::resolve_test_filters;
 
 // ─── LatestRun ──────────────────────────────────────────────
 

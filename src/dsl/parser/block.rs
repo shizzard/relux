@@ -1,14 +1,20 @@
 use chumsky::prelude::*;
 
+use crate::Span;
+use crate::Spanned;
 use crate::dsl::lexer::Token;
-use crate::{Span, Spanned};
 
 use super::ParserInput;
-use super::ast::{AstCleanupBlock, AstShellBlock, AstStmt};
+use super::ast::AstCleanupBlock;
+use super::ast::AstShellBlock;
+use super::ast::AstStmt;
 use super::ident::ident_var;
-use super::punctuation::{punctuation_brace_close, punctuation_brace_open};
+use super::punctuation::punctuation_brace_close;
+use super::punctuation::punctuation_brace_open;
 use super::stmt::stmt;
-use super::ws::{leading_ws, newline, ws};
+use super::ws::leading_ws;
+use super::ws::newline;
+use super::ws::ws;
 
 /// Sentinel span for dummy blank-line comments (filtered out after collection).
 const SENTINEL: Span = Span::new(0, 0);
@@ -88,7 +94,8 @@ pub fn cleanup_block<'a>()
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::parser::{lex_to_pairs, make_input};
+    use crate::dsl::parser::lex_to_pairs;
+    use crate::dsl::parser::make_input;
 
     fn parse_shell(source: &str) -> AstShellBlock {
         let pairs = lex_to_pairs(source);

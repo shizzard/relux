@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use bytes::BytesMut;
 use regex::Regex;
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::Mutex;
+use tokio::sync::Notify;
 
 use crate::runtime::observe::event_log::BufferSnapshot;
 use crate::runtime::vm::context::FailPattern;

@@ -1,6 +1,9 @@
 use crate::core::table::FileId;
-use crate::diagnostics::{InvalidReport, IrSpan, LoweringBail};
-use crate::dsl::parser::ast::{AstInterpolation, AstStringPart};
+use crate::diagnostics::InvalidReport;
+use crate::diagnostics::IrSpan;
+use crate::diagnostics::LoweringBail;
+use crate::dsl::parser::ast::AstInterpolation;
+use crate::dsl::parser::ast::AstStringPart;
 
 /// Validate a static regex pattern (no interpolation variables).
 /// If the pattern contains variables, skip validation (runtime-only).
@@ -48,7 +51,8 @@ pub(crate) fn validate_static_regex(
 #[cfg(test)]
 mod tests {
     use super::super::*;
-    use crate::diagnostics::{InvalidReport, LoweringBail};
+    use crate::diagnostics::InvalidReport;
+    use crate::diagnostics::LoweringBail;
     use crate::dsl::resolver::lower::test_helpers::*;
 
     #[test]

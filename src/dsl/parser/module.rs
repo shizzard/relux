@@ -1,16 +1,20 @@
 use chumsky::prelude::*;
 
+use crate::Span;
+use crate::Spanned;
 use crate::dsl::lexer::Token;
-use crate::{Span, Spanned};
 
+use super::AstItem;
+use super::AstModule;
 use super::ParserInput;
 use super::annotation::comment;
 use super::effect::def_effect;
-use super::fn_def::{def_fn, def_pure_fn};
+use super::fn_def::def_fn;
+use super::fn_def::def_pure_fn;
 use super::import::import;
 use super::test_def::def_test;
-use super::ws::{leading_ws, newline};
-use super::{AstItem, AstModule};
+use super::ws::leading_ws;
+use super::ws::newline;
 
 /// Sentinel span for dummy blank-line items.
 const SENTINEL: Span = Span::new(0, 0);
@@ -84,7 +88,8 @@ pub fn module<'a>()
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::parser::{lex_to_pairs, make_input};
+    use crate::dsl::parser::lex_to_pairs;
+    use crate::dsl::parser::make_input;
 
     fn parse_module(source: &str) -> AstModule {
         let pairs = lex_to_pairs(source);

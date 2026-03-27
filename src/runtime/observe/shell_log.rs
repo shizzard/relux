@@ -1,5 +1,7 @@
 use std::fs::File;
-use std::io::{self, BufWriter, Write};
+use std::io::BufWriter;
+use std::io::Write;
+use std::io::{self};
 use std::path::Path;
 use std::time::Instant;
 

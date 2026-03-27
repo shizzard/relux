@@ -1,8 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
-
-use tokio::sync::Mutex;
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct LogEvent {
@@ -80,9 +77,10 @@ pub enum LogEventKind {
     EffectTeardown {
         effect: String,
     },
-    Sleep {
+    SleepStart {
         duration: Duration,
     },
+    SleepDone,
     Annotate {
         text: String,
     },
@@ -122,35 +120,11 @@ pub enum LogEventKind {
         result: String,
         bindings: Vec<(String, String)>,
     },
-}
-
-#[derive(Clone)]
-pub struct EventCollector {
-    events: Arc<Mutex<Vec<LogEvent>>>,
-    test_start: Instant,
-}
-
-impl EventCollector {
-    pub fn new(test_start: Instant) -> Self {
-        Self {
-            events: Arc::new(Mutex::new(Vec::new())),
-            test_start,
-        }
-    }
-
-    pub async fn push(&self, shell: &str, kind: LogEventKind) {
-        let event = LogEvent {
-            timestamp: self.test_start.elapsed(),
-            shell: shell.to_string(),
-            kind,
-        };
-        self.events.lock().await.push(event);
-    }
-
-    pub async fn take(self) -> Vec<LogEvent> {
-        match Arc::try_unwrap(self.events) {
-            Ok(mutex) => mutex.into_inner(),
-            Err(arc) => arc.lock().await.clone(),
-        }
-    }
+    Failure,
+    Error {
+        message: String,
+    },
+    Warning {
+        message: String,
+    },
 }

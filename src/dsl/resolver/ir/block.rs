@@ -1,10 +1,14 @@
 use crate::core::table::FileId;
-use crate::diagnostics::{IrSpan, LoweringBail};
-use crate::dsl::parser::ast::{AstCleanupBlock, AstShellBlock};
+use crate::diagnostics::IrSpan;
+use crate::diagnostics::LoweringBail;
+use crate::dsl::parser::ast::AstCleanupBlock;
+use crate::dsl::parser::ast::AstShellBlock;
 
+use super::IrNode;
+use super::IrNodeLowering;
+use super::LoweringContext;
 use super::ident::IrIdent;
 use super::stmt::IrShellStmt;
-use super::{IrNode, IrNodeLowering, LoweringContext};
 
 #[derive(Debug, Clone)]
 pub struct IrShellBlock {

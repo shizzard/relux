@@ -1,14 +1,17 @@
 use chumsky::prelude::*;
 
+use crate::Span;
+use crate::Spanned;
 use crate::dsl::lexer::Token;
-use crate::{Span, Spanned};
 
 use super::ParserInput;
 use super::ast::AstOverlayEntry;
 use super::expr::expr;
 use super::ident::ident_var;
-use super::punctuation::{punctuation_brace_close, punctuation_brace_open};
-use super::ws::{flex_ws, ws};
+use super::punctuation::punctuation_brace_close;
+use super::punctuation::punctuation_brace_open;
+use super::ws::flex_ws;
+use super::ws::ws;
 
 // ─── L4: Overlay Combinators ────────────────────────────────
 
@@ -57,7 +60,8 @@ pub fn overlay<'a>()
 mod tests {
     use super::*;
     use crate::dsl::parser::ast::AstExpr;
-    use crate::dsl::parser::{lex_to_pairs, make_input};
+    use crate::dsl::parser::lex_to_pairs;
+    use crate::dsl::parser::make_input;
 
     fn parse_overlay(source: &str) -> Vec<Spanned<AstOverlayEntry>> {
         let pairs = lex_to_pairs(source);

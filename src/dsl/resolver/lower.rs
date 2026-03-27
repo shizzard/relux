@@ -1,16 +1,38 @@
 use std::sync::Arc;
 
 use crate::core::table::FileId;
-use crate::diagnostics::{
-    Cause, CauseId, CauseTable, CycleReport, DefinitionRef, EffectCycleEntry, EffectId, EffectName,
-    FnCycleEntry, FnId, InvalidReport, IrSpan, LoweringBail, ModulePath, Warning, WarningId,
-    WarningTable,
-};
-use crate::dsl::parser::ast::{AstItem, AstModule};
-use crate::dsl::resolver::ir::{
-    AstTable, IrEffect, IrFn, IrNodeLowering, IrPureFn, LocalEffectKey, LocalFnKey, LocalTable,
-    LocalTables, Plan, SourceTable, Suite, Tables,
-};
+use crate::diagnostics::Cause;
+use crate::diagnostics::CauseId;
+use crate::diagnostics::CauseTable;
+use crate::diagnostics::CycleReport;
+use crate::diagnostics::DefinitionRef;
+use crate::diagnostics::EffectCycleEntry;
+use crate::diagnostics::EffectId;
+use crate::diagnostics::EffectName;
+use crate::diagnostics::FnCycleEntry;
+use crate::diagnostics::FnId;
+use crate::diagnostics::InvalidReport;
+use crate::diagnostics::IrSpan;
+use crate::diagnostics::LoweringBail;
+use crate::diagnostics::ModulePath;
+use crate::diagnostics::Warning;
+use crate::diagnostics::WarningId;
+use crate::diagnostics::WarningTable;
+use crate::dsl::parser::ast::AstItem;
+use crate::dsl::parser::ast::AstModule;
+use crate::dsl::resolver::ir::AstTable;
+use crate::dsl::resolver::ir::IrEffect;
+use crate::dsl::resolver::ir::IrFn;
+use crate::dsl::resolver::ir::IrNodeLowering;
+use crate::dsl::resolver::ir::IrPureFn;
+use crate::dsl::resolver::ir::LocalEffectKey;
+use crate::dsl::resolver::ir::LocalFnKey;
+use crate::dsl::resolver::ir::LocalTable;
+use crate::dsl::resolver::ir::LocalTables;
+use crate::dsl::resolver::ir::Plan;
+use crate::dsl::resolver::ir::SourceTable;
+use crate::dsl::resolver::ir::Suite;
+use crate::dsl::resolver::ir::Tables;
 use crate::pure::Env;
 
 // ─── LoweringScope ──────────────────────────────────────────
@@ -913,8 +935,13 @@ impl LoweringContext {
 pub(crate) mod test_helpers {
     use super::*;
     use crate::Span;
-    use crate::core::table::{FileId, SharedTable};
-    use crate::diagnostics::{CauseTable, IrSpan, LoweringBail, ModulePath, WarningTable};
+    use crate::core::table::FileId;
+    use crate::core::table::SharedTable;
+    use crate::diagnostics::CauseTable;
+    use crate::diagnostics::IrSpan;
+    use crate::diagnostics::LoweringBail;
+    use crate::diagnostics::ModulePath;
+    use crate::diagnostics::WarningTable;
     use crate::dsl::parser::ast::*;
     use crate::dsl::resolver::ir::*;
     use crate::pure::Env;
@@ -1140,15 +1167,27 @@ pub(crate) mod test_helpers {
 mod tests {
     use super::test_helpers::*;
     use super::*;
-    use crate::diagnostics::{
-        Cause, CauseId, CauseTable, DefinitionRef, EffectId, EffectName, FnId, InvalidReport,
-        IrSpan, LoweringBail, ModulePath, SkipEvaluation, SkipReport, WarningTable,
-    };
+    use crate::diagnostics::Cause;
+    use crate::diagnostics::CauseId;
+    use crate::diagnostics::CauseTable;
+    use crate::diagnostics::DefinitionRef;
+    use crate::diagnostics::EffectId;
+    use crate::diagnostics::EffectName;
+    use crate::diagnostics::FnId;
+    use crate::diagnostics::InvalidReport;
+    use crate::diagnostics::IrSpan;
+    use crate::diagnostics::LoweringBail;
+    use crate::diagnostics::ModulePath;
+    use crate::diagnostics::SkipEvaluation;
+    use crate::diagnostics::SkipReport;
+    use crate::diagnostics::WarningTable;
     use crate::dsl::resolver::ir::*;
 
     use crate::Span;
     use crate::Spanned;
-    use crate::core::table::{FileId, SharedTable, SourceFile};
+    use crate::core::table::FileId;
+    use crate::core::table::SharedTable;
+    use crate::core::table::SourceFile;
     use crate::dsl::parser::ast::*;
     use crate::pure::Env;
     use std::collections::HashMap;

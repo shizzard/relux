@@ -2,13 +2,20 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 
 use crate::Span;
-use crate::core::table::{FileId, SharedTable, SourceFile};
-use crate::diagnostics::{
-    Cause, CauseId, CauseTable, InvalidReport, IrSpan, ModulePath, WarningTable,
-};
+use crate::core::table::FileId;
+use crate::core::table::SharedTable;
+use crate::core::table::SourceFile;
+use crate::diagnostics::Cause;
+use crate::diagnostics::CauseId;
+use crate::diagnostics::CauseTable;
+use crate::diagnostics::InvalidReport;
+use crate::diagnostics::IrSpan;
+use crate::diagnostics::ModulePath;
+use crate::diagnostics::WarningTable;
 use crate::dsl::resolver::SourceLoader;
 
-use super::ir::{AstTable, SourceTable};
+use super::ir::AstTable;
+use super::ir::SourceTable;
 
 // ─── load_modules ───────────────────────────────────────────
 

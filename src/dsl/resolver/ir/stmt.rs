@@ -1,13 +1,20 @@
 use crate::core::table::FileId;
-use crate::diagnostics::{InvalidReport, IrSpan, LoweringBail};
-use crate::dsl::parser::ast::{AstAssignStmt, AstLetStmt, AstStmt};
+use crate::diagnostics::InvalidReport;
+use crate::diagnostics::IrSpan;
+use crate::diagnostics::LoweringBail;
+use crate::dsl::parser::ast::AstAssignStmt;
+use crate::dsl::parser::ast::AstLetStmt;
+use crate::dsl::parser::ast::AstStmt;
 
+use super::IrNode;
+use super::IrNodeLowering;
+use super::LoweringContext;
 use super::comment::IrComment;
-use super::expr::{IrExpr, IrPureExpr};
+use super::expr::IrExpr;
+use super::expr::IrPureExpr;
 use super::ident::IrIdent;
 use super::interpolation::IrInterpolation;
 use super::timeout::IrTimeout;
-use super::{IrNode, IrNodeLowering, LoweringContext};
 
 // ─── IrLetStmt ───────────────────────────────────────────────
 

@@ -1,29 +1,51 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
 use std::collections::VecDeque;
 
 use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
 
-use crate::diagnostics::{Cause, CauseId, CauseTable, WarningId};
-use crate::dsl::resolver::ir::{IrNode, IrTest, IrTestItem, IrTimeout, Plan, SourceTable, Suite};
-use crate::pure::{Env, VarScope};
+use crate::diagnostics::Cause;
+use crate::diagnostics::CauseId;
+use crate::diagnostics::CauseTable;
+use crate::diagnostics::WarningId;
+use crate::dsl::resolver::ir::IrNode;
+use crate::dsl::resolver::ir::IrTest;
+use crate::dsl::resolver::ir::IrTestItem;
+use crate::dsl::resolver::ir::IrTimeout;
+use crate::dsl::resolver::ir::Plan;
+use crate::dsl::resolver::ir::SourceTable;
+use crate::dsl::resolver::ir::Suite;
+use crate::pure::Env;
+use crate::pure::VarScope;
+use crate::runtime::effect::CleanupSource;
 use crate::runtime::effect::EffectManager;
-use crate::runtime::effect::{CleanupSource, Warning};
-use crate::runtime::observe::event_log::{EventCollector, LogEventKind};
-use crate::runtime::observe::progress::{ProgressEvent, ProgressTx};
-use crate::runtime::report::result::{Failure, Outcome, TestResult};
+use crate::runtime::effect::Warning;
+use crate::runtime::effect::registry::EffectRegistry;
+use crate::runtime::observe::event_sink::EventSink;
+use crate::runtime::report::result::Failure;
+use crate::runtime::report::result::Outcome;
+use crate::runtime::report::result::TestResult;
 use crate::runtime::vm::Vm;
-use crate::runtime::vm::context::{ExecutionContext, Scope, ShellState};
+use crate::runtime::vm::context::ExecutionContext;
+use crate::runtime::vm::context::Scope;
+use crate::runtime::vm::context::ShellState;
 
 pub mod effect;
 pub mod observe;
 pub mod report;
+pub mod runtime_context;
 pub mod vm;
+
+pub use runtime_context::RuntimeContext;
+pub use runtime_context::ShellConfig;
 
 use crate::core::config;
 
@@ -344,7 +366,6 @@ async fn run_worker<'a>(
 
 /// Run a single test with cancellation support. On cancellation, cleanup
 /// still runs and a partial result is returned.
-// TODO: consolidate parameters into a context struct
 #[allow(clippy::too_many_arguments)]
 async fn run_test_cancellable(
     meta: &crate::dsl::resolver::ir::TestMeta,
@@ -355,7 +376,7 @@ async fn run_test_cancellable(
     cause_tags: &str,
     cancel: &CancellationToken,
     tables: &crate::dsl::resolver::ir::Tables,
-    causes: &CauseTable,
+    _causes: &CauseTable,
 ) -> TestResult {
     // Create a child token for test-level timeout
     let test_cancel = cancel.child_token();
@@ -383,7 +404,6 @@ async fn run_test_cancellable(
         cause_tags,
         &test_cancel,
         tables,
-        causes,
     )
     .await;
 
@@ -421,13 +441,11 @@ async fn run_test(
     cause_tags: &str,
     cancel: &CancellationToken,
     tables: &crate::dsl::resolver::ir::Tables,
-    _causes: &CauseTable,
 ) -> TestResult {
     let test_start = Instant::now();
     let source_table = &tables.sources;
     let log_dir = test_log_dir(&run_ctx.run_dir, source_table, meta, &run_ctx.project_root);
     let _ = std::fs::create_dir_all(&log_dir);
-    let event_collector = EventCollector::new(test_start);
 
     let display_id = test_display_id(test_path, meta.name());
     eprint!("test {display_id}: ");
@@ -444,45 +462,43 @@ async fn run_test(
     let test_env = make_test_env(base_env, &source_file);
     let mut warnings = Vec::new();
 
-    // Create a per-test EffectManager with proper progress/event_collector
-    let test_manager = EffectManager::new(
-        tables.clone(),
-        test_env.clone(),
-        &run_ctx.shell_command,
-        &run_ctx.shell_prompt,
-        run_ctx.default_timeout.clone(),
-        Some(progress_tx.clone()),
-        &log_dir,
-        test_start,
-        Some(event_collector.clone()),
-        cancel.clone(),
-    );
+    let shell_config = ShellConfig {
+        command: Arc::from(run_ctx.shell_command.as_str()),
+        prompt: Arc::from(run_ctx.shell_prompt.as_str()),
+        default_timeout: run_ctx.default_timeout.clone(),
+    };
 
-    let outcome = run_test_body(
-        meta,
-        test,
-        &test_manager,
-        &mut warnings,
-        &test_env,
-        &log_dir,
+    let events = EventSink::new(progress_tx.clone(), test_start);
+
+    let rt_ctx = RuntimeContext {
+        events: events.clone(),
+        shell: shell_config,
+        log_dir: Arc::from(log_dir.as_path()),
+        tables: tables.clone(),
+        env: test_env.clone(),
+        cancel: cancel.clone(),
         test_start,
-        &event_collector,
-        progress_tx.clone(),
-        &run_ctx.default_timeout,
-        cancel,
-    )
-    .await;
+    };
+
+    // Create a per-test EffectManager
+    let test_manager = EffectManager::new(Arc::new(EffectRegistry::new()), rt_ctx.clone());
+
+    let outcome = run_test_body(meta, test, &test_manager, &mut warnings, &rt_ctx).await;
 
     if outcome.is_err() {
-        let _ = progress_tx.send(ProgressEvent::Failure);
+        events.emit_failure("");
     }
 
     // Release effects (always runs, even after cancellation)
     let effect_warnings = test_manager.cleanup(test.needs()).await;
     warnings.extend(effect_warnings);
 
-    // Drop all progress_tx clones so the printer task can finish
+    // Collect events (consumes the EventSink, releasing its ProgressTx)
+    let log_events = events.take();
+
+    // Drop all remaining ProgressTx holders so the printer task can finish
     drop(test_manager);
+    drop(rt_ctx);
     drop(progress_tx);
     let progress_string = printer_handle.await.unwrap_or_default();
     let duration = test_start.elapsed();
@@ -496,12 +512,10 @@ async fn run_test(
         };
         eprintln!("{suffix}{cause_tags}");
     }
-
-    let events = event_collector.take().await;
     crate::runtime::report::html::generate_html_logs(
         &log_dir,
         meta.name(),
-        &events,
+        &log_events,
         &run_ctx.run_dir,
     );
 
@@ -529,19 +543,12 @@ async fn run_test(
 
 // ─── Run Test Body ──────────────────────────────────────────
 
-#[allow(clippy::too_many_arguments)]
 async fn run_test_body(
     meta: &crate::dsl::resolver::ir::TestMeta,
     test: &IrTest,
     manager: &EffectManager,
     warnings: &mut Vec<Warning>,
-    env: &Arc<Env>,
-    log_dir: &Path,
-    test_start: Instant,
-    event_collector: &EventCollector,
-    progress_tx: ProgressTx,
-    default_timeout: &IrTimeout,
-    cancel: &CancellationToken,
+    rt_ctx: &RuntimeContext,
 ) -> Result<(), Failure> {
     // 1. Create test scope
     let scope = Scope::Test {
@@ -563,15 +570,7 @@ async fn run_test_body(
         }
         if let Some(alias) = need.alias() {
             let source = vm_arc.lock().await.current_name();
-            event_collector
-                .push(
-                    alias,
-                    LogEventKind::ShellAlias {
-                        name: alias.to_string(),
-                        source,
-                    },
-                )
-                .await;
+            rt_ctx.events.emit_shell_alias(alias, source);
             shells.insert(alias.to_string(), vm_arc);
         }
     }
@@ -589,8 +588,8 @@ async fn run_test_body(
                         crate::pure::evaluator::eval_pure_expr(
                             expr,
                             &vars,
-                            env,
-                            &manager.tables.pure_fns,
+                            &rt_ctx.env,
+                            &rt_ctx.tables.pure_fns,
                         )
                     } else {
                         String::new()
@@ -603,41 +602,22 @@ async fn run_test_body(
                 }
                 IrTestItem::Shell { block, .. } => {
                     let name = block.name().name().to_string();
-                    let _ = progress_tx.send(ProgressEvent::ShellSwitch(name.clone()));
+                    rt_ctx.events.emit_shell_switch(&name);
                     if !shells.contains_key(&name) {
                         let shell_state = ShellState::new(name.clone(), None, None);
                         let ctx = ExecutionContext::new(
                             scope.clone(),
                             shell_state,
-                            default_timeout.clone(),
-                            env.clone(),
+                            rt_ctx.shell.default_timeout.clone(),
+                            rt_ctx.env.clone(),
                         );
-                        let vm = Vm::new(
-                            name.clone(),
-                            manager.shell_prompt.to_string(),
-                            manager.shell_command.to_string(),
-                            ctx,
-                            manager.tables.clone(),
-                            Some(progress_tx.clone()),
-                            log_dir,
-                            test_start,
-                            Some(event_collector.clone()),
-                            cancel.clone(),
-                        )
-                        .await?;
+                        let vm = Vm::new(name.clone(), ctx, rt_ctx).await?;
                         shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
                     }
                     let vm_arc = shells.get(&name).expect("shell just inserted above");
                     let mut vm = vm_arc.lock().await;
                     let display_name = vm.current_name().to_string();
-                    event_collector
-                        .push(
-                            &display_name,
-                            LogEventKind::ShellSwitch {
-                                name: display_name.clone(),
-                            },
-                        )
-                        .await;
+                    rt_ctx.events.emit_shell_switch(&display_name);
                     vm.exec_stmts(block.body()).await?;
                 }
                 IrTestItem::Cleanup { block, .. } => {
@@ -660,38 +640,22 @@ async fn run_test_body(
 
     // 6. Run test cleanup (fresh shell, best-effort)
     if let Some(cleanup) = &cleanup_block {
-        let _ = progress_tx.send(ProgressEvent::Cleanup);
-        event_collector
-            .push(
-                "__cleanup",
-                LogEventKind::Cleanup {
-                    shell: "__cleanup".to_string(),
-                },
-            )
-            .await;
+        rt_ctx.events.emit_cleanup("__cleanup");
         let shell_state = ShellState::new("__cleanup".to_string(), None, None);
         let ctx = ExecutionContext::new(
             scope.clone(),
             shell_state,
-            default_timeout.clone(),
-            env.clone(),
+            rt_ctx.shell.default_timeout.clone(),
+            rt_ctx.env.clone(),
         );
-        if let Ok(mut cleanup_vm) = Vm::new(
-            "__cleanup".to_string(),
-            manager.shell_prompt.to_string(),
-            manager.shell_command.to_string(),
-            ctx,
-            manager.tables.clone(),
-            Some(progress_tx.clone()),
-            log_dir,
-            test_start,
-            Some(event_collector.clone()),
-            CancellationToken::new(), // intentionally uncancellable: cleanup must always complete
-        )
-        .await
-        {
+        // Cleanup uses its own uncancellable token
+        let mut cleanup_rt_ctx = rt_ctx.clone();
+        cleanup_rt_ctx.cancel = CancellationToken::new();
+        if let Ok(mut cleanup_vm) = Vm::new("__cleanup".to_string(), ctx, &cleanup_rt_ctx).await {
             if let Err(failure) = cleanup_vm.exec_stmts(cleanup.body()).await {
-                let _ = progress_tx.send(ProgressEvent::Warning("test cleanup failed".to_string()));
+                rt_ctx
+                    .events
+                    .emit_warning("__cleanup", "test cleanup failed");
                 warnings.push(Warning::CleanupFailed {
                     source: CleanupSource::Test,
                     failure,

@@ -1,23 +1,28 @@
 pub mod registry;
 
-use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::Instant;
 
 use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
 
-use crate::dsl::resolver::ir::{IrCleanupBlock, IrEffectItem, IrEffectNeed, IrPureLetStmt, Tables};
-use crate::pure::{Env, VarScope};
-use crate::runtime::effect::registry::{
-    EffectHandle, EffectInstanceKey, EffectRegistry, EffectSlot,
-};
-use crate::runtime::observe::event_log::{EventCollector, LogEventKind};
-use crate::runtime::observe::progress::{ProgressEvent, ProgressTx};
+use crate::dsl::resolver::ir::IrCleanupBlock;
+use crate::dsl::resolver::ir::IrEffectItem;
+use crate::dsl::resolver::ir::IrEffectNeed;
+use crate::dsl::resolver::ir::IrPureLetStmt;
+use crate::pure::Env;
+use crate::pure::VarScope;
+use crate::runtime::RuntimeContext;
+use crate::runtime::effect::registry::EffectHandle;
+use crate::runtime::effect::registry::EffectInstanceKey;
+use crate::runtime::effect::registry::EffectRegistry;
+use crate::runtime::effect::registry::EffectSlot;
 use crate::runtime::report::result::Failure;
 use crate::runtime::vm::Vm;
-use crate::runtime::vm::context::{ExecutionContext, Scope, ShellState};
+use crate::runtime::vm::context::ExecutionContext;
+use crate::runtime::vm::context::Scope;
+use crate::runtime::vm::context::ShellState;
 
 // ─── Warning / CleanupSource ────────────────────────────────
 
@@ -40,45 +45,12 @@ pub enum Warning {
 #[derive(Clone)]
 pub struct EffectManager {
     registry: Arc<EffectRegistry>,
-    pub(crate) tables: Tables,
-    pub(crate) env: Arc<Env>,
-    pub(crate) shell_command: Arc<str>,
-    pub(crate) shell_prompt: Arc<str>,
-    pub(crate) default_timeout: crate::dsl::resolver::ir::IrTimeout,
-    pub(crate) progress_tx: Option<ProgressTx>,
-    pub(crate) log_dir: Arc<Path>,
-    pub(crate) test_start: Instant,
-    pub(crate) event_collector: Option<EventCollector>,
-    pub(crate) cancel: CancellationToken,
+    pub(crate) rt_ctx: RuntimeContext,
 }
 
 impl EffectManager {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        tables: Tables,
-        env: Arc<Env>,
-        shell_command: &str,
-        shell_prompt: &str,
-        default_timeout: crate::dsl::resolver::ir::IrTimeout,
-        progress_tx: Option<ProgressTx>,
-        log_dir: &Path,
-        test_start: Instant,
-        event_collector: Option<EventCollector>,
-        cancel: CancellationToken,
-    ) -> Self {
-        Self {
-            registry: Arc::new(EffectRegistry::new()),
-            tables,
-            env,
-            shell_command: Arc::from(shell_command),
-            shell_prompt: Arc::from(shell_prompt),
-            default_timeout,
-            progress_tx,
-            log_dir: Arc::from(log_dir),
-            test_start,
-            event_collector,
-            cancel,
-        }
+    pub fn new(registry: Arc<EffectRegistry>, rt_ctx: RuntimeContext) -> Self {
+        Self { registry, rt_ctx }
     }
 
     /// Acquire all needs. Each need recursively acquires its own
@@ -113,12 +85,6 @@ impl EffectManager {
         warnings
     }
 
-    fn emit_progress(&self, event: ProgressEvent) {
-        if let Some(tx) = &self.progress_tx {
-            let _ = tx.send(event);
-        }
-    }
-
     async fn acquire(
         &self,
         key: &EffectInstanceKey,
@@ -143,7 +109,7 @@ impl EffectManager {
                     Ok(vm_arc)
                 }
                 Err(failure) => {
-                    self.emit_progress(ProgressEvent::Error(failure.summary()));
+                    self.rt_ctx.events.emit_error("", failure.summary());
                     *guard = EffectSlot::Failed(failure.clone());
                     Err(failure)
                 }
@@ -153,26 +119,18 @@ impl EffectManager {
 
     async fn bootstrap_effect(&self, need: &IrEffectNeed) -> Result<EffectHandle, Failure> {
         let effect_name = need.effect().to_string();
-        self.emit_progress(ProgressEvent::EffectSetup(effect_name.clone()));
-        if let Some(ec) = &self.event_collector {
-            ec.push(
-                "",
-                LogEventKind::EffectSetup {
-                    effect: effect_name.clone(),
-                },
-            )
-            .await;
-        }
+        self.rt_ctx.events.emit_effect_setup("", &effect_name);
 
-        let effect_result =
-            self.tables
-                .effects
-                .get(need.effect())
-                .ok_or_else(|| Failure::Runtime {
-                    message: format!("effect {:?} not found in table", need.effect()),
-                    span: None,
-                    shell: None,
-                })?;
+        let effect_result = self
+            .rt_ctx
+            .tables
+            .effects
+            .get(need.effect())
+            .ok_or_else(|| Failure::Runtime {
+                message: format!("effect {:?} not found in table", need.effect()),
+                span: None,
+                shell: None,
+            })?;
         let effect = effect_result.as_ref().map_err(|e| Failure::Runtime {
             message: format!("effect resolution failed: {e:?}"),
             span: None,
@@ -186,17 +144,8 @@ impl EffectManager {
         let mut shells: HashMap<String, Arc<TokioMutex<Vm>>> = HashMap::new();
         for (sub_need, vm_arc) in effect.needs().iter().zip(exported_deps) {
             if let Some(alias) = sub_need.alias() {
-                if let Some(ec) = &self.event_collector {
-                    let source = vm_arc.lock().await.current_name();
-                    ec.push(
-                        alias,
-                        LogEventKind::ShellAlias {
-                            name: alias.to_string(),
-                            source,
-                        },
-                    )
-                    .await;
-                }
+                let source = vm_arc.lock().await.current_name();
+                self.rt_ctx.events.emit_shell_alias(alias, source);
                 shells.insert(alias.to_string(), vm_arc);
             }
         }
@@ -232,43 +181,23 @@ impl EffectManager {
                 }
                 IrEffectItem::Shell { block, .. } => {
                     let name = block.name().name().to_string();
-                    self.emit_progress(ProgressEvent::ShellSwitch(name.clone()));
+                    self.rt_ctx.events.emit_shell_switch(&name);
                     if !shells.contains_key(&name) {
                         let shell_state =
                             ShellState::new(name.clone(), None, Some(env_overlay.clone()));
                         let ctx = ExecutionContext::new(
                             scope.clone(),
                             shell_state,
-                            self.default_timeout.clone(),
-                            self.env.clone(),
+                            self.rt_ctx.shell.default_timeout.clone(),
+                            self.rt_ctx.env.clone(),
                         );
-                        let vm = Vm::new(
-                            name.clone(),
-                            self.shell_prompt.to_string(),
-                            self.shell_command.to_string(),
-                            ctx,
-                            self.tables.clone(),
-                            self.progress_tx.clone(),
-                            &self.log_dir,
-                            self.test_start,
-                            self.event_collector.clone(),
-                            self.cancel.clone(),
-                        )
-                        .await?;
+                        let vm = Vm::new(name.clone(), ctx, &self.rt_ctx).await?;
                         shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
                     }
                     let vm_arc = shells.get(&name).expect("shell just inserted above");
                     let mut vm = vm_arc.lock().await;
                     let display_name = vm.current_name().to_string();
-                    if let Some(ec) = &self.event_collector {
-                        ec.push(
-                            &display_name,
-                            LogEventKind::ShellSwitch {
-                                name: display_name.clone(),
-                            },
-                        )
-                        .await;
-                    }
+                    self.rt_ctx.events.emit_shell_switch(&display_name);
                     vm.exec_stmts(block.body()).await?;
                 }
                 IrEffectItem::Cleanup { block, .. } => {
@@ -315,8 +244,8 @@ impl EffectManager {
             let value = crate::pure::evaluator::eval_pure_expr(
                 entry.value(),
                 &vars,
-                &self.env,
-                &self.tables.pure_fns,
+                &self.rt_ctx.env,
+                &self.rt_ctx.tables.pure_fns,
             );
             overlay.insert(entry.key().name().to_string(), value);
         }
@@ -326,7 +255,12 @@ impl EffectManager {
     async fn eval_effect_let(&self, stmt: &IrPureLetStmt, scope: &Scope, _env_overlay: &Arc<Env>) {
         let vars = VarScope::new();
         let value = if let Some(expr) = stmt.value() {
-            crate::pure::evaluator::eval_pure_expr(expr, &vars, &self.env, &self.tables.pure_fns)
+            crate::pure::evaluator::eval_pure_expr(
+                expr,
+                &vars,
+                &self.rt_ctx.env,
+                &self.rt_ctx.tables.pure_fns,
+            )
         } else {
             String::new()
         };
@@ -356,37 +290,21 @@ impl EffectManager {
                 if *refcount == 0 {
                     let effect_name = handle.scope.name().to_string();
 
-                    if let Some(ec) = &self.event_collector {
-                        ec.push(
-                            "",
-                            LogEventKind::EffectTeardown {
-                                effect: effect_name.clone(),
-                            },
-                        )
-                        .await;
-                    }
+                    self.rt_ctx.events.emit_effect_teardown("", &effect_name);
 
                     // 1. Shut down the exported VM
                     handle.exported_vm.lock().await.shutdown().await;
 
                     // 2. Run cleanup block in fresh shell (best-effort)
                     if let Some(cleanup_block) = &handle.cleanup {
-                        self.emit_progress(ProgressEvent::Cleanup);
-                        if let Some(ec) = &self.event_collector {
-                            ec.push(
-                                "__cleanup",
-                                LogEventKind::Cleanup {
-                                    shell: format!("{effect_name}.__cleanup"),
-                                },
-                            )
-                            .await;
-                        }
+                        self.rt_ctx.events.emit_cleanup("__cleanup");
                         let cleanup_result =
                             self.run_cleanup_block(cleanup_block, &handle.scope).await;
                         if let Err(failure) = cleanup_result {
-                            self.emit_progress(ProgressEvent::Warning(format!(
-                                "effect {effect_name} cleanup failed"
-                            )));
+                            self.rt_ctx.events.emit_warning(
+                                "__cleanup",
+                                format!("effect {effect_name} cleanup failed"),
+                            );
                             warnings.push(Warning::CleanupFailed {
                                 source: CleanupSource::Effect { name: effect_name },
                                 failure,
@@ -424,22 +342,13 @@ impl EffectManager {
         let ctx = ExecutionContext::new(
             scope.clone(),
             shell_state,
-            self.default_timeout.clone(),
-            self.env.clone(),
+            self.rt_ctx.shell.default_timeout.clone(),
+            self.rt_ctx.env.clone(),
         );
-        let mut vm = Vm::new(
-            "__cleanup".to_string(),
-            self.shell_prompt.to_string(),
-            self.shell_command.to_string(),
-            ctx,
-            self.tables.clone(),
-            None,
-            &self.log_dir,
-            self.test_start,
-            self.event_collector.clone(),
-            CancellationToken::new(), // intentionally uncancellable: cleanup must always complete
-        )
-        .await?;
+        // Cleanup uses its own uncancellable token
+        let mut cleanup_rt_ctx = self.rt_ctx.clone();
+        cleanup_rt_ctx.cancel = CancellationToken::new();
+        let mut vm = Vm::new("__cleanup".to_string(), ctx, &cleanup_rt_ctx).await?;
         vm.exec_stmts(cleanup_block.body()).await?;
         vm.shutdown().await;
         Ok(())

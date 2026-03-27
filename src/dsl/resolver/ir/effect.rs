@@ -1,16 +1,24 @@
 use crate::core::table::FileId;
-use crate::diagnostics::{
-    EffectId as DiagEffectId, EffectName, InvalidReport, IrSpan, LoweringBail,
-};
-use crate::dsl::parser::ast::{AstEffectDef, AstEffectItem, AstNeedDecl, AstOverlayEntry};
+use crate::diagnostics::EffectId as DiagEffectId;
+use crate::diagnostics::EffectName;
+use crate::diagnostics::InvalidReport;
+use crate::diagnostics::IrSpan;
+use crate::diagnostics::LoweringBail;
+use crate::dsl::parser::ast::AstEffectDef;
+use crate::dsl::parser::ast::AstEffectItem;
+use crate::dsl::parser::ast::AstNeedDecl;
+use crate::dsl::parser::ast::AstOverlayEntry;
 
-use super::block::{IrCleanupBlock, IrShellBlock};
+use super::IrNode;
+use super::IrNodeLowering;
+use super::LoweringContext;
+use super::block::IrCleanupBlock;
+use super::block::IrShellBlock;
 use super::comment::IrComment;
 use super::expr::IrPureExpr;
 use super::ident::IrIdent;
 use super::stmt::IrPureLetStmt;
 use super::tables::LocalEffectKey;
-use super::{IrNode, IrNodeLowering, LoweringContext};
 
 // ─── IrOverlayEntry ──────────────────────────────────────────
 
@@ -403,7 +411,11 @@ mod tests {
 
     // ─── Effect lowering (cacheable) ──────────────────────────
 
-    use crate::diagnostics::{CycleReport, EffectId, FnId, InvalidReport, LoweringBail};
+    use crate::diagnostics::CycleReport;
+    use crate::diagnostics::EffectId;
+    use crate::diagnostics::FnId;
+    use crate::diagnostics::InvalidReport;
+    use crate::diagnostics::LoweringBail;
     use crate::dsl::resolver::lower::test_helpers::*;
 
     #[test]

@@ -1,11 +1,19 @@
 use crate::core::table::FileId;
-use crate::diagnostics::{FnId, InvalidReport, IrSpan, LoweringBail, ModulePath};
-use crate::dsl::parser::ast::{AstCallExpr, AstExpr, AstStringPart};
+use crate::diagnostics::FnId;
+use crate::diagnostics::InvalidReport;
+use crate::diagnostics::IrSpan;
+use crate::diagnostics::LoweringBail;
+use crate::diagnostics::ModulePath;
+use crate::dsl::parser::ast::AstCallExpr;
+use crate::dsl::parser::ast::AstExpr;
+use crate::dsl::parser::ast::AstStringPart;
 
+use super::IrNode;
+use super::IrNodeLowering;
+use super::LoweringContext;
 use super::ident::IrIdent;
 use super::interpolation::IrInterpolation;
 use super::tables::LocalFnKey;
-use super::{IrNode, IrNodeLowering, LoweringContext};
 
 // ─── IrExpr ──────────────────────────────────────────────────
 
@@ -484,7 +492,8 @@ mod tests {
     // ─── Expression lowering ──────────────────────────────────
 
     use crate::Span;
-    use crate::diagnostics::{FnId, LoweringBail};
+    use crate::diagnostics::FnId;
+    use crate::diagnostics::LoweringBail;
     use crate::dsl::parser::ast::*;
     use crate::dsl::resolver::lower::test_helpers::*;
 

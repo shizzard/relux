@@ -1,6 +1,7 @@
 use std::time::Duration;
 
-use crate::{Span, Spanned};
+use crate::Span;
+use crate::Spanned;
 
 // ─── AstIdent ───────────────────────────────────────────────
 

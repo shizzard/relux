@@ -1,17 +1,26 @@
 use std::sync::Arc;
 
 use crate::core::table::FileId;
-use crate::diagnostics::{
-    Cause, CauseId, CauseTable, DefinitionRef, IrSpan, LoweringBail, ModulePath, WarningId,
-    WarningTable,
-};
-use crate::dsl::parser::ast::{AstItem, AstTestDef, AstTestItem};
+use crate::diagnostics::Cause;
+use crate::diagnostics::CauseId;
+use crate::diagnostics::CauseTable;
+use crate::diagnostics::DefinitionRef;
+use crate::diagnostics::IrSpan;
+use crate::diagnostics::LoweringBail;
+use crate::diagnostics::ModulePath;
+use crate::diagnostics::WarningId;
+use crate::diagnostics::WarningTable;
+use crate::dsl::parser::ast::AstItem;
+use crate::dsl::parser::ast::AstTestDef;
+use crate::dsl::parser::ast::AstTestItem;
 use crate::pure::Env;
 
+use super::IrNode;
+use super::IrNodeLowering;
+use super::LoweringContext;
 use super::tables::Tables;
 use super::test_def::IrTest;
 use super::timeout::IrTimeout;
-use super::{IrNode, IrNodeLowering, LoweringContext};
 
 // ─── TestMeta ────────────────────────────────────────────────
 

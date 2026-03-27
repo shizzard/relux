@@ -5,7 +5,8 @@ use regex::Regex;
 use tokio::sync::Mutex;
 
 use crate::dsl::resolver::ir::IrTimeout;
-use crate::pure::{Env, VarScope};
+use crate::pure::Env;
+use crate::pure::VarScope;
 
 // ─── FailPattern ────────────────────────────────────────────
 

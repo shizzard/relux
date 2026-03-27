@@ -1,14 +1,20 @@
 use chumsky::prelude::*;
 
+use crate::Span;
+use crate::Spanned;
 use crate::dsl::lexer::Token;
-use crate::{Span, Spanned};
 
 use super::ParserInput;
-use super::ast::{AstImport, AstImportName};
-use super::ident::{ident_aliased_effect, ident_aliased_fn};
-use super::punctuation::{punctuation_brace_close, punctuation_brace_open};
+use super::ast::AstImport;
+use super::ast::AstImportName;
+use super::ident::ident_aliased_effect;
+use super::ident::ident_aliased_fn;
+use super::punctuation::punctuation_brace_close;
+use super::punctuation::punctuation_brace_open;
 use super::token::text;
-use super::ws::{flex_ws, newline, ws};
+use super::ws::flex_ws;
+use super::ws::newline;
+use super::ws::ws;
 
 // ─── L5: AstImport Combinators ────────────────────────────────
 
@@ -87,7 +93,8 @@ pub fn import<'a>()
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::parser::{lex_to_pairs, make_input};
+    use crate::dsl::parser::lex_to_pairs;
+    use crate::dsl::parser::make_input;
 
     fn parse_import(source: &str) -> AstImport {
         let pairs = lex_to_pairs(source);

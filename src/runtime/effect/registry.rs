@@ -4,7 +4,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex as TokioMutex;
 
 use crate::diagnostics::EffectId as DiagEffectId;
-use crate::dsl::resolver::ir::{IrCleanupBlock, IrEffectNeed};
+use crate::dsl::resolver::ir::IrCleanupBlock;
+use crate::dsl::resolver::ir::IrEffectNeed;
 use crate::runtime::report::result::Failure;
 use crate::runtime::vm::Vm;
 use crate::runtime::vm::context::Scope;
@@ -125,7 +126,8 @@ mod tests {
     #[test]
     fn key_hash_consistent() {
         use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
+        use std::hash::Hash;
+        use std::hash::Hasher;
         let k1 = test_key("Db");
         let k2 = test_key("Db");
         let mut h1 = DefaultHasher::new();

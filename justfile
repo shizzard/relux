@@ -19,12 +19,12 @@ check-clippy:
 
 # Run formatter check
 check-fmt:
-    rustup run nightly cargo fmt -- --check
+    rustup run nightly rustfmt --edition 2024 --check $(find src -name '*.rs') bin/relux.rs
 
 # Fix clippy warnings and format code
 fix:
     cargo clippy --all-targets --fix --allow-dirty --allow-staged -- -D warnings
-    rustup run nightly cargo fmt
+    rustup run nightly rustfmt --edition 2024 $(find src -name '*.rs') bin/relux.rs
 
 # Run all tests (unit + e2e)
 test: unit e2e

@@ -1,10 +1,12 @@
 use std::collections::hash_map::DefaultHasher;
 use std::fmt;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::sync::Arc;
 
 use crate::Span;
-use crate::core::table::{FileId, SharedTable};
+use crate::core::table::FileId;
+use crate::core::table::SharedTable;
 
 // ─── ModulePath / EffectName ────────────────────────────────
 
@@ -176,7 +178,14 @@ impl Diagnostic {
         source_table: &crate::core::table::SharedTable<FileId, crate::core::table::SourceFile>,
         project_root: Option<&std::path::Path>,
     ) {
-        use ariadne::{CharSet, Color, Config, IndexType, Label, Report, ReportKind, sources};
+        use ariadne::CharSet;
+        use ariadne::Color;
+        use ariadne::Config;
+        use ariadne::IndexType;
+        use ariadne::Label;
+        use ariadne::Report;
+        use ariadne::ReportKind;
+        use ariadne::sources;
 
         let cfg = Config::default()
             .with_index_type(IndexType::Byte)

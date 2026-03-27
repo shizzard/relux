@@ -1,15 +1,22 @@
 use std::sync::Arc;
 
 use crate::core::table::FileId;
-use crate::diagnostics::{
-    DefinitionRef, InvalidReport, IrSpan, LoweringBail, SkipEvaluation, SkipReport,
-};
-use crate::dsl::parser::ast::{AstCondModifier, AstMarkerCondBody, AstMarkerDecl, AstMarkerKind};
+use crate::diagnostics::DefinitionRef;
+use crate::diagnostics::InvalidReport;
+use crate::diagnostics::IrSpan;
+use crate::diagnostics::LoweringBail;
+use crate::diagnostics::SkipEvaluation;
+use crate::diagnostics::SkipReport;
+use crate::dsl::parser::ast::AstCondModifier;
+use crate::dsl::parser::ast::AstMarkerCondBody;
+use crate::dsl::parser::ast::AstMarkerDecl;
+use crate::dsl::parser::ast::AstMarkerKind;
 use crate::pure::Env;
 
+use super::IrNodeLowering;
+use super::LoweringContext;
 use super::expr::IrPureExpr;
 use super::interpolation::IrInterpolation;
-use super::{IrNodeLowering, LoweringContext};
 
 /// Evaluate condition markers on a definition.
 ///

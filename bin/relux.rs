@@ -1,20 +1,33 @@
+use std::fs;
 use std::path::PathBuf;
+use std::process;
 use std::sync::Arc;
-use std::{fs, process};
 
-use clap::{Arg, ArgAction, Command, value_parser};
+use clap::Arg;
+use clap::ArgAction;
+use clap::Command;
+use clap::value_parser;
 
-use relux::core::config::{self, ReluxConfig};
+use relux::core::config::ReluxConfig;
+use relux::core::config::{self};
 use relux::diagnostics::Cause;
 use relux::diagnostics::ModulePath;
-use relux::dsl::lexer::{lex, normalize};
+use relux::dsl::lexer::lex;
+use relux::dsl::lexer::normalize;
 use relux::dsl::parser::parse;
-use relux::dsl::resolver::ir::{IrTimeout, Plan};
-use relux::dsl::resolver::{FsSourceLoader, discover_test_modules, resolve};
-use relux::history::{HistoryCommand, LatestRun, OutputFormat, run_history};
+use relux::dsl::resolver::FsSourceLoader;
+use relux::dsl::resolver::discover_test_modules;
+use relux::dsl::resolver::ir::IrTimeout;
+use relux::dsl::resolver::ir::Plan;
+use relux::dsl::resolver::resolve;
+use relux::history::HistoryCommand;
+use relux::history::LatestRun;
+use relux::history::OutputFormat;
+use relux::history::run_history;
 use relux::pure::Env;
+use relux::runtime::RunContext;
+use relux::runtime::RunStrategy;
 use relux::runtime::report::result::Outcome;
-use relux::runtime::{RunContext, RunStrategy};
 
 fn cli() -> Command {
     Command::new("relux")

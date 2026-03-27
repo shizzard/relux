@@ -1,5 +1,7 @@
 use crate::core::table::FileId;
-use crate::diagnostics::{CycleReport, InvalidReport, LoweringBail};
+use crate::diagnostics::CycleReport;
+use crate::diagnostics::InvalidReport;
+use crate::diagnostics::LoweringBail;
 
 pub use crate::dsl::resolver::lower::LoweringContext;
 

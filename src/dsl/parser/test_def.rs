@@ -1,19 +1,30 @@
 use chumsky::prelude::*;
 
+use crate::Span;
+use crate::Spanned;
 use crate::dsl::lexer::Token;
-use crate::{Span, Spanned};
 
 use super::ParserInput;
-use super::annotation::{comment, docstring, marker};
-use super::ast::{AstMarkerDecl, AstNode, AstStmt, AstTestDef, AstTestItem};
-use super::block::{cleanup_block, shell_block};
+use super::annotation::comment;
+use super::annotation::docstring;
+use super::annotation::marker;
+use super::ast::AstMarkerDecl;
+use super::ast::AstNode;
+use super::ast::AstStmt;
+use super::ast::AstTestDef;
+use super::ast::AstTestItem;
+use super::block::cleanup_block;
+use super::block::shell_block;
 use super::expr::plain_string;
 use super::need::need;
-use super::punctuation::{punctuation_brace_close, punctuation_brace_open};
+use super::punctuation::punctuation_brace_close;
+use super::punctuation::punctuation_brace_open;
 use super::stmt::stmt_let_standalone;
 use super::timeout::timeout;
 use super::token::keyword;
-use super::ws::{leading_ws, newline, ws};
+use super::ws::leading_ws;
+use super::ws::newline;
+use super::ws::ws;
 
 /// Sentinel span for dummy blank-line comments.
 const SENTINEL: Span = Span::new(0, 0);
@@ -242,7 +253,8 @@ mod tests {
     use std::time::Duration;
 
     use crate::dsl::parser::ast::AstTimeout;
-    use crate::dsl::parser::{lex_to_pairs, make_input};
+    use crate::dsl::parser::lex_to_pairs;
+    use crate::dsl::parser::make_input;
 
     fn parse_test(source: &str) -> AstTestDef {
         try_parse_test(source).expect("parse failed")
