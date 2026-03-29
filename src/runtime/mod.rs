@@ -112,11 +112,15 @@ fn build_env(ctx: &RunContext) -> Arc<Env> {
     Arc::new(env)
 }
 
-fn make_test_env(base: &Env, test_file: &Path) -> Arc<Env> {
+fn make_test_env(base: &Env, test_file: &Path, artifacts_dir: &Path) -> Arc<Env> {
     let mut env = base.clone();
     if let Some(dir) = test_file.parent() {
         env.insert("__RELUX_TEST_ROOT".into(), dir.display().to_string());
     }
+    env.insert(
+        "__RELUX_TEST_ARTIFACTS".into(),
+        artifacts_dir.display().to_string(),
+    );
     Arc::new(env)
 }
 
@@ -666,7 +670,9 @@ async fn run_test(
         .get(file_id)
         .map(|sf| sf.path.clone())
         .unwrap_or_else(|| file_id.path().clone());
-    let test_env = make_test_env(&base_env, &source_file);
+    let artifacts_dir = log_dir.join("artifacts");
+    let _ = std::fs::create_dir_all(&artifacts_dir);
+    let test_env = make_test_env(&base_env, &source_file, &artifacts_dir);
     let mut warnings = Vec::new();
 
     let shell_config = ShellConfig {
@@ -798,7 +804,10 @@ async fn run_test_body(
     }
 
     // 5. Walk IrTestItems (lets already evaluated, needs already instantiated)
-    let mut cleanup_block = None;
+    let cleanup_block = test.body().iter().find_map(|item| match item {
+        IrTestItem::Cleanup { block, .. } => Some(block.clone()),
+        _ => None,
+    });
     let body_result: Result<(), Failure> = async {
         for item in test.body() {
             match item {
@@ -825,9 +834,7 @@ async fn run_test_body(
                     rt_ctx.events.emit_shell_switch(&display_name);
                     vm.exec_stmts(block.body()).await?;
                 }
-                IrTestItem::Cleanup { block, .. } => {
-                    cleanup_block = Some(block.clone());
-                }
+                IrTestItem::Cleanup { .. } => continue,
             }
         }
         Ok(())

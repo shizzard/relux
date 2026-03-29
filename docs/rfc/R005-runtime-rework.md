@@ -810,7 +810,7 @@ The orchestrator builds the base `Env` by merging the process environment with r
 fn build_env(ctx: &RunContext) -> Arc<Env> {
     let mut env = std::env::vars().collect::<HashMap<_, _>>();
     env.insert("__RELUX_RUN_ID".into(),          ctx.run_id.clone());
-    env.insert("__RELUX_RUN_ARTIFACTS".into(),   ctx.artifacts_dir.display().to_string());
+    env.insert("__RELUX_TEST_ARTIFACTS".into(),   ctx.artifacts_dir.display().to_string());
     env.insert("__RELUX_SHELL_PROMPT".into(),    ctx.shell_prompt.clone());
     env.insert("__RELUX_SUITE_ROOT".into(),      ctx.project_root.display().to_string());
     env.insert("__RELUX_EXECUTABLE".into(),      std::env::current_exe()

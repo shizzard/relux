@@ -37,7 +37,7 @@ pure fn tag() {
 
 effect SetupOnce -> s {
     shell s {
-        > MARKER="${__RELUX_RUN_ARTIFACTS}/dedup-marker"
+        > MARKER="${__RELUX_TEST_ARTIFACTS}/dedup-marker"
         match_ok()
         > if [ -f "$$MARKER" ]; then echo "DUPLICATE"; else touch "$$MARKER" && echo "FIRST"; fi
         <? ^FIRST$

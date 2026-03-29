@@ -21,11 +21,11 @@ test "relux run id is set" {
 
 test "relux run artifacts path is set" {
     """
-    Verify the __RELUX_RUN_ARTIFACTS special variable points to an
+    Verify the __RELUX_TEST_ARTIFACTS special variable points to an
     existing directory path.
     """
     shell s {
-        > test -d "${__RELUX_RUN_ARTIFACTS}"
+        > test -d "${__RELUX_TEST_ARTIFACTS}"
         match_ok()
     }
 }

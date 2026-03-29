@@ -273,7 +273,7 @@ Environment variables that happen to use a compatible naming scheme (lowercase, 
 Relux injects several variables into every test run. These are real environment variables — every spawned shell process inherits them, so they are accessible both through `${VAR}` in the Relux DSL and through standard shell expansion (e.g., `echo $__RELUX_RUN_ID`) inside the shell itself. You can pass them to scripts, programs, or any command launched from within the test.
 
 - `${__RELUX_RUN_ID}` — the unique identifier for the current test run
-- `${__RELUX_RUN_ARTIFACTS}` — the path to the run's `artifacts/` subdirectory (inside the run directory under `relux/out/`). This is a good place to store files related to the test run: generated configs, temporary databases, downloaded fixtures, or any other artifacts that should be preserved alongside the [test logs](03-send-match-and-logs.md).
+- `${__RELUX_TEST_ARTIFACTS}` — the path to the run's `artifacts/` subdirectory (inside the run directory under `relux/out/`). This is a good place to store files related to the test run: generated configs, temporary databases, downloaded fixtures, or any other artifacts that should be preserved alongside the [test logs](03-send-match-and-logs.md).
 - `${__RELUX_SHELL_PROMPT}` — the configured shell prompt string
 - `${__RELUX_SUITE_ROOT}` — the absolute path to the project root (where `Relux.toml` lives)
 - `${__RELUX_TEST_ROOT}` — the absolute path to the directory containing the current test file

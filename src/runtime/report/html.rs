@@ -13,10 +13,10 @@ use crate::runtime::report::result::format_duration;
 
 const CSS: &str = r#"
 :root{--bg:#fff;--fg:#222;--muted:#888;--ts-fg:#999;--send:#1a6dcc;--recv:#1a8a3f;
---match:#7e3fba;--err:#cc2222;--row-alt:#f6f6f6;--highlight:#fff3cd;--hl-border:#e0a800;
+--match:#7e3fba;--err:#cc2222;--log:#d97706;--row-alt:#f6f6f6;--highlight:#fff3cd;--hl-border:#e0a800;
 --tbl-border:#ddd;--link:#1a6dcc}
 @media(prefers-color-scheme:dark){:root{--bg:#1a1a2e;--fg:#d4d4d4;--muted:#777;
---ts-fg:#666;--send:#5cadff;--recv:#4dd87a;--match:#b87fff;--err:#ff5555;
+--ts-fg:#666;--send:#5cadff;--recv:#4dd87a;--match:#b87fff;--err:#ff5555;--log:#f59e0b;
 --row-alt:#1e1e32;--highlight:#3a3520;--hl-border:#b8860b;--tbl-border:#333;--link:#5cadff}}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:ui-monospace,"Cascadia Code","Fira Code",Menlo,Consolas,monospace;
@@ -40,7 +40,7 @@ table.summary{border-collapse:collapse;max-width:960px;margin:8px auto}
 table.summary th,table.summary td{border:1px solid var(--tbl-border);padding:4px 8px;text-align:left}
 table.summary tr:nth-child(even){background:var(--row-alt)}
 .pass{color:var(--recv)}.fail{color:var(--err)}.skip{color:var(--muted)}
-.send{color:var(--send)}.recv{color:var(--recv)}.match-ev{color:var(--match)}.err{color:var(--err)}
+.send{color:var(--send)}.recv{color:var(--recv)}.match-ev{color:var(--match)}.err{color:var(--err)}.log-ev{color:var(--log);font-weight:600}
 details{margin:4px 0}summary{cursor:pointer;color:var(--muted)}
 .hdr{margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--tbl-border);text-align:center}
 .hdr a{margin-right:12px}
@@ -81,7 +81,7 @@ fn event_type_class(kind: &LogEventKind) -> (&str, &str) {
         LogEventKind::SleepStart { .. } => ("sleep start", ""),
         LogEventKind::SleepDone => ("sleep done", ""),
         LogEventKind::Annotate { .. } => ("annotate", ""),
-        LogEventKind::Log { .. } => ("log", ""),
+        LogEventKind::Log { .. } => ("log", "log-ev"),
         LogEventKind::VarLet { .. } => ("var let", ""),
         LogEventKind::VarAssign { .. } => ("var assign", ""),
         LogEventKind::FnEnter { .. } => ("fn enter", ""),

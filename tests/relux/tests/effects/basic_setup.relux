@@ -40,7 +40,7 @@ test "effect shell retains state from setup" {
 
 effect SideEffectOnly -> svc {
     shell svc {
-        > touch ${__RELUX_RUN_ARTIFACTS}/side-effect-marker
+        > touch ${__RELUX_TEST_ARTIFACTS}/side-effect-marker
         match_ok()
     }
 }
@@ -53,7 +53,7 @@ test "bare need runs effect but does not expose shell" {
     """
     need SideEffectOnly
     shell s {
-        > test -f ${__RELUX_RUN_ARTIFACTS}/side-effect-marker && echo "effect ran"
+        > test -f ${__RELUX_TEST_ARTIFACTS}/side-effect-marker && echo "effect ran"
         <? ^effect ran$
     }
 }

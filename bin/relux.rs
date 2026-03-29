@@ -414,27 +414,22 @@ fn cmd_new_module(raw_path: &str, kind: ModuleKind) {
         });
     }
 
-    let last_segment = module_path.rsplit('/').next().unwrap();
-
     let content = match kind {
-        ModuleKind::Test => format!(
-            r#"test {name} {{
-    shell myshell {{
+        ModuleKind::Test => r#"test "hello-relux" {
+    shell myshell {
         > echo hello-relux
-        <= hello-relux
-    }}
-}}
-"#,
-            name = last_segment.replace('_', " "),
-        ),
-        ModuleKind::Effect => format!(
-            r#"effect {name} -> myshell {{
-    shell myshell {{
-    }}
-}}
-"#,
-            name = capitalize_effect_name(last_segment),
-        ),
+        <? ^hello-relux$
+        match_ok()
+    }
+}
+"#
+        .to_string(),
+        ModuleKind::Effect => r#"effect HelloEffect -> myshell {
+    shell myshell {
+    }
+}
+"#
+        .to_string(),
     };
 
     fs::write(&file_path, content).unwrap_or_else(|e| {
@@ -444,20 +439,6 @@ fn cmd_new_module(raw_path: &str, kind: ModuleKind) {
 
     let relative = file_path.strip_prefix(&project_root).unwrap_or(&file_path);
     eprintln!("Created {}", relative.display());
-}
-
-fn capitalize_effect_name(segment: &str) -> String {
-    segment
-        .split('_')
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(c) => c.to_uppercase().to_string() + chars.as_str(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("")
 }
 
 async fn cmd_run(matches: &clap::ArgMatches) {

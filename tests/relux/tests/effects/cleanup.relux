@@ -1,10 +1,10 @@
 effect WithCleanup -> svc {
     shell svc {
-        > touch ${__RELUX_RUN_ARTIFACTS}/cleanup-test-marker
+        > touch ${__RELUX_TEST_ARTIFACTS}/cleanup-test-marker
         match_ok()
     }
     cleanup {
-        > rm -f ${__RELUX_RUN_ARTIFACTS}/cleanup-test-marker
+        > rm -f ${__RELUX_TEST_ARTIFACTS}/cleanup-test-marker
     }
 }
 
@@ -36,7 +36,7 @@ test "cleanup block runs after test" {
     """
     need WithCleanup as svc
     shell svc {
-        > test -f ${__RELUX_RUN_ARTIFACTS}/cleanup-test-marker && echo "exists"
+        > test -f ${__RELUX_TEST_ARTIFACTS}/cleanup-test-marker && echo "exists"
         <? ^exists$
     }
 }
@@ -59,12 +59,12 @@ test "test-level cleanup block runs" {
     test body, removing artifacts created during the test.
     """
     shell s {
-        > touch ${__RELUX_RUN_ARTIFACTS}/test-cleanup-marker
+        > touch ${__RELUX_TEST_ARTIFACTS}/test-cleanup-marker
         match_ok()
-        > test -f ${__RELUX_RUN_ARTIFACTS}/test-cleanup-marker && echo "exists"
+        > test -f ${__RELUX_TEST_ARTIFACTS}/test-cleanup-marker && echo "exists"
         <? ^exists$
     }
     cleanup {
-        > rm -f ${__RELUX_RUN_ARTIFACTS}/test-cleanup-marker
+        > rm -f ${__RELUX_TEST_ARTIFACTS}/test-cleanup-marker
     }
 }
