@@ -62,6 +62,7 @@ impl EffectManager {
         &'a self,
         needs: &'a [IrEffectNeed],
         caller_vars: &'a VarScope,
+        caller_overlay: &'a Env,
     ) -> std::pin::Pin<
         Box<
             dyn std::future::Future<Output = Result<Vec<Arc<TokioMutex<Vm>>>, Failure>> + Send + 'a,
@@ -71,7 +72,10 @@ impl EffectManager {
             let mut vms = Vec::with_capacity(needs.len());
             for need in needs {
                 let key = EffectInstanceKey::from(need);
-                vms.push(self.acquire(&key, need, caller_vars).await?);
+                vms.push(
+                    self.acquire(&key, need, caller_vars, caller_overlay)
+                        .await?,
+                );
             }
             Ok(vms)
         })
@@ -93,6 +97,7 @@ impl EffectManager {
         key: &EffectInstanceKey,
         need: &IrEffectNeed,
         caller_vars: &VarScope,
+        caller_overlay: &Env,
     ) -> Result<Arc<TokioMutex<Vm>>, Failure> {
         let slot = self.registry.slot(key);
         let mut guard = slot.lock().await;
@@ -103,7 +108,10 @@ impl EffectManager {
                 Ok(handle.exported_vm.clone())
             }
             EffectSlot::Failed(failure) => Err(failure.clone()),
-            EffectSlot::Empty => match self.bootstrap_effect(need, caller_vars).await {
+            EffectSlot::Empty => match self
+                .bootstrap_effect(need, caller_vars, caller_overlay)
+                .await
+            {
                 Ok(handle) => {
                     let vm_arc = handle.exported_vm.clone();
                     *guard = EffectSlot::Ready {
@@ -125,6 +133,7 @@ impl EffectManager {
         &self,
         need: &IrEffectNeed,
         caller_vars: &VarScope,
+        caller_overlay: &Env,
     ) -> Result<EffectHandle, Failure> {
         let effect_name = need.effect().to_string();
         self.rt_ctx.events.emit_effect_setup("", &effect_name);
@@ -145,8 +154,8 @@ impl EffectManager {
             shell: None,
         })?;
 
-        // 1. Evaluate overlay using caller's variable scope
-        let env_overlay = self.eval_overlay(need, caller_vars).await?;
+        // 1. Evaluate overlay using caller's variable scope and overlay env
+        let env_overlay = self.eval_overlay(need, caller_vars, caller_overlay).await?;
         let env_overlay = Arc::new(env_overlay);
 
         // 2. Create effect scope
@@ -166,7 +175,9 @@ impl EffectManager {
 
         // 4. Recursively instantiate sub-dependencies (effect's vars available to sub-overlays)
         let effect_vars = scope.vars().lock().await.clone();
-        let exported_deps = self.instantiate(effect.needs(), &effect_vars).await?;
+        let exported_deps = self
+            .instantiate(effect.needs(), &effect_vars, &env_overlay)
+            .await?;
 
         // 5. Build shell map from dependency exported shells
         let mut shells: HashMap<String, Arc<TokioMutex<Vm>>> = HashMap::new();
@@ -256,12 +267,14 @@ impl EffectManager {
         &self,
         need: &IrEffectNeed,
         caller_vars: &VarScope,
+        caller_overlay: &Env,
     ) -> Result<Env, Failure> {
         let mut overlay = Env::new();
         for entry in need.overlay() {
             let value = crate::pure::evaluator::eval_pure_expr(
                 entry.value(),
                 caller_vars,
+                Some(caller_overlay),
                 &self.rt_ctx.env,
                 &self.rt_ctx.tables.pure_fns,
             );
@@ -270,12 +283,13 @@ impl EffectManager {
         Ok(overlay)
     }
 
-    async fn eval_effect_let(&self, stmt: &IrPureLetStmt, scope: &Scope, _env_overlay: &Arc<Env>) {
+    async fn eval_effect_let(&self, stmt: &IrPureLetStmt, scope: &Scope, env_overlay: &Arc<Env>) {
         let mut vars = scope.vars().lock().await;
         let value = if let Some(expr) = stmt.value() {
             crate::pure::evaluator::eval_pure_expr(
                 expr,
                 &vars,
+                Some(env_overlay),
                 &self.rt_ctx.env,
                 &self.rt_ctx.tables.pure_fns,
             )

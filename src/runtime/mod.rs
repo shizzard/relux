@@ -765,6 +765,7 @@ async fn run_test_body(
                 crate::pure::evaluator::eval_pure_expr(
                     expr,
                     &vars,
+                    None,
                     &rt_ctx.env,
                     &rt_ctx.tables.pure_fns,
                 )
@@ -777,7 +778,9 @@ async fn run_test_body(
 
     // 3. Instantiate effects (overlays can now see test-level vars)
     let caller_vars = scope.vars().lock().await.clone();
-    let exported = manager.instantiate(test.needs(), &caller_vars).await?;
+    let exported = manager
+        .instantiate(test.needs(), &caller_vars, &Env::new())
+        .await?;
 
     // 4. Build shell map from exported effect shells
     let mut shells: HashMap<String, Arc<TokioMutex<Vm>>> = HashMap::new();
