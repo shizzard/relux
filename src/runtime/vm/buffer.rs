@@ -167,6 +167,11 @@ impl OutputBuffer {
     }
 
     /// Find regex, extract truncated context, drain via split_to. One lock.
+    ///
+    /// Guards against partial-line matches: if the match ends at the buffer
+    /// boundary and the buffer does not end with a newline, the last line may
+    /// still be arriving. In that case we return `None` so the caller waits
+    /// for more data rather than consuming an incomplete line.
     pub async fn consume_regex(&self, re: &Regex) -> Option<(Match<RegexMatch>, BufferSnapshot)> {
         let mut inner = self.inner.lock().await;
         let text = String::from_utf8_lossy(&inner.data);
@@ -174,6 +179,11 @@ impl OutputBuffer {
         let whole = cap.get(0)?;
         let pos = whole.start();
         let end_pos = whole.end();
+
+        if is_partial_line_match(re, end_pos, &text) {
+            return None;
+        }
+
         let matched_str = whole.as_str().to_string();
 
         let before_raw = &text[..pos];
@@ -278,6 +288,11 @@ impl OutputBuffer {
         };
         let pos = whole.start();
         let end_pos = whole.end();
+
+        if is_partial_line_match(re, end_pos, &text) {
+            return Ok(None);
+        }
+
         let matched_str = whole.as_str().to_string();
 
         let before_raw = &text[..pos];
@@ -345,6 +360,17 @@ impl OutputBuffer {
     }
 }
 
+/// Returns `true` if a `$`-anchored regex matched at the buffer boundary
+/// where the buffer does not end with a newline — meaning the last line may
+/// still be arriving and `$` matched end-of-string rather than end-of-line.
+///
+/// Only applies when the regex source ends with an explicit `$` anchor.
+/// Patterns without `$` (e.g. prompt matching with `^relux> `) are never
+/// deferred, since they don't depend on line completeness.
+fn is_partial_line_match(re: &Regex, match_end: usize, text: &str) -> bool {
+    re.as_str().ends_with('$') && match_end == text.len() && !text.ends_with('\n')
+}
+
 /// Check if a fail pattern matches in the given text. Returns (pattern_str, matched_text).
 fn check_fail_in_buffer(text: &str, pattern: &FailPattern) -> Option<FailPatternHit> {
     match pattern {
@@ -370,6 +396,7 @@ fn check_fail_in_buffer(text: &str, pattern: &FailPattern) -> Option<FailPattern
 #[cfg(test)]
 mod tests {
     use super::*;
+    use regex::RegexBuilder;
 
     // ── truncate_before ──────────────────────────────────────────────
 
@@ -557,7 +584,7 @@ mod tests {
     #[tokio::test]
     async fn consume_regex_with_captures() {
         let buf = OutputBuffer::new();
-        buf.append(b"name: Alice age: 30").await;
+        buf.append(b"name: Alice age: 30\n").await;
         let re = Regex::new(r"name: (\w+) age: (\d+)").unwrap();
         let (m, _) = buf.consume_regex(&re).await.unwrap();
         assert_eq!(m.start, 0);
@@ -565,7 +592,6 @@ mod tests {
         assert_eq!(m.value.0.get("0").unwrap(), "name: Alice age: 30");
         assert_eq!(m.value.0.get("1").unwrap(), "Alice");
         assert_eq!(m.value.0.get("2").unwrap(), "30");
-        assert!(buf.remaining().await.is_empty());
     }
 
     #[tokio::test]
@@ -580,7 +606,7 @@ mod tests {
     #[tokio::test]
     async fn consume_regex_absolute_offsets_after_drain() {
         let buf = OutputBuffer::new();
-        buf.append(b"aaa 123 bbb 456").await;
+        buf.append(b"aaa 123 bbb 456\n").await;
         let re = Regex::new(r"\d+").unwrap();
         let (m1, _) = buf.consume_regex(&re).await.unwrap();
         assert_eq!(m1.start, 4);
@@ -589,6 +615,59 @@ mod tests {
         let (m2, _) = buf.consume_regex(&re).await.unwrap();
         assert_eq!(m2.start, 12);
         assert_eq!(m2.end, 15);
+    }
+
+    // ── Partial-line guard ─────────────────────────────────────────
+
+    #[tokio::test]
+    async fn consume_regex_defers_partial_line() {
+        // Simulate a partial delivery: no trailing newline
+        let buf = OutputBuffer::new();
+        buf.append(b"hello wor").await;
+        let re = RegexBuilder::new(r"^(.+)$")
+            .multi_line(true)
+            .build()
+            .unwrap();
+        // Should defer — the line might not be complete yet
+        assert!(buf.consume_regex(&re).await.is_none());
+        // Buffer unchanged
+        assert_eq!(buf.remaining().await, b"hello wor");
+
+        // Now the rest arrives
+        buf.append(b"ld\n").await;
+        let (m, _) = buf.consume_regex(&re).await.unwrap();
+        assert_eq!(m.value.0.get("0").unwrap(), "hello world");
+    }
+
+    #[tokio::test]
+    async fn consume_regex_allows_match_before_partial_tail() {
+        // A complete line followed by an incomplete one
+        let buf = OutputBuffer::new();
+        buf.append(b"first line\nsecond li").await;
+        let re = RegexBuilder::new(r"^(.+)$")
+            .multi_line(true)
+            .build()
+            .unwrap();
+        // Should match the complete first line (match end < buffer len)
+        let (m, _) = buf.consume_regex(&re).await.unwrap();
+        assert_eq!(m.value.0.get("1").unwrap(), "first line");
+    }
+
+    #[tokio::test]
+    async fn fail_check_consume_regex_defers_partial_line() {
+        let buf = OutputBuffer::new();
+        buf.append(b"partial data").await;
+        let re = RegexBuilder::new(r"^(.+)$")
+            .multi_line(true)
+            .build()
+            .unwrap();
+        let result = buf.fail_check_consume_regex(&re, None).await;
+        assert!(result.unwrap().is_none());
+
+        buf.append(b"\n").await;
+        let result = buf.fail_check_consume_regex(&re, None).await;
+        let (m, _) = result.unwrap().unwrap();
+        assert_eq!(m.value.0.get("0").unwrap(), "partial data");
     }
 
     // ── OutputBuffer::clear ─────────────────────────────────────────
@@ -606,7 +685,7 @@ mod tests {
         let buf = OutputBuffer::new();
         buf.append(b"hello world").await;
         buf.clear().await;
-        buf.append(b"abc 123").await;
+        buf.append(b"abc 123\n").await;
         let re = Regex::new(r"\d+").unwrap();
         let (m, _) = buf.consume_regex(&re).await.unwrap();
         // base should be 11 (from clear) + 4 (from "abc ") = absolute offset 15

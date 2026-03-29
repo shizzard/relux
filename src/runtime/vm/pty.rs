@@ -25,6 +25,7 @@ impl PtyShell {
         shell_log: Arc<Mutex<ShellLogger>>,
     ) -> Result<Self, pty_process::Error> {
         let (pty, pts) = pty_process::open()?;
+        pty.resize(pty_process::Size::new(24, u16::MAX))?;
 
         let mut cmd = pty_process::Command::new(shell_command).kill_on_drop(true);
         cmd = cmd.envs(env);
