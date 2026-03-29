@@ -1,8 +1,13 @@
 use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
 
 use tokio::sync::mpsc;
 
+use crate::core::error::DiagnosticReport;
+use crate::dsl::resolver::ir::SourceTable;
 use crate::runtime::observe::progress::ProgressEvent;
+use crate::runtime::report::result::Failure;
 
 // ─── TuiEvent ───────────────────────────────────────────────
 
@@ -23,6 +28,7 @@ pub enum TuiEvent {
     TestFinished {
         slot: usize,
         result_line: String,
+        failure: Option<(Failure, Option<PathBuf>)>,
         progress_tx: tokio::sync::oneshot::Sender<String>,
     },
     /// A test was skipped/invalid (not running, just report).
@@ -166,28 +172,55 @@ pub fn spawn_tui(
     rx: mpsc::UnboundedReceiver<TuiEvent>,
     num_slots: usize,
     is_tty: bool,
+    source_table: SourceTable,
+    project_root: PathBuf,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         if is_tty {
-            run_tty_renderer(rx, num_slots).await;
+            run_tty_renderer(rx, num_slots, &source_table, &project_root).await;
         } else {
-            run_plain_renderer(rx).await;
+            run_plain_renderer(rx, &source_table, &project_root).await;
         }
     })
 }
 
+// ─── Failure detail printing ────────────────────────────────
+
+fn eprint_failure(
+    failure: &Failure,
+    log_dir: Option<&Path>,
+    source_table: &SourceTable,
+    project_root: &Path,
+) {
+    DiagnosticReport::from(failure).eprint(source_table, Some(project_root));
+    if let Some(log_dir) = log_dir {
+        eprintln!(
+            "  Event log: file://{}",
+            log_dir.join("event.html").display()
+        );
+    }
+}
+
 // ─── Plain (non-TTY) renderer ───────────────────────────────
 
-async fn run_plain_renderer(mut rx: mpsc::UnboundedReceiver<TuiEvent>) {
+async fn run_plain_renderer(
+    mut rx: mpsc::UnboundedReceiver<TuiEvent>,
+    source_table: &SourceTable,
+    project_root: &Path,
+) {
     while let Some(event) = rx.recv().await {
         match event {
             TuiEvent::TestStarted { .. } | TuiEvent::Progress { .. } => {}
             TuiEvent::TestFinished {
                 slot: _,
                 result_line,
+                failure,
                 progress_tx,
             } => {
                 eprintln!("{result_line}");
+                if let Some((f, log_dir)) = &failure {
+                    eprint_failure(f, log_dir.as_deref(), source_table, project_root);
+                }
                 let _ = progress_tx.send(String::new());
             }
             TuiEvent::Skipped { result_line } => {
@@ -205,7 +238,12 @@ fn has_timed_waits(slots: &[Option<SlotState>]) -> bool {
         .any(|s| s.as_ref().is_some_and(|s| s.timed_wait.is_some()))
 }
 
-async fn run_tty_renderer(mut rx: mpsc::UnboundedReceiver<TuiEvent>, num_slots: usize) {
+async fn run_tty_renderer(
+    mut rx: mpsc::UnboundedReceiver<TuiEvent>,
+    num_slots: usize,
+    source_table: &SourceTable,
+    project_root: &Path,
+) {
     let mut slots: Vec<Option<SlotState>> = (0..num_slots).map(|_| None).collect();
     let mut active_lines: usize = 0;
     let tick_interval = std::time::Duration::from_secs(1);
@@ -279,6 +317,7 @@ async fn run_tty_renderer(mut rx: mpsc::UnboundedReceiver<TuiEvent>, num_slots: 
             TuiEvent::TestFinished {
                 slot,
                 result_line,
+                failure,
                 progress_tx,
             } => {
                 let progress_string = slots[slot]
@@ -290,6 +329,9 @@ async fn run_tty_renderer(mut rx: mpsc::UnboundedReceiver<TuiEvent>, num_slots: 
                 slots[slot] = None;
                 clear_active(active_lines);
                 eprintln!("{result_line}");
+                if let Some((f, log_dir)) = &failure {
+                    eprint_failure(f, log_dir.as_deref(), source_table, project_root);
+                }
                 active_lines = redraw_active(&slots, 0, name_width, progress_width);
             }
             TuiEvent::Skipped { result_line } => {

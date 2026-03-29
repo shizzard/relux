@@ -568,9 +568,7 @@ async fn cmd_run(matches: &clap::ArgMatches) {
     // Report
     let report = relux::runtime::report::result::RunReport {
         results: &results,
-        source_table: &suite.tables.sources,
         run_dir: &run_dir,
-        project_root: &project_root,
         wall_duration: exec.wall_duration,
         jobs,
     };

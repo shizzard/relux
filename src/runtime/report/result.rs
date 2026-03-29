@@ -5,9 +5,7 @@ use std::time::Duration;
 
 use colored::Colorize;
 
-use crate::core::error::DiagnosticReport;
 use crate::diagnostics::IrSpan;
-use crate::dsl::resolver::ir::SourceTable;
 
 #[derive(Debug, Clone)]
 pub enum Failure {
@@ -245,9 +243,7 @@ pub enum Outcome {
 
 pub struct RunReport<'a> {
     pub results: &'a [TestResult],
-    pub source_table: &'a SourceTable,
     pub run_dir: &'a Path,
-    pub project_root: &'a Path,
     pub wall_duration: Duration,
     pub jobs: usize,
 }
@@ -266,16 +262,7 @@ impl RunReport<'_> {
             flaky_retries += result.flaky_retries;
             match &result.outcome {
                 Outcome::Pass => passed += 1,
-                Outcome::Fail(f) => {
-                    failed += 1;
-                    DiagnosticReport::from(f).eprint(self.source_table, Some(self.project_root));
-                    if let Some(log_dir) = &result.log_dir {
-                        eprintln!(
-                            "  Event log: file://{}",
-                            log_dir.join("event.html").display()
-                        );
-                    }
-                }
+                Outcome::Fail(_) => failed += 1,
                 Outcome::Skipped(_) => skipped += 1,
                 Outcome::Invalid(_) => invalid += 1,
             }

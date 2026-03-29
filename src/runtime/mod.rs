@@ -260,7 +260,13 @@ pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> ExecuteResult {
         ProgressMode::Tui => true,
     };
     let (tui_tx, tui_rx) = observe::tui::channel();
-    let tui_handle = observe::tui::spawn_tui(tui_rx, jobs, is_tty);
+    let tui_handle = observe::tui::spawn_tui(
+        tui_rx,
+        jobs,
+        is_tty,
+        suite.tables.sources.clone(),
+        run_ctx.project_root.clone(),
+    );
 
     // Build shared test queue with original indices for deterministic ordering
     let queue: Arc<std::sync::Mutex<VecDeque<(usize, &Plan)>>> = Arc::new(std::sync::Mutex::new(
@@ -408,9 +414,14 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                 // Send finish event and get progress string back
                 let (progress_oneshot_tx, progress_oneshot_rx) = tokio::sync::oneshot::channel();
                 let result_line = format_result_line(&display_id, &result, &tags);
+                let failure = match &result.outcome {
+                    Outcome::Fail(f) => Some((f.clone(), result.log_dir.clone())),
+                    _ => None,
+                };
                 let _ = ctx.tui_tx.send(observe::tui::TuiEvent::TestFinished {
                     slot,
                     result_line,
+                    failure,
                     progress_tx: progress_oneshot_tx,
                 });
                 if let Ok(progress) = progress_oneshot_rx.await {
