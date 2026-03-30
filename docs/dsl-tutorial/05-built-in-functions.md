@@ -13,7 +13,7 @@ match_exit_code(0)
 
 The first line calls `match_prompt` with no arguments. The second calls `match_exit_code` with one argument: `0`.
 
-Relux ships with a set of **built-in functions** (BIFs) — functions provided by the runtime that you can use in any test without importing or declaring anything. This article covers the ones you need most often. The remaining built-in functions — string operations, random generation, and system utilities — will be introduced in later articles alongside the language features they complement.
+Relux ships with a set of **built-in functions** (BIFs) — functions provided by the runtime that you can use in any test without importing or declaring anything. This article covers the ones you need most often. The remaining built-in functions — string operations, random generation, default values, and system utilities — will be introduced in later articles alongside the language features they complement.
 
 You can also define your own functions, which a later article will cover. For now, all the functions you will see are built-in.
 

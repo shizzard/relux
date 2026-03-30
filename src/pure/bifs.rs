@@ -35,6 +35,7 @@ pub fn is_pure_bif(name: &str, arity: usize) -> bool {
             | ("rand", 2)
             | ("available_port", 0)
             | ("which", 1)
+            | ("default", 2)
     )
 }
 
@@ -92,6 +93,15 @@ pub(crate) fn dispatch(name: &str, args: Vec<String>) -> String {
                 }
             }
             String::new()
+        }
+        "default" => {
+            let mut it = args.into_iter();
+            let first = it.next().unwrap();
+            if first.is_empty() {
+                it.next().unwrap()
+            } else {
+                first
+            }
         }
         _ => unreachable!("unknown pure BIF: {name}"),
     }
@@ -313,6 +323,27 @@ mod tests {
     fn bif_rand_zero_length() {
         let result = dispatch("rand", vec!["0".into()]);
         assert_eq!(result, "");
+    }
+
+    #[test]
+    fn bif_default_returns_first_when_non_empty() {
+        assert_eq!(
+            dispatch("default", vec!["hello".into(), "fallback".into()]),
+            "hello"
+        );
+    }
+
+    #[test]
+    fn bif_default_returns_second_when_first_empty() {
+        assert_eq!(
+            dispatch("default", vec![String::new(), "fallback".into()]),
+            "fallback"
+        );
+    }
+
+    #[test]
+    fn bif_default_both_empty() {
+        assert_eq!(dispatch("default", vec![String::new(), String::new()]), "");
     }
 
     #[test]

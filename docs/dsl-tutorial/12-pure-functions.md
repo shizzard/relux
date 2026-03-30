@@ -62,6 +62,7 @@ Several [built-in functions](05-built-in-functions.md) are also available in pur
 | `rand(n)` / `rand(n, mode)` | Generate random values            |
 | `available_port()`          | Find a free TCP port              |
 | `which(cmd)`                | Locate a command on `PATH`        |
+| `default(a, b)`             | Return `a` if non-empty, else `b` |
 
 ## The `pure fn` syntax
 

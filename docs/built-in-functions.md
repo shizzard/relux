@@ -21,6 +21,7 @@ Relux provides built-in functions (BIFs) that are always available without impor
 | `replace` | `replace(s, from, to)` | string  | Replace all occurrences of `from` with `to` in `s`.                                                                                                |
 | `split`   | `split(s, sep, index)` | string  | Split `s` by `sep` and return the part at `index` (0-based). Returns `""` if the index is out of bounds. Errors if `index` is not a valid integer. |
 | `len`     | `len(s)`               | string  | Return the byte length of `s` as a decimal string.                                                                                                 |
+| `default` | `default(a, b)`        | string  | Return `a` if it is non-empty, otherwise return `b`.                                                                                               |
 
 ### Generators
 

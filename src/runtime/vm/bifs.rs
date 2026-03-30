@@ -319,6 +319,7 @@ mod tests {
         assert!(is_pure_bif("uuid", 0));
         assert!(is_pure_bif("available_port", 0));
         assert!(is_pure_bif("which", 1));
+        assert!(is_pure_bif("default", 2));
         // Impure BIFs
         assert!(lookup_impure("sleep", 1).is_some());
         assert!(lookup_impure("annotate", 1).is_some());

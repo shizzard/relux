@@ -157,6 +157,7 @@ impl LoweringContext {
             ("rand", 2),
             ("available_port", 0),
             ("which", 1),
+            ("default", 2),
         ];
 
         for &(name, arity) in pure_bifs {
