@@ -1,7 +1,8 @@
 # R007: Overlay Identity
 
-- **Status**: draft
+- **Status**: rejected
 - **Created**: 2026-03-30
+- **Superseded by**: R008
 
 ## Motivation
 

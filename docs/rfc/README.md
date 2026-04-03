@@ -20,11 +20,12 @@ Substantial changes to Relux are proposed and discussed through RFCs (Requests f
 
 ## Index
 
-| RFC  | Title          | Status |
-|------|----------------|--------|
-| R001 | Pure Functions | implemented |
-| R002 | Best-Effort Cleanup | accepted |
-| R003 | Lexer/Parser Rework | implemented |
-| R004 | Resolver Rework | implemented |
-| R005 | Runtime Rework | implemented |
-| R006 | Multiple Marker Semantics | draft |
+| RFC  | Title                     | Status                        |
+|------|---------------------------|-------------------------------|
+| R001 | Pure Functions            | implemented                   |
+| R002 | Best-Effort Cleanup       | accepted                      |
+| R003 | Lexer/Parser Rework       | implemented                   |
+| R004 | Resolver Rework           | implemented                   |
+| R005 | Runtime Rework            | implemented                   |
+| R006 | Multiple Marker Semantics | draft                         |
+| R007 | Overlay Identity          | rejected (superseded by R008) |
