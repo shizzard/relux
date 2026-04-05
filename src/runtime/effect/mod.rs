@@ -82,7 +82,22 @@ impl EffectManager {
             for start in starts {
                 // Evaluate overlay first to build runtime identity key
                 let evaluated = self.eval_overlay(start, caller_vars, caller_env).await?;
-                let key = EffectInstanceKey::from_evaluated(start.effect().clone(), &evaluated);
+
+                // Look up effect's expect names for identity key
+                let expect_names: Vec<&str> = self
+                    .rt_ctx
+                    .tables
+                    .effects
+                    .get(start.effect())
+                    .and_then(|r| r.as_ref().ok())
+                    .map(|eff| eff.expects().iter().map(|e| e.name()).collect())
+                    .unwrap_or_default();
+                let key = EffectInstanceKey::from_expects(
+                    start.effect().clone(),
+                    &expect_names,
+                    &evaluated,
+                );
+
                 let shells = self
                     .acquire(&key, start, caller_vars, caller_env, evaluated)
                     .await?;

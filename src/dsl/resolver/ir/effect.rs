@@ -437,15 +437,33 @@ impl IrNodeLowering for IrEffect {
                 _ => None,
             })
             .collect();
-        let alias_names: Vec<String> = starts
-            .iter()
-            .filter_map(|s| s.alias().map(String::from))
-            .collect();
+        // Build map from alias → set of shells exposed by that dependency
+        let mut dep_exposed: std::collections::HashMap<String, std::collections::HashSet<String>> =
+            std::collections::HashMap::new();
+        for start in &starts {
+            if let Some(alias) = start.alias() {
+                let exposed_names: std::collections::HashSet<String> = ctx
+                    .effects()
+                    .get(start.effect())
+                    .and_then(|r| r.as_ref().ok())
+                    .map(|eff| {
+                        eff.exposes()
+                            .iter()
+                            .map(|e| e.exposed_name().to_string())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                dep_exposed.insert(alias.to_string(), exposed_names);
+            }
+        }
 
         for expose in &exposes {
             let valid = if let Some(qualifier) = expose.qualifier() {
                 // Qualified: `expose alias.shell as name` — alias must exist
-                alias_names.contains(&qualifier.to_string())
+                // and the dependency must actually expose that shell
+                dep_exposed
+                    .get(qualifier)
+                    .is_some_and(|shells| shells.contains(expose.shell()))
             } else {
                 // Simple: `expose shell` — shell must be a local shell
                 shell_names.contains(&expose.shell().to_string())
@@ -1154,6 +1172,40 @@ effect Wrapper {
         };
         let result = ctx.resolve_effect(&effect_id);
         assert!(matches!(result, Err(LoweringBail::Invalid(_))));
+    }
+
+    #[test]
+    fn lower_effect_expose_qualified_unexposed_shell() {
+        // Base exposes `sh` but NOT `internal`.
+        // Wrapper tries to re-expose `b.internal` — this should fail
+        // because Base does not expose `internal` to callers.
+        let source = r#"effect Base {
+  expose sh
+  shell sh {
+    > base
+  }
+  shell internal {
+    > secret
+  }
+}
+effect Wrapper {
+  start Base as b
+  expose b.internal as leaked
+  shell wrapper {
+    > wrapper
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let effect_id = EffectId {
+            module: ModulePath("tests/a".into()),
+            name: EffectName("Wrapper".into()),
+        };
+        let result = ctx.resolve_effect(&effect_id);
+        assert!(
+            matches!(result, Err(LoweringBail::Invalid(_))),
+            "expose should reject referencing a shell not exposed by the dependency"
+        );
     }
 
     #[test]

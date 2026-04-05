@@ -20,16 +20,28 @@ pub struct EffectInstanceKey {
 }
 
 impl EffectInstanceKey {
-    /// Build from effect ID and evaluated overlay values (runtime identity).
-    pub fn from_evaluated(effect_id: DiagEffectId, evaluated_overlay: &Env) -> Self {
-        let mut parts: Vec<String> = evaluated_overlay
+    /// Build from effect ID and the expected-variable values in declaration order.
+    ///
+    /// Only the values of variables declared in `expect` participate in identity.
+    /// The order comes from the `expect` declaration, so no sorting is needed.
+    /// Values are joined with `\0` (null byte) to avoid ambiguity — overlay
+    /// values are shell strings and cannot contain null bytes.
+    pub fn from_expects(
+        effect_id: DiagEffectId,
+        expect_names: &[&str],
+        evaluated_overlay: &Env,
+    ) -> Self {
+        let identity: String = expect_names
             .iter()
-            .map(|(k, v)| format!("{k}={v}"))
-            .collect();
-        parts.sort();
+            .map(|name| {
+                let val = evaluated_overlay.get(name).unwrap_or("");
+                format!("{name}\0{val}")
+            })
+            .collect::<Vec<_>>()
+            .join("\0");
         Self {
             effect_id,
-            evaluated_overlay: parts.join(","),
+            evaluated_overlay: identity,
         }
     }
 }
@@ -220,6 +232,105 @@ mod tests {
         assert_eq!(keys.len(), 2);
         assert_eq!(keys[0].effect_id.name.0, "Db");
         assert_eq!(keys[1].effect_id.name.0, "Redis");
+    }
+
+    #[test]
+    fn from_expects_no_collision_when_value_contains_separator() {
+        // Two structurally different overlays must produce different keys.
+        // Effect expects A only. Overlay 1: A = "x\0y", Overlay 2: A = "x".
+        // With naive join these could collide; null-byte framing prevents it.
+        use std::collections::HashMap;
+        let effect_id = DiagEffectId {
+            module: crate::diagnostics::ModulePath("test.relux".into()),
+            name: crate::diagnostics::EffectName("E".to_string()),
+        };
+
+        let mut overlay1 = HashMap::new();
+        overlay1.insert("A".into(), "x,B=y".into());
+        let env1 = crate::pure::Env::from_map(overlay1);
+
+        let mut overlay2 = HashMap::new();
+        overlay2.insert("A".into(), "x".into());
+        overlay2.insert("B".into(), "y".into());
+        let env2 = crate::pure::Env::from_map(overlay2);
+
+        let expects = &["A"];
+        let k1 = EffectInstanceKey::from_expects(effect_id.clone(), expects, &env1);
+        let k2 = EffectInstanceKey::from_expects(effect_id, expects, &env2);
+        assert_ne!(
+            k1, k2,
+            "different expect values must produce different keys"
+        );
+    }
+
+    #[test]
+    fn from_expects_uses_only_expected_keys() {
+        // Extra overlay keys beyond what the effect expects should not
+        // affect identity — only expected variable values matter.
+        use std::collections::HashMap;
+        let effect_id = DiagEffectId {
+            module: crate::diagnostics::ModulePath("test.relux".into()),
+            name: crate::diagnostics::EffectName("E".to_string()),
+        };
+
+        let mut overlay1 = HashMap::new();
+        overlay1.insert("PORT".into(), "5432".into());
+        overlay1.insert("EXTRA".into(), "foo".into());
+        let env1 = crate::pure::Env::from_map(overlay1);
+
+        let mut overlay2 = HashMap::new();
+        overlay2.insert("PORT".into(), "5432".into());
+        overlay2.insert("EXTRA".into(), "bar".into());
+        let env2 = crate::pure::Env::from_map(overlay2);
+
+        let expects = &["PORT"];
+        let k1 = EffectInstanceKey::from_expects(effect_id.clone(), expects, &env1);
+        let k2 = EffectInstanceKey::from_expects(effect_id, expects, &env2);
+        assert_eq!(
+            k1, k2,
+            "extra overlay keys beyond expects should not affect identity"
+        );
+    }
+
+    #[test]
+    fn from_expects_declaration_order_is_stable() {
+        use std::collections::HashMap;
+        let effect_id = DiagEffectId {
+            module: crate::diagnostics::ModulePath("test.relux".into()),
+            name: crate::diagnostics::EffectName("E".to_string()),
+        };
+
+        let mut overlay = HashMap::new();
+        overlay.insert("A".into(), "1".into());
+        overlay.insert("B".into(), "2".into());
+        let env = crate::pure::Env::from_map(overlay);
+
+        // Same expects in same order → same key
+        let k1 = EffectInstanceKey::from_expects(effect_id.clone(), &["A", "B"], &env);
+        let k2 = EffectInstanceKey::from_expects(effect_id, &["A", "B"], &env);
+        assert_eq!(k1, k2);
+    }
+
+    #[test]
+    fn from_expects_empty_expects_produces_equal_keys() {
+        use std::collections::HashMap;
+        let effect_id = DiagEffectId {
+            module: crate::diagnostics::ModulePath("test.relux".into()),
+            name: crate::diagnostics::EffectName("E".to_string()),
+        };
+
+        let mut overlay1 = HashMap::new();
+        overlay1.insert("X".into(), "1".into());
+        let env1 = crate::pure::Env::from_map(overlay1);
+        let env2 = crate::pure::Env::from_map(HashMap::new());
+
+        let expects: &[&str] = &[];
+        let k1 = EffectInstanceKey::from_expects(effect_id.clone(), expects, &env1);
+        let k2 = EffectInstanceKey::from_expects(effect_id, expects, &env2);
+        assert_eq!(
+            k1, k2,
+            "effects with no expects should always share identity"
+        );
     }
 
     #[tokio::test]

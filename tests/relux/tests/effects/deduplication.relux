@@ -8,6 +8,7 @@ effect Counter {
 }
 
 effect Parameterized {
+    expect LABEL
     shell svc {
         > export SVC_LABEL=${LABEL}
         match_ok()
