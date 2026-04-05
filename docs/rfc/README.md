@@ -29,3 +29,4 @@ Substantial changes to Relux are proposed and discussed through RFCs (Requests f
 | R005 | Runtime Rework            | implemented                   |
 | R006 | Multiple Marker Semantics | draft                         |
 | R007 | Overlay Identity          | rejected (superseded by R008) |
+| R008 | Effects Rework            | implemented                   |

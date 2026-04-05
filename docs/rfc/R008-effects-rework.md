@@ -1,6 +1,6 @@
 # R008: Effects Rework
 
-- **Status**: draft
+- **Status**: implemented
 - **Created**: 2026-04-03
 - **Supersedes**: R007
 
