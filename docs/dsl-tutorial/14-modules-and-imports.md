@@ -21,8 +21,10 @@ fn farewell(name) {
     match_prompt()
 }
 
-effect StartGreeter -> svc {
-    shell svc {
+effect Greeter {
+    expose service
+
+    shell service {
         > export GREETER_STATUS=running
         match_ok()
     }
@@ -93,13 +95,13 @@ If you want everything a module exports, leave out the braces:
 import utils/greeter
 ```
 
-This brings all exported names into scope — both `greet` and `farewell`, as well as the `StartGreeter` effect in this case:
+This brings all exported names into scope — both `greet` and `farewell`, as well as the `Greeter` effect in this case:
 
 ```relux
 import utils/greeter
 
 test "wildcard import makes all functions available" {
-    need StartGreeter
+    start Greeter
     shell s {
         greet("world")
         farewell("world")
@@ -120,18 +122,18 @@ import utils/greeter { greet as hello, farewell as bye }
 Now `hello` and `bye` are the callable names — the originals `greet` and `farewell` are not in scope. Aliases work for effects too:
 
 ```relux
-import utils/greeter { StartGreeter as Svc }
+import utils/greeter { Greeter as Svc }
 
 test "aliased effect" {
-    need Svc as svc
-    shell svc {
+    start Svc as svc
+    svc.service {
         > echo $$GREETER_STATUS
         <? ^running$
     }
 }
 ```
 
-There is one rule: **aliases must preserve casing kind**. A `snake_case` function must be aliased to another `snake_case` name. A `CamelCase` effect must be aliased to another `CamelCase` name. Aliasing `greet as Hello` or `StartGreeter as start_greeter` is a compile error — the casing convention is structural, not cosmetic.
+There is one rule: **aliases must preserve casing kind**. A `snake_case` function must be aliased to another `snake_case` name. A `CamelCase` effect must be aliased to another `CamelCase` name. Aliasing `greet as Hello` or `Greeter as greeter` is a compile error — the casing convention is structural, not cosmetic.
 
 ## What gets exported
 

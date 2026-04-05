@@ -311,16 +311,18 @@ Markers work on [effects](11-effects-and-dependencies.md) too. This is particula
 
 ```relux
 # skip if "${SKIP_EFFECT}"
-effect Guarded -> s {
-    shell s {
+effect Guarded {
+    expose service
+
+    shell service {
         > echo "effect ran"
         <? ^effect ran$
     }
 }
 
 test "depends on conditionally skipped effect" {
-    need Guarded as s
-    shell s {
+    start Guarded as g
+    g.service {
         > echo "test body ran"
         <? ^test body ran$
     }
@@ -360,7 +362,7 @@ Putting a marker on an effect skips every test that depends on it. This is power
 
 1. Write a test that only runs on macOS. Use a pure function that calls `which("sw_vers")` (a macOS-specific binary) to detect the platform, and a `# skip unless ...` marker.
 
-2. Write an effect `DockerReady` that guards itself with `# skip unless which("docker")`. Have it start a container in its shell block. Then write a test that `need`s `DockerReady` — verify that the test is skipped when docker is not available, without needing its own marker.
+2. Write an effect `DockerReady` that guards itself with `# skip unless which("docker")`. Have it start a container in its shell block. Then write a test that `start`s `DockerReady` — verify that the test is skipped when docker is not available, without needing its own marker.
 
 3. Write a test with two markers: one that restricts it to CI (`# run if "${CI}"`) and one that skips it when a feature flag is disabled (`# skip unless "${ENABLE_SLOW_TESTS}"`). Think about what happens in each combination of those two variables.
 

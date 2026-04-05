@@ -342,8 +342,10 @@ Only `FATAL` is active after line 4 — the first two patterns are gone.
 Effects that start long-running services should set a fail pattern before the startup command, just like in a regular shell block. This maximizes coverage — any crash output during startup or during the test body triggers an immediate failure:
 
 ```relux
-effect StartService -> svc {
-    shell svc {
+effect Service {
+    expose service
+
+    shell service {
         !? FATAL|ERROR|panic
         > start-my-service --foreground
         <? listening on port 8080
@@ -353,29 +355,6 @@ effect StartService -> svc {
 
 The fail pattern is active from the first line. If the service crashes during startup, the fail pattern catches it before the readiness match even runs.
 
-### Overlay isolation
-
-A child effect's shell does **not** inherit environment variables from a parent effect's shell. Each effect's shell starts fresh:
-
-```relux
-effect Parent -> p {
-    shell p {
-        > export PARENT_VAR=from_parent
-        match_ok()
-    }
-}
-
-effect Child -> c {
-    need Parent as p
-    shell c {
-        > echo "parent_var='$$PARENT_VAR'"
-        <? ^parent_var=''$
-    }
-}
-```
-
-The `Child` effect needs `Parent`, but `Child`'s own `shell c` does not see `PARENT_VAR`. If you need a value from the parent, pass the value through an overlay variable.
-
 ### Deduplication and shared state
 
 Because deduplication means two aliases can point to the same shell, mutations through one alias are visible through the other. This is by design — it is how effects like the database chain work, where each layer builds on the state left by the previous one. But it means you should be aware: if two unrelated parts of a test both alias the same effect instance, they share a single PTY session. Commands sent through one alias affect the shell the other alias sees.
@@ -383,8 +362,8 @@ Because deduplication means two aliases can point to the same shell, mutations t
 If you need truly independent instances, give them different overlay values — even a dummy key is enough to create separate identities:
 
 ```relux
-need MyEffect as a { INSTANCE = "1" }
-need MyEffect as b { INSTANCE = "2" }
+start MyEffect as a { INSTANCE = "1" }
+start MyEffect as b { INSTANCE = "2" }
 ```
 
 ## Cleanup

@@ -27,7 +27,7 @@ test "connect to API" {
 
 This does not work. `format_url` is a regular function, and regular functions require a shell context. The `let` on line 2 sits outside any shell block, so Relux has no shell to execute the function in.
 
-The same problem appears in other places. You cannot call a regular function in an [effect](11-effects-and-dependencies.md#defining-an-effect)-scope `let`, and you cannot use one in an [overlay value](11-effects-and-dependencies.md#overlay-variables) for a [`need`](11-effects-and-dependencies.md#needing-an-effect) declaration. Anywhere outside a shell block, regular functions are off limits.
+The same problem appears in other places. You cannot call a regular function in an [effect](11-effects-and-dependencies.md#defining-an-effect)-scope `let`, and you cannot use one in an [overlay value](11-effects-and-dependencies.md#overlay-variables) for a [`start`](11-effects-and-dependencies.md#starting-an-effect) declaration. Anywhere outside a shell block, regular functions are off limits.
 
 Pure functions solve this. Add the `pure` keyword before `fn`, and the function becomes shell-independent — callable from anywhere:
 
@@ -186,9 +186,11 @@ test "pure function in test-scope let" {
 **In an effect-scope `let`**, to compute values during effect setup. The `let` sits outside the shell block, so only pure functions can be called here. Using the same `tag` function from above:
 
 ```relux
-effect Config -> cfg {
+effect Config {
+    expose service
+
     let label = tag("env", "production")
-    shell cfg {
+    shell service {
         > echo ${label}
         <? ^env:production$
         match_ok()
@@ -196,15 +198,18 @@ effect Config -> cfg {
 }
 ```
 
-**In overlay values for `need` declarations** — overlays are evaluated outside any shell, so pure functions are the only way to compute them dynamically:
+**In overlay values for `start` declarations** — overlays are evaluated outside any shell, so pure functions are the only way to compute them dynamically:
 
 ```relux
 pure fn make_label(name) {
     "label-${name}"
 }
 
-effect Labeled -> labeled {
-    shell labeled {
+effect Labeled {
+    expect LABEL
+    expose service
+
+    shell service {
         > echo $LABEL
         <? ^${LABEL}$
         match_ok()
@@ -212,10 +217,10 @@ effect Labeled -> labeled {
 }
 
 test "pure function in overlay" {
-    need Labeled as labeled {
+    start Labeled as l {
         LABEL = make_label("production")
     }
-    shell labeled {
+    l.service {
         > echo $LABEL
         <? ^label-production$
     }
