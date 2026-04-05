@@ -385,6 +385,21 @@ start Labeled as a { LABEL }   // desugars to LABEL = LABEL
 
 Overlay variables are the mechanism for reusing a single effect definition across different configurations — like the `FailTail` example from the introduction, where the trigger pattern and log path are passed in as overlays.
 
+## Section ordering
+
+The parser enforces a fixed ordering of sections inside an effect body:
+
+1. `expect` — required overlay variables
+2. `let` — local bindings (can reference expected vars)
+3. `start` — sub-dependencies (overlay expressions can reference let-bound vars)
+4. `expose` — which shells are visible to callers
+5. `shell` blocks — setup logic
+6. `cleanup` — teardown (optional, at most one)
+
+Each section is optional, but they must appear in this order. Writing a `start` before a `let`, or an `expose` before a `start`, is a parse error. Comments and blank lines are allowed anywhere between sections.
+
+This ordering reflects the data flow: expects declare what is available, lets compute derived values, starts wire those values into sub-dependencies, and exposes declare the public interface after all shells and dependencies are established.
+
 ## Best practices
 
 ### Set fail patterns early in effects
