@@ -35,19 +35,25 @@ fn match_uuid() {
 // effects produce a running shell as their output
 // exposed shells are declared with `expose`
 effect StartSomething {
-    start Effect1 as e1
-    start Effect2 as e2
-    // overlay provides explicit configuration to the effect
-    // effects do NOT inherit overlays from their parent
-    start E3 as e3 {
-        E3_VAR = "value"
-    }
+    // expected ENV: effect will fail if not set
+    expect SOMETHING_HOST, SOMETHING_PORT
 
+    let e3_var = "value"
     // uninitialized variables default to the empty string
     let some_important_var
 
-    // interact with a shell provided by a needed effect
-    shell e3 {
+    start Effect1 as e1
+    start Effect2 as e2
+    // overlay provides explicit configuration to the effect
+    // overlays are not inherited by sub-dependencies
+    start E3 as e3 {
+        E3_VAR = e3_var
+    }
+
+    expose e3.service as e3
+
+    // interact with a shell provided by a started effect
+    e3.service {
         > some command into e3 shell
         <? match regex here (\d+)
         // reassign a previously declared variable
@@ -71,15 +77,18 @@ effect StartSomething {
 // bare marker: unconditional (no modifier or variable)
 # skip
 // conditional: bare var truthiness (non-empty = truthy)
-# skip unless "${CI}"
+# skip unless CI
 // literal equality check
-# run if "${TARGET_OS}" = "linux"
+# run if TARGET_OS = "linux"
 // regex check
-# skip unless "${ARCH}" ? ^(x86_64|aarch64)$
+# skip unless ARCH ? ^(x86_64|aarch64)$
 test "Some test" {
     """
     The test description
     """
+
+    // variables declared at test level are visible in all shell blocks
+    let global_test_var
 
     // effects are instantiated before the test body runs
     start StartSomething as something_shell
@@ -88,9 +97,6 @@ test "Some test" {
         E3_VAR = "another value"
     }
     // same effect with same overlay = same instance (deduplication)
-
-    // variables declared at test level are visible in all shell blocks
-    let global_test_var
 
     shell myshell {
         // set match timeout (humantime format)
