@@ -4,7 +4,7 @@
 
 ## The problem: port collisions
 
-Every effect in the suite uses a hardcoded port: db on 9000, auth on 9010, tasks on 9020. This works when tests run one at a time -- each test tears down its effects before the next starts. But run the suite with `-j 4` and four tests spin up simultaneously. Four copies of `StartDb` all try to bind port 9000 -- the first succeeds, the other three crash.
+Every effect in the suite uses a hardcoded port: db on 9000, auth on 9010, tasks on 9020. This works when tests run one at a time -- each test tears down its effects before the next starts. But run the suite with `-j 4` and four tests spin up simultaneously. Four copies of `Db` all try to bind port 9000 -- the first succeeds, the other three crash.
 
 The fix is to stop hardcoding ports. Each effect instance should get its own port, and downstream effects should know which port their dependency is listening on.
 
@@ -12,15 +12,18 @@ The fix is to stop hardcoding ports. Each effect instance should get its own por
 
 Relux provides a built-in pure function `available_port()` that binds to an ephemeral TCP port, records the port number, and releases the socket. Call it as close to startup as possible to minimize the window for another process to claim the same port.
 
-Environment overlay variables let us pass a port into an effect at the `need` site. Combine the two and each effect instance gets a unique port.
+Environment overlay variables let us pass a port into an effect at the `start` site. Combine the two and each effect instance gets a unique port.
 
 Update `service/db.relux`:
 
 ```relux
 import api/http
 
-effect StartDb -> db {
-    shell db {
+effect Db {
+    expect DB_PORT
+    expose service
+
+    shell service {
         let db_root = "${__RELUX_TEST_ARTIFACTS}/database"
 
         > mkdir ${db_root}
@@ -38,31 +41,31 @@ pure fn url(port, path) {
 }
 ```
 
-The effect now reads `${DB_PORT}` from its environment instead of hardcoding `9000`. The `<~10s?` is an inline tolerance timeout -- it means "wait up to 10 seconds for this pattern". When multiple tests run in parallel, services compete for CPU and may take longer to start than the default match timeout.
+The `expect DB_PORT` declaration says: this effect requires `DB_PORT` to be provided by whoever starts it. If a caller forgets to pass it, relux reports an error at check time. The `<~10s?` is an inline tolerance timeout -- it means "wait up to 10 seconds for this pattern". When multiple tests run in parallel, services compete for CPU and may take longer to start than the default match timeout.
 
 The `url` function takes the port as an argument -- functions cannot read overlay variables, so the caller must pass it explicitly.
 
 ## Propagating ports through the chain
 
-`StartAuth` depends on `StartDb`. It needs to know the database port so it can pass `--db-port` to auth_service. Overlay variables solve this: the `need` site passes `DB_PORT` into `StartDb`, and `StartAuth` uses the same value for its own `--db-port` flag.
+`Auth` depends on `Db`. It needs to know the database port so it can pass `--db-port` to auth_service. The `expect` declaration names the required variables, and the `start` site passes them through an overlay block.
 
 Update `service/auth.relux`:
 
 ```relux
 import api/http
-import service/db { url as db_url, StartDb }
+import service/db { url as db_url, Db }
 
-effect StartAuth -> auth {
-    need StartDb {
-        DB_PORT = DB_PORT
-    }
+effect Auth {
+    expect DB_PORT, AUTH_PORT
+    start Db
+    expose service
 
-    shell db_client {
+    shell setup {
         log("create the auth database")
         http_request(200, db_url(DB_PORT, "/db/auth"), "POST")
     }
 
-    shell auth {
+    shell service {
         !? ^error:
 
         > ${__RELUX_SUITE_ROOT}/auth_service.py --port ${AUTH_PORT} --db-port ${DB_PORT}
@@ -70,13 +73,12 @@ effect StartAuth -> auth {
     }
 }
 
-effect SeededAuth -> auth {
-    need StartAuth as auth {
-        DB_PORT = DB_PORT
-        AUTH_PORT = AUTH_PORT
-    }
+effect SeededAuth {
+    expect DB_PORT, AUTH_PORT
+    start Auth as auth
+    expose auth.service as service
 
-    shell auth_client {
+    shell seeder {
         log("create seed database users")
         http_request(200, url(AUTH_PORT, "/register"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
         http_request(200, url(AUTH_PORT, "/register"), "POST", "{\"login\": \"bob\", \"password\": \"bob_secret\"}")
@@ -89,33 +91,30 @@ pure fn url(port, path) {
 }
 ```
 
-`StartAuth` receives `DB_PORT` and `AUTH_PORT` from its caller. It forwards `DB_PORT` to `StartDb` and uses both ports when starting the auth service.
+`Auth` declares `expect DB_PORT, AUTH_PORT` — both must be provided by whoever starts it. Note that it does not need to pass the expected environment variables explicitly: these are passed inside the inherited enviroment overlay. This works as long as the expected environment variables in different overlays have the same name.
 
-`SeededAuth` receives `DB_PORT` and `AUTH_PORT` from its caller and passes them explicitly to `StartAuth`. Overlays are never inherited -- every `need` site must pass the values it wants the effect to see.
+`SeededAuth` declares the same expects and passes them through to `Auth`. Each effect in the chain declares what it requires and forwards what its dependencies need.
 
 Update `service/tasks.relux`:
 
 ```relux
 import api/http
 import jq
-import service/db { url as db_url, StartDb }
+import service/db { url as db_url, Db }
 import service/auth { SeededAuth }
 
-effect StartTasks -> tasks {
-    need StartDb {
-        DB_PORT = DB_PORT
-    }
-    need SeededAuth {
-        DB_PORT = DB_PORT
-        AUTH_PORT = AUTH_PORT
-    }
+effect Tasks {
+    expect DB_PORT, AUTH_PORT, TASKS_PORT
+    start Db
+    start SeededAuth
+    expose service
 
-    shell db_client {
+    shell setup {
         log("create the tasks database")
         http_request(200, db_url(DB_PORT, "/db/tasks"), "POST")
     }
 
-    shell tasks {
+    shell service {
         !? ^error:
 
         > ${__RELUX_SUITE_ROOT}/task_service.py --port ${TASKS_PORT} --db-port ${DB_PORT} --auth-port ${AUTH_PORT}
@@ -123,14 +122,12 @@ effect StartTasks -> tasks {
     }
 }
 
-effect SeededTasks -> tasks {
-    need StartTasks as tasks {
-        DB_PORT = DB_PORT
-        AUTH_PORT = AUTH_PORT
-        TASKS_PORT = TASKS_PORT
-    }
+effect SeededTasks {
+    expect DB_PORT, AUTH_PORT, TASKS_PORT
+    start Tasks as tasks
+    expose tasks.service as service
 
-    shell tasks_client {
+    shell seeder {
         log("login as alice")
         let response_filename = http_request(200, url(TASKS_PORT, "/login"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
         let token = jq_extract(response_filename, ".token")
@@ -158,35 +155,18 @@ pure fn url(port, path) {
 }
 ```
 
-`SeededTasks` follows the same layering pattern we used for auth: it needs `StartTasks`, logs in as two users, and creates a task for each. Tests that need pre-existing tasks use `need SeededTasks` instead of setting up data themselves.
+`SeededTasks` follows the same layering pattern we used for auth: it starts `Tasks`, logs in as two users, and creates a task for each. Tests that need pre-existing tasks use `start SeededTasks` instead of setting up data themselves.
 
-The full port chain looks like this:
-
-```
-  test
-  |  DB_PORT = available_port()
-  |  AUTH_PORT = available_port()
-  |  TASKS_PORT = available_port()
-  |
-  StartTasks
-  |    |         |
-  |    |      SeededAuth
-  |    |         |
-  |    |      StartAuth
-  |    |         |
-  +----+---> StartDb
-```
-
-Each port is allocated once at the test level and flows down through overlays. Effect deduplication still works -- two `need StartDb { DB_PORT = DB_PORT }` with the same value share one instance.
+Each port is allocated once at the test level and flows down through overlays. Effect deduplication still works -- two `start Db { DB_PORT }` with the same evaluated value share one instance.
 
 ## Updating the tests
 
-Each test now passes ports when needing effects. Here is the updated `tasks/smoke.relux`:
+Each test now passes ports when starting effects. Here is the updated `tasks/smoke.relux`:
 
 ```relux
 import api/http
 import jq
-import service/tasks { url as tasks_url, StartTasks }
+import service/tasks { url as tasks_url, Tasks }
 
 test "task CRUD" {
     """
@@ -196,7 +176,7 @@ test "task CRUD" {
     let auth_port = available_port()
     let tasks_port = available_port()
 
-    need StartTasks {
+    start Tasks {
         DB_PORT = db_port
         AUTH_PORT = auth_port
         TASKS_PORT = tasks_port
@@ -229,7 +209,7 @@ test "task CRUD" {
 }
 ```
 
-The three `available_port()` calls at the top allocate unique ports. The overlay blocks on `need` pass them down. The test body passes `tasks_port` to `tasks_url()` so the curl commands target the right port.
+The three `available_port()` calls at the top allocate unique ports. The overlay blocks on `start` pass them down. The test body passes `tasks_port` to `tasks_url()` so the curl commands target the right port.
 
 The same pattern applies to the db and auth test files. Each test allocates the ports it needs and passes them through overlays.
 
@@ -240,7 +220,7 @@ The `SeededTasks` effect pays off in error-path tests. Create `tasks/errors.relu
 ```relux
 import api/http
 import jq
-import service/tasks { url as tasks_url, StartTasks, SeededTasks }
+import service/tasks { url as tasks_url, Tasks, SeededTasks }
 
 # skip if SMOKE
 test "unauthorized without token" {
@@ -251,7 +231,7 @@ test "unauthorized without token" {
     let auth_port = available_port()
     let tasks_port = available_port()
 
-    need StartTasks {
+    start Tasks {
         DB_PORT = db_port
         AUTH_PORT = auth_port
         TASKS_PORT = tasks_port
@@ -271,7 +251,7 @@ test "get nonexistent task" {
     let auth_port = available_port()
     let tasks_port = available_port()
 
-    need SeededTasks {
+    start SeededTasks {
         DB_PORT = db_port
         AUTH_PORT = auth_port
         TASKS_PORT = tasks_port
@@ -289,7 +269,7 @@ test "get nonexistent task" {
 }
 ```
 
-Notice the different effect choices: the unauthorized test only needs `StartTasks` -- no seeded data, just a running service to reject the request. The nonexistent task test needs `SeededTasks` because it logs in as alice, who must exist.
+Notice the different effect choices: the unauthorized test only starts `Tasks` -- no seeded data, just a running service to reject the request. The nonexistent task test starts `SeededTasks` because it logs in as alice, who must exist.
 
 ## Running in parallel
 
@@ -335,7 +315,7 @@ relux run --strategy all
 **Flaky markers.** If a test is inherently timing-sensitive, mark it so relux retries before reporting failure:
 
 ```relux
-[flaky]
+# flaky
 test "sometimes slow" {
     """
     Verify the service responds under load.
@@ -347,7 +327,7 @@ test "sometimes slow" {
 **CI-only tests.** Some tests only make sense in CI:
 
 ```relux
-[run if "${CI}"]
+# run if CI
 test "full integration" {
     """
     Run the full integration suite against the staging environment.
@@ -396,7 +376,7 @@ project/
             └── tasks.relux
 ```
 
-Test files say what to test. Library files say how to talk to services. Effect modules say how to start them. Overlays make everything parallel-safe.
+Test files say what to test. Library files say how to talk to services. Effect modules say how to start them. Environment overlays make everything parallel-safe.
 
 ---
 

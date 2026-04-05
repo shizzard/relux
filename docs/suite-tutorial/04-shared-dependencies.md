@@ -10,27 +10,28 @@ The task service is the most complex piece of the stack. It depends on both db a
 - It authenticates users through the auth service
 - It has its own `/login` endpoint that forwards credentials to auth and issues a Bearer token
 
-To start it, we need a running db_service, a running auth_service, and the `tasks` database created. But `StartAuth` already needs `StartDb` internally. If `StartTasks` also needs `StartDb`, does the database start twice?
+To start it, we need a running db_service, a running auth_service, and the `tasks` database created. But `Auth` already starts `Db` internally. If `Tasks` also starts `Db`, does the database start twice?
 
-## The StartTasks effect
+## The Tasks effect
 
 Create `relux/lib/service/tasks.relux`:
 
 ```relux
 import api/http
-import service/db { url as db_url, StartDb }
-import service/auth { StartAuth }
+import service/db { url as db_url, Db }
+import service/auth { Auth }
 
-effect StartTasks -> tasks {
-    need StartDb
-    need StartAuth
+effect Tasks {
+    start Db
+    start Auth
+    expose service
 
-    shell db_client {
+    shell setup {
         log("create the tasks database")
         http_request(200, db_url("/db/tasks"), "POST")
     }
 
-    shell tasks {
+    shell service {
         !? ^error:
 
         > ${__RELUX_SUITE_ROOT}/task_service.py
@@ -43,27 +44,27 @@ pure fn url(path) {
 }
 ```
 
-`StartTasks` declares two dependencies: `need StartDb` and `need StartAuth`. But `StartAuth` itself also needs `StartDb`. This creates a diamond in the dependency graph:
+`Tasks` declares two dependencies: `start Db` and `start Auth`. But `Auth` itself also starts `Db`. This creates a diamond in the dependency graph:
 
 ```
-  StartTasks
-  |        |
-  |     StartAuth
-  |        |
-  +---> StartDb
+  Tasks
+  |   |
+  |   Auth
+  |   |
+  +-- Db
 ```
 
-If relux started a new db_service for each `need StartDb`, we would end up with two database instances on the same port -- and the second one would fail to bind. This is where effect deduplication comes in.
+If relux started a new db_service for each `start Db`, we would end up with two database instances on the same port -- and the second one would fail to bind. This is where effect deduplication comes in.
 
-Relux identifies each effect instance by its name and overlay values (we will cover overlays in the next chapter). Two `need StartDb` statements with no overlay both refer to the same identity: `(StartDb, {})`. Relux resolves the full dependency graph as a DAG and runs each unique instance exactly once.
+Relux identifies each effect instance by its name and overlay values (we will cover overlays in the next chapter). Two `start Db` statements with no overlay both refer to the same identity: `(Db, {})`. Relux resolves the full dependency graph as a DAG and runs each unique instance exactly once.
 
 In our case, the execution order is:
 
-1. **StartDb** -- starts the database (once)
-2. **StartAuth** -- creates the `auth` database, starts auth_service
-3. **StartTasks** setup -- creates the `tasks` database, starts task_service
+1. **Db** -- starts the database (once)
+2. **Auth** -- creates the `auth` database, starts auth_service
+3. **Tasks** setup -- creates the `tasks` database, starts task_service
 
-Step 2 and the setup part of step 3 both use the single running database from step 1. No port conflicts, no duplicated work. 
+Step 2 and the setup part of step 3 both use the single running database from step 1. No port conflicts, no duplicated work.
 
 ## Authenticated requests
 
@@ -135,14 +136,14 @@ relux new --test tasks/smoke
 import api/http
 import jq
 import service/auth { SeededAuth }
-import service/tasks { url as tasks_url, StartTasks }
+import service/tasks { url as tasks_url, Tasks }
 
 test "task CRUD" {
     """
     Log in, create a task, read it back, update it, and delete it.
     """
-    need StartTasks
-    need SeededAuth
+    start Tasks
+    start SeededAuth
 
     shell client {
         log("login as alice")
@@ -170,7 +171,7 @@ test "task CRUD" {
 }
 ```
 
-The test needs both `StartTasks` and `SeededAuth`. Behind the scenes, this pulls in the entire stack: db starts once, auth starts with the `auth` database and seed users, tasks starts with the `tasks` database. The test itself is just login and CRUD.
+The test starts both `Tasks` and `SeededAuth`. Behind the scenes, this pulls in the entire stack: db starts once, auth starts with the `auth` database and seed users, tasks starts with the `tasks` database. The test itself is just login and CRUD.
 
 Notice how `jq_extract` captures the token and task ID into variables that are used in subsequent requests. The `${task_id}` in `tasks_url("/tasks/${task_id}")` is interpolated at the call site -- relux variables are just strings.
 
@@ -181,14 +182,14 @@ With all three services, the full effect graph looks like this:
 ```
   test "task CRUD"
   |              |
-  StartTasks  SeededAuth
-  |    |         |
-  |    +---> StartAuth
+  Tasks          SeededAuth
+  |   |          |
+  |   +--------> Auth
   |              |
-  +--------> StartDb
+  +------------> Db
 ```
 
-Five `need` statements across effects and the test, but only four unique effect instances. `StartAuth` is needed by both `StartTasks` and `SeededAuth` -- it runs once. `StartDb` is needed by both `StartTasks` and `StartAuth` -- it runs once. You declare what you need; relux figures out the rest.
+Five `start` statements across effects and the test, but only four unique effect instances. `Auth` is started by both `Tasks` and `SeededAuth` -- it runs once. `Db` is started by both `Tasks` and `Auth` -- it runs once. You declare what you need; relux figures out the rest.
 
 ## What we have so far
 
