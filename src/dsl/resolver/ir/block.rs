@@ -12,14 +12,29 @@ use super::stmt::IrShellStmt;
 
 #[derive(Debug, Clone)]
 pub struct IrShellBlock {
+    qualifier: Option<IrIdent>,
     name: IrIdent,
     body: Vec<IrShellStmt>,
     span: IrSpan,
 }
 
 impl IrShellBlock {
-    pub fn new(name: IrIdent, body: Vec<IrShellStmt>, span: IrSpan) -> Self {
-        Self { name, body, span }
+    pub fn new(
+        qualifier: Option<IrIdent>,
+        name: IrIdent,
+        body: Vec<IrShellStmt>,
+        span: IrSpan,
+    ) -> Self {
+        Self {
+            qualifier,
+            name,
+            body,
+            span,
+        }
+    }
+
+    pub fn qualifier(&self) -> Option<&IrIdent> {
+        self.qualifier.as_ref()
     }
 
     pub fn name(&self) -> &IrIdent {
@@ -58,6 +73,11 @@ impl IrNodeLowering for IrShellBlock {
         file: &FileId,
         ctx: &mut LoweringContext,
     ) -> Result<Self, LoweringBail> {
+        let qualifier = ast
+            .qualifier
+            .as_ref()
+            .map(|q| IrIdent::lower(&q.node, file, ctx))
+            .transpose()?;
         let name = IrIdent::lower(&ast.name.node, file, ctx)?;
         let body = ast
             .stmts
@@ -65,6 +85,7 @@ impl IrNodeLowering for IrShellBlock {
             .map(|s| IrShellStmt::lower(&s.node, file, ctx))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(IrShellBlock::new(
+            qualifier,
             name,
             body,
             IrSpan::new(file.clone(), ast.span),
@@ -113,6 +134,7 @@ mod tests {
     fn ir_shell_block() {
         let s = test_span();
         let block = IrShellBlock::new(
+            None,
             test_ident("sh"),
             vec![IrShellStmt::BufferReset { span: s.clone() }],
             s,
@@ -123,7 +145,7 @@ mod tests {
 
     #[test]
     fn ir_shell_block_empty_body() {
-        let block = IrShellBlock::new(test_ident("sh"), vec![], test_span());
+        let block = IrShellBlock::new(None, test_ident("sh"), vec![], test_span());
         assert!(block.body().is_empty());
     }
 

@@ -1,4 +1,4 @@
-effect Base -> s {
+effect Base {
     shell s {
         > echo base
     }

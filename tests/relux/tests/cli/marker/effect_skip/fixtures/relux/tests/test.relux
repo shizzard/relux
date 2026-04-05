@@ -1,5 +1,5 @@
 # skip
-effect Skipped -> s {
+effect Skipped {
     shell s {
         > echo "effect ran"
         <? ^effect ran$
@@ -10,7 +10,7 @@ test "depends on skipped effect" {
     """
     Depend on a skipped effect.
     """
-    need Skipped as s
+    start Skipped as s
     shell s {
         > echo "should not run"
         <? ^should not run$

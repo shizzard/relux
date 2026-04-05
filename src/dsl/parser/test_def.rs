@@ -14,9 +14,10 @@ use super::ast::AstStmt;
 use super::ast::AstTestDef;
 use super::ast::AstTestItem;
 use super::block::cleanup_block;
+use super::block::qualified_shell_block;
 use super::block::shell_block;
 use super::expr::plain_string;
-use super::need::need;
+use super::need::start_decl;
 use super::punctuation::punctuation_brace_close;
 use super::punctuation::punctuation_brace_open;
 use super::stmt::stmt_let_standalone;
@@ -78,18 +79,18 @@ pub fn def_test<'a>()
     .collect::<Vec<_>>()
     .map(|items| items.into_iter().flatten().collect::<Vec<_>>());
 
-    // Need section
-    let need_item = leading_ws().ignore_then(need()).map_with(|n, e| {
+    // Start section
+    let start_item = leading_ws().ignore_then(start_decl()).map_with(|n, e| {
         let span = Span::from(e.span());
-        AstTestItem::Need { decl: n.node, span }
+        AstTestItem::Start { decl: n.node, span }
     });
-    let need_comment = leading_ws().ignore_then(comment()).map_with(|c, e| {
+    let start_comment = leading_ws().ignore_then(comment()).map_with(|c, e| {
         let span = Span::from(e.span());
         AstTestItem::Comment { text: c, span }
     });
-    let need_section = choice((
-        need_item,
-        need_comment,
+    let start_section = choice((
+        start_item,
+        start_comment,
         // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
         newline().to(AstTestItem::Comment {
             text: String::new(),
@@ -125,7 +126,7 @@ pub fn def_test<'a>()
     .repeated()
     .collect::<Vec<_>>();
 
-    // Shell section
+    // Shell section (both `shell name { }` and `qualifier.name { }`)
     let shell_item = leading_ws().ignore_then(shell_block()).map_with(|sb, e| {
         let span = Span::from(e.span());
         AstTestItem::Shell {
@@ -133,12 +134,23 @@ pub fn def_test<'a>()
             span,
         }
     });
+    let qualified_shell_item =
+        leading_ws()
+            .ignore_then(qualified_shell_block())
+            .map_with(|sb, e| {
+                let span = Span::from(e.span());
+                AstTestItem::Shell {
+                    block: sb.node,
+                    span,
+                }
+            });
     let shell_comment = leading_ws().ignore_then(comment()).map_with(|c, e| {
         let span = Span::from(e.span());
         AstTestItem::Comment { text: c, span }
     });
     let shell_section = choice((
         shell_item,
+        qualified_shell_item,
         shell_comment,
         // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
         newline().to(AstTestItem::Comment {
@@ -182,7 +194,7 @@ pub fn def_test<'a>()
     header
         .then(doc_section)
         .then(let_section)
-        .then(need_section)
+        .then(start_section)
         .then(shell_section)
         .then(cleanup_section)
         .then_ignore(
@@ -195,7 +207,7 @@ pub fn def_test<'a>()
         )
         .then_ignore(punctuation_brace_close())
         .map_with(
-            |(((((((markers, name), timeout_opt), docs), lets), needs), shells), cleanup), e| {
+            |(((((((markers, name), timeout_opt), docs), lets), starts), shells), cleanup), e| {
                 let outer_span = Span::from(e.span());
 
                 let timeout = timeout_opt;
@@ -211,7 +223,7 @@ pub fn def_test<'a>()
                         body.push(Spanned::new(item, item_span));
                     }
                 }
-                for item in needs {
+                for item in starts {
                     if !is_sentinel_comment(&item) {
                         let item_span = *item.span();
                         body.push(Spanned::new(item, item_span));
@@ -348,10 +360,10 @@ test "my test" {
     }
 
     #[test]
-    fn test_with_need() {
+    fn test_with_start() {
         let t = parse_test(
             r#"test "my test" {
-  need Db
+  start Db
   shell main {
     > echo hello
   }
@@ -361,7 +373,7 @@ test "my test" {
         assert!(
             t.body
                 .iter()
-                .any(|item| matches!(&item.node, AstTestItem::Need { .. }))
+                .any(|item| matches!(&item.node, AstTestItem::Start { .. }))
         );
     }
 
@@ -446,7 +458,7 @@ test "my test" {
 test "full test" ~10s {
   """docstring here"""
   let port = "5432"
-  need Db
+  start Db
   shell main {
     > echo hello
   }
@@ -467,7 +479,7 @@ test "full test" ~10s {
         assert!(
             t.body
                 .iter()
-                .any(|item| matches!(&item.node, AstTestItem::Need { .. }))
+                .any(|item| matches!(&item.node, AstTestItem::Start { .. }))
         );
         assert!(
             t.body
@@ -508,7 +520,7 @@ test "my test" {
   // let section
   let x = "val"
   // need section
-  need Db
+  start Db
   // shell section
   shell main {
     > echo hello
@@ -525,49 +537,49 @@ test "my test" {
     }
 
     #[test]
-    fn test_need_with_alias() {
+    fn test_start_with_alias() {
         let t = parse_test(
             r#"test "my test" {
-  need Db as db
+  start Db as db
   shell main {
     > echo hello
   }
 }
 "#,
         );
-        let need = t
+        let start = t
             .body
             .iter()
             .find_map(|item| match &item.node {
-                AstTestItem::Need { decl, .. } => Some(decl),
+                AstTestItem::Start { decl, .. } => Some(decl),
                 _ => None,
             })
             .unwrap();
-        assert_eq!(need.effect.node.name, "Db");
-        assert_eq!(need.alias.as_ref().unwrap().node.name, "db");
+        assert_eq!(start.effect.node.name, "Db");
+        assert_eq!(start.alias.as_ref().unwrap().node.name, "db");
     }
 
     #[test]
-    fn test_need_with_overlay() {
+    fn test_start_with_overlay() {
         let t = parse_test(
             r#"test "my test" {
-  need Db { PORT = "5433" }
+  start Db { PORT = "5433" }
   shell main {
     > echo hello
   }
 }
 "#,
         );
-        let need = t
+        let start = t
             .body
             .iter()
             .find_map(|item| match &item.node {
-                AstTestItem::Need { decl, .. } => Some(decl),
+                AstTestItem::Start { decl, .. } => Some(decl),
                 _ => None,
             })
             .unwrap();
-        assert_eq!(need.effect.node.name, "Db");
-        assert_eq!(need.overlay.len(), 1);
+        assert_eq!(start.effect.node.name, "Db");
+        assert_eq!(start.overlay.len(), 1);
     }
 
     #[test]
@@ -577,7 +589,7 @@ test "my test" {
 
   let x = "val"
 
-  need Db
+  start Db
 
   shell main {
     > echo hello
@@ -589,7 +601,7 @@ test "my test" {
         assert!(
             t.body
                 .iter()
-                .any(|item| matches!(&item.node, AstTestItem::Need { .. }))
+                .any(|item| matches!(&item.node, AstTestItem::Start { .. }))
         );
         assert!(
             t.body
@@ -638,11 +650,11 @@ test "full" ~5s {
     }
 
     #[test]
-    fn test_with_multiple_needs() {
+    fn test_with_multiple_starts() {
         let t = parse_test(
             r#"test "my test" {
-  need Db
-  need Cache
+  start Db
+  start Cache
   shell main {
     > echo hello
   }
@@ -652,7 +664,7 @@ test "full" ~5s {
         let need_count = t
             .body
             .iter()
-            .filter(|item| matches!(&item.node, AstTestItem::Need { .. }))
+            .filter(|item| matches!(&item.node, AstTestItem::Start { .. }))
             .count();
         assert_eq!(need_count, 2);
     }
@@ -675,5 +687,58 @@ test "full" ~5s {
             .filter(|item| matches!(&item.node, AstTestItem::Let { .. }))
             .count();
         assert_eq!(let_count, 2);
+    }
+
+    #[test]
+    fn test_with_qualified_shell_block() {
+        let t = parse_test(
+            r#"test "my test" {
+  start Db as db
+  db.main {
+    > echo hello
+  }
+}
+"#,
+        );
+        let shell = t
+            .body
+            .iter()
+            .find_map(|item| match &item.node {
+                AstTestItem::Shell { block, .. } => Some(block),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(shell.qualifier.as_ref().unwrap().node.name, "db");
+        assert_eq!(shell.name.node.name, "main");
+    }
+
+    #[test]
+    fn test_with_mixed_shell_blocks() {
+        let t = parse_test(
+            r#"test "my test" {
+  start Db as db
+  shell local {
+    > echo local
+  }
+  db.main {
+    > echo remote
+  }
+}
+"#,
+        );
+        let shells: Vec<_> = t
+            .body
+            .iter()
+            .filter_map(|item| match &item.node {
+                AstTestItem::Shell { block, .. } => Some(block),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(shells.len(), 2);
+        assert!(shells[0].qualifier.is_none());
+        assert_eq!(shells[0].name.node.name, "local");
+        assert!(shells[1].qualifier.is_some());
+        assert_eq!(shells[1].qualifier.as_ref().unwrap().node.name, "db");
+        assert_eq!(shells[1].name.node.name, "main");
     }
 }

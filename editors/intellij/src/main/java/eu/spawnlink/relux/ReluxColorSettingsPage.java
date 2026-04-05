@@ -63,8 +63,10 @@ public class ReluxColorSettingsPage implements ColorSettingsPage {
                     captured
                 }
 
-                effect StartServer -> server {
-                    need E1 as e1
+                effect StartServer {
+                    expect SERVER_PORT
+                    start E1 as e1
+                    expose server
 
                     shell server {
                         ~10s
@@ -84,9 +86,9 @@ public class ReluxColorSettingsPage implements ColorSettingsPage {
                     Test description goes here
                     \"""
 
-                    need StartServer as srv
+                    start StartServer as srv { SERVER_PORT = "8080" }
 
-                    shell myshell {
+                    srv.server {
                         > curl localhost:8080
                         <? 200 OK
 

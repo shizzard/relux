@@ -1,0 +1,45 @@
+effect Counter {
+  expect COUNTER_NAME
+  expose counter
+  shell counter {
+    > export COUNT_ID="${COUNTER_NAME}"
+    match_ok()
+  }
+}
+
+test "different overlays produce separate instances" {
+  """
+  Verify that starting the same effect with different overlay values
+  creates separate instances with independent state.
+  """
+  start Counter as a { COUNTER_NAME = "alpha" }
+  start Counter as b { COUNTER_NAME = "beta" }
+  a.counter {
+    > echo $$COUNT_ID
+    <? ^alpha$
+    match_ok()
+  }
+  b.counter {
+    > echo $$COUNT_ID
+    <? ^beta$
+    match_ok()
+  }
+}
+
+test "same overlay values deduplicate to one instance" {
+  """
+  Verify that starting the same effect with identical overlay values
+  shares a single instance.
+  """
+  start Counter as a { COUNTER_NAME = "shared" }
+  start Counter as b { COUNTER_NAME = "shared" }
+  a.counter {
+    > export MARKER=set_by_a
+    match_ok()
+  }
+  b.counter {
+    > echo $$MARKER
+    <? ^set_by_a$
+    match_ok()
+  }
+}

@@ -38,11 +38,11 @@ pub(crate) fn validate_static_regex(
     }
 
     if let Err(e) = regex::Regex::new(&pattern) {
-        return Err(LoweringBail::invalid(InvalidReport::InvalidRegex {
+        return Err(LoweringBail::invalid(InvalidReport::invalid_regex(
             pattern,
-            error: e.to_string(),
-            span: IrSpan::new(file.clone(), interp.span),
-        }));
+            e.to_string(),
+            IrSpan::new(file.clone(), interp.span),
+        )));
     }
 
     Ok(())

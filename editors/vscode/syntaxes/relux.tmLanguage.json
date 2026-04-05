@@ -13,8 +13,8 @@
     { "include": "#shell-operators" },
     { "include": "#timeout" },
     { "include": "#fail-operators" },
-    { "include": "#arrow" },
     { "include": "#keywords" },
+    { "include": "#dot-access" },
     { "include": "#string" },
     { "include": "#interpolation" },
     { "include": "#effect-identifier" },
@@ -246,14 +246,18 @@
       }
     },
 
-    "arrow": {
-      "match": "->",
-      "name": "keyword.operator.arrow.relux"
+    "keywords": {
+      "match": "\\b(shell|let|start|expect|expose|as|cleanup)\\b",
+      "name": "keyword.control.relux"
     },
 
-    "keywords": {
-      "match": "\\b(shell|let|need|as|cleanup)\\b",
-      "name": "keyword.control.relux"
+    "dot-access": {
+      "match": "\\b([a-z_][a-zA-Z0-9_]*)(\\.)([a-z_][a-zA-Z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "variable.other.alias.relux" },
+        "2": { "name": "punctuation.accessor.dot.relux" },
+        "3": { "name": "variable.other.shell.relux" }
+      }
     },
 
     "string": {

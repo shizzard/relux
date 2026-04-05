@@ -1,4 +1,4 @@
-effect Echo -> s {
+effect Echo {
     shell s {
         > echo "PORT=${PORT}"
         <? ^PORT=\d+$
@@ -12,7 +12,7 @@ test "test-level let visible in effect overlay" {
     The effect receives the port via overlay and echoes it back.
     """
     let port = available_port()
-    need Echo as s { PORT = port }
+    start Echo as s { PORT = port }
     shell s {
         > echo "ok"
         <? ^ok$
@@ -25,7 +25,7 @@ test "multiple lets feed multiple overlays" {
     """
     let port_a = available_port()
     let port_b = available_port()
-    need Echo as s { PORT = port_a }
+    start Echo as s { PORT = port_a }
     shell s {
         > echo "got port"
         <? ^got port$

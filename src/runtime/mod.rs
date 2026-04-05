@@ -715,7 +715,7 @@ async fn run_test(
     }
 
     // Release effects (always runs, even after cancellation)
-    let effect_warnings = test_manager.cleanup(test.needs()).await;
+    let effect_warnings = test_manager.cleanup_all().await;
     warnings.extend(effect_warnings);
 
     // Collect events (consumes the EventSink, releasing its ProgressTx)
@@ -774,7 +774,7 @@ async fn run_test_body(
         timeout: meta.timeout().cloned(),
     };
 
-    // 2. Evaluate test-level lets into scope (parser enforces lets come before needs)
+    // 2. Evaluate test-level lets into scope (parser enforces lets come before starts)
     for item in test.body() {
         if let IrTestItem::Let { stmt, .. } = item {
             let mut vars = scope.vars().lock().await;
@@ -795,26 +795,38 @@ async fn run_test_body(
 
     // 3. Instantiate effects (overlays can now see test-level vars)
     let caller_vars = scope.vars().lock().await.clone();
+    let root_env = Arc::new(crate::pure::LayeredEnv::root(Env::new()));
     let exported = manager
-        .instantiate(test.needs(), &caller_vars, &Env::new())
+        .instantiate(test.starts(), &caller_vars, &root_env)
         .await?;
 
-    // 4. Build shell map from exported effect shells
+    // 4. Build shell map from exposed effect shells
+    //    Each start returns a map of exposed shells. We store them
+    //    keyed by (alias, shell_name) for dot-access resolution.
     let mut shells: HashMap<String, Arc<TokioMutex<Vm>>> = HashMap::new();
+    let mut effect_shells: HashMap<String, HashMap<String, Arc<TokioMutex<Vm>>>> = HashMap::new();
     let mut reset_seen = HashSet::new();
-    for (need, vm_arc) in test.needs().iter().zip(exported) {
-        let ptr = Arc::as_ptr(&vm_arc) as usize;
-        if reset_seen.insert(ptr) {
-            vm_arc.lock().await.reset_for_export(scope.clone());
+    for (start, (_key, exported_map)) in test.starts().iter().zip(exported) {
+        for vm_arc in exported_map.values() {
+            let ptr = Arc::as_ptr(vm_arc) as usize;
+            if reset_seen.insert(ptr) {
+                vm_arc.lock().await.reset_for_export(scope.clone());
+            }
         }
-        if let Some(alias) = need.alias() {
-            let source = vm_arc.lock().await.current_name();
-            rt_ctx.events.emit_shell_alias(alias, source);
-            shells.insert(alias.to_string(), vm_arc);
+        if let Some(alias) = start.alias() {
+            // For backwards compat: if effect exposes exactly one shell,
+            // also insert it under the alias name directly
+            if exported_map.len() == 1 {
+                let vm_arc = exported_map.values().next().unwrap().clone();
+                let source = vm_arc.lock().await.current_name();
+                rt_ctx.events.emit_shell_alias(alias, source);
+                shells.insert(alias.to_string(), vm_arc);
+            }
+            effect_shells.insert(alias.to_string(), exported_map);
         }
     }
 
-    // 5. Walk IrTestItems (lets already evaluated, needs already instantiated)
+    // 5. Walk IrTestItems (lets already evaluated, starts already instantiated)
     let cleanup_block = test.body().iter().find_map(|item| match item {
         IrTestItem::Cleanup { block, .. } => Some(block.clone()),
         _ => None,
@@ -823,27 +835,51 @@ async fn run_test_body(
         for item in test.body() {
             match item {
                 IrTestItem::Comment { .. } | IrTestItem::DocString { .. } => continue,
-                IrTestItem::Need { .. } => continue,
+                IrTestItem::Start { .. } => continue,
                 IrTestItem::Let { .. } => continue,
                 IrTestItem::Shell { block, .. } => {
-                    let name = block.name().name().to_string();
-                    rt_ctx.events.emit_shell_switch(&name);
-                    if !shells.contains_key(&name) {
-                        let shell_state = ShellState::new(name.clone(), None, None);
-                        let ctx = ExecutionContext::new(
-                            scope.clone(),
-                            shell_state,
-                            rt_ctx.shell.default_timeout.clone(),
-                            rt_ctx.env.clone(),
-                        );
-                        let vm = Vm::new(name.clone(), ctx, rt_ctx).await?;
-                        shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
+                    if let Some(qualifier) = block.qualifier() {
+                        // Qualified shell block: alias.shell { ... }
+                        let alias = qualifier.name();
+                        let shell_name = block.name().name();
+                        let display = format!("{alias}.{shell_name}");
+                        rt_ctx.events.emit_shell_switch(&display);
+                        let dep = effect_shells.get(alias).ok_or_else(|| Failure::Runtime {
+                            message: format!("unknown effect alias `{alias}`"),
+                            span: None,
+                            shell: None,
+                        })?;
+                        let vm_arc = dep.get(shell_name).ok_or_else(|| Failure::Runtime {
+                            message: format!(
+                                "effect alias `{alias}` does not expose shell `{shell_name}`"
+                            ),
+                            span: None,
+                            shell: None,
+                        })?;
+                        let mut vm = vm_arc.lock().await;
+                        rt_ctx.events.emit_shell_switch(vm.current_name());
+                        vm.exec_stmts(block.body()).await?;
+                    } else {
+                        // Unqualified shell block: shell name { ... }
+                        let name = block.name().name().to_string();
+                        rt_ctx.events.emit_shell_switch(&name);
+                        if !shells.contains_key(&name) {
+                            let shell_state = ShellState::new(name.clone(), None, None);
+                            let ctx = ExecutionContext::new(
+                                scope.clone(),
+                                shell_state,
+                                rt_ctx.shell.default_timeout.clone(),
+                                rt_ctx.env.clone(),
+                            );
+                            let vm = Vm::new(name.clone(), ctx, rt_ctx).await?;
+                            shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
+                        }
+                        let vm_arc = shells.get(&name).expect("shell just inserted above");
+                        let mut vm = vm_arc.lock().await;
+                        let display_name = vm.current_name().to_string();
+                        rt_ctx.events.emit_shell_switch(&display_name);
+                        vm.exec_stmts(block.body()).await?;
                     }
-                    let vm_arc = shells.get(&name).expect("shell just inserted above");
-                    let mut vm = vm_arc.lock().await;
-                    let display_name = vm.current_name().to_string();
-                    rt_ctx.events.emit_shell_switch(&display_name);
-                    vm.exec_stmts(block.body()).await?;
                 }
                 IrTestItem::Cleanup { .. } => continue,
             }
@@ -852,7 +888,7 @@ async fn run_test_body(
     }
     .await;
 
-    // 5. Terminate all test shells (deduplicated by Arc pointer)
+    // 6. Terminate all test shells (deduplicated by Arc pointer)
     let mut seen = HashSet::new();
     for (_, vm_arc) in shells.drain() {
         let ptr = Arc::as_ptr(&vm_arc) as usize;
@@ -861,7 +897,7 @@ async fn run_test_body(
         }
     }
 
-    // 6. Run test cleanup (fresh shell, best-effort)
+    // 7. Run test cleanup (fresh shell, best-effort)
     if let Some(cleanup) = &cleanup_block {
         rt_ctx.events.emit_cleanup("__cleanup");
         let shell_state = ShellState::new("__cleanup".to_string(), None, None);
@@ -874,17 +910,32 @@ async fn run_test_body(
         // Cleanup uses its own uncancellable token
         let mut cleanup_rt_ctx = rt_ctx.clone();
         cleanup_rt_ctx.cancel = CancellationToken::new();
-        if let Ok(mut cleanup_vm) = Vm::new("__cleanup".to_string(), ctx, &cleanup_rt_ctx).await {
-            if let Err(failure) = cleanup_vm.exec_stmts(cleanup.body()).await {
+        match Vm::new("__cleanup".to_string(), ctx, &cleanup_rt_ctx).await {
+            Ok(mut cleanup_vm) => {
+                if let Err(failure) = cleanup_vm.exec_stmts(cleanup.body()).await {
+                    rt_ctx
+                        .events
+                        .emit_warning("__cleanup", "test cleanup failed");
+                    warnings.push(Warning::CleanupFailed {
+                        source: CleanupSource::Test,
+                        failure,
+                    });
+                }
+                cleanup_vm.shutdown().await;
+            }
+            Err(e) => {
                 rt_ctx
                     .events
-                    .emit_warning("__cleanup", "test cleanup failed");
+                    .emit_warning("__cleanup", "failed to spawn cleanup shell");
                 warnings.push(Warning::CleanupFailed {
                     source: CleanupSource::Test,
-                    failure,
+                    failure: Failure::Runtime {
+                        message: format!("failed to spawn cleanup shell: {e:?}"),
+                        span: None,
+                        shell: None,
+                    },
                 });
             }
-            cleanup_vm.shutdown().await;
         }
     }
 

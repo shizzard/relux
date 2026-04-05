@@ -33,13 +33,13 @@ fn match_uuid() {
 }
 
 // effects produce a running shell as their output
-// the exported shell is specified in the effect head with -> <name>
-effect StartSomething -> something {
-    need Effect1 as e1
-    need Effect2 as e2
+// exposed shells are declared with `expose`
+effect StartSomething {
+    start Effect1 as e1
+    start Effect2 as e2
     // overlay provides explicit configuration to the effect
     // effects do NOT inherit overlays from their parent
-    need E3 as e3 {
+    start E3 as e3 {
         E3_VAR = "value"
     }
 
@@ -82,9 +82,9 @@ test "Some test" {
     """
 
     // effects are instantiated before the test body runs
-    need StartSomething as something_shell
+    start StartSomething as something_shell
     // same effect with different overlay = different instance
-    need StartSomething as another_something_shell {
+    start StartSomething as another_something_shell {
         E3_VAR = "another value"
     }
     // same effect with same overlay = same instance (deduplication)

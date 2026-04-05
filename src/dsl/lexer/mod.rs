@@ -22,8 +22,12 @@ pub enum Token<'a> {
     Shell,
     #[token("let")]
     Let,
-    #[token("need")]
-    Need,
+    #[token("start")]
+    Start,
+    #[token("expect")]
+    Expect,
+    #[token("expose")]
+    Expose,
     #[token("import")]
     Import,
     #[token("cleanup")]
@@ -78,6 +82,8 @@ pub enum Token<'a> {
     Slash,
     #[token("-")]
     Dash,
+    #[token(".")]
+    Dot,
 
     // ── Whitespace ──────────────────────────────────────────
     #[regex(" +")]
@@ -102,7 +108,9 @@ impl fmt::Display for Token<'_> {
             Token::Test => write!(f, "test"),
             Token::Shell => write!(f, "shell"),
             Token::Let => write!(f, "let"),
-            Token::Need => write!(f, "need"),
+            Token::Start => write!(f, "start"),
+            Token::Expect => write!(f, "expect"),
+            Token::Expose => write!(f, "expose"),
             Token::Import => write!(f, "import"),
             Token::Cleanup => write!(f, "cleanup"),
             Token::As => write!(f, "as"),
@@ -126,6 +134,7 @@ impl fmt::Display for Token<'_> {
             Token::Comma => write!(f, ","),
             Token::Slash => write!(f, "/"),
             Token::Dash => write!(f, "-"),
+            Token::Dot => write!(f, "."),
             Token::Space(s) => write!(f, "{s}"),
             Token::Tab(s) => write!(f, "{s}"),
             Token::Newline => write!(f, "\\n"),
@@ -434,7 +443,9 @@ mod tests {
             assert_eq!(tokens("test"), vec![Token::Test]);
             assert_eq!(tokens("shell"), vec![Token::Shell]);
             assert_eq!(tokens("let"), vec![Token::Let]);
-            assert_eq!(tokens("need"), vec![Token::Need]);
+            assert_eq!(tokens("start"), vec![Token::Start]);
+            assert_eq!(tokens("expect"), vec![Token::Expect]);
+            assert_eq!(tokens("expose"), vec![Token::Expose]);
             assert_eq!(tokens("import"), vec![Token::Import]);
             assert_eq!(tokens("cleanup"), vec![Token::Cleanup]);
             assert_eq!(tokens("as"), vec![Token::As]);
@@ -457,8 +468,12 @@ mod tests {
             assert_eq!(tokens("Shell"), vec![Token::Text("Shell")]);
             assert_eq!(tokens("PURE"), vec![Token::Text("PURE")]);
             assert_eq!(tokens("Pure"), vec![Token::Text("Pure")]);
-            assert_eq!(tokens("NEED"), vec![Token::Text("NEED")]);
-            assert_eq!(tokens("Need"), vec![Token::Text("Need")]);
+            assert_eq!(tokens("START"), vec![Token::Text("START")]);
+            assert_eq!(tokens("Start"), vec![Token::Text("Start")]);
+            assert_eq!(tokens("EXPECT"), vec![Token::Text("EXPECT")]);
+            assert_eq!(tokens("Expect"), vec![Token::Text("Expect")]);
+            assert_eq!(tokens("EXPOSE"), vec![Token::Text("EXPOSE")]);
+            assert_eq!(tokens("Expose"), vec![Token::Text("Expose")]);
             assert_eq!(tokens("CLEANUP"), vec![Token::Text("CLEANUP")]);
             assert_eq!(tokens("Cleanup"), vec![Token::Text("Cleanup")]);
             assert_eq!(tokens("AS"), vec![Token::Text("AS")]);
@@ -516,7 +531,7 @@ mod tests {
             assert_eq!(tokens("fn("), vec![Token::Fn, Token::ParenOpen]);
             assert_eq!(tokens("let="), vec![Token::Let, Token::Eq]);
             assert_eq!(tokens("as,"), vec![Token::As, Token::Comma]);
-            assert_eq!(tokens("need{"), vec![Token::Need, Token::BraceOpen]);
+            assert_eq!(tokens("start{"), vec![Token::Start, Token::BraceOpen]);
         }
 
         #[test]
@@ -671,7 +686,7 @@ mod tests {
             assert_eq!(tokens("^"), vec![Token::Text("^")]);
             assert_eq!(tokens("+"), vec![Token::Text("+")]);
             assert_eq!(tokens("*"), vec![Token::Text("*")]);
-            assert_eq!(tokens("."), vec![Token::Text(".")]);
+            assert_eq!(tokens("."), vec![Token::Dot]);
             assert_eq!(tokens(":"), vec![Token::Text(":")]);
             assert_eq!(tokens("'"), vec![Token::Text("'")]);
             assert_eq!(tokens(";"), vec![Token::Text(";")]);
@@ -682,7 +697,7 @@ mod tests {
 
         #[test]
         fn non_symbol_chars_squash() {
-            assert_eq!(tokens(".*+"), vec![Token::Text(".*+")]);
+            assert_eq!(tokens(".*+"), vec![Token::Dot, Token::Text("*+")]);
             assert_eq!(tokens("^foo$"), vec![Token::Text("^foo"), Token::Dollar]);
         }
 
@@ -702,8 +717,11 @@ mod tests {
 
         #[test]
         fn dot_path() {
-            // Dot is not a symbol, so foo.bar merges into one Text
-            assert_eq!(tokens("foo.bar"), vec![Token::Text("foo.bar")]);
+            // Dot is a symbol, so foo.bar splits
+            assert_eq!(
+                tokens("foo.bar"),
+                vec![Token::Text("foo"), Token::Dot, Token::Text("bar")]
+            );
         }
 
         #[test]
@@ -1151,7 +1169,8 @@ line2"""
                     Token::Lt,
                     Token::Question,
                     Token::Space(" "),
-                    Token::Text(".*"),
+                    Token::Dot,
+                    Token::Text("*"),
                     Token::Newline,
                 ]
             );
@@ -1765,14 +1784,14 @@ line2"""
         }
 
         #[test]
-        fn need_with_alias() {
+        fn start_with_alias() {
             assert_eq!(
                 tokens(
-                    r#"need Db as db
+                    r#"start Db as db
 "#
                 ),
                 vec![
-                    Token::Need,
+                    Token::Start,
                     Token::Space(" "),
                     Token::Text("Db"),
                     Token::Space(" "),
@@ -1785,14 +1804,14 @@ line2"""
         }
 
         #[test]
-        fn need_overlay() {
+        fn start_overlay() {
             assert_eq!(
                 tokens(
-                    r#"need E(x = "v")
+                    r#"start E(x = "v")
 "#
                 ),
                 vec![
-                    Token::Need,
+                    Token::Start,
                     Token::Space(" "),
                     Token::Text("E"),
                     Token::ParenOpen,
@@ -1810,14 +1829,14 @@ line2"""
         }
 
         #[test]
-        fn need_multi_overlay() {
+        fn start_multi_overlay() {
             assert_eq!(
                 tokens(
-                    r#"need E(x = "a", y = "b")
+                    r#"start E(x = "a", y = "b")
 "#
                 ),
                 vec![
-                    Token::Need,
+                    Token::Start,
                     Token::Space(" "),
                     Token::Text("E"),
                     Token::ParenOpen,
@@ -2118,14 +2137,14 @@ let
         }
 
         #[test]
-        fn bare_need() {
+        fn bare_start() {
             assert_eq!(
                 tokens(
-                    r#"need StartDb
+                    r#"start StartDb
 "#
                 ),
                 vec![
-                    Token::Need,
+                    Token::Start,
                     Token::Space(" "),
                     Token::Text("StartDb"),
                     Token::Newline,

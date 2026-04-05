@@ -24,10 +24,10 @@ test "multiple aliased imports from same module" {
 
 test "aliased effect import" {
     """
-    Verify an effect imported with an alias can be used with need
+    Verify an effect imported with an alias can be used with start
     via the alias name.
     """
-    need Svc as svc
+    start Svc as svc
     shell svc {
         > echo $$SVC_STATUS
         <? ^running$

@@ -3,6 +3,7 @@ pub mod ir;
 mod discover;
 mod loader;
 pub(crate) mod lower;
+pub(crate) mod shallow_env;
 
 pub use discover::discover_test_modules;
 pub use loader::load_modules;

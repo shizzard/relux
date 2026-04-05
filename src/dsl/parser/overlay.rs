@@ -5,6 +5,7 @@ use crate::Spanned;
 use crate::dsl::lexer::Token;
 
 use super::ParserInput;
+use super::ast::AstExpr;
 use super::ast::AstOverlayEntry;
 use super::expr::expr;
 use super::ident::ident_var;
@@ -15,18 +16,31 @@ use super::ws::ws;
 
 // ─── L4: Overlay Combinators ────────────────────────────────
 
-/// `var = expr` — single overlay entry.
+/// `var = expr` — single overlay entry, or bare `var` (shorthand for `var = var`).
 fn overlay_entry<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstOverlayEntry>, extra::Err<Rich<'a, Token<'a>>>> + Clone
 {
-    ident_var()
+    // Full form: `KEY = expr`
+    let full = ident_var()
         .then_ignore(ws().then(just(Token::Eq)).then(ws()))
         .then(expr())
         .map_with(|(key, value), e| {
             let span = Span::from(e.span());
             Spanned::new(AstOverlayEntry { key, value, span }, span)
-        })
-        .labelled("overlay entry (key = value)")
+        });
+
+    // Shorthand: bare `KEY` desugars to `KEY = KEY`
+    let shorthand = ident_var().map_with(|key, e| {
+        let span = Span::from(e.span());
+        let var_expr = AstExpr::Var {
+            name: key.node.name.clone(),
+            span: key.span,
+        };
+        let value = Spanned::new(var_expr, key.span);
+        Spanned::new(AstOverlayEntry { key, value, span }, span)
+    });
+
+    choice((full, shorthand)).labelled("overlay entry")
 }
 
 /// `{ key = val, key = val }` — overlay block with optional trailing comma.
@@ -132,5 +146,38 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].node.key.node.name, "PORT");
         assert!(matches!(entries[0].node.value.node, AstExpr::String { .. }));
+    }
+
+    #[test]
+    fn overlay_shorthand() {
+        let entries = parse_overlay("{ PORT }");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].node.key.node.name, "PORT");
+        // Shorthand desugars to Var with same name
+        match &entries[0].node.value.node {
+            AstExpr::Var { name, .. } => assert_eq!(name, "PORT"),
+            other => panic!("expected Var, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn overlay_shorthand_mixed() {
+        let entries = parse_overlay(
+            r#"{
+  NODE_PORT
+  NODE_NAME = "node1"
+}"#,
+        );
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].node.key.node.name, "NODE_PORT");
+        match &entries[0].node.value.node {
+            AstExpr::Var { name, .. } => assert_eq!(name, "NODE_PORT"),
+            other => panic!("expected Var, got {other:?}"),
+        }
+        assert_eq!(entries[1].node.key.node.name, "NODE_NAME");
+        match &entries[1].node.value.node {
+            AstExpr::String { .. } => {}
+            other => panic!("expected String, got {other:?}"),
+        }
     }
 }

@@ -11,7 +11,7 @@ use super::LoweringContext;
 use super::block::IrCleanupBlock;
 use super::block::IrShellBlock;
 use super::comment::IrComment;
-use super::effect::IrEffectNeed;
+use super::effect::IrEffectStart;
 use super::stmt::IrPureLetStmt;
 
 // ─── IrTestItem ──────────────────────────────────────────────
@@ -20,7 +20,7 @@ use super::stmt::IrPureLetStmt;
 pub enum IrTestItem {
     Comment { comment: IrComment, span: IrSpan },
     DocString { text: String, span: IrSpan },
-    Need { need: IrEffectNeed, span: IrSpan },
+    Start { start: IrEffectStart, span: IrSpan },
     Let { stmt: IrPureLetStmt, span: IrSpan },
     Shell { block: IrShellBlock, span: IrSpan },
     Cleanup { block: IrCleanupBlock, span: IrSpan },
@@ -29,7 +29,7 @@ pub enum IrTestItem {
 impl_ir_node_enum!(IrTestItem {
     Comment,
     DocString,
-    Need,
+    Start,
     Let,
     Shell,
     Cleanup
@@ -40,25 +40,22 @@ impl_ir_node_enum!(IrTestItem {
 #[derive(Debug, Clone)]
 pub struct IrTest {
     name: String,
-    needs: Vec<IrEffectNeed>,
+    starts: Vec<IrEffectStart>,
     body: Vec<IrTestItem>,
-    cleanup: Option<IrCleanupBlock>,
     span: IrSpan,
 }
 
 impl IrTest {
     pub fn new(
         name: impl Into<String>,
-        needs: Vec<IrEffectNeed>,
+        starts: Vec<IrEffectStart>,
         body: Vec<IrTestItem>,
-        cleanup: Option<IrCleanupBlock>,
         span: IrSpan,
     ) -> Self {
         Self {
             name: name.into(),
-            needs,
+            starts,
             body,
-            cleanup,
             span,
         }
     }
@@ -67,16 +64,12 @@ impl IrTest {
         &self.name
     }
 
-    pub fn needs(&self) -> &[IrEffectNeed] {
-        &self.needs
+    pub fn starts(&self) -> &[IrEffectStart] {
+        &self.starts
     }
 
     pub fn body(&self) -> &[IrTestItem] {
         &self.body
-    }
-
-    pub fn cleanup(&self) -> Option<&IrCleanupBlock> {
-        self.cleanup.as_ref()
     }
 }
 
@@ -106,10 +99,10 @@ impl IrNodeLowering for IrTestItem {
                 text: text.clone(),
                 span: s(span),
             }),
-            AstTestItem::Need { decl, span } => {
-                let need = IrEffectNeed::lower(decl, file, ctx)?;
-                Ok(IrTestItem::Need {
-                    need,
+            AstTestItem::Start { decl, span } => {
+                let start = IrEffectStart::lower(decl, file, ctx)?;
+                Ok(IrTestItem::Start {
+                    start,
                     span: s(span),
                 })
             }
@@ -146,13 +139,25 @@ impl IrNodeLowering for IrTest {
         file: &FileId,
         ctx: &mut LoweringContext,
     ) -> Result<Self, LoweringBail> {
-        let mut needs = Vec::new();
+        let mut starts = Vec::new();
         let mut body_items = Vec::new();
 
         for spanned_item in &ast.body {
             let ir_item = IrTestItem::lower(&spanned_item.node, file, ctx)?;
-            if let IrTestItem::Need { ref need, .. } = ir_item {
-                needs.push(need.clone());
+            // Track let-bound names in the shallow env for expect checking
+            if let IrTestItem::Let { ref stmt, .. } = ir_item
+                && let Some(env) = ctx.shallow_env()
+            {
+                let updated = std::sync::Arc::new(
+                    crate::dsl::resolver::shallow_env::ShallowLayeredEnv::with_name(
+                        env,
+                        stmt.name().name().to_string(),
+                    ),
+                );
+                ctx.set_shallow_env(updated);
+            }
+            if let IrTestItem::Start { ref start, .. } = ir_item {
+                starts.push(start.clone());
             }
             body_items.push(ir_item);
         }
@@ -161,17 +166,16 @@ impl IrNodeLowering for IrTest {
             |item| matches!(item, IrTestItem::Shell { block, .. } if !block.body().is_empty()),
         );
         if !has_nonempty_shell {
-            return Err(LoweringBail::invalid(InvalidReport::EmptyTestBody {
-                name: ast.name.node.clone(),
-                span: IrSpan::new(file.clone(), ast.span),
-            }));
+            return Err(LoweringBail::invalid(InvalidReport::empty_test_body(
+                ast.name.node.clone(),
+                IrSpan::new(file.clone(), ast.span),
+            )));
         }
 
         Ok(IrTest::new(
             &ast.name.node,
-            needs,
+            starts,
             body_items,
-            None, // cleanup is embedded in body items
             IrSpan::new(file.clone(), ast.span),
         ))
     }
@@ -201,14 +205,14 @@ mod tests {
     }
 
     #[test]
-    fn lower_test_with_needs() {
-        let source = r#"effect Db -> db {
+    fn lower_test_with_starts() {
+        let source = r#"effect Db {
   shell db {
     > start
   }
 }
 test "with needs" {
-  need Db
+  start Db
   shell sh {
     > cmd
   }
@@ -216,24 +220,24 @@ test "with needs" {
 "#;
         let mut ctx = ctx_with_source(source);
         let result = lower_first_test(&mut ctx, "tests/a").unwrap();
-        assert!(!result.needs().is_empty());
+        assert!(!result.starts().is_empty());
     }
 
     #[test]
-    fn lower_test_with_multiple_needs() {
-        let source = r#"effect Db -> db {
+    fn lower_test_with_multiple_starts() {
+        let source = r#"effect Db {
   shell db {
     > db
   }
 }
-effect Cache -> cache {
+effect Cache {
   shell cache {
     > cache
   }
 }
 test "multi" {
-  need Db
-  need Cache
+  start Db
+  start Cache
   shell sh {
     > cmd
   }
@@ -241,7 +245,7 @@ test "multi" {
 "#;
         let mut ctx = ctx_with_source(source);
         let result = lower_first_test(&mut ctx, "tests/a").unwrap();
-        assert_eq!(result.needs().len(), 2);
+        assert_eq!(result.starts().len(), 2);
     }
 
     #[test]
@@ -327,7 +331,7 @@ test "t" {
             result
                 .body()
                 .iter()
-                .all(|item| !matches!(item, IrTestItem::Need { .. }))
+                .all(|item| !matches!(item, IrTestItem::Start { .. }))
         );
         assert!(!result.body().is_empty());
     }

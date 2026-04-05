@@ -14,7 +14,9 @@ public interface ReluxTokenTypes {
     IElementType IMPORT = new ReluxElementType("IMPORT");
     IElementType SHELL = new ReluxElementType("SHELL");
     IElementType LET = new ReluxElementType("LET");
-    IElementType NEED = new ReluxElementType("NEED");
+    IElementType START = new ReluxElementType("START");
+    IElementType EXPECT = new ReluxElementType("EXPECT");
+    IElementType EXPOSE = new ReluxElementType("EXPOSE");
     IElementType AS = new ReluxElementType("AS");
     IElementType CLEANUP = new ReluxElementType("CLEANUP");
 
@@ -32,7 +34,6 @@ public interface ReluxTokenTypes {
     IElementType OP_MATCH_LITERAL = new ReluxElementType("OP_MATCH_LITERAL");     // <=
     IElementType OP_FAIL_REGEX = new ReluxElementType("OP_FAIL_REGEX");           // !?
     IElementType OP_FAIL_LITERAL = new ReluxElementType("OP_FAIL_LITERAL");       // !=
-    IElementType OP_ARROW = new ReluxElementType("OP_ARROW");                     // ->
     IElementType OP_ASSIGN = new ReluxElementType("OP_ASSIGN");                   // =
 
     // Timeout
@@ -43,6 +44,7 @@ public interface ReluxTokenTypes {
     IElementType RBRACE = new ReluxElementType("RBRACE");
     IElementType LPAREN = new ReluxElementType("LPAREN");
     IElementType RPAREN = new ReluxElementType("RPAREN");
+    IElementType DOT = new ReluxElementType("DOT");
     IElementType COMMA = new ReluxElementType("COMMA");
 
     // Condition marker prefix (#)

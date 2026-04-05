@@ -1,7 +1,7 @@
 import composite { Composite }
 
-test "sub-need resolves in effect home scope" {
-    need Composite as c
+test "sub-start resolves in effect home scope" {
+    start Composite as c
     shell c {
         > echo test
     }

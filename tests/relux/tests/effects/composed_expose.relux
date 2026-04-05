@@ -1,0 +1,32 @@
+effect Inner {
+  expect INNER_VAL
+  expose inner
+  shell inner {
+    > export INNER_STATE="${INNER_VAL}"
+    match_ok()
+  }
+}
+
+effect Outer {
+  expect OUTER_VAL
+  start Inner as dep { INNER_VAL = OUTER_VAL }
+  expose dep.inner as wrapped
+  shell local {
+    > echo "outer setup"
+    match_ok()
+  }
+}
+
+test "composed effect exposes inner shell via qualified expose" {
+  """
+  Verify that an outer effect can re-expose an inner effect's shell
+  using qualified expose syntax, and the test can access it via
+  dot notation through the outer alias.
+  """
+  start Outer as o { OUTER_VAL = "from_test" }
+  o.wrapped {
+    > echo $$INNER_STATE
+    <? ^from_test$
+    match_ok()
+  }
+}

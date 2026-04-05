@@ -9,9 +9,10 @@ use tokio_util::sync::CancellationToken;
 
 use crate::dsl::resolver::ir::IrCleanupBlock;
 use crate::dsl::resolver::ir::IrEffectItem;
-use crate::dsl::resolver::ir::IrEffectNeed;
+use crate::dsl::resolver::ir::IrEffectStart;
 use crate::dsl::resolver::ir::IrPureLetStmt;
 use crate::pure::Env;
+use crate::pure::LayeredEnv;
 use crate::pure::VarScope;
 use crate::runtime::RuntimeContext;
 use crate::runtime::effect::registry::EffectHandle;
@@ -53,41 +54,52 @@ impl EffectManager {
         Self { registry, rt_ctx }
     }
 
-    /// Acquire all needs. Each need recursively acquires its own
+    /// Acquire all starts. Each start recursively acquires its own
     /// dependencies before bootstrapping itself.
     /// `caller_vars` contains the caller's accumulated variable scope,
     /// allowing overlay expressions to reference the caller's `let` bindings.
+    /// `caller_env` is the layered environment visible to the caller.
+    /// Returns (key, exported-shells-map) per start declaration.
     #[allow(clippy::type_complexity)]
     pub fn instantiate<'a>(
         &'a self,
-        needs: &'a [IrEffectNeed],
+        starts: &'a [IrEffectStart],
         caller_vars: &'a VarScope,
-        caller_overlay: &'a Env,
+        caller_env: &'a Arc<LayeredEnv>,
     ) -> std::pin::Pin<
         Box<
-            dyn std::future::Future<Output = Result<Vec<Arc<TokioMutex<Vm>>>, Failure>> + Send + 'a,
+            dyn std::future::Future<
+                    Output = Result<
+                        Vec<(EffectInstanceKey, HashMap<String, Arc<TokioMutex<Vm>>>)>,
+                        Failure,
+                    >,
+                > + Send
+                + 'a,
         >,
     > {
         Box::pin(async move {
-            let mut vms = Vec::with_capacity(needs.len());
-            for need in needs {
-                let key = EffectInstanceKey::from(need);
-                vms.push(
-                    self.acquire(&key, need, caller_vars, caller_overlay)
-                        .await?,
-                );
+            let mut results = Vec::with_capacity(starts.len());
+            for start in starts {
+                // Evaluate overlay first to build runtime identity key
+                let evaluated = self.eval_overlay(start, caller_vars, caller_env).await?;
+                let key = EffectInstanceKey::from_evaluated(start.effect().clone(), &evaluated);
+                let shells = self
+                    .acquire(&key, start, caller_vars, caller_env, evaluated)
+                    .await?;
+                results.push((key, shells));
             }
-            Ok(vms)
+            Ok(results)
         })
     }
 
-    /// Release all needs. Refcount-based — last releaser runs
-    /// cleanup and recursively releases dependencies.
-    pub async fn cleanup(&self, needs: &[IrEffectNeed]) -> Vec<Warning> {
+    /// Release all effects in the registry regardless of how they were acquired.
+    /// Safe to call unconditionally — handles Ready (teardown), Failed (no-op),
+    /// and Empty (no-op) slots.
+    pub async fn cleanup_all(&self) -> Vec<Warning> {
+        let keys = self.registry.all_keys();
         let mut warnings = Vec::new();
-        for need in needs {
-            let key = EffectInstanceKey::from(need);
-            warnings.extend(self.run_cleanup(&key).await);
+        for key in &keys {
+            warnings.extend(self.run_cleanup(key).await);
         }
         warnings
     }
@@ -95,30 +107,31 @@ impl EffectManager {
     async fn acquire(
         &self,
         key: &EffectInstanceKey,
-        need: &IrEffectNeed,
+        start: &IrEffectStart,
         caller_vars: &VarScope,
-        caller_overlay: &Env,
-    ) -> Result<Arc<TokioMutex<Vm>>, Failure> {
+        caller_env: &Arc<LayeredEnv>,
+        evaluated_overlay: Env,
+    ) -> Result<HashMap<String, Arc<TokioMutex<Vm>>>, Failure> {
         let slot = self.registry.slot(key);
         let mut guard = slot.lock().await;
 
         match &mut *guard {
             EffectSlot::Ready { refcount, handle } => {
                 *refcount += 1;
-                Ok(handle.exported_vm.clone())
+                Ok(handle.exposed_shells())
             }
             EffectSlot::Failed(failure) => Err(failure.clone()),
             EffectSlot::Empty => match self
-                .bootstrap_effect(need, caller_vars, caller_overlay)
+                .bootstrap_effect(start, caller_vars, caller_env, evaluated_overlay)
                 .await
             {
                 Ok(handle) => {
-                    let vm_arc = handle.exported_vm.clone();
+                    let exposed = handle.exposed_shells();
                     *guard = EffectSlot::Ready {
                         refcount: 1,
                         handle,
                     };
-                    Ok(vm_arc)
+                    Ok(exposed)
                 }
                 Err(failure) => {
                     self.rt_ctx.events.emit_error("", failure.summary());
@@ -131,20 +144,21 @@ impl EffectManager {
 
     async fn bootstrap_effect(
         &self,
-        need: &IrEffectNeed,
-        caller_vars: &VarScope,
-        caller_overlay: &Env,
+        start: &IrEffectStart,
+        _caller_vars: &VarScope,
+        caller_env: &Arc<LayeredEnv>,
+        evaluated_overlay: Env,
     ) -> Result<EffectHandle, Failure> {
-        let effect_name = need.effect().to_string();
+        let effect_name = start.effect().to_string();
         self.rt_ctx.events.emit_effect_setup("", &effect_name);
 
         let effect_result = self
             .rt_ctx
             .tables
             .effects
-            .get(need.effect())
+            .get(start.effect())
             .ok_or_else(|| Failure::Runtime {
-                message: format!("effect {:?} not found in table", need.effect()),
+                message: format!("effect {:?} not found in table", start.effect()),
                 span: None,
                 shell: None,
             })?;
@@ -154,77 +168,119 @@ impl EffectManager {
             shell: None,
         })?;
 
-        // 1. Evaluate overlay using caller's variable scope and overlay env
-        let env_overlay = self.eval_overlay(need, caller_vars, caller_overlay).await?;
-        let env_overlay = Arc::new(env_overlay);
+        // 1. Create layered env from pre-evaluated overlay (inherits caller's env)
+        let effect_env = Arc::new(LayeredEnv::child(caller_env.clone(), evaluated_overlay));
 
         // 2. Create effect scope
         let scope = Scope::Effect {
             name: effect.name().name().to_string(),
             vars: Arc::new(TokioMutex::new(VarScope::new())),
             _timeout: None,
-            env_overlay: env_overlay.clone(),
+            env: effect_env.clone(),
         };
 
-        // 3. Evaluate effect-level lets into scope (parser enforces lets before needs)
+        // 3. Evaluate effect-level lets into scope (parser enforces lets before starts)
         for item in effect.body() {
             if let IrEffectItem::Let { stmt, .. } = item {
-                self.eval_effect_let(stmt, &scope, &env_overlay).await;
+                self.eval_effect_let(stmt, &scope, &effect_env).await;
             }
         }
 
         // 4. Recursively instantiate sub-dependencies (effect's vars available to sub-overlays)
         let effect_vars = scope.vars().lock().await.clone();
         let exported_deps = self
-            .instantiate(effect.needs(), &effect_vars, &env_overlay)
+            .instantiate(effect.starts(), &effect_vars, &effect_env)
             .await?;
 
-        // 5. Build shell map from dependency exported shells
-        let mut shells: HashMap<String, Arc<TokioMutex<Vm>>> = HashMap::new();
-        for (sub_need, vm_arc) in effect.needs().iter().zip(exported_deps) {
-            if let Some(alias) = sub_need.alias() {
-                let source = vm_arc.lock().await.current_name();
-                self.rt_ctx.events.emit_shell_alias(alias, source);
-                shells.insert(alias.to_string(), vm_arc);
+        // 5. Build dependency shells map (alias → exported shells) and collect dep keys
+        let mut dep_shells: HashMap<String, HashMap<String, Arc<TokioMutex<Vm>>>> = HashMap::new();
+        let mut dep_keys: Vec<EffectInstanceKey> = Vec::new();
+        for (sub_start, (dep_key, exported)) in effect.starts().iter().zip(exported_deps) {
+            dep_keys.push(dep_key);
+            if let Some(alias) = sub_start.alias() {
+                dep_shells.insert(alias.to_string(), exported);
             }
         }
 
         // 5b. Reset imported VMs
         let mut reset_seen = HashSet::new();
-        for vm_arc in shells.values() {
-            let ptr = Arc::as_ptr(vm_arc) as usize;
-            if reset_seen.insert(ptr) {
-                vm_arc.lock().await.reset_for_export(scope.clone());
+        for shells_map in dep_shells.values() {
+            for vm_arc in shells_map.values() {
+                let ptr = Arc::as_ptr(vm_arc) as usize;
+                if reset_seen.insert(ptr) {
+                    vm_arc.lock().await.reset_for_export(scope.clone());
+                }
             }
         }
 
-        // 6. Walk IrEffectItems (lets already evaluated, needs already instantiated)
+        // Build local shells map, pre-populated with aliased dependency shells.
+        // When a dependency is aliased (e.g. `start SetupDb as db`), its exported
+        // shells are accessible by alias in the effect body (`shell db { ... }`
+        // reuses the dependency's shell).
+        let mut shells: HashMap<String, Arc<TokioMutex<Vm>>> = HashMap::new();
+        for (alias, dep_exported) in &dep_shells {
+            if dep_exported.len() == 1 {
+                let vm_arc = dep_exported.values().next().unwrap().clone();
+                self.rt_ctx
+                    .events
+                    .emit_shell_alias(alias, vm_arc.lock().await.current_name());
+                shells.insert(alias.clone(), vm_arc);
+            }
+        }
+
+        // 6. Walk IrEffectItems (lets already evaluated, starts already instantiated)
         let mut cleanup_block = None;
         for item in effect.body() {
             match item {
                 IrEffectItem::Comment { .. }
-                | IrEffectItem::Need { .. }
+                | IrEffectItem::Expect { .. }
+                | IrEffectItem::Start { .. }
+                | IrEffectItem::Expose { .. }
                 | IrEffectItem::Let { .. } => continue,
                 IrEffectItem::Shell { block, .. } => {
-                    let name = block.name().name().to_string();
-                    self.rt_ctx.events.emit_shell_switch(&name);
-                    if !shells.contains_key(&name) {
-                        let shell_state =
-                            ShellState::new(name.clone(), None, Some(env_overlay.clone()));
-                        let ctx = ExecutionContext::new(
-                            scope.clone(),
-                            shell_state,
-                            self.rt_ctx.shell.default_timeout.clone(),
-                            self.rt_ctx.env.clone(),
-                        );
-                        let vm = Vm::new(name.clone(), ctx, &self.rt_ctx).await?;
-                        shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
+                    if let Some(qualifier) = block.qualifier() {
+                        // Qualified: alias.shell { ... }
+                        let alias = qualifier.name();
+                        let shell_name = block.name().name();
+                        let display = format!("{alias}.{shell_name}");
+                        self.rt_ctx.events.emit_shell_switch(&display);
+                        let dep = dep_shells.get(alias).ok_or_else(|| Failure::Runtime {
+                            message: format!("unknown effect alias `{alias}`"),
+                            span: None,
+                            shell: None,
+                        })?;
+                        let vm_arc = dep.get(shell_name).ok_or_else(|| Failure::Runtime {
+                            message: format!(
+                                "effect alias `{alias}` does not expose shell `{shell_name}`"
+                            ),
+                            span: None,
+                            shell: None,
+                        })?;
+                        let mut vm = vm_arc.lock().await;
+                        self.rt_ctx.events.emit_shell_switch(vm.current_name());
+                        vm.exec_stmts(block.body()).await?;
+                    } else {
+                        // Unqualified: shell name { ... }
+                        let name = block.name().name().to_string();
+                        self.rt_ctx.events.emit_shell_switch(&name);
+                        if !shells.contains_key(&name) {
+                            let shell_state =
+                                ShellState::new(name.clone(), None, Some(effect_env.clone()));
+                            let ctx = ExecutionContext::new(
+                                scope.clone(),
+                                shell_state,
+                                self.rt_ctx.shell.default_timeout.clone(),
+                                self.rt_ctx.env.clone(),
+                            );
+                            let vm = Vm::new(name.clone(), ctx, &self.rt_ctx).await?;
+                            shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
+                        }
+                        let vm_arc = shells.get(&name).expect("shell just inserted above");
+                        let mut vm = vm_arc.lock().await;
+                        let display_name = vm.current_name().to_string();
+                        self.rt_ctx.events.emit_shell_switch(&display_name);
+                        vm.exec_stmts(block.body()).await?;
                     }
-                    let vm_arc = shells.get(&name).expect("shell just inserted above");
-                    let mut vm = vm_arc.lock().await;
-                    let display_name = vm.current_name().to_string();
-                    self.rt_ctx.events.emit_shell_switch(&display_name);
-                    vm.exec_stmts(block.body()).await?;
                 }
                 IrEffectItem::Cleanup { block, .. } => {
                     cleanup_block = Some(block.clone());
@@ -232,49 +288,92 @@ impl EffectManager {
             }
         }
 
-        // 6. Extract exported shell
-        let exported_name = effect.exported_shell().name().to_string();
-        let exported_vm = shells
-            .remove(&exported_name)
-            .ok_or_else(|| Failure::Runtime {
-                message: format!(
-                    "effect `{}` exported shell `{}` not created",
-                    effect.name().name(),
-                    exported_name
-                ),
-                span: None,
-                shell: None,
-            })?;
-
-        // 7. Terminate non-exported shells (deduplicate by Arc pointer)
-        let mut seen = HashSet::new();
-        for (_, vm_arc) in shells.drain() {
-            let ptr = Arc::as_ptr(&vm_arc) as usize;
-            if seen.insert(ptr) {
-                vm_arc.lock().await.shutdown().await;
+        // 7. Resolve expose declarations — mark which shells are exposed
+        let mut exposed: HashSet<String> = HashSet::new();
+        for expose in effect.exposes() {
+            let exposed_name = expose.exposed_name().to_string();
+            if let Some(qualifier) = expose.qualifier() {
+                // Qualified: `expose alias.shell [as name]` — from dependency
+                let dep = dep_shells.get(qualifier).ok_or_else(|| Failure::Runtime {
+                    message: format!(
+                        "effect `{}` expose references unknown alias `{}`",
+                        effect.name().name(),
+                        qualifier,
+                    ),
+                    span: None,
+                    shell: None,
+                })?;
+                let vm_arc = dep.get(expose.shell()).ok_or_else(|| Failure::Runtime {
+                    message: format!(
+                        "effect `{}` expose references shell `{}` not exposed by `{}`",
+                        effect.name().name(),
+                        expose.shell(),
+                        qualifier,
+                    ),
+                    span: None,
+                    shell: None,
+                })?;
+                shells.insert(exposed_name.clone(), vm_arc.clone());
+                exposed.insert(exposed_name);
+            } else {
+                // Simple: `expose shell [as name]` — local shell
+                if !shells.contains_key(expose.shell()) {
+                    return Err(Failure::Runtime {
+                        message: format!(
+                            "effect `{}` expose references unknown shell `{}`",
+                            effect.name().name(),
+                            expose.shell(),
+                        ),
+                        span: None,
+                        shell: None,
+                    });
+                }
+                if exposed_name != expose.shell() {
+                    // Aliased expose: insert under the exposed name too
+                    let vm_arc = shells.get(expose.shell()).unwrap().clone();
+                    shells.insert(exposed_name.clone(), vm_arc);
+                }
+                exposed.insert(exposed_name);
             }
+        }
+
+        // If no expose declarations, fall back to exposing the first local shell
+        // (backwards compatibility for effects without explicit expose)
+        if exposed.is_empty()
+            && !shells.is_empty()
+            && let Some(first_name) = effect.body().iter().find_map(|item| {
+                if let IrEffectItem::Shell { block, .. } = item {
+                    Some(block.name().name().to_string())
+                } else {
+                    None
+                }
+            })
+            && shells.contains_key(&first_name)
+        {
+            exposed.insert(first_name);
         }
 
         Ok(EffectHandle {
             scope,
-            exported_vm,
-            dependencies: effect.needs().iter().map(EffectInstanceKey::from).collect(),
+            shells,
+            exposed,
+            dependencies: dep_keys,
             cleanup: cleanup_block,
         })
     }
 
     async fn eval_overlay(
         &self,
-        need: &IrEffectNeed,
+        start: &IrEffectStart,
         caller_vars: &VarScope,
-        caller_overlay: &Env,
+        caller_env: &Arc<LayeredEnv>,
     ) -> Result<Env, Failure> {
         let mut overlay = Env::new();
-        for entry in need.overlay() {
+        for entry in start.overlay() {
             let value = crate::pure::evaluator::eval_pure_expr(
                 entry.value(),
                 caller_vars,
-                Some(caller_overlay),
+                Some(caller_env.own()),
                 &self.rt_ctx.env,
                 &self.rt_ctx.tables.pure_fns,
             );
@@ -283,13 +382,18 @@ impl EffectManager {
         Ok(overlay)
     }
 
-    async fn eval_effect_let(&self, stmt: &IrPureLetStmt, scope: &Scope, env_overlay: &Arc<Env>) {
+    async fn eval_effect_let(
+        &self,
+        stmt: &IrPureLetStmt,
+        scope: &Scope,
+        effect_env: &Arc<LayeredEnv>,
+    ) {
         let mut vars = scope.vars().lock().await;
         let value = if let Some(expr) = stmt.value() {
             crate::pure::evaluator::eval_pure_expr(
                 expr,
                 &vars,
-                Some(env_overlay),
+                Some(effect_env.own()),
                 &self.rt_ctx.env,
                 &self.rt_ctx.tables.pure_fns,
             )
@@ -320,8 +424,14 @@ impl EffectManager {
 
                     self.rt_ctx.events.emit_effect_teardown("", &effect_name);
 
-                    // 1. Shut down the exported VM
-                    handle.exported_vm.lock().await.shutdown().await;
+                    // 1. Shut down all VMs (exposed and non-exposed, deduplicated)
+                    let mut seen = HashSet::new();
+                    for vm_arc in handle.shells.values() {
+                        let ptr = Arc::as_ptr(vm_arc) as usize;
+                        if seen.insert(ptr) {
+                            vm_arc.lock().await.shutdown().await;
+                        }
+                    }
 
                     // 2. Run cleanup block in fresh shell (best-effort)
                     if let Some(cleanup_block) = &handle.cleanup {

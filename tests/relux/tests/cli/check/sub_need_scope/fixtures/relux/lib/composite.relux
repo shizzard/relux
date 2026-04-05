@@ -1,7 +1,7 @@
 import base { Base }
 
-effect Composite -> s {
-    need Base as dep
+effect Composite {
+    start Base as dep
     shell s {
         > echo composite
     }

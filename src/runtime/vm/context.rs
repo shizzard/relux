@@ -6,6 +6,7 @@ use tokio::sync::Mutex;
 
 use crate::dsl::resolver::ir::IrTimeout;
 use crate::pure::Env;
+use crate::pure::LayeredEnv;
 use crate::pure::VarScope;
 
 // ─── FailPattern ────────────────────────────────────────────
@@ -65,7 +66,7 @@ pub enum Scope {
         name: String,
         vars: Arc<Mutex<VarScope>>,
         _timeout: Option<IrTimeout>,
-        env_overlay: Arc<Env>,
+        env: Arc<LayeredEnv>,
     },
 }
 
@@ -95,11 +96,11 @@ pub struct ShellState {
     pub captures: Captures,
     pub timeout: Option<IrTimeout>,
     pub fail_pattern: Option<FailPattern>,
-    pub env_overlay: Option<Arc<Env>>,
+    pub env_overlay: Option<Arc<LayeredEnv>>,
 }
 
 impl ShellState {
-    pub fn new(name: String, alias: Option<String>, env_overlay: Option<Arc<Env>>) -> Self {
+    pub fn new(name: String, alias: Option<String>, env_overlay: Option<Arc<LayeredEnv>>) -> Self {
         Self {
             name,
             alias,
@@ -166,8 +167,9 @@ impl ExecutionContext {
         if let Some(v) = self.scope.vars().lock().await.get(key) {
             return Some(v.to_string());
         }
-        if let Scope::Effect { env_overlay, .. } = &self.scope
-            && let Some(v) = env_overlay.get(key)
+        // Effect scope env walks the layered chain (overlays → base)
+        if let Scope::Effect { env, .. } = &self.scope
+            && let Some(v) = env.get(key)
         {
             return Some(v.to_string());
         }
@@ -313,15 +315,21 @@ impl ExecutionContext {
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
-        if let Scope::Effect { env_overlay, .. } = &self.scope {
+        // Effect scope env layers override the base env
+        if let Scope::Effect { env, .. } = &self.scope {
             result.extend(
-                env_overlay
+                env.own()
                     .iter()
                     .map(|(k, v)| (k.to_string(), v.to_string())),
             );
         }
         if let Some(ref overlay) = self.shell.env_overlay {
-            result.extend(overlay.iter().map(|(k, v)| (k.to_string(), v.to_string())));
+            result.extend(
+                overlay
+                    .own()
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string())),
+            );
         }
         result
     }
@@ -573,7 +581,7 @@ mod tests {
             name: "Db".into(),
             vars: Arc::new(Mutex::new(VarScope::new())),
             _timeout: None,
-            env_overlay: Arc::new(Env::new()),
+            env: Arc::new(LayeredEnv::root(Env::new())),
         };
         ctx.shell.name = "db".into();
         // First export: Db.db → SetupDb
@@ -581,7 +589,7 @@ mod tests {
             name: "SetupDb".into(),
             vars: Arc::new(Mutex::new(VarScope::new())),
             _timeout: None,
-            env_overlay: Arc::new(Env::new()),
+            env: Arc::new(LayeredEnv::root(Env::new())),
         });
         assert_eq!(ctx.shell.name_prefix, vec!["Db.db"]);
         // Second export: SetupDb.db → test
@@ -651,13 +659,12 @@ mod tests {
     async fn effect_scope_overlay_lookup() {
         let mut overlay_map = HashMap::new();
         overlay_map.insert("PORT".into(), "5432".into());
-        let overlay = Arc::new(Env::from_map(overlay_map));
 
         let scope = Scope::Effect {
             name: "Db".into(),
             vars: Arc::new(Mutex::new(VarScope::new())),
             _timeout: None,
-            env_overlay: overlay,
+            env: Arc::new(LayeredEnv::root(Env::from_map(overlay_map))),
         };
         let shell = ShellState::new("db".into(), None, None);
         let ctx = ExecutionContext::new(

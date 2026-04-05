@@ -1,0 +1,72 @@
+effect Greeter {
+  expect GREETING
+  expose greeter
+  shell greeter {
+    > echo "${GREETING}"
+    <? .+
+    match_ok()
+  }
+}
+
+test "expect passes variable through overlay" {
+  """
+  Verify that an effect's expect declaration receives the variable
+  from the caller's overlay.
+  """
+  start Greeter as g { GREETING = "hello world" }
+  g.greeter {
+    > echo "done"
+    <? ^done$
+    match_ok()
+  }
+}
+
+test "expect with shorthand overlay syntax" {
+  """
+  Verify the shorthand overlay syntax where bare KEY desugars to KEY = KEY.
+  """
+  let GREETING = "shorthand works"
+  start Greeter as g {
+    GREETING
+  }
+  g.greeter {
+    > echo "done"
+    <? ^done$
+    match_ok()
+  }
+}
+
+effect Logger {
+  expose log
+  shell log {
+    > echo "log ready"
+    <? ^log ready$
+    match_ok()
+  }
+}
+
+test "expose provides dot-access to shell" {
+  """
+  Verify that an exposed shell is accessible via dot notation
+  on the effect alias.
+  """
+  start Logger as l
+  l.log {
+    > echo "writing to log"
+    <? ^writing to log$
+    match_ok()
+  }
+}
+
+test "expose with alias renames the shell" {
+  """
+  Verify that expose with as creates an alias for the shell.
+  The test accesses the shell by the alias name.
+  """
+  start Logger as mylog
+  mylog.log {
+    > echo "aliased"
+    <? ^aliased$
+    match_ok()
+  }
+}

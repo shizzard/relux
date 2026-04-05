@@ -6,7 +6,7 @@ test "effect shell can call helper from its home module" {
     module but not imported by the test, the runtime must still resolve
     the helper via the effect's home module scope.
     """
-    need SetupWithHelper as worker
+    start SetupWithHelper as worker
     shell worker {
         > echo "test-body-ok"
         <? ^test-body-ok$

@@ -4,15 +4,6 @@ use crate::dsl::lexer::Token;
 
 use super::ParserInput;
 
-/// `->` (Dash Gt)
-pub fn punctuation_arrow<'a>()
--> impl Parser<'a, ParserInput<'a>, (), extra::Err<Rich<'a, Token<'a>>>> + Clone {
-    just(Token::Dash)
-        .then(just(Token::Gt))
-        .ignored()
-        .labelled("arrow (->)")
-}
-
 /// `{`
 pub fn punctuation_brace_open<'a>()
 -> impl Parser<'a, ParserInput<'a>, (), extra::Err<Rich<'a, Token<'a>>>> + Clone {
@@ -56,14 +47,6 @@ mod tests {
     use super::*;
     use crate::dsl::parser::lex_to_pairs;
     use crate::dsl::parser::make_input;
-
-    #[test]
-    fn arrow() {
-        let source = "->";
-        let pairs = lex_to_pairs(source);
-        let input = make_input(&pairs, source.len());
-        assert!(punctuation_arrow().parse(input).into_result().is_ok());
-    }
 
     #[test]
     fn braces() {

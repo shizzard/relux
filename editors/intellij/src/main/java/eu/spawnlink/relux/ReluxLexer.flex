@@ -120,7 +120,9 @@ CONDITION_OP = [=?]
     "import"                    { return ReluxTokenTypes.IMPORT; }
     "shell"                     { return ReluxTokenTypes.SHELL; }
     "let"                       { return ReluxTokenTypes.LET; }
-    "need"                      { return ReluxTokenTypes.NEED; }
+    "start"                     { return ReluxTokenTypes.START; }
+    "expect"                    { return ReluxTokenTypes.EXPECT; }
+    "expose"                    { return ReluxTokenTypes.EXPOSE; }
     "as"                        { return ReluxTokenTypes.AS; }
     "cleanup"                   { return ReluxTokenTypes.CLEANUP; }
 }
@@ -167,7 +169,6 @@ CONDITION_OP = [=?]
 
 // Other operators
 <YYINITIAL> {
-    "->"                        { return ReluxTokenTypes.OP_ARROW; }
     "="                         { return ReluxTokenTypes.OP_ASSIGN; }
 }
 
@@ -177,6 +178,7 @@ CONDITION_OP = [=?]
     "}"                         { return ReluxTokenTypes.RBRACE; }
     "("                         { return ReluxTokenTypes.LPAREN; }
     ")"                         { return ReluxTokenTypes.RPAREN; }
+    "."                         { return ReluxTokenTypes.DOT; }
     ","                         { return ReluxTokenTypes.COMMA; }
 }
 

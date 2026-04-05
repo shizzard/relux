@@ -1,0 +1,13 @@
+effect Db {
+    expect PORT
+    shell db {
+        > echo "port=${PORT}"
+    }
+}
+
+test "missing overlay" {
+    start Db as db
+    shell db {
+        > echo hello
+    }
+}

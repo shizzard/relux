@@ -184,9 +184,9 @@ impl IrNodeLowering for IrPureExpr {
                 // Check for CaptureRef in interpolation parts
                 for part in &interp.parts {
                     if let AstStringPart::CaptureRef { span: cap_span, .. } = part {
-                        return Err(LoweringBail::invalid(InvalidReport::PurityViolation {
-                            span: IrSpan::new(file.clone(), *cap_span),
-                        }));
+                        return Err(LoweringBail::invalid(InvalidReport::purity_violation(
+                            IrSpan::new(file.clone(), *cap_span),
+                        )));
                     }
                 }
                 let ir_interp = IrInterpolation::lower(interp, file, ctx)?;
@@ -199,11 +199,9 @@ impl IrNodeLowering for IrPureExpr {
                 name: name.clone(),
                 span: IrSpan::new(file.clone(), *span),
             }),
-            AstExpr::CaptureRef { span, .. } => {
-                Err(LoweringBail::invalid(InvalidReport::PurityViolation {
-                    span: IrSpan::new(file.clone(), *span),
-                }))
-            }
+            AstExpr::CaptureRef { span, .. } => Err(LoweringBail::invalid(
+                InvalidReport::purity_violation(IrSpan::new(file.clone(), *span)),
+            )),
             AstExpr::Call { call, span } => {
                 let ir_call = IrPureCallExpr::lower(call, file, ctx)?;
                 Ok(IrPureExpr::Call {
@@ -247,11 +245,11 @@ impl IrNodeLowering for IrCallExpr {
         });
 
         let global_key = global_key.ok_or_else(|| {
-            LoweringBail::invalid(InvalidReport::UndefinedFunctionCall {
-                name: name.clone(),
+            LoweringBail::invalid(InvalidReport::undefined_function_call(
+                name.clone(),
                 arity,
-                span: IrSpan::new(file.clone(), ast.name.node.span),
-            })
+                IrSpan::new(file.clone(), ast.name.node.span),
+            ))
         })?;
 
         // Resolve the callee (ensures it's lowered and cached).
@@ -330,16 +328,16 @@ impl IrNodeLowering for IrPureCallExpr {
                     ctx.functions().contains(&bif_id)
                 };
                 if in_impure {
-                    return Err(LoweringBail::invalid(InvalidReport::PurityViolation {
-                        span: IrSpan::new(file.clone(), ast.name.node.span),
-                    }));
+                    return Err(LoweringBail::invalid(InvalidReport::purity_violation(
+                        IrSpan::new(file.clone(), ast.name.node.span),
+                    )));
                 } else {
                     return Err(LoweringBail::invalid(
-                        InvalidReport::UndefinedFunctionCall {
-                            name: name.clone(),
+                        InvalidReport::undefined_function_call(
+                            name.clone(),
                             arity,
-                            span: IrSpan::new(file.clone(), ast.name.node.span),
-                        },
+                            IrSpan::new(file.clone(), ast.name.node.span),
+                        ),
                     ));
                 }
             }

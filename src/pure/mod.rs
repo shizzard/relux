@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub mod bifs;
 pub mod evaluator;
@@ -90,6 +91,51 @@ impl Env {
 
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
         self.vars.iter().map(|(k, v)| (k.as_str(), v.as_str()))
+    }
+}
+
+// ─── LayeredEnv ─────────────────────────────────────────────
+
+/// Layered environment with recursive parent chain.
+///
+/// Each layer holds a small overlay (`own`) and points to a parent
+/// `LayeredEnv`. The root layer wraps the base process environment
+/// with no parent. Lookups walk the chain: own → parent → grandparent → ...
+///
+/// No cloning of the base env — each layer is `Arc`-shared.
+#[derive(Debug, Clone)]
+pub struct LayeredEnv {
+    own: Env,
+    parent: Option<Arc<LayeredEnv>>,
+}
+
+impl LayeredEnv {
+    /// Create the root layer from the base process environment.
+    pub fn root(base: Env) -> Self {
+        Self {
+            own: base,
+            parent: None,
+        }
+    }
+
+    /// Create a child layer with the given overlay on top of this env.
+    pub fn child(parent: Arc<LayeredEnv>, overlay: Env) -> Self {
+        Self {
+            own: overlay,
+            parent: Some(parent),
+        }
+    }
+
+    /// Look up a variable, walking the chain until found.
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.own
+            .get(key)
+            .or_else(|| self.parent.as_ref().and_then(|p| p.get(key)))
+    }
+
+    /// Access this layer's own entries (without parent).
+    pub fn own(&self) -> &Env {
+        &self.own
     }
 }
 
@@ -248,5 +294,98 @@ mod tests {
         env.insert("K".into(), "old".into());
         env.insert("K".into(), "new".into());
         assert_eq!(env.get("K"), Some("new"));
+    }
+
+    // ─── LayeredEnv tests ────────────────────────────────────
+
+    #[test]
+    fn layered_root_lookup() {
+        let mut base = Env::new();
+        base.insert("PATH".into(), "/usr/bin".into());
+        let root = LayeredEnv::root(base);
+        assert_eq!(root.get("PATH"), Some("/usr/bin"));
+        assert_eq!(root.get("NOPE"), None);
+    }
+
+    #[test]
+    fn layered_child_overrides_parent() {
+        let mut base = Env::new();
+        base.insert("PORT".into(), "3000".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mut overlay = Env::new();
+        overlay.insert("PORT".into(), "5432".into());
+        let child = LayeredEnv::child(root, overlay);
+
+        assert_eq!(child.get("PORT"), Some("5432"));
+    }
+
+    #[test]
+    fn layered_child_inherits_parent() {
+        let mut base = Env::new();
+        base.insert("PATH".into(), "/usr/bin".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mut overlay = Env::new();
+        overlay.insert("PORT".into(), "5432".into());
+        let child = LayeredEnv::child(root, overlay);
+
+        // Child sees its own entry
+        assert_eq!(child.get("PORT"), Some("5432"));
+        // Child inherits parent entry
+        assert_eq!(child.get("PATH"), Some("/usr/bin"));
+    }
+
+    #[test]
+    fn layered_three_levels() {
+        let mut base = Env::new();
+        base.insert("BASE".into(), "root".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mut mid_overlay = Env::new();
+        mid_overlay.insert("MID".into(), "middle".into());
+        let mid = Arc::new(LayeredEnv::child(root, mid_overlay));
+
+        let mut top_overlay = Env::new();
+        top_overlay.insert("TOP".into(), "leaf".into());
+        let top = LayeredEnv::child(mid, top_overlay);
+
+        assert_eq!(top.get("TOP"), Some("leaf"));
+        assert_eq!(top.get("MID"), Some("middle"));
+        assert_eq!(top.get("BASE"), Some("root"));
+        assert_eq!(top.get("NOPE"), None);
+    }
+
+    #[test]
+    fn layered_deeper_override() {
+        let mut base = Env::new();
+        base.insert("X".into(), "base".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mut mid_overlay = Env::new();
+        mid_overlay.insert("X".into(), "mid".into());
+        let mid = Arc::new(LayeredEnv::child(root, mid_overlay));
+
+        let mut top_overlay = Env::new();
+        top_overlay.insert("X".into(), "top".into());
+        let top = LayeredEnv::child(mid, top_overlay);
+
+        // Nearest layer wins
+        assert_eq!(top.get("X"), Some("top"));
+    }
+
+    #[test]
+    fn layered_own_returns_only_this_layer() {
+        let mut base = Env::new();
+        base.insert("BASE".into(), "root".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mut overlay = Env::new();
+        overlay.insert("PORT".into(), "5432".into());
+        let child = LayeredEnv::child(root, overlay);
+
+        // own() only contains this layer's entries
+        assert_eq!(child.own().get("PORT"), Some("5432"));
+        assert_eq!(child.own().get("BASE"), None);
     }
 }

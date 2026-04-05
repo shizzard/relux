@@ -52,9 +52,45 @@ pub fn shell_block<'a>()
                 })
                 .collect();
             let span = Span::from(e.span());
-            Spanned::new(AstShellBlock { name, stmts, span }, span)
+            Spanned::new(AstShellBlock { qualifier: None, name, stmts, span }, span)
         })
         .labelled("shell block")
+}
+
+/// `qualifier.name { stmts }` — qualified shell block (dot-access to effect-exported shell).
+pub fn qualified_shell_block<'a>()
+-> impl Parser<'a, ParserInput<'a>, Spanned<AstShellBlock>, extra::Err<Rich<'a, Token<'a>>>> + Clone
+{
+    ident_var()
+        .then_ignore(just(Token::Dot))
+        .then(ident_var())
+        .then_ignore(ws())
+        .then_ignore(punctuation_brace_open())
+        .then(
+            stmt()
+                // Fragile: SENTINEL comment must be filtered below — edit with caution.
+                .or(newline().map_with(|_, _| {
+                    Spanned::new(
+                        AstStmt::Comment { text: String::new(), span: SENTINEL },
+                        SENTINEL,
+                    )
+                }))
+                .repeated()
+                .collect::<Vec<_>>(),
+        )
+        .then_ignore(leading_ws())
+        .then_ignore(punctuation_brace_close())
+        .map_with(|((qualifier, name), stmts), e| {
+            let stmts = stmts
+                .into_iter()
+                .filter(|s| {
+                    !matches!(&s.node, AstStmt::Comment { text, .. } if text.is_empty() && s.span == SENTINEL)
+                })
+                .collect();
+            let span = Span::from(e.span());
+            Spanned::new(AstShellBlock { qualifier: Some(qualifier), name, stmts, span }, span)
+        })
+        .labelled("qualified shell block")
 }
 
 /// `cleanup { stmts }` — cleanup block.
@@ -258,5 +294,40 @@ mod tests {
                 .iter()
                 .all(|s| matches!(&s.node, AstStmt::Comment { .. }))
         );
+    }
+
+    // ── Qualified shell blocks ──────────────────────────────
+
+    fn parse_qualified(source: &str) -> AstShellBlock {
+        let pairs = lex_to_pairs(source);
+        let input = make_input(&pairs, source.len());
+        qualified_shell_block()
+            .parse(input)
+            .into_result()
+            .unwrap()
+            .node
+    }
+
+    #[test]
+    fn qualified_shell_block_basic() {
+        let sb = parse_qualified(
+            r#"n.node {
+  > echo hello
+}"#,
+        );
+        assert_eq!(sb.qualifier.as_ref().unwrap().node.name, "n");
+        assert_eq!(sb.name.node.name, "node");
+        assert_eq!(sb.stmts.len(), 1);
+    }
+
+    #[test]
+    fn qualified_shell_block_empty() {
+        let sb = parse_qualified(
+            r#"db.main {
+}"#,
+        );
+        assert_eq!(sb.qualifier.as_ref().unwrap().node.name, "db");
+        assert_eq!(sb.name.node.name, "main");
+        assert!(sb.stmts.is_empty());
     }
 }

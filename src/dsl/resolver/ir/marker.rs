@@ -130,11 +130,11 @@ pub(crate) fn eval_marker(
                     crate::pure::evaluator::eval_pure_expr(&pattern_expr, &vars, None, env, &fns);
 
                 let regex = regex::Regex::new(&pattern_str).map_err(|e| {
-                    LoweringBail::invalid(InvalidReport::InvalidRegex {
-                        pattern: pattern_str.clone(),
-                        error: e.to_string(),
-                        span: IrSpan::new(file_id.clone(), *span),
-                    })
+                    LoweringBail::invalid(InvalidReport::invalid_regex(
+                        pattern_str.clone(),
+                        e.to_string(),
+                        IrSpan::new(file_id.clone(), *span),
+                    ))
                 })?;
 
                 let met = regex.is_match(&value);
@@ -918,14 +918,14 @@ test "t" {
         let suite = resolve_source_no_env(&[(
             "tests/a",
             r#"# skip
-effect Setup -> sh {
+effect Setup {
   shell sh {
     > echo setup
   }
 }
 
 test "t" {
-  need Setup
+  start Setup
   shell sh {
     > echo hello
   }

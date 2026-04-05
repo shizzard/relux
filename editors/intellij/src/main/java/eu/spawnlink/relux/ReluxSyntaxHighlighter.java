@@ -99,7 +99,9 @@ public class ReluxSyntaxHighlighter extends SyntaxHighlighterBase {
             tokenType.equals(ReluxTokenTypes.IMPORT) ||
             tokenType.equals(ReluxTokenTypes.SHELL) ||
             tokenType.equals(ReluxTokenTypes.LET) ||
-            tokenType.equals(ReluxTokenTypes.NEED) ||
+            tokenType.equals(ReluxTokenTypes.START) ||
+            tokenType.equals(ReluxTokenTypes.EXPECT) ||
+            tokenType.equals(ReluxTokenTypes.EXPOSE) ||
             tokenType.equals(ReluxTokenTypes.AS) ||
             tokenType.equals(ReluxTokenTypes.CLEANUP) ||
             tokenType.equals(ReluxTokenTypes.SKIP) ||
@@ -117,7 +119,6 @@ public class ReluxSyntaxHighlighter extends SyntaxHighlighterBase {
             tokenType.equals(ReluxTokenTypes.OP_MATCH_LITERAL) ||
             tokenType.equals(ReluxTokenTypes.OP_FAIL_REGEX) ||
             tokenType.equals(ReluxTokenTypes.OP_FAIL_LITERAL) ||
-            tokenType.equals(ReluxTokenTypes.OP_ARROW) ||
             tokenType.equals(ReluxTokenTypes.OP_ASSIGN) ||
             tokenType.equals(ReluxTokenTypes.CONDITION_OP)) {
             return OPERATOR_KEYS;
@@ -191,6 +192,10 @@ public class ReluxSyntaxHighlighter extends SyntaxHighlighterBase {
         if (tokenType.equals(ReluxTokenTypes.LPAREN) ||
             tokenType.equals(ReluxTokenTypes.RPAREN)) {
             return PARENTHESES_KEYS;
+        }
+
+        if (tokenType.equals(ReluxTokenTypes.DOT)) {
+            return OPERATOR_KEYS;
         }
 
         if (tokenType.equals(ReluxTokenTypes.COMMA)) {

@@ -312,6 +312,14 @@ impl std::error::Error for LoweringBail {}
 // ─── InvalidReport ──────────────────────────────────────────
 
 #[derive(Debug, Clone)]
+pub struct UnsatisfiedExpectData {
+    pub effect_name: String,
+    pub var_name: String,
+    pub expect_span: IrSpan,
+    pub start_span: IrSpan,
+}
+
+#[derive(Debug, Clone)]
 pub enum InvalidReport {
     Cycle(CycleReport),
     PurityViolation {
@@ -322,7 +330,7 @@ pub enum InvalidReport {
         arity: usize,
         span: IrSpan,
     },
-    UndefinedEffectNeed {
+    UndefinedEffectStart {
         name: String,
         span: IrSpan,
     },
@@ -359,6 +367,12 @@ pub enum InvalidReport {
         name: String,
         span: IrSpan,
     },
+    UnsatisfiedExpect(Box<UnsatisfiedExpectData>),
+    InvalidExpose {
+        effect_name: String,
+        shell_name: String,
+        span: IrSpan,
+    },
 }
 
 impl fmt::Display for InvalidReport {
@@ -369,7 +383,7 @@ impl fmt::Display for InvalidReport {
             InvalidReport::UndefinedFunctionCall { name, arity, .. } => {
                 write!(f, "undefined function `{name}/{arity}`")
             }
-            InvalidReport::UndefinedEffectNeed { name, .. } => {
+            InvalidReport::UndefinedEffectStart { name, .. } => {
                 write!(f, "undefined effect `{name}`")
             }
             InvalidReport::UndefinedFunctionImport {
@@ -401,11 +415,118 @@ impl fmt::Display for InvalidReport {
             InvalidReport::EmptyTestBody { name, .. } => {
                 write!(f, "test `{name}` has no shell blocks")
             }
+            InvalidReport::UnsatisfiedExpect(data) => {
+                write!(
+                    f,
+                    "effect `{}` expects `{}` but it is not provided",
+                    data.effect_name, data.var_name
+                )
+            }
+            InvalidReport::InvalidExpose {
+                effect_name,
+                shell_name,
+                ..
+            } => {
+                write!(
+                    f,
+                    "effect `{effect_name}` exposes `{shell_name}` which does not exist"
+                )
+            }
         }
     }
 }
 
 impl InvalidReport {
+    // ─── Constructors ───────────────────────────────────────
+
+    pub fn cycle(report: CycleReport) -> Self {
+        Self::Cycle(report)
+    }
+
+    pub fn purity_violation(span: IrSpan) -> Self {
+        Self::PurityViolation { span }
+    }
+
+    pub fn undefined_function_call(name: String, arity: usize, span: IrSpan) -> Self {
+        Self::UndefinedFunctionCall { name, arity, span }
+    }
+
+    pub fn undefined_effect_start(name: String, span: IrSpan) -> Self {
+        Self::UndefinedEffectStart { name, span }
+    }
+
+    pub fn undefined_function_import(name: String, module_path: ModulePath, span: IrSpan) -> Self {
+        Self::UndefinedFunctionImport {
+            name,
+            module_path,
+            span,
+        }
+    }
+
+    pub fn undefined_effect_import(name: String, module_path: ModulePath, span: IrSpan) -> Self {
+        Self::UndefinedEffectImport {
+            name,
+            module_path,
+            span,
+        }
+    }
+
+    pub fn undefined_module_import(module_path: ModulePath, span: IrSpan) -> Self {
+        Self::UndefinedModuleImport { module_path, span }
+    }
+
+    pub fn name_conflict(name: String, first: IrSpan, second: IrSpan) -> Self {
+        Self::NameConflict {
+            name,
+            first,
+            second,
+        }
+    }
+
+    pub fn invalid_regex(pattern: String, error: String, span: IrSpan) -> Self {
+        Self::InvalidRegex {
+            pattern,
+            error,
+            span,
+        }
+    }
+
+    pub fn parse_error(module_path: ModulePath, message: String, span: IrSpan) -> Self {
+        Self::ParseError {
+            module_path,
+            message,
+            span,
+        }
+    }
+
+    pub fn empty_test_body(name: String, span: IrSpan) -> Self {
+        Self::EmptyTestBody { name, span }
+    }
+
+    pub fn unsatisfied_expect(
+        effect_name: String,
+        var_name: String,
+        expect_span: IrSpan,
+        start_span: IrSpan,
+    ) -> Self {
+        Self::UnsatisfiedExpect(Box::new(UnsatisfiedExpectData {
+            effect_name,
+            var_name,
+            expect_span,
+            start_span,
+        }))
+    }
+
+    pub fn invalid_expose(effect_name: String, shell_name: String, span: IrSpan) -> Self {
+        Self::InvalidExpose {
+            effect_name,
+            shell_name,
+            span,
+        }
+    }
+
+    // ─── Queries ────────────────────────────────────────────
+
     pub fn cause_id(&self) -> CauseId {
         match self {
             InvalidReport::Cycle(cycle) => match cycle {
@@ -424,8 +545,8 @@ impl InvalidReport {
             InvalidReport::UndefinedFunctionCall { name, arity, .. } => {
                 CauseId::generate("", name, *arity, "undefined_fn_call")
             }
-            InvalidReport::UndefinedEffectNeed { name, .. } => {
-                CauseId::generate("", name, 0, "undefined_effect_need")
+            InvalidReport::UndefinedEffectStart { name, .. } => {
+                CauseId::generate("", name, 0, "undefined_effect_start")
             }
             InvalidReport::UndefinedFunctionImport {
                 name, module_path, ..
@@ -448,6 +569,14 @@ impl InvalidReport {
             InvalidReport::EmptyTestBody { name, .. } => {
                 CauseId::generate("", name, 0, "empty_test_body")
             }
+            InvalidReport::UnsatisfiedExpect(data) => {
+                CauseId::generate(&data.effect_name, &data.var_name, 0, "unsatisfied_expect")
+            }
+            InvalidReport::InvalidExpose {
+                effect_name,
+                shell_name,
+                ..
+            } => CauseId::generate(effect_name, shell_name, 0, "invalid_expose"),
         }
     }
 }
@@ -588,7 +717,7 @@ pub struct FnCycleEntry {
 #[derive(Debug, Clone)]
 pub struct EffectCycleEntry {
     pub id: EffectId,
-    pub need_span: IrSpan,
+    pub start_span: IrSpan,
 }
 
 // ─── CauseId ────────────────────────────────────────────────
@@ -666,8 +795,12 @@ impl fmt::Display for WarningId {
 }
 
 #[derive(Debug, Clone)]
-pub enum Warning {
-    // No variants yet — placeholder for future use.
+pub enum Warning {}
+
+impl Warning {
+    pub fn warning_id(&self) -> WarningId {
+        match *self {}
+    }
 }
 
 pub type WarningTable = SharedTable<WarningId, Warning>;
@@ -694,8 +827,8 @@ impl From<&InvalidReport> for Diagnostic {
                         for (i, entry) in chain.iter().enumerate() {
                             let next = &chain[(i + 1) % chain.len()];
                             diag.labels.push(ReportLabel {
-                                span: entry.need_span.clone(),
-                                message: format!("{} needs {}", entry.id, next.id),
+                                span: entry.start_span.clone(),
+                                message: format!("{} starts {}", entry.id, next.id),
                             });
                         }
                     }
@@ -711,7 +844,7 @@ impl From<&InvalidReport> for Diagnostic {
                 format!("undefined function `{name}/{arity}`"),
             )
             .with_label(span.clone(), "not found"),
-            InvalidReport::UndefinedEffectNeed { name, span } => {
+            InvalidReport::UndefinedEffectStart { name, span } => {
                 Diagnostic::new(Severity::Error, format!("undefined effect `{name}`"))
                     .with_label(span.clone(), "not found")
             }
@@ -767,6 +900,24 @@ impl From<&InvalidReport> for Diagnostic {
                 span.clone(),
                 "test body must contain at least one shell block",
             ),
+            InvalidReport::UnsatisfiedExpect(data) => Diagnostic::new(
+                Severity::Error,
+                format!(
+                    "effect `{}` expects `{}` but it is not provided",
+                    data.effect_name, data.var_name
+                ),
+            )
+            .with_label(data.expect_span.clone(), "required here")
+            .with_label(data.start_span.clone(), "provide it in the overlay"),
+            InvalidReport::InvalidExpose {
+                effect_name,
+                shell_name,
+                span,
+            } => Diagnostic::new(
+                Severity::Error,
+                format!("effect `{effect_name}` exposes `{shell_name}` which does not exist"),
+            )
+            .with_label(span.clone(), "no such shell"),
         }
     }
 }
@@ -1475,7 +1626,7 @@ mod tests {
         let r = InvalidReport::Cycle(CycleReport::Effect {
             chain: vec![EffectCycleEntry {
                 id: test_effect_id(),
-                need_span: test_span(),
+                start_span: test_span(),
             }],
         });
         let d = Diagnostic::from(&r);
@@ -1517,8 +1668,8 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_from_undefined_effect_need() {
-        let r = InvalidReport::UndefinedEffectNeed {
+    fn diagnostic_from_undefined_effect_start() {
+        let r = InvalidReport::UndefinedEffectStart {
             name: "Missing".into(),
             span: test_span(),
         };
@@ -1648,7 +1799,7 @@ mod tests {
                 arity: 0,
                 span: test_span(),
             },
-            InvalidReport::UndefinedEffectNeed {
+            InvalidReport::UndefinedEffectStart {
                 name: "E".into(),
                 span: test_span(),
             },
@@ -1739,7 +1890,7 @@ mod tests {
         let r = CycleReport::Effect {
             chain: vec![EffectCycleEntry {
                 id: test_effect_id(),
-                need_span: test_span(),
+                start_span: test_span(),
             }],
         };
         if let CycleReport::Effect { chain } = &r {
