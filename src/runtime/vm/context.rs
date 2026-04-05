@@ -5,7 +5,6 @@ use regex::Regex;
 use tokio::sync::Mutex;
 
 use crate::dsl::resolver::ir::IrTimeout;
-use crate::pure::Env;
 use crate::pure::LayeredEnv;
 use crate::pure::VarScope;
 
@@ -131,11 +130,16 @@ pub struct ExecutionContext {
     pub shell: ShellState,
     call_stack: Vec<CallFrame>,
     pub default_timeout: IrTimeout,
-    pub env: Arc<Env>,
+    pub env: Arc<LayeredEnv>,
 }
 
 impl ExecutionContext {
-    pub fn new(scope: Scope, shell: ShellState, default_timeout: IrTimeout, env: Arc<Env>) -> Self {
+    pub fn new(
+        scope: Scope,
+        shell: ShellState,
+        default_timeout: IrTimeout,
+        env: Arc<LayeredEnv>,
+    ) -> Self {
         Self {
             scope,
             shell,
@@ -317,19 +321,10 @@ impl ExecutionContext {
             .collect();
         // Effect scope env layers override the base env
         if let Scope::Effect { env, .. } = &self.scope {
-            result.extend(
-                env.own()
-                    .iter()
-                    .map(|(k, v)| (k.to_string(), v.to_string())),
-            );
+            result.extend(env.iter().map(|(k, v)| (k.to_string(), v.to_string())));
         }
         if let Some(ref overlay) = self.shell.env_overlay {
-            result.extend(
-                overlay
-                    .own()
-                    .iter()
-                    .map(|(k, v)| (k.to_string(), v.to_string())),
-            );
+            result.extend(overlay.iter().map(|(k, v)| (k.to_string(), v.to_string())));
         }
         result
     }
@@ -338,13 +333,14 @@ impl ExecutionContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pure::Env;
     use std::collections::HashMap;
     use std::time::Duration;
 
-    fn test_env() -> Arc<Env> {
+    fn test_env() -> Arc<LayeredEnv> {
         let mut m = HashMap::new();
         m.insert("PATH".into(), "/usr/bin".into());
-        Arc::new(Env::from_map(m))
+        Arc::new(LayeredEnv::from(Env::from_map(m)))
     }
 
     fn test_scope(name: &str) -> Scope {
@@ -674,6 +670,106 @@ mod tests {
             test_env(),
         );
         assert_eq!(ctx.lookup("PORT").await, Some("5432".into()));
+    }
+
+    // ─── LayeredEnv chain bugs ─────────────────────────────
+
+    #[tokio::test]
+    async fn effect_scope_lookup_walks_parent_layers() {
+        // Parent layer has BASE_PORT, child overlay has LABEL.
+        // lookup("BASE_PORT") should walk the chain and find it.
+        let mut base = Env::new();
+        base.insert("BASE_PORT".into(), "5432".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mut overlay = Env::new();
+        overlay.insert("LABEL".into(), "child".into());
+        let child_env = Arc::new(LayeredEnv::child(root, overlay));
+
+        let scope = Scope::Effect {
+            name: "Child".into(),
+            vars: Arc::new(Mutex::new(VarScope::new())),
+            _timeout: None,
+            env: child_env,
+        };
+        let shell = ShellState::new("s".into(), None, None);
+        let ctx = ExecutionContext::new(
+            scope,
+            shell,
+            IrTimeout::tolerance(Duration::from_secs(5)),
+            test_env(),
+        );
+        // lookup walks the chain — this works correctly
+        assert_eq!(ctx.lookup("BASE_PORT").await, Some("5432".into()));
+        assert_eq!(ctx.lookup("LABEL").await, Some("child".into()));
+    }
+
+    #[test]
+    fn process_env_includes_parent_layer_variables() {
+        // Regression test: process_env() must include variables from parent
+        // LayeredEnv layers, not just the immediate layer.
+        let mut base = Env::new();
+        base.insert("BASE_PORT".into(), "5432".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mut overlay = Env::new();
+        overlay.insert("LABEL".into(), "child".into());
+        let child_env = Arc::new(LayeredEnv::child(root, overlay));
+
+        let scope = Scope::Effect {
+            name: "Child".into(),
+            vars: Arc::new(Mutex::new(VarScope::new())),
+            _timeout: None,
+            env: child_env,
+        };
+        let shell = ShellState::new("s".into(), None, None);
+        let ctx = ExecutionContext::new(
+            scope,
+            shell,
+            IrTimeout::tolerance(Duration::from_secs(5)),
+            test_env(),
+        );
+        let penv: HashMap<String, String> = ctx.process_env().into_iter().collect();
+        // Child's own overlay should be present
+        assert_eq!(penv.get("LABEL"), Some(&"child".to_string()));
+        // Parent layer variable should also be present in the PTY env
+        assert_eq!(
+            penv.get("BASE_PORT"),
+            Some(&"5432".to_string()),
+            "process_env must include variables from parent LayeredEnv layers"
+        );
+    }
+
+    #[test]
+    fn process_env_shell_overlay_includes_parent_layers() {
+        // Same bug but via shell.env_overlay path.
+        let mut base = Env::new();
+        base.insert("DB_HOST".into(), "localhost".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mut overlay = Env::new();
+        overlay.insert("DB_PORT".into(), "5432".into());
+        let child_env = Arc::new(LayeredEnv::child(root, overlay));
+
+        let scope = Scope::Test {
+            name: "test".into(),
+            vars: Arc::new(Mutex::new(VarScope::new())),
+            timeout: None,
+        };
+        let shell = ShellState::new("s".into(), None, Some(child_env));
+        let ctx = ExecutionContext::new(
+            scope,
+            shell,
+            IrTimeout::tolerance(Duration::from_secs(5)),
+            test_env(),
+        );
+        let penv: HashMap<String, String> = ctx.process_env().into_iter().collect();
+        assert_eq!(penv.get("DB_PORT"), Some(&"5432".to_string()));
+        assert_eq!(
+            penv.get("DB_HOST"),
+            Some(&"localhost".to_string()),
+            "process_env must include variables from parent layers of shell env_overlay"
+        );
     }
 
     // ─── Captures unit tests ────────────────────────────────

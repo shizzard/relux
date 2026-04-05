@@ -11,7 +11,7 @@ use crate::dsl::parser::ast::AstCondModifier;
 use crate::dsl::parser::ast::AstMarkerCondBody;
 use crate::dsl::parser::ast::AstMarkerDecl;
 use crate::dsl::parser::ast::AstMarkerKind;
-use crate::pure::Env;
+use crate::pure::LayeredEnv;
 
 use super::IrNodeLowering;
 use super::LoweringContext;
@@ -33,7 +33,7 @@ pub(crate) struct MarkerResult {
 pub(crate) fn eval_marker(
     markers: &[crate::Spanned<AstMarkerDecl>],
     definition: DefinitionRef,
-    env: &Arc<Env>,
+    env: &Arc<LayeredEnv>,
     file_id: &FileId,
     ctx: &mut LoweringContext,
 ) -> Result<MarkerResult, LoweringBail> {
@@ -85,7 +85,6 @@ pub(crate) fn eval_marker(
                 let value = crate::pure::evaluator::eval_pure_expr(
                     &ir_expr,
                     &crate::pure::VarScope::new(),
-                    None,
                     env,
                     &fns,
                 );
@@ -96,10 +95,8 @@ pub(crate) fn eval_marker(
                 let ir_lhs = IrPureExpr::lower(lhs, file_id, ctx)?;
                 let ir_rhs = IrPureExpr::lower(rhs, file_id, ctx)?;
                 let vars = crate::pure::VarScope::new();
-                let lhs_val =
-                    crate::pure::evaluator::eval_pure_expr(&ir_lhs, &vars, None, env, &fns);
-                let rhs_val =
-                    crate::pure::evaluator::eval_pure_expr(&ir_rhs, &vars, None, env, &fns);
+                let lhs_val = crate::pure::evaluator::eval_pure_expr(&ir_lhs, &vars, env, &fns);
+                let rhs_val = crate::pure::evaluator::eval_pure_expr(&ir_rhs, &vars, env, &fns);
                 let met = lhs_val == rhs_val;
                 (
                     met,
@@ -117,8 +114,7 @@ pub(crate) fn eval_marker(
             } => {
                 let ir_expr = IrPureExpr::lower(expr, file_id, ctx)?;
                 let vars = crate::pure::VarScope::new();
-                let value =
-                    crate::pure::evaluator::eval_pure_expr(&ir_expr, &vars, None, env, &fns);
+                let value = crate::pure::evaluator::eval_pure_expr(&ir_expr, &vars, env, &fns);
 
                 // Lower pattern as interpolation, wrap in IrPureExpr to evaluate
                 let ir_interp = IrInterpolation::lower(pattern, file_id, ctx)?;
@@ -127,7 +123,7 @@ pub(crate) fn eval_marker(
                     span: IrSpan::new(file_id.clone(), pattern.span),
                 };
                 let pattern_str =
-                    crate::pure::evaluator::eval_pure_expr(&pattern_expr, &vars, None, env, &fns);
+                    crate::pure::evaluator::eval_pure_expr(&pattern_expr, &vars, env, &fns);
 
                 let regex = regex::Regex::new(&pattern_str).map_err(|e| {
                     LoweringBail::invalid(InvalidReport::invalid_regex(

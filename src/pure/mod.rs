@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 pub mod bifs;
@@ -133,9 +134,26 @@ impl LayeredEnv {
             .or_else(|| self.parent.as_ref().and_then(|p| p.get(key)))
     }
 
-    /// Access this layer's own entries (without parent).
-    pub fn own(&self) -> &Env {
-        &self.own
+    /// Iterate all entries across all layers. Closest layer wins on duplicates.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        let mut seen = HashSet::new();
+        let mut entries = Vec::new();
+        let mut current = Some(self);
+        while let Some(layer) = current {
+            for (k, v) in layer.own.iter() {
+                if seen.insert(k) {
+                    entries.push((k, v));
+                }
+            }
+            current = layer.parent.as_deref();
+        }
+        entries.into_iter()
+    }
+}
+
+impl From<Env> for LayeredEnv {
+    fn from(env: Env) -> Self {
+        Self::root(env)
     }
 }
 
@@ -374,18 +392,90 @@ mod tests {
         assert_eq!(top.get("X"), Some("top"));
     }
 
+    // ─── From<Env> ──────────────────────────────────────────
+
     #[test]
-    fn layered_own_returns_only_this_layer() {
+    fn from_env_creates_root() {
+        let mut env = Env::new();
+        env.insert("K".into(), "V".into());
+        let layered: LayeredEnv = env.into();
+        assert_eq!(layered.get("K"), Some("V"));
+    }
+
+    // ─── iter() tests ───────────────────────────────────────
+
+    #[test]
+    fn iter_single_layer() {
         let mut base = Env::new();
-        base.insert("BASE".into(), "root".into());
+        base.insert("A".into(), "1".into());
+        base.insert("B".into(), "2".into());
+        let root = LayeredEnv::root(base);
+        let entries: HashMap<&str, &str> = root.iter().collect();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries["A"], "1");
+        assert_eq!(entries["B"], "2");
+    }
+
+    #[test]
+    fn iter_two_layers_closest_wins() {
+        let mut base = Env::new();
+        base.insert("X".into(), "base".into());
+        base.insert("Y".into(), "base".into());
         let root = Arc::new(LayeredEnv::root(base));
 
         let mut overlay = Env::new();
-        overlay.insert("PORT".into(), "5432".into());
+        overlay.insert("X".into(), "child".into());
         let child = LayeredEnv::child(root, overlay);
 
-        // own() only contains this layer's entries
-        assert_eq!(child.own().get("PORT"), Some("5432"));
-        assert_eq!(child.own().get("BASE"), None);
+        let entries: HashMap<&str, &str> = child.iter().collect();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries["X"], "child");
+        assert_eq!(entries["Y"], "base");
+    }
+
+    #[test]
+    fn iter_three_layers() {
+        let mut base = Env::new();
+        base.insert("A".into(), "root".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mut mid = Env::new();
+        mid.insert("B".into(), "mid".into());
+        let mid = Arc::new(LayeredEnv::child(root, mid));
+
+        let mut top = Env::new();
+        top.insert("C".into(), "top".into());
+        let top = LayeredEnv::child(mid, top);
+
+        let entries: HashMap<&str, &str> = top.iter().collect();
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries["A"], "root");
+        assert_eq!(entries["B"], "mid");
+        assert_eq!(entries["C"], "top");
+    }
+
+    #[test]
+    fn iter_empty_layers_skipped() {
+        let base = Env::new();
+        let root = Arc::new(LayeredEnv::root(base));
+        let child = LayeredEnv::child(root, Env::new());
+        assert_eq!(child.iter().count(), 0);
+    }
+
+    #[test]
+    fn iter_deep_override() {
+        let mut base = Env::new();
+        base.insert("X".into(), "root".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mid = Arc::new(LayeredEnv::child(root, Env::new()));
+
+        let mut top = Env::new();
+        top.insert("X".into(), "top".into());
+        let top = LayeredEnv::child(mid, top);
+
+        let entries: HashMap<&str, &str> = top.iter().collect();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries["X"], "top");
     }
 }

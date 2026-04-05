@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use crate::pure::Env;
+use crate::pure::LayeredEnv;
 
 // ─── ShallowEnv ─────────────────────────────────────────────
 
@@ -16,7 +16,7 @@ impl ShallowEnv {
         Self(HashSet::new())
     }
 
-    pub fn from_env(env: &Env) -> Self {
+    pub fn from_layered(env: &LayeredEnv) -> Self {
         Self(env.iter().map(|(k, _)| k.to_string()).collect())
     }
 
@@ -49,9 +49,9 @@ pub struct ShallowLayeredEnv {
 
 impl ShallowLayeredEnv {
     /// Root layer from the base process environment.
-    pub fn root(env: &Env) -> Self {
+    pub fn root(env: &LayeredEnv) -> Self {
         Self {
-            own: ShallowEnv::from_env(env),
+            own: ShallowEnv::from_layered(env),
             parent: None,
         }
     }
@@ -85,14 +85,15 @@ impl ShallowLayeredEnv {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pure::Env;
     use std::collections::HashMap;
 
-    fn make_env(keys: &[&str]) -> Env {
+    fn make_env(keys: &[&str]) -> LayeredEnv {
         let map: HashMap<String, String> = keys
             .iter()
             .map(|k| (k.to_string(), String::new()))
             .collect();
-        Env::from_map(map)
+        LayeredEnv::from(Env::from_map(map))
     }
 
     #[test]

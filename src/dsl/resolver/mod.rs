@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::diagnostics::ModulePath;
-use crate::pure::Env;
+use crate::pure::LayeredEnv;
 use ir::Suite;
 
 // ─── Source Loader ──────────────────────────────────────────
@@ -50,7 +50,7 @@ impl SourceLoader for FsSourceLoader {
 pub fn resolve(
     source_loader: &dyn SourceLoader,
     test_paths: Vec<ModulePath>,
-    env: Arc<Env>,
+    env: Arc<LayeredEnv>,
     multiplier: f64,
     project_root: &std::path::Path,
 ) -> Suite {

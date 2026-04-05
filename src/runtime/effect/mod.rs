@@ -373,8 +373,7 @@ impl EffectManager {
             let value = crate::pure::evaluator::eval_pure_expr(
                 entry.value(),
                 caller_vars,
-                Some(caller_env.own()),
-                &self.rt_ctx.env,
+                caller_env,
                 &self.rt_ctx.tables.pure_fns,
             );
             overlay.insert(entry.key().name().to_string(), value);
@@ -393,8 +392,7 @@ impl EffectManager {
             crate::pure::evaluator::eval_pure_expr(
                 expr,
                 &vars,
-                Some(effect_env.own()),
-                &self.rt_ctx.env,
+                effect_env,
                 &self.rt_ctx.tables.pure_fns,
             )
         } else {

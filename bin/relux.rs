@@ -25,6 +25,7 @@ use relux::history::LatestRun;
 use relux::history::OutputFormat;
 use relux::history::run_history;
 use relux::pure::Env;
+use relux::pure::LayeredEnv;
 use relux::runtime::RunContext;
 use relux::runtime::RunStrategy;
 use relux::runtime::report::result::Outcome;
@@ -480,7 +481,7 @@ async fn cmd_run(matches: &clap::ArgMatches) {
     };
 
     let loader = build_source_loader(&project_root);
-    let env = Arc::new(Env::capture());
+    let env = Arc::new(LayeredEnv::from(Env::capture()));
 
     let suite = resolve(&*loader, test_paths, env, multiplier, &project_root);
     let strategy = match matches.get_one::<String>("strategy").map(|s| s.as_str()) {
@@ -637,7 +638,7 @@ fn cmd_check(matches: &clap::ArgMatches) {
     let (project_root, _config) = resolve_project(matches);
     let test_paths = resolve_test_paths(matches, &project_root);
     let loader = build_source_loader(&project_root);
-    let env = Arc::new(Env::capture());
+    let env = Arc::new(LayeredEnv::from(Env::capture()));
 
     let suite = resolve(&*loader, test_paths, env, 1.0, &project_root);
 
@@ -711,7 +712,7 @@ fn cmd_dump_ir(matches: &clap::ArgMatches) {
         .collect();
 
     let loader = build_source_loader(&project_root);
-    let env = Arc::new(Env::capture());
+    let env = Arc::new(LayeredEnv::from(Env::capture()));
     let suite = resolve(&*loader, test_paths, env, 1.0, &project_root);
 
     let mut first = true;

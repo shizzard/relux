@@ -1,0 +1,125 @@
+// Regression tests for LayeredEnv chain traversal bugs.
+//
+// Bug 1: eval_overlay passes caller_env.own() instead of the full chain.
+//         A variable in a grandparent layer is invisible when evaluating
+//         overlay expressions if the immediate parent doesn't re-overlay it.
+//
+// Bug 2: eval_effect_let passes effect_env.own() instead of the full chain.
+//         A `let` binding inside an effect can't see variables inherited from
+//         parent layers that aren't in the effect's own overlay.
+//
+// Bug 3: process_env() only exports .own() layer to the spawned PTY process.
+//         Shell commands using $$VAR don't see variables from parent env layers.
+
+// ─── Bug 1: eval_overlay grandparent pass-through ──────────
+
+// Leaf reads PORT from its overlay and echoes it.
+effect Leaf {
+    expect PORT
+    expose leaf
+    shell leaf {
+        > echo "leaf_port=${PORT}"
+        <? ^leaf_port=9999$
+        match_ok()
+    }
+}
+
+// Bridge does NOT declare expect PORT and does NOT pass PORT in its own
+// overlay. It receives PORT only via the LayeredEnv chain from its caller.
+// It starts Leaf and tries to forward PORT via overlay.
+effect Bridge {
+    expect LABEL
+    start Leaf as dep { PORT = PORT }
+    expose dep.leaf as out
+}
+
+// Root passes both PORT and LABEL.
+effect Root {
+    expect PORT, LABEL
+    start Bridge as dep { LABEL }
+    expose dep.out as out
+}
+
+test "overlay reads variable from grandparent env layer" {
+    """
+    Verify that an overlay expression can reference a variable inherited
+    through the LayeredEnv chain, not just from the immediate parent's own
+    overlay. Root receives PORT, Bridge does not re-overlay PORT, but Bridge
+    starts Leaf with PORT = PORT which should resolve from the chain.
+    """
+    start Root as r { PORT = "9999", LABEL = "test" }
+    r.out {
+        > echo "done"
+        <? ^done$
+        match_ok()
+    }
+}
+
+// ─── Bug 2: eval_effect_let parent layer access ────────────
+
+effect LetReader {
+    expect LABEL
+    let tag = "tag-${PORT}"
+    expose reader
+    shell reader {
+        > echo "${tag}"
+        <? ^tag-4242$
+        match_ok()
+    }
+}
+
+effect LetHost {
+    expect PORT, LABEL
+    start LetReader as dep { LABEL }
+    expose dep.reader as out
+}
+
+test "effect let binding reads inherited env from parent layer" {
+    """
+    Verify that an effect-level let binding can reference a variable
+    from a parent layer of the LayeredEnv chain. LetHost receives PORT,
+    LetReader does not receive PORT in its overlay, but its let binding
+    references PORT which should be visible through the chain.
+    """
+    start LetHost as h { PORT = "4242", LABEL = "x" }
+    h.out {
+        > echo "done"
+        <? ^done$
+        match_ok()
+    }
+}
+
+// ─── Bug 3: process_env only exports own layer ─────────────
+
+effect ShellEnvLeaf {
+    expect LABEL
+    expose leaf
+    shell leaf {
+        // $$PORT is a shell environment variable, read from the PTY process env.
+        // PORT is in a parent layer of the LayeredEnv, not this effect's own overlay.
+        > echo "shell_port=$$PORT"
+        <? ^shell_port=7777$
+        match_ok()
+    }
+}
+
+effect ShellEnvHost {
+    expect PORT, LABEL
+    start ShellEnvLeaf as dep { LABEL }
+    expose dep.leaf as out
+}
+
+test "pty process env includes parent layer variables" {
+    """
+    Verify that shell commands using env vars ($$VAR) can see variables
+    from parent layers of the LayeredEnv, not just the effect's own overlay.
+    ShellEnvHost receives PORT, ShellEnvLeaf does not get PORT in its overlay,
+    but the spawned PTY should still have PORT in its process environment.
+    """
+    start ShellEnvHost as h { PORT = "7777", LABEL = "y" }
+    h.out {
+        > echo "done"
+        <? ^done$
+        match_ok()
+    }
+}

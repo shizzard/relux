@@ -13,7 +13,7 @@ use crate::diagnostics::WarningTable;
 use crate::dsl::parser::ast::AstItem;
 use crate::dsl::parser::ast::AstTestDef;
 use crate::dsl::parser::ast::AstTestItem;
-use crate::pure::Env;
+use crate::pure::LayeredEnv;
 
 use super::IrNode;
 use super::IrNodeLowering;
@@ -108,7 +108,7 @@ impl Plan {
 #[derive(Debug)]
 pub struct Suite {
     pub plans: Vec<Plan>,
-    pub env: Arc<Env>,
+    pub env: Arc<LayeredEnv>,
     pub causes: CauseTable,
     pub warnings: WarningTable,
     pub tables: Tables,

@@ -29,6 +29,7 @@ use crate::dsl::resolver::ir::Plan;
 use crate::dsl::resolver::ir::SourceTable;
 use crate::dsl::resolver::ir::Suite;
 use crate::pure::Env;
+use crate::pure::LayeredEnv;
 use crate::pure::VarScope;
 use crate::runtime::effect::CleanupSource;
 use crate::runtime::effect::EffectManager;
@@ -94,7 +95,7 @@ pub struct RunContext {
 
 // ─── Environment Helpers ────────────────────────────────────
 
-fn build_env(ctx: &RunContext) -> Arc<Env> {
+fn build_env(ctx: &RunContext) -> Arc<LayeredEnv> {
     let mut env = Env::capture();
     env.insert("__RELUX_RUN_ID".into(), ctx.run_id.clone());
     env.insert(
@@ -109,19 +110,23 @@ fn build_env(ctx: &RunContext) -> Arc<Env> {
     if let Ok(exe) = std::env::current_exe() {
         env.insert("__RELUX".into(), exe.display().to_string());
     }
-    Arc::new(env)
+    Arc::new(env.into())
 }
 
-fn make_test_env(base: &Env, test_file: &Path, artifacts_dir: &Path) -> Arc<Env> {
-    let mut env = base.clone();
+fn make_test_env(
+    base: &Arc<LayeredEnv>,
+    test_file: &Path,
+    artifacts_dir: &Path,
+) -> Arc<LayeredEnv> {
+    let mut test_vars = Env::new();
     if let Some(dir) = test_file.parent() {
-        env.insert("__RELUX_TEST_ROOT".into(), dir.display().to_string());
+        test_vars.insert("__RELUX_TEST_ROOT".into(), dir.display().to_string());
     }
-    env.insert(
+    test_vars.insert(
         "__RELUX_TEST_ARTIFACTS".into(),
         artifacts_dir.display().to_string(),
     );
-    Arc::new(env)
+    Arc::new(LayeredEnv::child(base.clone(), test_vars))
 }
 
 // ─── Log / Display Helpers ──────────────────────────────────
@@ -315,7 +320,7 @@ struct WorkerContext<'a> {
     cancel_reason: Arc<OnceLock<CancelReason>>,
     suite: &'a Suite,
     run_ctx: &'a RunContext,
-    base_env: Arc<Env>,
+    base_env: Arc<LayeredEnv>,
     tui_tx: observe::tui::TuiTx,
 }
 
@@ -561,7 +566,7 @@ async fn run_test_cancellable(
     meta: &crate::dsl::resolver::ir::TestMeta,
     test: &IrTest,
     run_ctx: &RunContext,
-    base_env: Arc<Env>,
+    base_env: Arc<LayeredEnv>,
     test_path: &str,
     cause_tags: &str,
     cancel: &CancellationToken,
@@ -659,7 +664,7 @@ async fn run_test(
     meta: &crate::dsl::resolver::ir::TestMeta,
     test: &IrTest,
     run_ctx: &RunContext,
-    base_env: Arc<Env>,
+    base_env: Arc<LayeredEnv>,
     test_path: &str,
     _cause_tags: &str,
     cancel: &CancellationToken,
@@ -782,7 +787,6 @@ async fn run_test_body(
                 crate::pure::evaluator::eval_pure_expr(
                     expr,
                     &vars,
-                    None,
                     &rt_ctx.env,
                     &rt_ctx.tables.pure_fns,
                 )
@@ -795,7 +799,7 @@ async fn run_test_body(
 
     // 3. Instantiate effects (overlays can now see test-level vars)
     let caller_vars = scope.vars().lock().await.clone();
-    let root_env = Arc::new(crate::pure::LayeredEnv::root(Env::new()));
+    let root_env = rt_ctx.env.clone();
     let exported = manager
         .instantiate(test.starts(), &caller_vars, &root_env)
         .await?;

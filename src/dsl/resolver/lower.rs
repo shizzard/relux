@@ -33,7 +33,7 @@ use crate::dsl::resolver::ir::Plan;
 use crate::dsl::resolver::ir::SourceTable;
 use crate::dsl::resolver::ir::Suite;
 use crate::dsl::resolver::ir::Tables;
-use crate::pure::Env;
+use crate::pure::LayeredEnv;
 
 // ─── LoweringScope ──────────────────────────────────────────
 
@@ -49,7 +49,7 @@ pub struct LoweringScope {
 
 pub struct LoweringContext {
     ast_table: AstTable,
-    env: Arc<Env>,
+    env: Arc<LayeredEnv>,
     tables: Tables,
     causes: CauseTable,
     warnings: WarningTable,
@@ -70,7 +70,7 @@ impl LoweringContext {
     pub fn new(
         ast_table: AstTable,
         source_table: SourceTable,
-        env: Arc<Env>,
+        env: Arc<LayeredEnv>,
         causes: CauseTable,
         warnings: WarningTable,
         multiplier: f64,
@@ -100,7 +100,7 @@ impl LoweringContext {
         &self.ast_table
     }
 
-    pub fn env(&self) -> &Arc<Env> {
+    pub fn env(&self) -> &Arc<LayeredEnv> {
         &self.env
     }
 
@@ -964,6 +964,7 @@ pub(crate) mod test_helpers {
     use crate::dsl::parser::ast::*;
     use crate::dsl::resolver::ir::*;
     use crate::pure::Env;
+    use crate::pure::LayeredEnv;
     use std::collections::HashMap;
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -976,8 +977,8 @@ pub(crate) mod test_helpers {
         IrSpan::new(test_file_id(), Span::new(0, 10))
     }
 
-    pub fn test_env() -> Arc<Env> {
-        Arc::new(Env::from_map(HashMap::new()))
+    pub fn test_env() -> Arc<LayeredEnv> {
+        Arc::new(LayeredEnv::from(Env::from_map(HashMap::new())))
     }
 
     pub fn empty_ast_table() -> AstTable {
@@ -1122,7 +1123,7 @@ pub(crate) mod test_helpers {
         let mut ctx = LoweringContext::new(
             ast_table,
             source_table,
-            Arc::new(Env::from_map(env)),
+            Arc::new(LayeredEnv::from(Env::from_map(env))),
             causes,
             warnings,
             1.0,
@@ -1149,7 +1150,7 @@ pub(crate) mod test_helpers {
         let mut ctx = LoweringContext::new(
             ast_table,
             source_table,
-            Arc::new(Env::from_map(HashMap::new())),
+            Arc::new(LayeredEnv::from(Env::from_map(HashMap::new()))),
             causes,
             warnings,
             multiplier,
@@ -1213,6 +1214,7 @@ mod tests {
     use crate::core::table::SourceFile;
     use crate::dsl::parser::ast::*;
     use crate::pure::Env;
+    use crate::pure::LayeredEnv;
     use std::collections::HashMap;
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -1408,7 +1410,7 @@ mod tests {
     fn context_new_preserves_env() {
         let mut m = HashMap::new();
         m.insert("KEY".into(), "val".into());
-        let env = Arc::new(Env::from_map(m));
+        let env = Arc::new(LayeredEnv::from(Env::from_map(m)));
         let ctx = LoweringContext::new(
             empty_ast_table(),
             empty_source_table(),
@@ -2565,7 +2567,7 @@ mod tests {
     fn into_suite_transfers_env() {
         let mut m = HashMap::new();
         m.insert("MY_VAR".into(), "my_val".into());
-        let env = Arc::new(Env::from_map(m));
+        let env = Arc::new(LayeredEnv::from(Env::from_map(m)));
         let ctx = LoweringContext::new(
             empty_ast_table(),
             empty_source_table(),
