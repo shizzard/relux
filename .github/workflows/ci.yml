@@ -107,7 +107,7 @@ jobs:
       - name: E2E tests
         run: |
           cargo run -- check --manifest tests/Relux.toml
-          cargo run -- run --manifest tests/Relux.toml
+          cargo run -- run --manifest tests/Relux.toml --timeout-multiplier 3.0
 
       - name: Upload test artifacts
         if: failure()

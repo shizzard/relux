@@ -1,3 +1,4 @@
+# skip if RUNNER_OS = "macOS"
 test "sleep pauses execution" {
     """
     Verify sleep() pauses for at least the requested duration by

@@ -4,7 +4,7 @@ test "single capture group" {
     """
     shell s {
         > echo "version=3"
-        <? version=(\d+)
+        <? ^version=(\d+)$
         > echo "got ${1}"
         <? ^got 3$
     }
