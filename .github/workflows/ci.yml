@@ -65,6 +65,15 @@ jobs:
             ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}-
             ${{ runner.os }}-cargo-test-
 
+      - name: Debug timestamps
+        run: |
+          echo "=== newest source files ==="
+          find src bin -name '*.rs' -printf '%T@ %Tc %p\n' | sort -rn | head -5
+          echo "=== fingerprint reference ==="
+          stat target/debug/.fingerprint/relux-*/dep-test-lib-relux 2>/dev/null
+          echo "=== Cargo.toml timestamp ==="
+          stat Cargo.toml
+
       - name: Unit tests
         run: cargo test --lib
 
