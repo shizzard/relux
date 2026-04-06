@@ -1,5 +1,5 @@
-# skip unless CI
-# skip if SKIP_ME
+# skip unless RELUX_TEST_MARKER
+# skip if RELUX_TEST_SKIP
 test "conditional" {
     shell s {
         > echo hello

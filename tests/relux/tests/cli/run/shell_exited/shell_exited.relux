@@ -1,3 +1,4 @@
+# skip if RUNNER_OS = "Linux"
 test "run reports shell exited" {
     """
     Verify relux run reports when the shell process exits during a test.

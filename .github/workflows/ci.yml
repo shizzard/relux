@@ -1,0 +1,147 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Restore file timestamps
+        uses: chetan/git-restore-mtime-action@v2
+
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/**', 'bin/**', 'Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-lint-
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Format check
+        run: rustup run nightly rustfmt --edition 2024 --check $(find src -name '*.rs') bin/relux.rs
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Restore file timestamps
+        uses: chetan/git-restore-mtime-action@v2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/**', 'bin/**', 'Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-test-
+
+      - name: Unit tests
+        run: cargo test --lib
+
+  build:
+    name: Build (${{ matrix.os }})
+    needs: [lint, test]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Restore file timestamps
+        uses: chetan/git-restore-mtime-action@v2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/**', 'bin/**', 'Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-build-dev-
+
+      - name: Build
+        run: cargo build
+
+  e2e:
+    name: E2E (${{ matrix.os }})
+    needs: [build]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Restore file timestamps
+        uses: chetan/git-restore-mtime-action@v2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/**', 'bin/**', 'Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-build-dev-
+
+      - name: E2E tests
+        run: |
+          cargo run -- check --manifest tests/Relux.toml
+          cargo run -- run --manifest tests/Relux.toml --timeout-multiplier 3.0
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-logs-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tests/relux/out/
+          retention-days: 7

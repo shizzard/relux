@@ -3,7 +3,7 @@ effect Greeter {
   expose greeter
   shell greeter {
     > echo "${GREETING}"
-    <? .+
+    <? ^${GREETING}$
     match_ok()
   }
 }

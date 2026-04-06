@@ -4,7 +4,7 @@ test "single capture group" {
     """
     shell s {
         > echo "version=3"
-        <? version=(\d+)
+        <? ^version=(\d+)$
         > echo "got ${1}"
         <? ^got 3$
     }
@@ -16,7 +16,7 @@ test "full match via capture group zero" {
     """
     shell s {
         > echo "hello world"
-        <? (hello) (world)
+        <? ^(hello) (world)$
         > echo "full='${0}' first='${1}' second='${2}'"
         <? ^full='hello world' first='hello' second='world'$
     }

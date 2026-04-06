@@ -26,7 +26,7 @@ test "regex with multiple captures" {
     """
     shell s {
         > echo "key=name val=bob"
-        <? key=(\w+) val=(\w+)
+        <? ^key=(\w+) val=(\w+)$
         > echo "${1} is ${2}"
         <? ^name is bob$
     }
@@ -39,10 +39,10 @@ test "regex match advances cursor" {
     """
     shell s {
         > echo first
-        > echo second
-        > echo third
         <? ^first$
+        > echo second
         <? ^second$
+        > echo third
         <? ^third$
     }
 }

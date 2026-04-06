@@ -61,7 +61,7 @@ test "dollar escape with variable interpolation" {
     shell s {
         let name = "USD"
         > echo "currency: $$${name}"
-        <= currency: $USD
+        <= echo "currency: $USD"
     }
 }
 
