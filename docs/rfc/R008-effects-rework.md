@@ -35,7 +35,7 @@ If two effects export shells with the same name and a test needs both, there is 
 
 ### Overlay opacity
 
-The overlay syntax `need StartDb { DB_PORT = db_port }` serves as both parameterization and env remapping, but the effect doesn't declare which keys it expects. The overlay is a bag of key-value pairs with no contract — the caller guesses, and mistakes are only caught at runtime (or not at all, if the service silently uses a default).
+The overlay syntax `need StartDb { DB_PORT = db_port }` served as both parameterization and env remapping, but the effect didn't declare which keys it expected. The overlay was a bag of key-value pairs with no contract — the caller guessed, and mistakes were only caught at runtime (or not at all, if the service silently used a default).
 
 ### Broken identity (R007)
 
@@ -47,14 +47,14 @@ Effect instance identity is based on the AST canonical form of overlay expressio
 
 An effect has three explicit interface components:
 
-1. **`env`** — required environment variables the effect reads
+1. **`expect`** — required environment variables the effect reads
 2. **`expose`** — shells the effect makes available to callers
-3. **`need`** — dependency effects with env remapping
+3. **`start`** — dependency effects with env remapping
 
 ```relux
 effect Node {
-    env NODE_PORT, NODE_NAME, NODE_DATA_DIR
-    need DependencyEffect
+    expect NODE_PORT, NODE_NAME, NODE_DATA_DIR
+    start DependencyEffect
     expose node
 
     shell node {
@@ -64,9 +64,9 @@ effect Node {
 }
 ```
 
-`env` declares the effect's required inputs. These must be present in the effect's environment when it starts — either inherited from the parent environment or provided via an overlay in the `need` declaration. The resolver validates that all `env` variables are satisfiable by walking the effect graph top-down from each test.
+`expect` declares the effect's required inputs. These must be present in the effect's environment when it starts — either inherited from the parent environment or provided via an overlay in the `start` declaration. The resolver validates that all `expect` variables are satisfiable by walking the effect graph top-down from each test.
 
-`need` semantics does not change.
+`start` declares dependency effects (see below).
 
 `expose` declares which shells are part of the effect's public interface. Internal shells not listed in `expose` are implementation details — they are started, used during setup, and terminated when setup completes.
 
@@ -76,16 +76,16 @@ Note that none of these are mandatory: an effect may not need any environment va
 
 Effects inherit the full parent environment. This is a change from the current behavior where effects only see the base environment plus their explicit overlay.
 
-The rationale: real services have dozens of configuration parameters. Listing every one in `env` and threading every one through overlays would be impractical. The common case is that most configuration comes from the environment and only a few values need to be overridden per-instance. 
+The rationale: real services have dozens of configuration parameters. Listing every one in `expect` and threading every one through overlays would be impractical. The common case is that most configuration comes from the environment and only a few values need to be overridden per-instance.
 
-At the same time, some particular test might need a dependency started with test-specific configuration that is not and should not be listed in the effect interface. `env` declares the variables that the effect *requires* — the ones that must be set and that the resolver should validate. It does not prevent the effect from reading other environment variables; it is a contract, not a sandbox.
+At the same time, some particular test might need a dependency started with test-specific configuration that is not and should not be listed in the effect interface. `expect` declares the variables that the effect *requires* — the ones that must be set and that the resolver should validate. It does not prevent the effect from reading other environment variables; it is a contract, not a sandbox.
 
 ### Overlay as env remapping
 
-The overlay in a `need` declaration remaps the caller's environment into the dependency's environment:
+The overlay in a `start` declaration remaps the caller's environment into the dependency's environment:
 
 ```relux
-need Node as n1 {
+start Node as n1 {
     NODE_PORT = PORT1
     NODE_NAME = "node1"
     NODE_DATA_DIR = "${ARTIFACTS}/n1"
@@ -97,7 +97,7 @@ Each entry `KEY = expr` means: "in the dependency's environment, set `KEY` to th
 The shorthand form `KEY` (without `= expr`) binds the variable to the same-named variable in the caller's scope, equivalent to `KEY = KEY`:
 
 ```relux
-need Node as n1 {
+start Node as n1 {
     NODE_PORT    // equivalent to: NODE_PORT = NODE_PORT
     NODE_NAME = "node1"
     NODE_DATA_DIR = "${ARTIFACTS}/n1"
@@ -112,13 +112,13 @@ Effects are accessed through aliases, and their exposed shells are accessed via 
 test "node health" {
     let port = available_port()
 
-    need Node as n {
+    start Node as n {
         NODE_PORT = port
         NODE_NAME = "test-node"
         NODE_DATA_DIR = "${__RELUX_TEST_ARTIFACTS}/node"
     }
 
-    n.node {
+    shell n.node {
         > health
         <? ok
     }
@@ -129,19 +129,19 @@ For composed effects, dot-access chains through the alias path:
 
 ```relux
 effect Cluster {
-    env PORT1, PORT2, PORT3
+    expect PORT1, PORT2, PORT3
 
-    need Node as n1 {
+    start Node as n1 {
         NODE_PORT = PORT1
         NODE_NAME = "node1"
         NODE_DATA_DIR = "${__RELUX_TEST_ARTIFACTS}/n1"
     }
-    need Node as n2 {
+    start Node as n2 {
         NODE_PORT = PORT2
         NODE_NAME = "node2"
         NODE_DATA_DIR = "${__RELUX_TEST_ARTIFACTS}/n2"
     }
-    need Node as n3 {
+    start Node as n3 {
         NODE_PORT = PORT3
         NODE_NAME = "node3"
         NODE_DATA_DIR = "${__RELUX_TEST_ARTIFACTS}/n3"
@@ -157,20 +157,20 @@ test "cluster ops" {
     let p2 = available_port()
     let p3 = available_port()
 
-    need Cluster as c {
+    start Cluster as c {
         PORT1 = p1
         PORT2 = p2
         PORT3 = p3
     }
 
-    c.primary {
+    shell c.primary {
         > rs.status()
         <? ok
     }
 }
 ```
 
-`expose n1.node as primary` means: "take the `node` shell exposed by the `n1` dependency and re-expose it as `primary`." The test accesses it as `c.primary`.
+`expose n1.node as primary` means: "take the `node` shell exposed by the `n1` dependency and re-expose it as `primary`." The test accesses it as `shell c.primary { ... }`.
 
 Effects are opaque by default. Internal shells and nested dependency shells that are not listed in `expose` are not accessible to callers.
 
@@ -178,28 +178,28 @@ Effects are opaque by default. Internal shells and nested dependency shells that
 
 Effect instance identity is **(effect name, evaluated overlay)**.
 
-The overlay is evaluated at effect setup time. All overlay expressions are pure, so evaluation is deterministic within a given scope. Two `need` declarations that produce the same effect name and the same evaluated overlay values share a single instance.
+The overlay is evaluated at effect setup time. All overlay expressions are pure, so evaluation is deterministic within a given scope. Two `start` declarations that produce the same effect name and the same evaluated overlay values share a single instance.
 
-This fixes the pass-through problem from R007: a test's `need Node { NODE_PORT = port }` and a Cluster's internal `need Node { NODE_PORT = PORT1 }` both evaluate to the same port value, producing the same identity — correct deduplication.
+This fixes the pass-through problem from R007: a test's `start Node { NODE_PORT = port }` and a Cluster's internal `start Node { NODE_PORT = PORT1 }` both evaluate to the same port value, producing the same identity — correct deduplication.
 
 ### Accidental-collision warning
 
-Within a single scope (test or effect body), the runtime detects when two `need` declarations target the same effect with different overlay expressions that happen to evaluate to the same values. This suggests the user intended separate instances but the runtime values accidentally collide.
+Within a single scope (test or effect body), the runtime detects when two `start` declarations target the same effect with different overlay expressions that happen to evaluate to the same values. This suggests the user intended separate instances but the runtime values accidentally collide.
 
 ```
 warning: different overlay expressions evaluate to the same values — these
          will share a single Node instance
    ┌─ tests/app.relux:5:20
    │
- 5 │     need Node as n1 { NODE_PORT = FOO }
-   │                                   ^^^ evaluated to: 9000
- 6 │     need Node as n2 { NODE_PORT = BAR }
-   │                                   ^^^ evaluated to: 9000
+ 5 │     start Node as n1 { NODE_PORT = FOO }
+   │                                    ^^^ evaluated to: 9000
+ 6 │     start Node as n2 { NODE_PORT = BAR }
+   │                                    ^^^ evaluated to: 9000
    │
    = help: if you intended separate instances, use distinct values
 ```
 
-The check compares canonical (AST-based) overlay representations within the same scope. If two `need` declarations have different canonical forms but identical evaluated forms, a warning is emitted. Cross-scope deduplication (a test's `need` matching an effect's internal `need`) is intentional and never triggers a warning.
+The check compares canonical (AST-based) overlay representations within the same scope. If two `start` declarations have different canonical forms but identical evaluated forms, a warning is emitted. Cross-scope deduplication (a test's `start` matching an effect's internal `start`) is intentional and never triggers a warning.
 
 ### Start ordering via runtime instrumentation
 
@@ -220,22 +220,22 @@ This approach requires no IR changes — the ordering is a runtime observation, 
 
 The resolver validates the effect graph at check time (`relux check`):
 
-- Every `env` variable declared by an effect must be satisfiable: either present in the base environment or provided by an overlay in the `need` declaration.
+- Every `expect` variable declared by an effect must be satisfiable: either present in the base environment or provided by an overlay in the `start` declaration.
 - Every `expose` reference must point to a shell that exists in the effect body or is itself exposed by a dependency alias.
 - Circular dependencies remain a parse error.
 - Overlays can only reference variables in the caller's scope (existing behavior).
 
-Validation walks the effect graph top-down from each test, tracking which variables are available at each level. A missing `env` variable produces an error pointing at both the `need` site (where the overlay should provide it) and the `env` declaration (where the requirement is defined).
+Validation walks the effect graph top-down from each test, tracking which variables are available at each level. A missing `expect` variable produces an error pointing at both the `start` site (where the overlay should provide it) and the `expect` declaration (where the requirement is defined).
 
 ## Migration
 
 ### Syntax changes
 
-| Current                                          | New                                                       |
-|--------------------------------------------------|-----------------------------------------------------------|
-| `effect E -> shell { ... }`                      | `effect E { env ...; expose shell; ... }`                 |
-| `need E { KEY = val }`                           | `need E { KEY = val }` (unchanged, shortcut syntax added) |
-| `need E as alias` (shell access via `alias { }`) | `need E as alias` (shell access via `alias.shell { }`)    |
+| Current                                          | New                                                            |
+|--------------------------------------------------|----------------------------------------------------------------|
+| `effect E -> shell { ... }`                      | `effect E { expect ...; expose shell; ... }`                   |
+| `need E { KEY = val }`                           | `start E { KEY = val }` (shorthand syntax added)               |
+| `need E as alias` (shell access via `alias { }`) | `start E as alias` (shell access via `shell alias.shell { }`)  |
 
 ### Behavioral changes
 
@@ -249,7 +249,7 @@ Validation walks the effect graph top-down from each test, tracking which variab
 
 ```relux
 effect StartDb {
-    env DB_PORT
+    expect DB_PORT
     expose db
 
     shell db {
@@ -270,10 +270,11 @@ effect StartDb {
 
 ```relux
 effect StartAuth {
-    env DB_PORT, AUTH_PORT
-    expose auth, db.db as db 
+    expect DB_PORT, AUTH_PORT
+    expose auth
+    expose db.db as db
 
-    need StartDb as db // DB_PORT is inherited from local environment
+    start StartDb as db // DB_PORT is inherited from local environment
 
     shell auth {
         !? ^error:
@@ -284,28 +285,28 @@ effect StartAuth {
 }
 ```
 
-The test's `need StartDb { DB_PORT = port }` and StartAuth's internal `need StartDb as db` both evaluate to the same port — one shared StartDb instance.
+The test's `start StartDb { DB_PORT = port }` and StartAuth's internal `start StartDb as db` both evaluate to the same port — one shared StartDb instance.
 
 ### Multi-instance effect
 
 ```relux
 effect Cluster {
-    env PORT1, PORT2, PORT3
+    expect PORT1, PORT2, PORT3
     expose n1.node as primary
     expose n2.node as secondary
     expose n3.node as arbiter
 
-    need Node as n1 {
+    start Node as n1 {
         NODE_PORT = PORT1
         NODE_NAME = "node1"
         NODE_DATA_DIR = "${__RELUX_TEST_ARTIFACTS}/n1"
     }
-    need Node as n2 {
+    start Node as n2 {
         NODE_PORT = PORT2
         NODE_NAME = "node2"
         NODE_DATA_DIR = "${__RELUX_TEST_ARTIFACTS}/n2"
     }
-    need Node as n3 {
+    start Node as n3 {
         NODE_PORT = PORT3
         NODE_NAME = "node3"
         NODE_DATA_DIR = "${__RELUX_TEST_ARTIFACTS}/n3"
@@ -317,18 +318,18 @@ test "cluster failover" {
     let p2 = available_port()
     let p3 = available_port()
 
-    need Cluster as c {
+    start Cluster as c {
         PORT1 = p1
         PORT2 = p2
         PORT3 = p3
     }
 
-    c.primary {
+    shell c.primary {
         > rs.stepDown()
         <? ok
     }
 
-    c.secondary {
+    shell c.secondary {
         > rs.status()
         <? primary
     }
