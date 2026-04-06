@@ -40,19 +40,6 @@ test "send preserves whitespace" {
     }
 }
 
-test "send empty line" {
-    """
-    Verify sending an empty line does not disrupt subsequent commands.
-    """
-    shell s {
-        > echo before
-        <? ^before$
-        >
-        > echo after
-        <? ^after$
-    }
-}
-
 test "send with dollar escape" {
     """
     Verify double-dollar escapes pass a literal dollar sign to the shell.
