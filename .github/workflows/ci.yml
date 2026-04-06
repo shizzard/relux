@@ -31,8 +31,9 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/**', 'bin/**', 'Cargo.toml') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}-
             ${{ runner.os }}-cargo-lint-
 
       - name: Clippy
@@ -59,21 +60,10 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/**', 'bin/**', 'Cargo.toml') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}-
             ${{ runner.os }}-cargo-test-
-
-      - name: Debug fingerprint
-        run: |
-          echo "=== rustc version ==="
-          rustc --version --verbose
-          echo "=== source file timestamps ==="
-          ls -la src/lib.rs Cargo.toml Cargo.lock
-          echo "=== cached fingerprint files ==="
-          ls -la target/debug/.fingerprint/relux-*/test-lib-relux* 2>/dev/null || echo "no test fingerprints found"
-          ls -la target/debug/.fingerprint/relux-*/ 2>/dev/null | head -20
-          echo "=== cargo fingerprint log ==="
-          CARGO_LOG=cargo::core::compiler::fingerprint=info cargo test --lib --no-run 2>&1 | head -50
 
       - name: Unit tests
         run: cargo test --lib
@@ -106,8 +96,9 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-e2e-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-e2e-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/**', 'bin/**', 'Cargo.toml') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-e2e-${{ hashFiles('**/Cargo.lock') }}-
             ${{ runner.os }}-cargo-e2e-
 
       - name: Build
