@@ -694,7 +694,7 @@ test "full" ~5s {
         let t = parse_test(
             r#"test "my test" {
   start Db as db
-  db.main {
+  shell db.main {
     > echo hello
   }
 }
@@ -720,7 +720,7 @@ test "full" ~5s {
   shell local {
     > echo local
   }
-  db.main {
+  shell db.main {
     > echo remote
   }
 }

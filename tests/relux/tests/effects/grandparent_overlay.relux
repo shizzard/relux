@@ -48,7 +48,7 @@ test "overlay reads variable from grandparent env layer" {
     starts Leaf with PORT = PORT which should resolve from the chain.
     """
     start Root as r { PORT = "9999", LABEL = "test" }
-    r.out {
+    shell r.out {
         > echo "done"
         <? ^done$
         match_ok()
@@ -82,7 +82,7 @@ test "effect let binding reads inherited env from parent layer" {
     references PORT which should be visible through the chain.
     """
     start LetHost as h { PORT = "4242", LABEL = "x" }
-    h.out {
+    shell h.out {
         > echo "done"
         <? ^done$
         match_ok()
@@ -117,7 +117,7 @@ test "pty process env includes parent layer variables" {
     but the spawned PTY should still have PORT in its process environment.
     """
     start ShellEnvHost as h { PORT = "7777", LABEL = "y" }
-    h.out {
+    shell h.out {
         > echo "done"
         <? ^done$
         match_ok()

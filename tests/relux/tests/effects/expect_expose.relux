@@ -14,7 +14,7 @@ test "expect passes variable through overlay" {
   from the caller's overlay.
   """
   start Greeter as g { GREETING = "hello world" }
-  g.greeter {
+  shell g.greeter {
     > echo "done"
     <? ^done$
     match_ok()
@@ -29,7 +29,7 @@ test "expect with shorthand overlay syntax" {
   start Greeter as g {
     GREETING
   }
-  g.greeter {
+  shell g.greeter {
     > echo "done"
     <? ^done$
     match_ok()
@@ -51,7 +51,7 @@ test "expose provides dot-access to shell" {
   on the effect alias.
   """
   start Logger as l
-  l.log {
+  shell l.log {
     > echo "writing to log"
     <? ^writing to log$
     match_ok()
@@ -64,7 +64,7 @@ test "expose with alias renames the shell" {
   The test accesses the shell by the alias name.
   """
   start Logger as mylog
-  mylog.log {
+  shell mylog.log {
     > echo "aliased"
     <? ^aliased$
     match_ok()

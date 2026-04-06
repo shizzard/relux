@@ -220,7 +220,7 @@ test "pure function in overlay" {
     start Labeled as l {
         LABEL = make_label("production")
     }
-    l.service {
+    shell l.service {
         > echo $LABEL
         <? ^label-production$
     }

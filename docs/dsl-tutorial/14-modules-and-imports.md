@@ -126,7 +126,7 @@ import utils/greeter { Greeter as Svc }
 
 test "aliased effect" {
     start Svc as svc
-    svc.service {
+    shell svc.service {
         > echo $$GREETER_STATUS
         <? ^running$
     }

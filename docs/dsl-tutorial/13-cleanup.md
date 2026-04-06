@@ -187,7 +187,7 @@ test "temporary directory is cleaned up" {
     start TempDir as t {
         DIR = "/tmp/relux-test-workspace"
     }
-    t.workspace {
+    shell t.workspace {
         > touch testfile.txt
         match_ok()
     }

@@ -52,7 +52,7 @@ pure fn url(path) {
 }
 ```
 
-The `expose service` declaration means: the `service` shell is part of this effect's public interface. After the effect runs, tests that started it with an alias can interact with that shell via dot-access (e.g. `db.service { ... }`). If a test only needs the effect for its side effects (in this case, just for running the database), it can omit the alias and skip shell access entirely.
+The `expose service` declaration means: the `service` shell is part of this effect's public interface. After the effect runs, tests that started it with an alias can interact with that shell via dot-access (e.g. `shell db.service { ... }`). If a test only needs the effect for its side effects (in this case, just for running the database), it can omit the alias and skip shell access entirely.
 
 Co-locating the effect with the `url` function keeps everything about the database service in one module. Tests import both from the same place:
 
@@ -82,7 +82,7 @@ test "key-value CRUD" {
 }
 ```
 
-`start Db` tells relux: before this test runs, execute the `Db` effect. The setup block is gone -- replaced by a single line. If you would need to match log lines on the running database shell, you would use `start Db as db`. After that, `db.service { ... }` blocks would be executed on the shell that was exposed by the `Db` effect.
+`start Db` tells relux: before this test runs, execute the `Db` effect. The setup block is gone -- replaced by a single line. If you would need to match log lines on the running database shell, you would use `start Db as db`. After that, `shell db.service { ... }` blocks would be executed on the shell that was exposed by the `Db` effect.
 
 Do the same for `errors.relux`. The manual `shell db { ... }` block is replaced by `start Db` in both files.
 

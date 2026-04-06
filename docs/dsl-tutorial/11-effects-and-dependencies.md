@@ -167,16 +167,16 @@ A test declares its infrastructure requirements with the `start` keyword:
 ```relux
 test "effect sets up shell before test runs" {
     start Service as svc
-    svc.service {
+    shell svc.service {
         > echo "test using effect shell"
         <? ^test using effect shell$
     }
 }
 ```
 
-The `start Service as svc` does two things: it ensures the `Service` effect runs before the test body, and it makes the effect's exposed shells available under the alias `svc`. Inside the test, `svc.service { ... }` accesses the shell that the effect exposed — the same PTY session that the effect's `shell service` block used during setup, with all the state from setup intact.
+The `start Service as svc` does two things: it ensures the `Service` effect runs before the test body, and it makes the effect's exposed shells available under the alias `svc`. Inside the test, `shell svc.service { ... }` accesses the shell that the effect exposed — the same PTY session that the effect's `shell service` block used during setup, with all the state from setup intact.
 
-The `as` alias names the effect instance within your test. You access its exposed shells via dot-access: `alias.shell_name { ... }`. This is useful when you start multiple effects:
+The `as` alias names the effect instance within your test. You access its exposed shells via dot-access: `shell alias.shell_name { ... }`. This is useful when you start multiple effects:
 
 ```relux
 effect ServiceA {
@@ -204,11 +204,11 @@ effect ServiceB {
 test "two effects both accessible via alias" {
     start ServiceA as a
     start ServiceB as b
-    a.service {
+    shell a.service {
         > echo $$SVC_ID
         <? ^A$
     }
-    b.service {
+    shell b.service {
         > echo $$SVC_ID
         <? ^B$
     }
@@ -288,7 +288,7 @@ Each effect re-exposes the `service` shell from its dependency using the qualifi
 ```relux
 test "transitive dependencies execute in order" {
     start SeededDb as db
-    db.service {
+    shell db.service {
         > echo $$DB_STATUS
         <? ^started$
         > echo $$MIG_STATUS
@@ -324,11 +324,11 @@ effect Counter {
 test "same effect started twice shares one instance" {
     start Counter as c1
     start Counter as c2
-    c1.counter {
+    shell c1.counter {
         > echo $$COUNT
         <? ^1$
     }
-    c2.counter {
+    shell c2.counter {
         > echo $$COUNT
         <? ^1$
     }
@@ -359,11 +359,11 @@ test "different overlays create separate instances" {
     start Labeled as b {
         LABEL = "beta"
     }
-    a.service {
+    shell a.service {
         > echo $$SVC_LABEL
         <? ^alpha$
     }
-    b.service {
+    shell b.service {
         > echo $$SVC_LABEL
         <? ^beta$
     }

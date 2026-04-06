@@ -53,7 +53,7 @@ effect StartSomething {
     expose e3.service as e3
 
     // interact with a shell provided by a started effect
-    e3.service {
+    shell e3.service {
         > some command into e3 shell
         <? match regex here (\d+)
         // reassign a previously declared variable

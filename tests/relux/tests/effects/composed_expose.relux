@@ -24,7 +24,7 @@ test "composed effect exposes inner shell via qualified expose" {
   dot notation through the outer alias.
   """
   start Outer as o { OUTER_VAL = "from_test" }
-  o.wrapped {
+  shell o.wrapped {
     > echo $$INNER_STATE
     <? ^from_test$
     match_ok()

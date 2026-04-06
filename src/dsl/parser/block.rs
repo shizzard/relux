@@ -57,11 +57,13 @@ pub fn shell_block<'a>()
         .labelled("shell block")
 }
 
-/// `qualifier.name { stmts }` — qualified shell block (dot-access to effect-exported shell).
+/// `shell qualifier.name { stmts }` — qualified shell block (dot-access to effect-exported shell).
 pub fn qualified_shell_block<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstShellBlock>, extra::Err<Rich<'a, Token<'a>>>> + Clone
 {
-    ident_var()
+    just(Token::Shell)
+        .ignore_then(ws())
+        .ignore_then(ident_var())
         .then_ignore(just(Token::Dot))
         .then(ident_var())
         .then_ignore(ws())
@@ -311,7 +313,7 @@ mod tests {
     #[test]
     fn qualified_shell_block_basic() {
         let sb = parse_qualified(
-            r#"n.node {
+            r#"shell n.node {
   > echo hello
 }"#,
         );
@@ -323,7 +325,7 @@ mod tests {
     #[test]
     fn qualified_shell_block_empty() {
         let sb = parse_qualified(
-            r#"db.main {
+            r#"shell db.main {
 }"#,
         );
         assert_eq!(sb.qualifier.as_ref().unwrap().node.name, "db");

@@ -14,12 +14,12 @@ test "different overlays produce separate instances" {
   """
   start Counter as a { COUNTER_NAME = "alpha" }
   start Counter as b { COUNTER_NAME = "beta" }
-  a.counter {
+  shell a.counter {
     > echo $$COUNT_ID
     <? ^alpha$
     match_ok()
   }
-  b.counter {
+  shell b.counter {
     > echo $$COUNT_ID
     <? ^beta$
     match_ok()
@@ -33,11 +33,11 @@ test "same overlay values deduplicate to one instance" {
   """
   start Counter as a { COUNTER_NAME = "shared" }
   start Counter as b { COUNTER_NAME = "shared" }
-  a.counter {
+  shell a.counter {
     > export MARKER=set_by_a
     match_ok()
   }
-  b.counter {
+  shell b.counter {
     > echo $$MARKER
     <? ^set_by_a$
     match_ok()

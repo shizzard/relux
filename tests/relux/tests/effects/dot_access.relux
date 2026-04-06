@@ -12,7 +12,7 @@ test "dot-access shell mixed with local shell" {
   in the same test body.
   """
   start Server as s
-  s.srv {
+  shell s.srv {
     > echo $$SERVER_STATUS
     <? ^running$
     match_ok()
@@ -30,11 +30,11 @@ test "multiple dot-access blocks on same effect" {
   multiple times, with state persisting between blocks.
   """
   start Server as s
-  s.srv {
+  shell s.srv {
     > export VISIT=first
     match_ok()
   }
-  s.srv {
+  shell s.srv {
     > echo $$VISIT
     <? ^first$
     match_ok()

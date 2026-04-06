@@ -322,7 +322,7 @@ effect Guarded {
 
 test "depends on conditionally skipped effect" {
     start Guarded as g
-    g.service {
+    shell g.service {
         > echo "test body ran"
         <? ^test body ran$
     }
