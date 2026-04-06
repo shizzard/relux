@@ -1,11 +1,11 @@
-effect StartService -> svc {
+effect StartService {
     shell svc {
         > echo "service ready"
         <? ^service ready$
     }
 }
 
-effect PrepareEnv -> env {
+effect PrepareEnv {
     shell env {
         > export SETUP_VAR=initialized
         match_ok()
@@ -19,7 +19,7 @@ test "effect sets up shell before test runs" {
     Verify an effect's shell block executes and completes before
     the test body begins.
     """
-    need StartService as worker
+    start StartService as worker
     shell worker {
         > echo "test using effect shell"
         <? ^test using effect shell$
@@ -31,27 +31,27 @@ test "effect shell retains state from setup" {
     Verify state established during effect setup (environment
     variables, working directory, etc.) persists into the test.
     """
-    need PrepareEnv as env
+    start PrepareEnv as env
     shell env {
         > echo $$SETUP_VAR
         <? ^initialized$
     }
 }
 
-effect SideEffectOnly -> svc {
+effect SideEffectOnly {
     shell svc {
         > touch ${__RELUX_TEST_ARTIFACTS}/side-effect-marker
         match_ok()
     }
 }
 
-test "bare need runs effect but does not expose shell" {
+test "bare start runs effect but does not expose shell" {
     """
-    Verify that need without as runs the effect for side effects
+    Verify that start without as runs the effect for side effects
     but the exported shell is not accessible — shell s creates
     a fresh local shell without the effect's state.
     """
-    need SideEffectOnly
+    start SideEffectOnly
     shell s {
         > test -f ${__RELUX_TEST_ARTIFACTS}/side-effect-marker && echo "effect ran"
         <? ^effect ran$

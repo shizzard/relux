@@ -1,8 +1,8 @@
-test "check passes when sub-need resolves in effect home scope" {
+test "check passes when sub-start resolves in effect home scope" {
     """
-    Verify that an effect's sub-needs resolve in the effect's home module,
+    Verify that an effect's sub-starts resolve in the effect's home module,
     not in the test module that uses the effect. The test file imports only
-    Composite, which internally needs Base — Base is imported in
+    Composite, which internally starts Base — Base is imported in
     lib/composite but NOT in the test file.
     """
     shell s {

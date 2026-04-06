@@ -5,7 +5,7 @@ use regex::Regex;
 use tokio::sync::Mutex;
 
 use crate::dsl::resolver::ir::IrTimeout;
-use crate::pure::Env;
+use crate::pure::LayeredEnv;
 use crate::pure::VarScope;
 
 // ─── FailPattern ────────────────────────────────────────────
@@ -65,7 +65,7 @@ pub enum Scope {
         name: String,
         vars: Arc<Mutex<VarScope>>,
         _timeout: Option<IrTimeout>,
-        env_overlay: Arc<Env>,
+        env: Arc<LayeredEnv>,
     },
 }
 
@@ -95,11 +95,10 @@ pub struct ShellState {
     pub captures: Captures,
     pub timeout: Option<IrTimeout>,
     pub fail_pattern: Option<FailPattern>,
-    pub env_overlay: Option<Arc<Env>>,
 }
 
 impl ShellState {
-    pub fn new(name: String, alias: Option<String>, env_overlay: Option<Arc<Env>>) -> Self {
+    pub fn new(name: String, alias: Option<String>) -> Self {
         Self {
             name,
             alias,
@@ -108,7 +107,6 @@ impl ShellState {
             captures: Captures::new(),
             timeout: None,
             fail_pattern: None,
-            env_overlay,
         }
     }
 }
@@ -130,11 +128,16 @@ pub struct ExecutionContext {
     pub shell: ShellState,
     call_stack: Vec<CallFrame>,
     pub default_timeout: IrTimeout,
-    pub env: Arc<Env>,
+    pub env: Arc<LayeredEnv>,
 }
 
 impl ExecutionContext {
-    pub fn new(scope: Scope, shell: ShellState, default_timeout: IrTimeout, env: Arc<Env>) -> Self {
+    pub fn new(
+        scope: Scope,
+        shell: ShellState,
+        default_timeout: IrTimeout,
+        env: Arc<LayeredEnv>,
+    ) -> Self {
         Self {
             scope,
             shell,
@@ -158,16 +161,12 @@ impl ExecutionContext {
         if let Some(v) = self.shell.vars.get(key) {
             return Some(v.to_string());
         }
-        if let Some(ref overlay) = self.shell.env_overlay
-            && let Some(v) = overlay.get(key)
-        {
-            return Some(v.to_string());
-        }
         if let Some(v) = self.scope.vars().lock().await.get(key) {
             return Some(v.to_string());
         }
-        if let Scope::Effect { env_overlay, .. } = &self.scope
-            && let Some(v) = env_overlay.get(key)
+        // Effect scope env walks the layered chain (overlays → base)
+        if let Scope::Effect { env, .. } = &self.scope
+            && let Some(v) = env.get(key)
         {
             return Some(v.to_string());
         }
@@ -288,7 +287,7 @@ impl ExecutionContext {
         self.scope = new_scope;
         self.shell.vars = VarScope::new();
         self.shell.captures = Captures::new();
-        // timeout, fail_pattern, env_overlay are preserved
+        // timeout, fail_pattern are preserved
     }
 
     /// Set captures on the current context.
@@ -306,23 +305,20 @@ impl ExecutionContext {
     }
 
     /// Build the environment variables map for spawning a shell process.
-    /// Merges base env with shell-level and scope-level overlays.
+    /// For effects, the effect env already inherits the base env via LayeredEnv
+    /// parent chain, so only the effect env is needed.
     pub fn process_env(&self) -> Vec<(String, String)> {
-        let mut result: Vec<(String, String)> = self
-            .env
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect();
-        if let Scope::Effect { env_overlay, .. } = &self.scope {
-            result.extend(
-                env_overlay
-                    .iter()
-                    .map(|(k, v)| (k.to_string(), v.to_string())),
-            );
-        }
-        if let Some(ref overlay) = self.shell.env_overlay {
-            result.extend(overlay.iter().map(|(k, v)| (k.to_string(), v.to_string())));
-        }
+        let result: Vec<(String, String)> = match &self.scope {
+            Scope::Effect { env, .. } => env
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            Scope::Test { .. } => self
+                .env
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        };
         result
     }
 }
@@ -330,13 +326,14 @@ impl ExecutionContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pure::Env;
     use std::collections::HashMap;
     use std::time::Duration;
 
-    fn test_env() -> Arc<Env> {
+    fn test_env() -> Arc<LayeredEnv> {
         let mut m = HashMap::new();
         m.insert("PATH".into(), "/usr/bin".into());
-        Arc::new(Env::from_map(m))
+        Arc::new(LayeredEnv::from(Env::from_map(m)))
     }
 
     fn test_scope(name: &str) -> Scope {
@@ -348,7 +345,7 @@ mod tests {
     }
 
     fn test_shell(name: &str) -> ShellState {
-        ShellState::new(name.into(), None, None)
+        ShellState::new(name.into(), None)
     }
 
     fn test_ctx() -> ExecutionContext {
@@ -573,7 +570,7 @@ mod tests {
             name: "Db".into(),
             vars: Arc::new(Mutex::new(VarScope::new())),
             _timeout: None,
-            env_overlay: Arc::new(Env::new()),
+            env: Arc::new(LayeredEnv::root(Env::new())),
         };
         ctx.shell.name = "db".into();
         // First export: Db.db → SetupDb
@@ -581,7 +578,7 @@ mod tests {
             name: "SetupDb".into(),
             vars: Arc::new(Mutex::new(VarScope::new())),
             _timeout: None,
-            env_overlay: Arc::new(Env::new()),
+            env: Arc::new(LayeredEnv::root(Env::new())),
         });
         assert_eq!(ctx.shell.name_prefix, vec!["Db.db"]);
         // Second export: SetupDb.db → test
@@ -651,15 +648,14 @@ mod tests {
     async fn effect_scope_overlay_lookup() {
         let mut overlay_map = HashMap::new();
         overlay_map.insert("PORT".into(), "5432".into());
-        let overlay = Arc::new(Env::from_map(overlay_map));
 
         let scope = Scope::Effect {
             name: "Db".into(),
             vars: Arc::new(Mutex::new(VarScope::new())),
             _timeout: None,
-            env_overlay: overlay,
+            env: Arc::new(LayeredEnv::root(Env::from_map(overlay_map))),
         };
-        let shell = ShellState::new("db".into(), None, None);
+        let shell = ShellState::new("db".into(), None);
         let ctx = ExecutionContext::new(
             scope,
             shell,
@@ -667,6 +663,74 @@ mod tests {
             test_env(),
         );
         assert_eq!(ctx.lookup("PORT").await, Some("5432".into()));
+    }
+
+    // ─── LayeredEnv chain bugs ─────────────────────────────
+
+    #[tokio::test]
+    async fn effect_scope_lookup_walks_parent_layers() {
+        // Parent layer has BASE_PORT, child overlay has LABEL.
+        // lookup("BASE_PORT") should walk the chain and find it.
+        let mut base = Env::new();
+        base.insert("BASE_PORT".into(), "5432".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mut overlay = Env::new();
+        overlay.insert("LABEL".into(), "child".into());
+        let child_env = Arc::new(LayeredEnv::child(root, overlay));
+
+        let scope = Scope::Effect {
+            name: "Child".into(),
+            vars: Arc::new(Mutex::new(VarScope::new())),
+            _timeout: None,
+            env: child_env,
+        };
+        let shell = ShellState::new("s".into(), None);
+        let ctx = ExecutionContext::new(
+            scope,
+            shell,
+            IrTimeout::tolerance(Duration::from_secs(5)),
+            test_env(),
+        );
+        // lookup walks the chain — this works correctly
+        assert_eq!(ctx.lookup("BASE_PORT").await, Some("5432".into()));
+        assert_eq!(ctx.lookup("LABEL").await, Some("child".into()));
+    }
+
+    #[test]
+    fn process_env_includes_parent_layer_variables() {
+        // Regression test: process_env() must include variables from parent
+        // LayeredEnv layers, not just the immediate layer.
+        let mut base = Env::new();
+        base.insert("BASE_PORT".into(), "5432".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mut overlay = Env::new();
+        overlay.insert("LABEL".into(), "child".into());
+        let child_env = Arc::new(LayeredEnv::child(root, overlay));
+
+        let scope = Scope::Effect {
+            name: "Child".into(),
+            vars: Arc::new(Mutex::new(VarScope::new())),
+            _timeout: None,
+            env: child_env,
+        };
+        let shell = ShellState::new("s".into(), None);
+        let ctx = ExecutionContext::new(
+            scope,
+            shell,
+            IrTimeout::tolerance(Duration::from_secs(5)),
+            test_env(),
+        );
+        let penv: HashMap<String, String> = ctx.process_env().into_iter().collect();
+        // Child's own overlay should be present
+        assert_eq!(penv.get("LABEL"), Some(&"child".to_string()));
+        // Parent layer variable should also be present in the PTY env
+        assert_eq!(
+            penv.get("BASE_PORT"),
+            Some(&"5432".to_string()),
+            "process_env must include variables from parent LayeredEnv layers"
+        );
     }
 
     // ─── Captures unit tests ────────────────────────────────

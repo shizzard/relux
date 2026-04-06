@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::dsl::resolver::ir::IrTimeout;
 use crate::dsl::resolver::ir::Tables;
-use crate::pure::Env;
+use crate::pure::LayeredEnv;
 use crate::runtime::observe::event_sink::EventSink;
 use crate::runtime::observe::shell_log::ShellLogger;
 
@@ -23,7 +23,7 @@ pub struct RuntimeContext {
     pub shell: ShellConfig,
     pub log_dir: Arc<Path>,
     pub tables: Tables,
-    pub env: Arc<Env>,
+    pub env: Arc<LayeredEnv>,
     pub cancel: CancellationToken,
     pub test_start: Instant,
     pub flaky_timeout_multiplier: f64,

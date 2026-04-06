@@ -11,8 +11,10 @@ Cleanup blocks solve this. They let you attach teardown commands to an effect or
 Here is an effect that creates a temporary working directory during setup and removes it during cleanup, using [`${__RELUX_RUN_ID}`](06-variables.md#relux-environment-variables) to ensure the directory is unique per test run:
 
 ```relux
-effect TempWorkspace -> work {
-    shell work {
+effect TempWorkspace {
+    expose workspace
+
+    shell workspace {
         > mkdir -p /tmp/relux-${__RELUX_RUN_ID}
         match_ok()
         > cd /tmp/relux-${__RELUX_RUN_ID}
@@ -47,8 +49,10 @@ When the test finishes, Relux terminates all test and effect shells first — st
 A cleanup block goes inside an effect or test definition, after the shell blocks. It starts with the `cleanup` keyword followed by a body in braces. Each effect or test can have at most one cleanup block.
 
 ```relux
-effect WithCleanup -> svc {
-    shell svc {
+effect WithCleanup {
+    expose service
+
+    shell service {
         > touch /tmp/cleanup-test-marker
         match_ok()
     }
@@ -106,8 +110,10 @@ Test cleanup runs before effect cleanup. This way, if the test's teardown depend
 Consider a chain of effects where each layer creates files that later layers depend on:
 
 ```relux
-effect BuildApp -> build {
-    shell build {
+effect BuildApp {
+    expose artifact
+
+    shell artifact {
         > mkdir -p /tmp/build && echo "compiled" > /tmp/build/app.bin
         match_ok()
     }
@@ -116,9 +122,11 @@ effect BuildApp -> build {
     }
 }
 
-effect GenerateConfig -> build {
-    need BuildApp
-    shell config {
+effect GenerateConfig {
+    start BuildApp
+    expose configuration
+
+    shell configuration {
         > echo "db=localhost" > /tmp/build/config.ini
         match_ok()
     }
@@ -127,9 +135,11 @@ effect GenerateConfig -> build {
     }
 }
 
-effect DeployLocal -> build {
-    need GenerateConfig
-    shell deploy {
+effect DeployLocal {
+    start GenerateConfig
+    expose deployment
+
+    shell deployment {
         > cp /tmp/build/app.bin /tmp/deploy/ && cp /tmp/build/config.ini /tmp/deploy/
         match_ok()
     }
@@ -155,11 +165,14 @@ This ordering matters. If `BuildApp` cleaned up first, it would delete `/tmp/bui
 
 ## Overlay variables in cleanup
 
-As described above, cleanup can see top-level `let` variables and environment variables. For effects, there is an additional mechanism: overlay variables from the `need` site are also available in cleanup. This is useful when the cleanup needs to act on configuration that varies per instance:
+As described above, cleanup can see top-level `let` variables and environment variables. For effects, there is an additional mechanism: overlay variables from the `start` site are also available in cleanup. This is useful when the cleanup needs to act on configuration that varies per instance:
 
 ```relux
-effect TempDir -> work {
-    shell work {
+effect TempDir {
+    expect DIR
+    expose workspace
+
+    shell workspace {
         > mkdir -p ${DIR}
         match_ok()
         > cd ${DIR}
@@ -171,17 +184,17 @@ effect TempDir -> work {
 }
 
 test "temporary directory is cleaned up" {
-    need TempDir as work {
+    start TempDir as t {
         DIR = "/tmp/relux-test-workspace"
     }
-    shell work {
+    shell t.workspace {
         > touch testfile.txt
         match_ok()
     }
 }
 ```
 
-The `TempDir` effect uses `${DIR}` in both setup and cleanup. The value comes from the overlay at the `need` site. During cleanup, Relux interpolates `${DIR}` to `/tmp/relux-test-workspace`, so the `rm -rf` targets the right directory.
+The `TempDir` effect declares `expect DIR` and uses `${DIR}` in both setup and cleanup. The value comes from the overlay at the `start` site. During cleanup, Relux interpolates `${DIR}` to `/tmp/relux-test-workspace`, so the `rm -rf` targets the right directory.
 
 Overlays are the mechanism for making a single effect definition work across different configurations — the same `TempDir` effect with different `DIR` values creates and cleans up different directories. Test-level cleanup does not have overlay variables, but it can use top-level `let` variables and environment variables instead.
 

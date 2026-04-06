@@ -33,30 +33,31 @@ fn match_uuid() {
 }
 
 // effects produce a running shell as their output
-// the exported shell is specified in the effect head with -> <name>
-effect StartSomething -> something {
-    need Effect1 as e1
-    need Effect2 as e2
-    // overlay provides explicit configuration to the effect
-    // effects do NOT inherit overlays from their parent
-    need E3 as e3 {
-        E3_VAR = "value"
-    }
+effect Service {
+    // expected ENV: effect will fail if not set
+    expect SOMETHING_HOST, SOMETHING_PORT
 
+    let e3_var = "value"
     // uninitialized variables default to the empty string
     let some_important_var
 
-    // interact with a shell provided by a needed effect
-    shell e3 {
+    start Effect1 as e1
+    start Effect2 as e2
+    // overlay provides explicit configuration to the effect
+    // overlays are not inherited by sub-dependencies
+    start E3 as e3 {
+        E3_VAR = e3_var
+    }
+
+    // exposed shells are declared with `expose`
+    expose e3.service as e3
+
+    // interact with a shell provided by a started effect
+    shell e3.service {
         > some command into e3 shell
         <? match regex here (\d+)
         // reassign a previously declared variable
         some_important_var = $1
-    }
-
-    // this shell is exported as the effect shell
-    shell something {
-        some_function("arg1", "arg2")
     }
 
     // cleanup runs when the effect is torn down, even on failure
@@ -71,28 +72,32 @@ effect StartSomething -> something {
 // bare marker: unconditional (no modifier or variable)
 # skip
 // conditional: bare var truthiness (non-empty = truthy)
-# skip unless "${CI}"
+# skip unless CI
 // literal equality check
-# run if "${TARGET_OS}" = "linux"
+# run if TARGET_OS = "linux"
 // regex check
-# skip unless "${ARCH}" ? ^(x86_64|aarch64)$
+# skip unless ARCH ? ^(x86_64|aarch64)$
 test "Some test" {
     """
     The test description
     """
 
-    // effects are instantiated before the test body runs
-    need StartSomething as something_shell
-    // same effect with different overlay = different instance
-    need StartSomething as another_something_shell {
-        E3_VAR = "another value"
-    }
-    // same effect with same overlay = same instance (deduplication)
-
     // variables declared at test level are visible in all shell blocks
     let global_test_var
 
-    shell myshell {
+    // effects are instantiated before the test body runs
+    start Service as service1 {
+        SOMETHING_HOST = "localhost"
+        SOMETHING_PORT = "8080"
+    }
+    // same effect with different overlay = different instance
+    start Service as service2 {
+        SOMETHING_HOST = "localhost"
+        SOMETHING_PORT = "9090"
+    }
+    // same effect with same overlay = same instance (deduplication)
+
+    shell testshell {
         // set match timeout (humantime format)
         ~10s
         // set fail pattern: test fails immediately if this regex matches output
@@ -106,7 +111,7 @@ test "Some test" {
         > echo ${variable}
         <? always-string
 
-        // override timeout for a slow operation
+        // override timeout for slow operations
         ~120s
         > ./long_running_command
         <? completed
@@ -120,7 +125,7 @@ test "Some test" {
         <~30s= slow response
     }
 
-    shell something_shell {
+    shell service1.e3 {
         // calling a function — runs in this shell's context
         let result = some_function("arg1", "arg2")
         // function return value captured

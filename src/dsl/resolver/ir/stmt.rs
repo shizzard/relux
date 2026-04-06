@@ -480,11 +480,9 @@ impl IrNodeLowering for IrPureStmt {
             | AstStmt::FailRegex { span, .. }
             | AstStmt::FailLiteral { span, .. }
             | AstStmt::ClearFailPattern { span }
-            | AstStmt::BufferReset { span } => {
-                Err(LoweringBail::invalid(InvalidReport::PurityViolation {
-                    span: s(span),
-                }))
-            }
+            | AstStmt::BufferReset { span } => Err(LoweringBail::invalid(
+                InvalidReport::purity_violation(s(span)),
+            )),
         }
     }
 }

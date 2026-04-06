@@ -49,7 +49,7 @@ pub trait IrNodeLowering: Sized + Clone {
             Some(Some(result)) => result,
             Some(None) => {
                 if let Some(cycle) = Self::check_cycle(ast, ctx) {
-                    let bail = LoweringBail::invalid(InvalidReport::Cycle(cycle));
+                    let bail = LoweringBail::invalid(InvalidReport::cycle(cycle));
                     Self::cache(ast, Err(bail.clone()), ctx);
                     return Err(bail);
                 }

@@ -101,11 +101,11 @@ pub fn load_modules(
                 let ir_span = IrSpan::new(file_id, err_span);
                 cause_table.insert(
                     cause_id,
-                    Cause::invalid(InvalidReport::ParseError {
-                        module_path: mod_path,
-                        message: parse_err.to_string(),
-                        span: ir_span,
-                    }),
+                    Cause::invalid(InvalidReport::parse_error(
+                        mod_path,
+                        parse_err.to_string(),
+                        ir_span,
+                    )),
                 );
             }
         }

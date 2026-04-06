@@ -3,6 +3,7 @@ pub mod ir;
 mod discover;
 mod loader;
 pub(crate) mod lower;
+pub(crate) mod shallow_env;
 
 pub use discover::discover_test_modules;
 pub use loader::load_modules;
@@ -11,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::diagnostics::ModulePath;
-use crate::pure::Env;
+use crate::pure::LayeredEnv;
 use ir::Suite;
 
 // ─── Source Loader ──────────────────────────────────────────
@@ -49,7 +50,7 @@ impl SourceLoader for FsSourceLoader {
 pub fn resolve(
     source_loader: &dyn SourceLoader,
     test_paths: Vec<ModulePath>,
-    env: Arc<Env>,
+    env: Arc<LayeredEnv>,
     multiplier: f64,
     project_root: &std::path::Path,
 ) -> Suite {

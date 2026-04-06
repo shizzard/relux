@@ -1,0 +1,12 @@
+test "check detects unsatisfied expect" {
+    """
+    Verify relux check reports an error when an effect expects a variable
+    that is not provided via overlay or reachable in the caller's environment.
+    """
+    shell s {
+        > ${__RELUX} check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? expects .+ but it is not provided
+        match_prompt()
+        match_exit_code(1)
+    }
+}

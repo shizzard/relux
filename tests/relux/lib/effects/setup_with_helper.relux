@@ -3,7 +3,7 @@ fn helper() {
     <? ^effect-helper-ok$
 }
 
-effect SetupWithHelper -> svc {
+effect SetupWithHelper {
     shell svc {
         helper()
     }

@@ -13,9 +13,9 @@ test "selective import brings only named functions" {
 
 test "selective import of effect" {
     """
-    Verify a selectively imported effect can be used with need.
+    Verify a selectively imported effect can be used with start.
     """
-    need StartService as svc
+    start StartService as svc
     shell svc {
         > echo $$SVC_STATUS
         <? ^running$

@@ -1,4 +1,4 @@
-use super::Env;
+use super::LayeredEnv;
 use super::VarScope;
 use crate::dsl::resolver::ir::IrInterpolation;
 use crate::dsl::resolver::ir::IrPureCallExpr;
@@ -18,21 +18,25 @@ use crate::dsl::resolver::ir::PureFnTable;
 pub fn eval_pure_expr(
     expr: &IrPureExpr,
     vars: &VarScope,
-    env_overlay: Option<&Env>,
-    env: &Env,
+    env: &LayeredEnv,
     fns: &PureFnTable,
 ) -> String {
     match expr {
-        IrPureExpr::String { value, .. } => eval_interpolation(value, vars, env_overlay, env),
-        IrPureExpr::Var { name, .. } => resolve_var(name, vars, env_overlay, env),
-        IrPureExpr::Call { call, .. } => eval_pure_call(call, vars, env_overlay, env, fns),
+        IrPureExpr::String { value, .. } => eval_interpolation(value, vars, env),
+        IrPureExpr::Var { name, .. } => resolve_var(name, vars, env),
+        IrPureExpr::Call { call, .. } => eval_pure_call(call, vars, env, fns),
     }
 }
 
 /// Evaluate a resolved pure function with the given arguments.
 ///
 /// Infallible — see `eval_pure_expr`.
-pub fn eval_pure_fn(func: &IrPureFn, args: Vec<String>, env: &Env, fns: &PureFnTable) -> String {
+pub fn eval_pure_fn(
+    func: &IrPureFn,
+    args: Vec<String>,
+    env: &LayeredEnv,
+    fns: &PureFnTable,
+) -> String {
     match func {
         IrPureFn::Builtin { name, .. } => super::bifs::dispatch(name, args),
         IrPureFn::UserDefined { params, body, .. } => {
@@ -50,14 +54,13 @@ pub fn eval_pure_fn(func: &IrPureFn, args: Vec<String>, env: &Env, fns: &PureFnT
 fn eval_pure_call(
     call: &IrPureCallExpr,
     vars: &VarScope,
-    env_overlay: Option<&Env>,
-    env: &Env,
+    env: &LayeredEnv,
     fns: &PureFnTable,
 ) -> String {
     let args: Vec<String> = call
         .args()
         .iter()
-        .map(|arg| eval_pure_expr(arg, vars, env_overlay, env, fns))
+        .map(|arg| eval_pure_expr(arg, vars, env, fns))
         .collect();
 
     let resolved = call.resolved();
@@ -70,19 +73,12 @@ fn eval_pure_call(
     eval_pure_fn(func, args, env, fns)
 }
 
-fn eval_interpolation(
-    interp: &IrInterpolation,
-    vars: &VarScope,
-    env_overlay: Option<&Env>,
-    env: &Env,
-) -> String {
+fn eval_interpolation(interp: &IrInterpolation, vars: &VarScope, env: &LayeredEnv) -> String {
     let mut result = String::new();
     for part in interp.parts() {
         match part {
             IrStringPart::Literal { value, .. } => result.push_str(value),
-            IrStringPart::Var { name, .. } => {
-                result.push_str(&resolve_var(name, vars, env_overlay, env))
-            }
+            IrStringPart::Var { name, .. } => result.push_str(&resolve_var(name, vars, env)),
             IrStringPart::EscapedDollar { .. } => result.push('$'),
             IrStringPart::CaptureRef { .. } => {
                 unreachable!("CaptureRef in pure interpolation context")
@@ -92,15 +88,19 @@ fn eval_interpolation(
     result
 }
 
-fn resolve_var(name: &str, vars: &VarScope, env_overlay: Option<&Env>, env: &Env) -> String {
+fn resolve_var(name: &str, vars: &VarScope, env: &LayeredEnv) -> String {
     vars.get(name)
-        .or_else(|| env_overlay.and_then(|o| o.get(name)))
         .or_else(|| env.get(name))
         .unwrap_or("")
         .to_string()
 }
 
-fn eval_body(body: &[IrPureStmt], scope: &mut VarScope, env: &Env, fns: &PureFnTable) -> String {
+fn eval_body(
+    body: &[IrPureStmt],
+    scope: &mut VarScope,
+    env: &LayeredEnv,
+    fns: &PureFnTable,
+) -> String {
     let mut last_value = String::new();
     for (i, stmt) in body.iter().enumerate() {
         let is_last = i == body.len() - 1;
@@ -109,7 +109,7 @@ fn eval_body(body: &[IrPureStmt], scope: &mut VarScope, env: &Env, fns: &PureFnT
             IrPureStmt::Let { stmt: let_stmt, .. } => {
                 let value = let_stmt
                     .value()
-                    .map(|v| eval_pure_expr(v, scope, None, env, fns))
+                    .map(|v| eval_pure_expr(v, scope, env, fns))
                     .unwrap_or_default();
                 scope.insert(let_stmt.name().name().to_string(), value.clone());
                 if is_last {
@@ -119,14 +119,14 @@ fn eval_body(body: &[IrPureStmt], scope: &mut VarScope, env: &Env, fns: &PureFnT
             IrPureStmt::Assign {
                 stmt: assign_stmt, ..
             } => {
-                let value = eval_pure_expr(assign_stmt.value(), scope, None, env, fns);
+                let value = eval_pure_expr(assign_stmt.value(), scope, env, fns);
                 scope.assign(assign_stmt.name().name(), value.clone());
                 if is_last {
                     last_value = value;
                 }
             }
             IrPureStmt::Expr { expr, .. } => {
-                let value = eval_pure_expr(expr, scope, None, env, fns);
+                let value = eval_pure_expr(expr, scope, env, fns);
                 if is_last {
                     last_value = value;
                 }
@@ -148,8 +148,10 @@ mod tests {
     use crate::dsl::resolver::ir::IrIdent;
     use crate::dsl::resolver::ir::IrPureAssignStmt;
     use crate::dsl::resolver::ir::IrPureLetStmt;
+    use crate::pure::Env;
     use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     fn test_file() -> FileId {
         FileId::new(PathBuf::from("test.relux"))
@@ -159,8 +161,8 @@ mod tests {
         IrSpan::new(test_file(), crate::Span::new(0, 0))
     }
 
-    fn test_env() -> Env {
-        Env::from_map(HashMap::new())
+    fn test_env() -> LayeredEnv {
+        LayeredEnv::from(Env::from_map(HashMap::new()))
     }
 
     fn empty_fns() -> PureFnTable {
@@ -252,7 +254,7 @@ mod tests {
     fn eval_string_literal() {
         let expr = str_expr(vec![lit("hello")]);
         assert_eq!(
-            eval_pure_expr(&expr, &VarScope::new(), None, &test_env(), &empty_fns()),
+            eval_pure_expr(&expr, &VarScope::new(), &test_env(), &empty_fns()),
             "hello"
         );
     }
@@ -261,7 +263,7 @@ mod tests {
     fn eval_string_empty() {
         let expr = str_expr(vec![]);
         assert_eq!(
-            eval_pure_expr(&expr, &VarScope::new(), None, &test_env(), &empty_fns()),
+            eval_pure_expr(&expr, &VarScope::new(), &test_env(), &empty_fns()),
             ""
         );
     }
@@ -272,7 +274,7 @@ mod tests {
         let mut vars = VarScope::new();
         vars.insert("name".into(), "world".into());
         assert_eq!(
-            eval_pure_expr(&expr, &vars, None, &test_env(), &empty_fns()),
+            eval_pure_expr(&expr, &vars, &test_env(), &empty_fns()),
             "hello world"
         );
     }
@@ -281,7 +283,7 @@ mod tests {
     fn eval_string_missing_var() {
         let expr = str_expr(vec![lit("hello "), var_part("name")]);
         assert_eq!(
-            eval_pure_expr(&expr, &VarScope::new(), None, &test_env(), &empty_fns()),
+            eval_pure_expr(&expr, &VarScope::new(), &test_env(), &empty_fns()),
             "hello "
         );
     }
@@ -289,9 +291,12 @@ mod tests {
     #[test]
     fn eval_string_with_env_var() {
         let expr = str_expr(vec![var_part("MY_VAR")]);
-        let env = Env::from_map(HashMap::from([("MY_VAR".into(), "from_env".into())]));
+        let env = LayeredEnv::from(Env::from_map(HashMap::from([(
+            "MY_VAR".into(),
+            "from_env".into(),
+        )])));
         assert_eq!(
-            eval_pure_expr(&expr, &VarScope::new(), None, &env, &empty_fns()),
+            eval_pure_expr(&expr, &VarScope::new(), &env, &empty_fns()),
             "from_env"
         );
     }
@@ -301,18 +306,15 @@ mod tests {
         let expr = str_expr(vec![var_part("X")]);
         let mut vars = VarScope::new();
         vars.insert("X".into(), "local".into());
-        let env = Env::from_map(HashMap::from([("X".into(), "env".into())]));
-        assert_eq!(
-            eval_pure_expr(&expr, &vars, None, &env, &empty_fns()),
-            "local"
-        );
+        let env = LayeredEnv::from(Env::from_map(HashMap::from([("X".into(), "env".into())])));
+        assert_eq!(eval_pure_expr(&expr, &vars, &env, &empty_fns()), "local");
     }
 
     #[test]
     fn eval_string_concatenation() {
         let expr = str_expr(vec![lit("a"), lit("b"), lit("c")]);
         assert_eq!(
-            eval_pure_expr(&expr, &VarScope::new(), None, &test_env(), &empty_fns()),
+            eval_pure_expr(&expr, &VarScope::new(), &test_env(), &empty_fns()),
             "abc"
         );
     }
@@ -321,7 +323,7 @@ mod tests {
     fn eval_string_escaped_dollar() {
         let expr = str_expr(vec![lit("cost: "), escaped_dollar(), lit("5")]);
         assert_eq!(
-            eval_pure_expr(&expr, &VarScope::new(), None, &test_env(), &empty_fns()),
+            eval_pure_expr(&expr, &VarScope::new(), &test_env(), &empty_fns()),
             "cost: $5"
         );
     }
@@ -332,7 +334,7 @@ mod tests {
         let mut vars = VarScope::new();
         vars.insert("x".into(), "val".into());
         assert_eq!(
-            eval_pure_expr(&expr, &vars, None, &test_env(), &empty_fns()),
+            eval_pure_expr(&expr, &vars, &test_env(), &empty_fns()),
             "val"
         );
     }
@@ -344,7 +346,7 @@ mod tests {
         vars.insert("a".into(), "1".into());
         vars.insert("b".into(), "2".into());
         assert_eq!(
-            eval_pure_expr(&expr, &vars, None, &test_env(), &empty_fns()),
+            eval_pure_expr(&expr, &vars, &test_env(), &empty_fns()),
             "12"
         );
     }
@@ -355,7 +357,7 @@ mod tests {
         let mut vars = VarScope::new();
         vars.insert("x".into(), "val".into());
         assert_eq!(
-            eval_pure_expr(&expr, &vars, None, &test_env(), &empty_fns()),
+            eval_pure_expr(&expr, &vars, &test_env(), &empty_fns()),
             "val"
         );
     }
@@ -364,7 +366,7 @@ mod tests {
     fn eval_var_missing() {
         let expr = var_expr("x");
         assert_eq!(
-            eval_pure_expr(&expr, &VarScope::new(), None, &test_env(), &empty_fns()),
+            eval_pure_expr(&expr, &VarScope::new(), &test_env(), &empty_fns()),
             ""
         );
     }
@@ -374,10 +376,7 @@ mod tests {
         let expr = var_expr("x");
         let mut vars = VarScope::new();
         vars.insert("x".into(), String::new());
-        assert_eq!(
-            eval_pure_expr(&expr, &vars, None, &test_env(), &empty_fns()),
-            ""
-        );
+        assert_eq!(eval_pure_expr(&expr, &vars, &test_env(), &empty_fns()), "");
     }
 
     #[test]
@@ -386,7 +385,7 @@ mod tests {
         let arg = str_expr(vec![lit("  hi  ")]);
         let expr = call_expr("trim", builtin_id("trim", 1), vec![arg]);
         assert_eq!(
-            eval_pure_expr(&expr, &VarScope::new(), None, &test_env(), &fns),
+            eval_pure_expr(&expr, &VarScope::new(), &test_env(), &fns),
             "hi"
         );
     }
@@ -414,7 +413,7 @@ mod tests {
         let arg = str_expr(vec![lit("world")]);
         let expr = call_expr("greet", fn_id, vec![arg]);
         assert_eq!(
-            eval_pure_expr(&expr, &VarScope::new(), None, &test_env(), &fns),
+            eval_pure_expr(&expr, &VarScope::new(), &test_env(), &fns),
             "hello world"
         );
     }
@@ -427,7 +426,7 @@ mod tests {
         let inner = call_expr("upper", builtin_id("upper", 1), vec![inner_arg]);
         let expr = call_expr("lower", builtin_id("lower", 1), vec![inner]);
         assert_eq!(
-            eval_pure_expr(&expr, &VarScope::new(), None, &test_env(), &fns),
+            eval_pure_expr(&expr, &VarScope::new(), &test_env(), &fns),
             "ab"
         );
     }
@@ -661,10 +660,7 @@ mod tests {
         // Call f("inner"), then check outer x is still "before"
         let call_arg = str_expr(vec![lit("inner")]);
         let expr = call_expr("f", fn_id, vec![call_arg]);
-        assert_eq!(
-            eval_pure_expr(&expr, &vars, None, &test_env(), &fns),
-            "inner"
-        );
+        assert_eq!(eval_pure_expr(&expr, &vars, &test_env(), &fns), "inner");
         assert_eq!(vars.get("x"), Some("before"));
     }
 
@@ -807,66 +803,61 @@ mod tests {
     }
 
     #[test]
-    fn eval_var_from_env_overlay() {
+    fn eval_var_from_env_layer() {
         let expr = var_expr("DB_PORT");
         let overlay = Env::from_map(HashMap::from([("DB_PORT".into(), "5432".into())]));
+        let env = LayeredEnv::child(Arc::new(test_env()), overlay);
         assert_eq!(
-            eval_pure_expr(
-                &expr,
-                &VarScope::new(),
-                Some(&overlay),
-                &test_env(),
-                &empty_fns()
-            ),
+            eval_pure_expr(&expr, &VarScope::new(), &env, &empty_fns()),
             "5432"
         );
     }
 
     #[test]
-    fn eval_var_vars_shadow_env_overlay() {
+    fn eval_var_vars_shadow_env_layer() {
         let expr = var_expr("X");
         let mut vars = VarScope::new();
         vars.insert("X".into(), "from_vars".into());
         let overlay = Env::from_map(HashMap::from([("X".into(), "from_overlay".into())]));
+        let env = LayeredEnv::child(Arc::new(test_env()), overlay);
         assert_eq!(
-            eval_pure_expr(&expr, &vars, Some(&overlay), &test_env(), &empty_fns()),
+            eval_pure_expr(&expr, &vars, &env, &empty_fns()),
             "from_vars"
         );
     }
 
     #[test]
-    fn eval_var_env_overlay_shadows_env() {
+    fn eval_var_child_layer_shadows_parent() {
         let expr = var_expr("MY_VAR");
+        let base = Env::from_map(HashMap::from([("MY_VAR".into(), "from_base".into())]));
         let overlay = Env::from_map(HashMap::from([("MY_VAR".into(), "from_overlay".into())]));
-        let env = Env::from_map(HashMap::from([("MY_VAR".into(), "from_env".into())]));
+        let env = LayeredEnv::child(Arc::new(LayeredEnv::from(base)), overlay);
         assert_eq!(
-            eval_pure_expr(&expr, &VarScope::new(), Some(&overlay), &env, &empty_fns()),
+            eval_pure_expr(&expr, &VarScope::new(), &env, &empty_fns()),
             "from_overlay"
         );
     }
 
     #[test]
-    fn eval_interpolation_with_env_overlay() {
+    fn eval_interpolation_with_env_layer() {
         let expr = str_expr(vec![lit("port="), var_part("PORT")]);
         let overlay = Env::from_map(HashMap::from([("PORT".into(), "8080".into())]));
+        let env = LayeredEnv::child(Arc::new(test_env()), overlay);
         assert_eq!(
-            eval_pure_expr(
-                &expr,
-                &VarScope::new(),
-                Some(&overlay),
-                &test_env(),
-                &empty_fns()
-            ),
+            eval_pure_expr(&expr, &VarScope::new(), &env, &empty_fns()),
             "port=8080"
         );
     }
 
     #[test]
-    fn eval_var_none_overlay_falls_through_to_env() {
+    fn eval_var_falls_through_to_base_env() {
         let expr = var_expr("MY_VAR");
-        let env = Env::from_map(HashMap::from([("MY_VAR".into(), "from_env".into())]));
+        let env = LayeredEnv::from(Env::from_map(HashMap::from([(
+            "MY_VAR".into(),
+            "from_env".into(),
+        )])));
         assert_eq!(
-            eval_pure_expr(&expr, &VarScope::new(), None, &env, &empty_fns()),
+            eval_pure_expr(&expr, &VarScope::new(), &env, &empty_fns()),
             "from_env"
         );
     }

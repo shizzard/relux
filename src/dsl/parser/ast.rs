@@ -102,47 +102,6 @@ impl_ast_node_enum!(AstStringPart {
     CaptureRef
 });
 
-impl AstExpr {
-    /// Deterministic, span-independent string representation.
-    /// Two structurally identical expressions at different source positions
-    /// produce the same string. Used for overlay deduplication.
-    pub fn canonical(&self) -> String {
-        match self {
-            AstExpr::String { interp, .. } => format!("S:{}", interp.canonical()),
-            AstExpr::Var { name, .. } => format!("V:{name}"),
-            AstExpr::Call { call, .. } => {
-                let args: Vec<String> = call.args.iter().map(|a| a.node.canonical()).collect();
-                format!("C:{}({})", call.name.node.name, args.join(","))
-            }
-            AstExpr::CaptureRef { index, .. } => format!("cap:{index}"),
-        }
-    }
-}
-
-impl AstInterpolation {
-    pub(crate) fn canonical(&self) -> String {
-        let mut out = String::new();
-        for part in &self.parts {
-            match part {
-                AstStringPart::Literal { value, .. } => {
-                    out.push_str("L:");
-                    out.push_str(value);
-                }
-                AstStringPart::VarRef { name, .. } => {
-                    out.push_str("V:");
-                    out.push_str(name);
-                }
-                AstStringPart::EscapedDollar { .. } => out.push('D'),
-                AstStringPart::CaptureRef { index, .. } => {
-                    out.push_str("cap:");
-                    out.push_str(&index.to_string());
-                }
-            }
-        }
-        out
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCallExpr {
     pub name: Spanned<AstIdent>,
@@ -252,6 +211,7 @@ pub struct AstAssignStmt {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstShellBlock {
+    pub qualifier: Option<Spanned<AstIdent>>,
     pub name: Spanned<AstIdent>,
     pub stmts: Vec<Spanned<AstStmt>>,
     pub span: Span,
@@ -332,10 +292,10 @@ pub struct AstImportName {
     pub span: Span,
 }
 
-// ─── Need ────────────────────────────────────────────────────
+// ─── Start ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstNeedDecl {
+pub struct AstStartDecl {
     pub effect: Spanned<AstIdent>,
     pub alias: Option<Spanned<AstIdent>>,
     pub overlay: Vec<Spanned<AstOverlayEntry>>,
@@ -346,6 +306,24 @@ pub struct AstNeedDecl {
 pub struct AstOverlayEntry {
     pub key: Spanned<AstIdent>,
     pub value: Spanned<AstExpr>,
+    pub span: Span,
+}
+
+// ─── Expect ──────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstExpectDecl {
+    pub vars: Vec<Spanned<AstIdent>>,
+    pub span: Span,
+}
+
+// ─── Expose ──────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstExposeDecl {
+    pub qualifier: Option<Spanned<AstIdent>>,
+    pub shell: Spanned<AstIdent>,
+    pub alias: Option<Spanned<AstIdent>>,
     pub span: Span,
 }
 
@@ -374,7 +352,6 @@ pub struct AstPureFnDef {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstEffectDef {
     pub name: Spanned<AstIdent>,
-    pub exported_shell: Spanned<AstIdent>,
     pub markers: Vec<Spanned<AstMarkerDecl>>,
     pub body: Vec<Spanned<AstEffectItem>>,
     pub span: Span,
@@ -383,16 +360,20 @@ pub struct AstEffectDef {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstEffectItem {
     Comment { text: String, span: Span },
-    Need { decl: AstNeedDecl, span: Span },
+    Expect { decl: AstExpectDecl, span: Span },
+    Start { decl: AstStartDecl, span: Span },
     Let { stmt: AstLetStmt, span: Span },
+    Expose { decl: AstExposeDecl, span: Span },
     Shell { block: AstShellBlock, span: Span },
     Cleanup { block: AstCleanupBlock, span: Span },
 }
 
 impl_ast_node_enum!(AstEffectItem {
     Comment,
-    Need,
+    Expect,
+    Start,
     Let,
+    Expose,
     Shell,
     Cleanup
 });
@@ -412,7 +393,7 @@ pub struct AstTestDef {
 pub enum AstTestItem {
     Comment { text: String, span: Span },
     DocString { text: String, span: Span },
-    Need { decl: AstNeedDecl, span: Span },
+    Start { decl: AstStartDecl, span: Span },
     Let { stmt: AstLetStmt, span: Span },
     Shell { block: AstShellBlock, span: Span },
     Cleanup { block: AstCleanupBlock, span: Span },
@@ -421,7 +402,7 @@ pub enum AstTestItem {
 impl_ast_node_enum!(AstTestItem {
     Comment,
     DocString,
-    Need,
+    Start,
     Let,
     Shell,
     Cleanup
@@ -490,8 +471,10 @@ impl_ast_node_struct!(
     AstMarkerCond,
     AstImport,
     AstImportName,
-    AstNeedDecl,
+    AstStartDecl,
     AstOverlayEntry,
+    AstExpectDecl,
+    AstExposeDecl,
     AstFnDef,
     AstPureFnDef,
     AstEffectDef,

@@ -13,7 +13,7 @@ use crate::diagnostics::WarningTable;
 use crate::dsl::parser::ast::AstItem;
 use crate::dsl::parser::ast::AstTestDef;
 use crate::dsl::parser::ast::AstTestItem;
-use crate::pure::Env;
+use crate::pure::LayeredEnv;
 
 use super::IrNode;
 use super::IrNodeLowering;
@@ -108,7 +108,7 @@ impl Plan {
 #[derive(Debug)]
 pub struct Suite {
     pub plans: Vec<Plan>,
-    pub env: Arc<Env>,
+    pub env: Arc<LayeredEnv>,
     pub causes: CauseTable,
     pub warnings: WarningTable,
     pub tables: Tables,
@@ -192,6 +192,12 @@ pub(crate) fn build_plan(
             };
         }
     }
+
+    // Set up shallow env for expect satisfiability checking
+    let shallow = std::sync::Arc::new(crate::dsl::resolver::shallow_env::ShallowLayeredEnv::root(
+        ctx.env(),
+    ));
+    ctx.set_shallow_env(shallow);
 
     // Lower test body
     let result = IrTest::lower(def, file_id, ctx);
@@ -279,7 +285,7 @@ mod tests {
     fn plan_runnable_variant() {
         let s = test_span();
         let meta = TestMeta::new("test1", None, None, s.clone());
-        let test = IrTest::new("test1", vec![], vec![], None, s);
+        let test = IrTest::new("test1", vec![], vec![], s);
         let plan = Plan::Runnable {
             meta,
             test,
@@ -292,7 +298,7 @@ mod tests {
     fn plan_runnable_with_warnings() {
         let s = test_span();
         let meta = TestMeta::new("test1", None, None, s.clone());
-        let test = IrTest::new("test1", vec![], vec![], None, s);
+        let test = IrTest::new("test1", vec![], vec![], s);
         let w = WarningId {
             id: "test-warn-0001".into(),
         };
@@ -456,14 +462,14 @@ test "with pure" {
     fn plan_test_with_effect() {
         let suite = resolve_source_no_env(&[(
             "tests/a",
-            r#"effect Setup -> sh {
+            r#"effect Setup {
   shell sh {
     > echo setup
   }
 }
 
 test "with effect" {
-  need Setup
+  start Setup
   shell sh {
     > echo hello
   }
@@ -603,21 +609,21 @@ test "second" {
     fn plan_multiple_effects() {
         let suite = resolve_source_no_env(&[(
             "tests/a",
-            r#"effect Db -> db_sh {
+            r#"effect Db {
   shell db_sh {
     > echo db setup
   }
 }
 
-effect Cache -> cache_sh {
+effect Cache {
   shell cache_sh {
     > echo cache setup
   }
 }
 
 test "multi effects" {
-  need Db
-  need Cache
+  start Db
+  start Cache
   shell sh {
     > echo hello
   }
@@ -626,7 +632,7 @@ test "multi effects" {
         )]);
         assert!(is_runnable(&suite.plans[0]));
         if let Plan::Runnable { test, .. } = &suite.plans[0] {
-            assert_eq!(test.needs().len(), 2);
+            assert_eq!(test.starts().len(), 2);
         }
     }
 
@@ -711,14 +717,14 @@ test "t" {
         let suite = resolve_source_no_env(&[(
             "tests/a",
             r#"# skip
-effect Setup -> sh {
+effect Setup {
   shell sh {
     > echo setup
   }
 }
 
 test "t" {
-  need Setup
+  start Setup
   shell sh {
     > echo hello
   }
@@ -750,7 +756,7 @@ test "t" {
         let suite = resolve_source_no_env(&[(
             "tests/a",
             r#"test "t" {
-  need NonExistent
+  start NonExistent
   shell sh {
     > echo hello
   }
@@ -944,24 +950,24 @@ test "bad" {
     // ─── Effect deduplication ──────────────────────────────────
 
     #[test]
-    fn effect_need_no_overlay_same_as_empty_overlay() {
+    fn effect_start_no_overlay_same_as_empty_overlay() {
         let suite = resolve_source_no_env(&[(
             "tests/a",
-            r#"effect Db -> db_sh {
+            r#"effect Db {
   shell db_sh {
     > echo db
   }
 }
 
 test "t1" {
-  need Db
+  start Db
   shell sh {
     > echo 1
   }
 }
 
 test "t2" {
-  need Db {}
+  start Db {}
   shell sh {
     > echo 2
   }
@@ -1031,14 +1037,14 @@ test "t" {
             r#"fn impure_fn() {
   > cmd
 }
-effect E -> sh {
+effect E {
   let x = impure_fn()
   shell sh {
     > start
   }
 }
 test "t" {
-  need E
+  start E
   shell sh {
     > cmd
   }

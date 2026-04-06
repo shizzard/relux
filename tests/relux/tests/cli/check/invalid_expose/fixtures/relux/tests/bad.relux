@@ -1,0 +1,13 @@
+effect Broken {
+    expose nonexistent
+    shell actual {
+        > echo hello
+    }
+}
+
+test "bad expose" {
+    start Broken as b
+    shell s {
+        > echo hello
+    }
+}

@@ -6,14 +6,14 @@ pure fn make_label(name) {
     "label-${name}"
 }
 
-effect Tagged -> tagged {
+effect Tagged {
     shell tagged {
         > echo 1
         match_ok()
     }
 }
 
-effect WithVar -> wv {
+effect WithVar {
     let greeting = tag("msg", "hello")
     shell wv {
         > echo ${greeting}
@@ -46,7 +46,7 @@ test "pure function in effect-scope let" {
     """
     Verify a pure function can be called in an effect-level let declaration.
     """
-    need WithVar as wv
+    start WithVar as wv
     shell wv {
         <? ^msg:hello$
     }
@@ -56,7 +56,7 @@ test "pure function in overlay value" {
     """
     Verify a pure function can be called in an effect overlay value.
     """
-    need Tagged as tagged {
+    start Tagged as tagged {
         CONFIG = make_label("production")
     }
     shell tagged {

@@ -9,15 +9,17 @@ use super::annotation::comment;
 use super::annotation::marker;
 use super::ast::AstEffectDef;
 use super::ast::AstEffectItem;
+use super::ast::AstExpectDecl;
+use super::ast::AstExposeDecl;
 use super::ast::AstMarkerDecl;
 use super::ast::AstNode;
 use super::ast::AstStmt;
 use super::block::cleanup_block;
+use super::block::qualified_shell_block;
 use super::block::shell_block;
 use super::ident::ident_effect;
 use super::ident::ident_var;
-use super::need::need;
-use super::punctuation::punctuation_arrow;
+use super::need::start_decl;
 use super::punctuation::punctuation_brace_close;
 use super::punctuation::punctuation_brace_open;
 use super::stmt::stmt_let_standalone;
@@ -47,35 +49,75 @@ fn effect_preamble<'a>()
 
 // ─── L6: Effect Definition ─────────────────────────────────
 
-/// `[preamble] effect Name -> shell { lets, needs, shells, cleanup }` — effect definition.
+/// `[preamble] effect Name { expect, lets, starts, expose, shells, cleanup }` — effect definition.
 pub fn def_effect<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstEffectDef>, extra::Err<Rich<'a, Token<'a>>>> + Clone
 {
-    // Header: effect Name -> shell_name {
+    // Header: effect Name {
     let header = effect_preamble()
         .then_ignore(leading_ws())
         .then_ignore(keyword(Token::Effect))
         .then_ignore(ws())
         .then(ident_effect())
         .then_ignore(ws())
-        .then_ignore(punctuation_arrow())
-        .then_ignore(ws())
-        .then(ident_var())
-        .then_ignore(ws())
         .then_ignore(punctuation_brace_open());
 
-    // Body sections (order-enforced): needs, lets, shells, cleanup
-    let need_item = leading_ws().ignore_then(need()).map_with(|n, e| {
-        let span = Span::from(e.span());
-        AstEffectItem::Need { decl: n.node, span }
-    });
-    let need_comment = leading_ws().ignore_then(comment()).map_with(|c, e| {
+    // ── Expect section ─────────────────────────────────────
+    // `expect VAR1, VAR2, VAR3`
+    let expect_item = leading_ws()
+        .ignore_then(keyword(Token::Expect))
+        .ignore_then(ws())
+        .ignore_then(
+            ident_var()
+                .separated_by(
+                    select_ref! {
+                        Token::Space(_) => (),
+                        Token::Tab(_) => (),
+                        Token::Comma => (),
+                    }
+                    .repeated()
+                    .at_least(1)
+                    .ignored(),
+                )
+                .at_least(1)
+                .collect::<Vec<_>>(),
+        )
+        .then_ignore(newline())
+        .map_with(|vars, e| {
+            let span = Span::from(e.span());
+            AstEffectItem::Expect {
+                decl: AstExpectDecl { vars, span },
+                span,
+            }
+        });
+    let expect_comment = leading_ws().ignore_then(comment()).map_with(|c, e| {
         let span = Span::from(e.span());
         AstEffectItem::Comment { text: c, span }
     });
-    let need_section = choice((
-        need_item,
-        need_comment,
+    let expect_section = choice((
+        expect_item,
+        expect_comment,
+        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
+        newline().to(AstEffectItem::Comment {
+            text: String::new(),
+            span: SENTINEL,
+        }),
+    ))
+    .repeated()
+    .collect::<Vec<_>>();
+
+    // ── Start section ──────────────────────────────────────
+    let start_item = leading_ws().ignore_then(start_decl()).map_with(|n, e| {
+        let span = Span::from(e.span());
+        AstEffectItem::Start { decl: n.node, span }
+    });
+    let start_comment = leading_ws().ignore_then(comment()).map_with(|c, e| {
+        let span = Span::from(e.span());
+        AstEffectItem::Comment { text: c, span }
+    });
+    let start_section = choice((
+        start_item,
+        start_comment,
         // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
         newline().to(AstEffectItem::Comment {
             text: String::new(),
@@ -110,6 +152,53 @@ pub fn def_effect<'a>()
     .repeated()
     .collect::<Vec<_>>();
 
+    // ── Expose section ──────────────────────────────────────
+    // `expose shell` or `expose qualifier.shell as alias`
+    let expose_item = leading_ws()
+        .ignore_then(keyword(Token::Expose))
+        .ignore_then(ws())
+        .ignore_then(ident_var())
+        .then(just(Token::Dot).ignore_then(ident_var()).or_not())
+        .then(
+            ws().ignore_then(just(Token::As))
+                .ignore_then(ws())
+                .ignore_then(ident_var())
+                .or_not(),
+        )
+        .then_ignore(newline())
+        .map_with(|((first, dot_second), alias), e| {
+            let span = Span::from(e.span());
+            let (qualifier, shell) = match dot_second {
+                Some(second) => (Some(first), second),
+                None => (None, first),
+            };
+            AstEffectItem::Expose {
+                decl: AstExposeDecl {
+                    qualifier,
+                    shell,
+                    alias,
+                    span,
+                },
+                span,
+            }
+        });
+    let expose_comment = leading_ws().ignore_then(comment()).map_with(|c, e| {
+        let span = Span::from(e.span());
+        AstEffectItem::Comment { text: c, span }
+    });
+    let expose_section = choice((
+        expose_item,
+        expose_comment,
+        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
+        newline().to(AstEffectItem::Comment {
+            text: String::new(),
+            span: SENTINEL,
+        }),
+    ))
+    .repeated()
+    .collect::<Vec<_>>();
+
+    // ── Shell section (both `shell name { }` and `qualifier.name { }`) ──
     let shell_item = leading_ws().ignore_then(shell_block()).map_with(|sb, e| {
         let span = Span::from(e.span());
         AstEffectItem::Shell {
@@ -117,12 +206,23 @@ pub fn def_effect<'a>()
             span,
         }
     });
+    let qualified_shell_item =
+        leading_ws()
+            .ignore_then(qualified_shell_block())
+            .map_with(|sb, e| {
+                let span = Span::from(e.span());
+                AstEffectItem::Shell {
+                    block: sb.node,
+                    span,
+                }
+            });
     let shell_comment = leading_ws().ignore_then(comment()).map_with(|c, e| {
         let span = Span::from(e.span());
         AstEffectItem::Comment { text: c, span }
     });
     let shell_section = choice((
         shell_item,
+        qualified_shell_item,
         shell_comment,
         // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
         newline().to(AstEffectItem::Comment {
@@ -163,8 +263,10 @@ pub fn def_effect<'a>()
     });
 
     header
+        .then(expect_section)
         .then(let_section)
-        .then(need_section)
+        .then(start_section)
+        .then(expose_section)
         .then(shell_section)
         .then(cleanup_section)
         .then_ignore(
@@ -177,16 +279,28 @@ pub fn def_effect<'a>()
         )
         .then_ignore(punctuation_brace_close())
         .map_with(
-            |((((((markers, name), exported_shell), lets), needs), shells), cleanup), e| {
+            |(((((((markers, name), expects), lets), starts), exposes), shells), cleanup), e| {
                 let outer_span = Span::from(e.span());
                 let mut body = Vec::new();
+                for item in expects {
+                    if !is_sentinel_comment(&item) {
+                        let item_span = *item.span();
+                        body.push(Spanned::new(item, item_span));
+                    }
+                }
                 for item in lets {
                     if !is_sentinel_comment(&item) {
                         let item_span = *item.span();
                         body.push(Spanned::new(item, item_span));
                     }
                 }
-                for item in needs {
+                for item in starts {
+                    if !is_sentinel_comment(&item) {
+                        let item_span = *item.span();
+                        body.push(Spanned::new(item, item_span));
+                    }
+                }
+                for item in exposes {
                     if !is_sentinel_comment(&item) {
                         let item_span = *item.span();
                         body.push(Spanned::new(item, item_span));
@@ -205,7 +319,6 @@ pub fn def_effect<'a>()
                 Spanned::new(
                     AstEffectDef {
                         name,
-                        exported_shell,
                         markers,
                         body,
                         span: outer_span,
@@ -241,7 +354,7 @@ mod tests {
     #[test]
     fn minimal_effect() {
         let e = parse_effect(
-            r#"effect Db -> db {
+            r#"effect Db {
   shell db {
     > echo start
   }
@@ -249,15 +362,14 @@ mod tests {
 "#,
         );
         assert_eq!(e.name.node.name, "Db");
-        assert_eq!(e.exported_shell.node.name, "db");
         assert!(e.markers.is_empty());
     }
 
     #[test]
-    fn effect_with_need() {
+    fn effect_with_start() {
         let e = parse_effect(
-            r#"effect App -> app {
-  need Db
+            r#"effect App {
+  start Db
   shell app {
     > echo start
   }
@@ -268,7 +380,7 @@ mod tests {
         assert!(
             e.body
                 .iter()
-                .any(|item| matches!(&item.node, AstEffectItem::Need { .. }))
+                .any(|item| matches!(&item.node, AstEffectItem::Start { .. }))
         );
     }
 
@@ -276,7 +388,7 @@ mod tests {
     fn effect_with_marker() {
         let e = parse_effect(
             r#"# skip
-effect Db -> db {
+effect Db {
   shell db {
     > echo start
   }
@@ -289,7 +401,7 @@ effect Db -> db {
     #[test]
     fn effect_with_let() {
         let e = parse_effect(
-            r#"effect Db -> db {
+            r#"effect Db {
   let port = "5432"
   shell db {
     > echo start
@@ -307,7 +419,7 @@ effect Db -> db {
     #[test]
     fn effect_with_cleanup() {
         let e = parse_effect(
-            r#"effect Db -> db {
+            r#"effect Db {
   shell db {
     > echo start
   }
@@ -327,9 +439,9 @@ effect Db -> db {
     #[test]
     fn effect_all_sections() {
         let e = parse_effect(
-            r#"effect App -> app {
+            r#"effect App {
   let port = "8080"
-  need Db
+  start Db
   shell app {
     > echo start
   }
@@ -343,7 +455,7 @@ effect Db -> db {
         assert!(
             e.body
                 .iter()
-                .any(|item| matches!(&item.node, AstEffectItem::Need { .. }))
+                .any(|item| matches!(&item.node, AstEffectItem::Start { .. }))
         );
         assert!(
             e.body
@@ -363,29 +475,29 @@ effect Db -> db {
     }
 
     #[test]
-    fn effect_with_multiple_needs() {
+    fn effect_with_multiple_starts() {
         let e = parse_effect(
-            r#"effect App -> app {
-  need Db
-  need Cache
+            r#"effect App {
+  start Db
+  start Cache
   shell app {
     > echo start
   }
 }
 "#,
         );
-        let need_count = e
+        let start_count = e
             .body
             .iter()
-            .filter(|item| matches!(&item.node, AstEffectItem::Need { .. }))
+            .filter(|item| matches!(&item.node, AstEffectItem::Start { .. }))
             .count();
-        assert_eq!(need_count, 2);
+        assert_eq!(start_count, 2);
     }
 
     #[test]
     fn effect_with_comments_in_body() {
         let e = parse_effect(
-            r#"effect Db -> db {
+            r#"effect Db {
   // setup comment
   shell db {
     > echo start
@@ -408,11 +520,11 @@ effect Db -> db {
     #[test]
     fn effect_blank_lines_between_sections() {
         let e = parse_effect(
-            r#"effect App -> app {
+            r#"effect App {
 
   let port = "8080"
 
-  need Db
+  start Db
 
   shell app {
     > echo start
@@ -429,7 +541,7 @@ effect Db -> db {
         assert!(
             e.body
                 .iter()
-                .any(|item| matches!(&item.node, AstEffectItem::Need { .. }))
+                .any(|item| matches!(&item.node, AstEffectItem::Start { .. }))
         );
         assert!(
             e.body
@@ -451,7 +563,7 @@ effect Db -> db {
     #[test]
     fn effect_with_multiple_shells() {
         let e = parse_effect(
-            r#"effect App -> app {
+            r#"effect App {
   shell app {
     > echo start1
   }
@@ -470,10 +582,10 @@ effect Db -> db {
     }
 
     #[test]
-    fn effect_with_need_overlay() {
+    fn effect_with_start_overlay() {
         let e = parse_effect(
-            r#"effect App -> app {
-  need Db { PORT = "5433" }
+            r#"effect App {
+  start Db { PORT = "5433" }
   shell app {
     > echo start
   }
@@ -483,7 +595,249 @@ effect Db -> db {
         assert!(
             e.body
                 .iter()
-                .any(|item| matches!(&item.node, AstEffectItem::Need { .. }))
+                .any(|item| matches!(&item.node, AstEffectItem::Start { .. }))
         );
+    }
+
+    // ── Expect tests ────────────────────────────────────────
+
+    #[test]
+    fn effect_with_expect() {
+        let e = parse_effect(
+            r#"effect Db {
+  expect DB_PORT
+  shell db {
+    > echo start
+  }
+}
+"#,
+        );
+        let expect = e
+            .body
+            .iter()
+            .find_map(|item| match &item.node {
+                AstEffectItem::Expect { decl, .. } => Some(decl),
+                _ => None,
+            })
+            .expect("should have expect");
+        assert_eq!(expect.vars.len(), 1);
+        assert_eq!(expect.vars[0].node.name, "DB_PORT");
+    }
+
+    #[test]
+    fn effect_with_expect_multiple_vars() {
+        let e = parse_effect(
+            r#"effect Db {
+  expect DB_PORT, DB_HOST, DB_NAME
+  shell db {
+    > echo start
+  }
+}
+"#,
+        );
+        let expect = e
+            .body
+            .iter()
+            .find_map(|item| match &item.node {
+                AstEffectItem::Expect { decl, .. } => Some(decl),
+                _ => None,
+            })
+            .expect("should have expect");
+        assert_eq!(expect.vars.len(), 3);
+        assert_eq!(expect.vars[0].node.name, "DB_PORT");
+        assert_eq!(expect.vars[1].node.name, "DB_HOST");
+        assert_eq!(expect.vars[2].node.name, "DB_NAME");
+    }
+
+    // ── Expose tests ────────────────────────────────────────
+
+    #[test]
+    fn effect_with_expose_simple() {
+        let e = parse_effect(
+            r#"effect Db {
+  expose db
+  shell db {
+    > echo start
+  }
+}
+"#,
+        );
+        let expose = e
+            .body
+            .iter()
+            .find_map(|item| match &item.node {
+                AstEffectItem::Expose { decl, .. } => Some(decl),
+                _ => None,
+            })
+            .expect("should have expose");
+        assert!(expose.qualifier.is_none());
+        assert_eq!(expose.shell.node.name, "db");
+        assert!(expose.alias.is_none());
+    }
+
+    #[test]
+    fn effect_with_expose_qualified() {
+        let e = parse_effect(
+            r#"effect Cluster {
+  start Node as n1
+  expose n1.node as primary
+  shell setup {
+    > echo setup
+  }
+}
+"#,
+        );
+        let expose = e
+            .body
+            .iter()
+            .find_map(|item| match &item.node {
+                AstEffectItem::Expose { decl, .. } => Some(decl),
+                _ => None,
+            })
+            .expect("should have expose");
+        assert_eq!(expose.qualifier.as_ref().unwrap().node.name, "n1");
+        assert_eq!(expose.shell.node.name, "node");
+        assert_eq!(expose.alias.as_ref().unwrap().node.name, "primary");
+    }
+
+    #[test]
+    fn effect_with_multiple_exposes() {
+        let e = parse_effect(
+            r#"effect Cluster {
+  start Node as n1
+  start Node as n2
+  expose n1.node as primary
+  expose n2.node as secondary
+  shell setup {
+    > echo setup
+  }
+}
+"#,
+        );
+        let expose_count = e
+            .body
+            .iter()
+            .filter(|item| matches!(&item.node, AstEffectItem::Expose { .. }))
+            .count();
+        assert_eq!(expose_count, 2);
+    }
+
+    // ── Full R008 effect ────────────────────────────────────
+
+    #[test]
+    fn effect_full_r008() {
+        let e = parse_effect(
+            r#"effect Node {
+  expect NODE_PORT, NODE_NAME
+  let data_dir = "${__RELUX_TEST_ARTIFACTS}/node"
+  start DependencyEffect as dep
+  expose node
+  shell node {
+    > start-node --port ${NODE_PORT}
+  }
+  cleanup {
+    > stop-node
+  }
+}
+"#,
+        );
+        assert_eq!(e.name.node.name, "Node");
+        assert!(
+            e.body
+                .iter()
+                .any(|item| matches!(&item.node, AstEffectItem::Expect { .. }))
+        );
+        assert!(
+            e.body
+                .iter()
+                .any(|item| matches!(&item.node, AstEffectItem::Let { .. }))
+        );
+        assert!(
+            e.body
+                .iter()
+                .any(|item| matches!(&item.node, AstEffectItem::Start { .. }))
+        );
+        assert!(
+            e.body
+                .iter()
+                .any(|item| matches!(&item.node, AstEffectItem::Expose { .. }))
+        );
+        assert!(
+            e.body
+                .iter()
+                .any(|item| matches!(&item.node, AstEffectItem::Shell { .. }))
+        );
+        assert!(
+            e.body
+                .iter()
+                .any(|item| matches!(&item.node, AstEffectItem::Cleanup { .. }))
+        );
+    }
+
+    #[test]
+    fn effect_with_expose_aliased_local() {
+        let e = parse_effect(
+            r#"effect Auth {
+  expose auth as svc
+  shell auth {
+    > echo start
+  }
+}
+"#,
+        );
+        let expose = e
+            .body
+            .iter()
+            .find_map(|item| match &item.node {
+                AstEffectItem::Expose { decl, .. } => Some(decl),
+                _ => None,
+            })
+            .expect("should have expose");
+        assert!(expose.qualifier.is_none());
+        assert_eq!(expose.shell.node.name, "auth");
+        assert_eq!(expose.alias.as_ref().unwrap().node.name, "svc");
+    }
+
+    #[test]
+    fn effect_no_expose_is_valid() {
+        let e = parse_effect(
+            r#"effect SideEffect {
+  shell setup {
+    > echo side effect
+  }
+}
+"#,
+        );
+        assert_eq!(e.name.node.name, "SideEffect");
+        assert!(
+            !e.body
+                .iter()
+                .any(|item| matches!(&item.node, AstEffectItem::Expose { .. }))
+        );
+    }
+
+    #[test]
+    fn effect_expose_qualified_no_alias() {
+        let e = parse_effect(
+            r#"effect Wrapper {
+  start Base as b
+  expose b.shell_name
+  shell local {
+    > echo setup
+  }
+}
+"#,
+        );
+        let expose = e
+            .body
+            .iter()
+            .find_map(|item| match &item.node {
+                AstEffectItem::Expose { decl, .. } => Some(decl),
+                _ => None,
+            })
+            .expect("should have expose");
+        assert_eq!(expose.qualifier.as_ref().unwrap().node.name, "b");
+        assert_eq!(expose.shell.node.name, "shell_name");
+        assert!(expose.alias.is_none());
     }
 }

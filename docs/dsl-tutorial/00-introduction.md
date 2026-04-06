@@ -69,7 +69,7 @@ The example above uses just two operators (`>` and `<=`), but the Relux DSL has 
 - **Timeouts** (`~5s`, `<~2s?`) — control how long to wait for output
 - **Fail patterns** (`!?`, `!=`) — continuous monitoring for errors
 - **Functions** (`fn`) — extract reusable test logic
-- **Effects** (`effect`, `need`) — shared setup/teardown infrastructure
+- **Effects** (`effect`, `start`, `expect`, `expose`) — shared setup/teardown infrastructure
 - **Multiple shells** — test client/server interactions, concurrent processes
 - **Modules and imports** — organize tests across files
 - **Condition markers** (`[skip]`, `[run if ...]`) — conditional test execution

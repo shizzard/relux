@@ -1,0 +1,12 @@
+test "check detects invalid expose" {
+    """
+    Verify relux check reports an error when an effect exposes a shell
+    name that does not exist in the effect body.
+    """
+    shell s {
+        > ${__RELUX} check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? exposes .+ which does not exist
+        match_prompt()
+        match_exit_code(1)
+    }
+}

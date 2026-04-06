@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::sync::Arc;
 
 pub mod bifs;
 pub mod evaluator;
@@ -90,6 +92,68 @@ impl Env {
 
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
         self.vars.iter().map(|(k, v)| (k.as_str(), v.as_str()))
+    }
+}
+
+// ─── LayeredEnv ─────────────────────────────────────────────
+
+/// Layered environment with recursive parent chain.
+///
+/// Each layer holds a small overlay (`own`) and points to a parent
+/// `LayeredEnv`. The root layer wraps the base process environment
+/// with no parent. Lookups walk the chain: own → parent → grandparent → ...
+///
+/// No cloning of the base env — each layer is `Arc`-shared.
+#[derive(Debug, Clone)]
+pub struct LayeredEnv {
+    own: Env,
+    parent: Option<Arc<LayeredEnv>>,
+}
+
+impl LayeredEnv {
+    /// Create the root layer from the base process environment.
+    pub fn root(base: Env) -> Self {
+        Self {
+            own: base,
+            parent: None,
+        }
+    }
+
+    /// Create a child layer with the given overlay on top of this env.
+    pub fn child(parent: Arc<LayeredEnv>, overlay: Env) -> Self {
+        Self {
+            own: overlay,
+            parent: Some(parent),
+        }
+    }
+
+    /// Look up a variable, walking the chain until found.
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.own
+            .get(key)
+            .or_else(|| self.parent.as_ref().and_then(|p| p.get(key)))
+    }
+
+    /// Iterate all entries across all layers. Closest layer wins on duplicates.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        let mut seen = HashSet::new();
+        let mut entries = Vec::new();
+        let mut current = Some(self);
+        while let Some(layer) = current {
+            for (k, v) in layer.own.iter() {
+                if seen.insert(k) {
+                    entries.push((k, v));
+                }
+            }
+            current = layer.parent.as_deref();
+        }
+        entries.into_iter()
+    }
+}
+
+impl From<Env> for LayeredEnv {
+    fn from(env: Env) -> Self {
+        Self::root(env)
     }
 }
 
@@ -248,5 +312,170 @@ mod tests {
         env.insert("K".into(), "old".into());
         env.insert("K".into(), "new".into());
         assert_eq!(env.get("K"), Some("new"));
+    }
+
+    // ─── LayeredEnv tests ────────────────────────────────────
+
+    #[test]
+    fn layered_root_lookup() {
+        let mut base = Env::new();
+        base.insert("PATH".into(), "/usr/bin".into());
+        let root = LayeredEnv::root(base);
+        assert_eq!(root.get("PATH"), Some("/usr/bin"));
+        assert_eq!(root.get("NOPE"), None);
+    }
+
+    #[test]
+    fn layered_child_overrides_parent() {
+        let mut base = Env::new();
+        base.insert("PORT".into(), "3000".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mut overlay = Env::new();
+        overlay.insert("PORT".into(), "5432".into());
+        let child = LayeredEnv::child(root, overlay);
+
+        assert_eq!(child.get("PORT"), Some("5432"));
+    }
+
+    #[test]
+    fn layered_child_inherits_parent() {
+        let mut base = Env::new();
+        base.insert("PATH".into(), "/usr/bin".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mut overlay = Env::new();
+        overlay.insert("PORT".into(), "5432".into());
+        let child = LayeredEnv::child(root, overlay);
+
+        // Child sees its own entry
+        assert_eq!(child.get("PORT"), Some("5432"));
+        // Child inherits parent entry
+        assert_eq!(child.get("PATH"), Some("/usr/bin"));
+    }
+
+    #[test]
+    fn layered_three_levels() {
+        let mut base = Env::new();
+        base.insert("BASE".into(), "root".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mut mid_overlay = Env::new();
+        mid_overlay.insert("MID".into(), "middle".into());
+        let mid = Arc::new(LayeredEnv::child(root, mid_overlay));
+
+        let mut top_overlay = Env::new();
+        top_overlay.insert("TOP".into(), "leaf".into());
+        let top = LayeredEnv::child(mid, top_overlay);
+
+        assert_eq!(top.get("TOP"), Some("leaf"));
+        assert_eq!(top.get("MID"), Some("middle"));
+        assert_eq!(top.get("BASE"), Some("root"));
+        assert_eq!(top.get("NOPE"), None);
+    }
+
+    #[test]
+    fn layered_deeper_override() {
+        let mut base = Env::new();
+        base.insert("X".into(), "base".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mut mid_overlay = Env::new();
+        mid_overlay.insert("X".into(), "mid".into());
+        let mid = Arc::new(LayeredEnv::child(root, mid_overlay));
+
+        let mut top_overlay = Env::new();
+        top_overlay.insert("X".into(), "top".into());
+        let top = LayeredEnv::child(mid, top_overlay);
+
+        // Nearest layer wins
+        assert_eq!(top.get("X"), Some("top"));
+    }
+
+    // ─── From<Env> ──────────────────────────────────────────
+
+    #[test]
+    fn from_env_creates_root() {
+        let mut env = Env::new();
+        env.insert("K".into(), "V".into());
+        let layered: LayeredEnv = env.into();
+        assert_eq!(layered.get("K"), Some("V"));
+    }
+
+    // ─── iter() tests ───────────────────────────────────────
+
+    #[test]
+    fn iter_single_layer() {
+        let mut base = Env::new();
+        base.insert("A".into(), "1".into());
+        base.insert("B".into(), "2".into());
+        let root = LayeredEnv::root(base);
+        let entries: HashMap<&str, &str> = root.iter().collect();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries["A"], "1");
+        assert_eq!(entries["B"], "2");
+    }
+
+    #[test]
+    fn iter_two_layers_closest_wins() {
+        let mut base = Env::new();
+        base.insert("X".into(), "base".into());
+        base.insert("Y".into(), "base".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mut overlay = Env::new();
+        overlay.insert("X".into(), "child".into());
+        let child = LayeredEnv::child(root, overlay);
+
+        let entries: HashMap<&str, &str> = child.iter().collect();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries["X"], "child");
+        assert_eq!(entries["Y"], "base");
+    }
+
+    #[test]
+    fn iter_three_layers() {
+        let mut base = Env::new();
+        base.insert("A".into(), "root".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mut mid = Env::new();
+        mid.insert("B".into(), "mid".into());
+        let mid = Arc::new(LayeredEnv::child(root, mid));
+
+        let mut top = Env::new();
+        top.insert("C".into(), "top".into());
+        let top = LayeredEnv::child(mid, top);
+
+        let entries: HashMap<&str, &str> = top.iter().collect();
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries["A"], "root");
+        assert_eq!(entries["B"], "mid");
+        assert_eq!(entries["C"], "top");
+    }
+
+    #[test]
+    fn iter_empty_layers_skipped() {
+        let base = Env::new();
+        let root = Arc::new(LayeredEnv::root(base));
+        let child = LayeredEnv::child(root, Env::new());
+        assert_eq!(child.iter().count(), 0);
+    }
+
+    #[test]
+    fn iter_deep_override() {
+        let mut base = Env::new();
+        base.insert("X".into(), "root".into());
+        let root = Arc::new(LayeredEnv::root(base));
+
+        let mid = Arc::new(LayeredEnv::child(root, Env::new()));
+
+        let mut top = Env::new();
+        top.insert("X".into(), "top".into());
+        let top = LayeredEnv::child(mid, top);
+
+        let entries: HashMap<&str, &str> = top.iter().collect();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries["X"], "top");
     }
 }

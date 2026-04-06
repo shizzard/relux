@@ -33,7 +33,7 @@ use crate::dsl::resolver::ir::Plan;
 use crate::dsl::resolver::ir::SourceTable;
 use crate::dsl::resolver::ir::Suite;
 use crate::dsl::resolver::ir::Tables;
-use crate::pure::Env;
+use crate::pure::LayeredEnv;
 
 // ─── LoweringScope ──────────────────────────────────────────
 
@@ -49,7 +49,7 @@ pub struct LoweringScope {
 
 pub struct LoweringContext {
     ast_table: AstTable,
-    env: Arc<Env>,
+    env: Arc<LayeredEnv>,
     tables: Tables,
     causes: CauseTable,
     warnings: WarningTable,
@@ -57,6 +57,7 @@ pub struct LoweringContext {
     fn_stack: Vec<(FnId, IrSpan)>,
     effect_stack: Vec<(EffectId, IrSpan)>,
     scope_stack: Vec<LoweringScope>,
+    shallow_env: Option<Arc<super::shallow_env::ShallowLayeredEnv>>,
 }
 
 impl std::fmt::Debug for LoweringContext {
@@ -69,7 +70,7 @@ impl LoweringContext {
     pub fn new(
         ast_table: AstTable,
         source_table: SourceTable,
-        env: Arc<Env>,
+        env: Arc<LayeredEnv>,
         causes: CauseTable,
         warnings: WarningTable,
         multiplier: f64,
@@ -89,6 +90,7 @@ impl LoweringContext {
             fn_stack: Vec::new(),
             effect_stack: Vec::new(),
             scope_stack: Vec::new(),
+            shallow_env: None,
         }
     }
 
@@ -98,7 +100,7 @@ impl LoweringContext {
         &self.ast_table
     }
 
-    pub fn env(&self) -> &Arc<Env> {
+    pub fn env(&self) -> &Arc<LayeredEnv> {
         &self.env
     }
 
@@ -136,6 +138,14 @@ impl LoweringContext {
 
     pub fn effect_stack(&self) -> &[(EffectId, IrSpan)] {
         &self.effect_stack
+    }
+
+    pub fn set_shallow_env(&mut self, env: Arc<super::shallow_env::ShallowLayeredEnv>) {
+        self.shallow_env = Some(env);
+    }
+
+    pub fn shallow_env(&self) -> Option<&Arc<super::shallow_env::ShallowLayeredEnv>> {
+        self.shallow_env.as_ref()
     }
 
     // ─── BIF Registration ────────────────────────────────────
@@ -255,10 +265,10 @@ impl LoweringContext {
 
                 // Look up target module in AstTable.
                 let Some(target_entry) = self.ast_table.get(&import_mod_path) else {
-                    return Err(InvalidReport::UndefinedModuleImport {
-                        module_path: import_mod_path,
-                        span: import_span,
-                    });
+                    return Err(InvalidReport::undefined_module_import(
+                        import_mod_path,
+                        import_span,
+                    ));
                 };
 
                 let target_file_id = &target_entry.0;
@@ -355,11 +365,11 @@ impl LoweringContext {
                 AstItem::Fn { def, .. } => {
                     let local_key = LocalFnKey::new(&def.name.node.name, def.params.len());
                     if tables.fns.contains_local(&local_key) {
-                        return Err(InvalidReport::NameConflict {
-                            name: format!("{}/{}", def.name.node.name, def.params.len()),
-                            first: tables.fns.get_span(&local_key).unwrap().clone(),
-                            second: import_span.clone(),
-                        });
+                        return Err(InvalidReport::name_conflict(
+                            format!("{}/{}", def.name.node.name, def.params.len()),
+                            tables.fns.get_span(&local_key).unwrap().clone(),
+                            import_span.clone(),
+                        ));
                     }
                     let global_key = FnId {
                         module: import_mod_path.clone(),
@@ -373,11 +383,11 @@ impl LoweringContext {
                 AstItem::PureFn { def, .. } => {
                     let local_key = LocalFnKey::new(&def.name.node.name, def.params.len());
                     if tables.fns.contains_local(&local_key) {
-                        return Err(InvalidReport::NameConflict {
-                            name: format!("{}/{}", def.name.node.name, def.params.len()),
-                            first: tables.fns.get_span(&local_key).unwrap().clone(),
-                            second: import_span.clone(),
-                        });
+                        return Err(InvalidReport::name_conflict(
+                            format!("{}/{}", def.name.node.name, def.params.len()),
+                            tables.fns.get_span(&local_key).unwrap().clone(),
+                            import_span.clone(),
+                        ));
                     }
                     let global_key = FnId {
                         module: import_mod_path.clone(),
@@ -394,11 +404,11 @@ impl LoweringContext {
                 AstItem::Effect { def, .. } => {
                     let local_key = LocalEffectKey::new(EffectName(def.name.node.name.clone()));
                     if tables.effects.contains_local(&local_key) {
-                        return Err(InvalidReport::NameConflict {
-                            name: def.name.node.name.clone(),
-                            first: tables.effects.get_span(&local_key).unwrap().clone(),
-                            second: import_span.clone(),
-                        });
+                        return Err(InvalidReport::name_conflict(
+                            def.name.node.name.clone(),
+                            tables.effects.get_span(&local_key).unwrap().clone(),
+                            import_span.clone(),
+                        ));
                     }
                     let global_key = EffectId {
                         module: import_mod_path.clone(),
@@ -446,20 +456,20 @@ impl LoweringContext {
                         if def.name.node.name == *original_name)
                 });
                 if !found {
-                    return Err(InvalidReport::UndefinedEffectImport {
-                        name: original_name.clone(),
-                        module_path: import_mod_path.clone(),
-                        span: name_span,
-                    });
+                    return Err(InvalidReport::undefined_effect_import(
+                        original_name.clone(),
+                        import_mod_path.clone(),
+                        name_span,
+                    ));
                 }
 
                 let local_key = LocalEffectKey::new(EffectName(local_name.clone()));
                 if tables.effects.contains_local(&local_key) {
-                    return Err(InvalidReport::NameConflict {
-                        name: local_name.clone(),
-                        first: tables.effects.get_span(&local_key).unwrap().clone(),
-                        second: name_span,
-                    });
+                    return Err(InvalidReport::name_conflict(
+                        local_name.clone(),
+                        tables.effects.get_span(&local_key).unwrap().clone(),
+                        name_span,
+                    ));
                 }
                 let global_key = EffectId {
                     module: import_mod_path.clone(),
@@ -479,11 +489,11 @@ impl LoweringContext {
                             found_any = true;
                             let local_key = LocalFnKey::new(local_name, def.params.len());
                             if tables.fns.contains_local(&local_key) {
-                                return Err(InvalidReport::NameConflict {
-                                    name: format!("{}/{}", local_name, def.params.len()),
-                                    first: tables.fns.get_span(&local_key).unwrap().clone(),
-                                    second: name_span,
-                                });
+                                return Err(InvalidReport::name_conflict(
+                                    format!("{}/{}", local_name, def.params.len()),
+                                    tables.fns.get_span(&local_key).unwrap().clone(),
+                                    name_span,
+                                ));
                             }
                             let global_key = FnId {
                                 module: import_mod_path.clone(),
@@ -496,11 +506,11 @@ impl LoweringContext {
                             found_any = true;
                             let local_key = LocalFnKey::new(local_name, def.params.len());
                             if tables.fns.contains_local(&local_key) {
-                                return Err(InvalidReport::NameConflict {
-                                    name: format!("{}/{}", local_name, def.params.len()),
-                                    first: tables.fns.get_span(&local_key).unwrap().clone(),
-                                    second: name_span,
-                                });
+                                return Err(InvalidReport::name_conflict(
+                                    format!("{}/{}", local_name, def.params.len()),
+                                    tables.fns.get_span(&local_key).unwrap().clone(),
+                                    name_span,
+                                ));
                             }
                             let global_key = FnId {
                                 module: import_mod_path.clone(),
@@ -521,11 +531,11 @@ impl LoweringContext {
                 }
 
                 if !found_any {
-                    return Err(InvalidReport::UndefinedFunctionImport {
-                        name: original_name.clone(),
-                        module_path: import_mod_path.clone(),
-                        span: name_span,
-                    });
+                    return Err(InvalidReport::undefined_function_import(
+                        original_name.clone(),
+                        import_mod_path.clone(),
+                        name_span,
+                    ));
                 }
             }
         }
@@ -580,7 +590,7 @@ impl LoweringContext {
             .iter()
             .map(|(eid, span)| EffectCycleEntry {
                 id: eid.clone(),
-                need_span: span.clone(),
+                start_span: span.clone(),
             })
             .collect();
         Some(CycleReport::Effect { chain })
@@ -595,6 +605,10 @@ impl LoweringContext {
     pub fn print_diagnostics(&self, project_root: Option<&std::path::Path>) {
         use crate::diagnostics::Diagnostic;
 
+        for (warning_id, warning) in self.warnings.as_vec() {
+            let diagnostic = Diagnostic::from(warning);
+            diagnostic.eprint_with_id(&warning_id, &self.tables.sources, project_root);
+        }
         for (cause_id, cause) in self.causes.as_vec() {
             let diagnostic = Diagnostic::from(cause);
             diagnostic.eprint_with_id(&cause_id, &self.tables.sources, project_root);
@@ -638,7 +652,7 @@ impl LoweringContext {
 
         // Check cycle
         if let Some(cycle) = self.find_fn_cycle(fn_id) {
-            let bail = LoweringBail::invalid(InvalidReport::Cycle(cycle));
+            let bail = LoweringBail::invalid(InvalidReport::cycle(cycle));
             self.tables.fns.insert(fn_id.clone(), Err(bail.clone()));
             return Err(bail);
         }
@@ -735,7 +749,7 @@ impl LoweringContext {
 
         // Check cycle
         if let Some(cycle) = self.find_fn_cycle(fn_id) {
-            let bail = LoweringBail::invalid(InvalidReport::Cycle(cycle));
+            let bail = LoweringBail::invalid(InvalidReport::cycle(cycle));
             self.tables
                 .pure_fns
                 .insert(fn_id.clone(), Err(bail.clone()));
@@ -839,7 +853,7 @@ impl LoweringContext {
 
         // Check cycle
         if let Some(cycle) = self.find_effect_cycle(effect_id) {
-            let bail = LoweringBail::invalid(InvalidReport::Cycle(cycle));
+            let bail = LoweringBail::invalid(InvalidReport::cycle(cycle));
             self.tables
                 .effects
                 .insert(effect_id.clone(), Err(bail.clone()));
@@ -950,6 +964,7 @@ pub(crate) mod test_helpers {
     use crate::dsl::parser::ast::*;
     use crate::dsl::resolver::ir::*;
     use crate::pure::Env;
+    use crate::pure::LayeredEnv;
     use std::collections::HashMap;
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -962,8 +977,8 @@ pub(crate) mod test_helpers {
         IrSpan::new(test_file_id(), Span::new(0, 10))
     }
 
-    pub fn test_env() -> Arc<Env> {
-        Arc::new(Env::from_map(HashMap::new()))
+    pub fn test_env() -> Arc<LayeredEnv> {
+        Arc::new(LayeredEnv::from(Env::from_map(HashMap::new())))
     }
 
     pub fn empty_ast_table() -> AstTable {
@@ -1108,7 +1123,7 @@ pub(crate) mod test_helpers {
         let mut ctx = LoweringContext::new(
             ast_table,
             source_table,
-            Arc::new(Env::from_map(env)),
+            Arc::new(LayeredEnv::from(Env::from_map(env))),
             causes,
             warnings,
             1.0,
@@ -1135,7 +1150,7 @@ pub(crate) mod test_helpers {
         let mut ctx = LoweringContext::new(
             ast_table,
             source_table,
-            Arc::new(Env::from_map(HashMap::new())),
+            Arc::new(LayeredEnv::from(Env::from_map(HashMap::new()))),
             causes,
             warnings,
             multiplier,
@@ -1199,6 +1214,7 @@ mod tests {
     use crate::core::table::SourceFile;
     use crate::dsl::parser::ast::*;
     use crate::pure::Env;
+    use crate::pure::LayeredEnv;
     use std::collections::HashMap;
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -1320,7 +1336,6 @@ mod tests {
                 AstIdent::new(name, Span::new(0, name.len())),
                 Span::new(0, name.len()),
             ),
-            exported_shell: Spanned::new(AstIdent::new("sh", Span::new(0, 2)), Span::new(0, 2)),
             markers: vec![],
             body: vec![],
             span: Span::new(0, 50),
@@ -1395,7 +1410,7 @@ mod tests {
     fn context_new_preserves_env() {
         let mut m = HashMap::new();
         m.insert("KEY".into(), "val".into());
-        let env = Arc::new(Env::from_map(m));
+        let env = Arc::new(LayeredEnv::from(Env::from_map(m)));
         let ctx = LoweringContext::new(
             empty_ast_table(),
             empty_source_table(),
@@ -2552,7 +2567,7 @@ mod tests {
     fn into_suite_transfers_env() {
         let mut m = HashMap::new();
         m.insert("MY_VAR".into(), "my_val".into());
-        let env = Arc::new(Env::from_map(m));
+        let env = Arc::new(LayeredEnv::from(Env::from_map(m)));
         let ctx = LoweringContext::new(
             empty_ast_table(),
             empty_source_table(),
@@ -2738,17 +2753,17 @@ mod tests {
     }
 
     #[test]
-    fn lower_imported_effect_with_sub_needs() {
+    fn lower_imported_effect_with_sub_starts() {
         let mut ctx = ctx_with_modules(vec![
             (
                 "tests/a",
                 "/test/a.relux",
-                "import effects\ntest \"t\" {\n  need App\n  shell sh {\n    > cmd\n  }\n}\n",
+                "import effects\ntest \"t\" {\n  start App\n  shell sh {\n    > cmd\n  }\n}\n",
             ),
             (
                 "lib/effects",
                 "/lib/effects.relux",
-                "effect Db -> db {\n  shell db {\n    > db\n  }\n}\neffect App -> app {\n  need Db\n  shell app {\n    > app\n  }\n}\n",
+                "effect Db {\n  shell db {\n    > db\n  }\n}\neffect App {\n  start Db\n  shell app {\n    > app\n  }\n}\n",
             ),
         ]);
         let result = lower_first_test(&mut ctx, "tests/a");
@@ -2783,14 +2798,14 @@ fn caller() {
 
     #[test]
     fn lower_effect_invalid_propagates() {
-        let source = r#"effect Bad -> bad {
-  need Nonexistent
+        let source = r#"effect Bad {
+  start Nonexistent
   shell bad {
     > x
   }
 }
-effect User -> user {
-  need Bad
+effect User {
+  start Bad
   shell user {
     > y
   }
@@ -2956,21 +2971,21 @@ test "t2" {
     fn memoization_shared_effect_lowered_once() {
         let suite = resolve_source_no_env(&[(
             "tests/a",
-            r#"effect Setup -> sh {
+            r#"effect Setup {
   shell sh {
     > echo setup
   }
 }
 
 test "t1" {
-  need Setup
+  start Setup
   shell sh {
     > echo 1
   }
 }
 
 test "t2" {
-  need Setup
+  start Setup
   shell sh {
     > echo 2
   }
@@ -3055,7 +3070,7 @@ test "uses import" {
         let suite = resolve_source_no_env(&[
             (
                 "lib/effects",
-                r#"effect Db -> db_sh {
+                r#"effect Db {
   shell db_sh {
     > echo db
   }
@@ -3067,7 +3082,7 @@ test "uses import" {
                 r#"import effects
 
 test "uses effect" {
-  need Db
+  start Db
   shell sh {
     > echo hello
   }
@@ -3285,25 +3300,25 @@ test "t" {
     }
 
     #[test]
-    fn effect_cycle_via_need() {
+    fn effect_cycle_via_start() {
         let suite = resolve_source_no_env(&[(
             "tests/a",
-            r#"effect A -> sh {
-  need B
+            r#"effect A {
+  start B
   shell sh {
     > echo a
   }
 }
 
-effect B -> sh {
-  need A
+effect B {
+  start A
   shell sh {
     > echo b
   }
 }
 
 test "t" {
-  need A
+  start A
   shell sh {
     > echo t
   }
@@ -3399,11 +3414,11 @@ test "calls skipped" {
     }
 
     #[test]
-    fn undefined_effect_need() {
+    fn undefined_effect_start() {
         let suite = resolve_source_no_env(&[(
             "tests/a",
             r#"test "t" {
-  need NonExistent
+  start NonExistent
   shell sh {
     > echo hello
   }
@@ -3432,14 +3447,14 @@ test "calls skipped" {
         // A test with needs but no shell blocks should be invalid.
         let suite = resolve_source_no_env(&[(
             "tests/a",
-            r#"effect Db -> db {
+            r#"effect Db {
   shell db {
     > echo db
   }
 }
 
 test "t" {
-  need Db
+  start Db
 }
 "#,
         )]);
@@ -3613,5 +3628,180 @@ test "t" {
             panic!("expected Timeout stmt");
         };
         assert_eq!(timeout.adjusted_duration(), Duration::from_secs(10));
+    }
+
+    // ─── Expect satisfiability ──────────────────────────────
+
+    #[test]
+    fn expect_satisfied_by_overlay() {
+        let suite = resolve_source_no_env(&[(
+            "tests/a",
+            r#"effect Db {
+  expect PORT
+  shell db {
+    > start --port ${PORT}
+  }
+}
+test "t" {
+  start Db { PORT = "5432" }
+  shell sh {
+    > echo ok
+  }
+}
+"#,
+        )]);
+        assert!(is_runnable(&suite.plans[0]));
+    }
+
+    #[test]
+    fn expect_satisfied_by_base_env() {
+        let suite = resolve_source(
+            &[(
+                "tests/a",
+                r#"effect Db {
+  expect HOME
+  shell db {
+    > start
+  }
+}
+test "t" {
+  start Db
+  shell sh {
+    > echo ok
+  }
+}
+"#,
+            )],
+            HashMap::from([("HOME".into(), "/home/user".into())]),
+        );
+        assert!(is_runnable(&suite.plans[0]));
+    }
+
+    #[test]
+    fn expect_satisfied_by_let_binding() {
+        let suite = resolve_source_no_env(&[(
+            "tests/a",
+            r#"effect Db {
+  expect PORT
+  shell db {
+    > start
+  }
+}
+test "t" {
+  let PORT = "5432"
+  start Db
+  shell sh {
+    > echo ok
+  }
+}
+"#,
+        )]);
+        assert!(is_runnable(&suite.plans[0]));
+    }
+
+    #[test]
+    fn expect_unsatisfied_produces_invalid() {
+        let suite = resolve_source_no_env(&[(
+            "tests/a",
+            r#"effect Db {
+  expect PORT
+  shell db {
+    > start
+  }
+}
+test "t" {
+  start Db
+  shell sh {
+    > echo ok
+  }
+}
+"#,
+        )]);
+        assert!(is_invalid(&suite.plans[0]));
+    }
+
+    #[test]
+    fn expect_nested_effect_satisfied() {
+        let suite = resolve_source_no_env(&[(
+            "tests/a",
+            r#"effect Inner {
+  expect BAR
+  shell s {
+    > inner
+  }
+}
+effect Outer {
+  expect FOO
+  start Inner { BAR = FOO }
+  shell s {
+    > outer
+  }
+}
+test "t" {
+  start Outer { FOO = "x" }
+  shell sh {
+    > echo ok
+  }
+}
+"#,
+        )]);
+        assert!(is_runnable(&suite.plans[0]));
+    }
+
+    #[test]
+    fn expect_nested_unsatisfied_produces_invalid() {
+        let suite = resolve_source_no_env(&[(
+            "tests/a",
+            r#"effect Inner {
+  expect BAR
+  shell s {
+    > inner
+  }
+}
+effect Outer {
+  start Inner
+  shell s {
+    > outer
+  }
+}
+test "t" {
+  start Outer
+  shell sh {
+    > echo ok
+  }
+}
+"#,
+        )]);
+        assert!(is_invalid(&suite.plans[0]));
+    }
+
+    #[test]
+    fn expect_shallow_env_not_corrupted_by_sibling_start() {
+        // Regression: the shallow env must be correctly restored after
+        // resolving each start, so sibling starts see the caller's env.
+        let suite = resolve_source_no_env(&[(
+            "tests/a",
+            r#"effect A {
+  expect X
+  shell a {
+    > a
+  }
+}
+effect B {
+  expect Y
+  shell b {
+    > b
+  }
+}
+test "t" {
+  start A { X = "1" }
+  start B { Y = "2" }
+  shell sh {
+    > echo ok
+  }
+}
+"#,
+        )]);
+        assert!(is_runnable(&suite.plans[0]));
     }
 }

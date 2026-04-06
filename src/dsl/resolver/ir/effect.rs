@@ -6,8 +6,8 @@ use crate::diagnostics::IrSpan;
 use crate::diagnostics::LoweringBail;
 use crate::dsl::parser::ast::AstEffectDef;
 use crate::dsl::parser::ast::AstEffectItem;
-use crate::dsl::parser::ast::AstNeedDecl;
 use crate::dsl::parser::ast::AstOverlayEntry;
+use crate::dsl::parser::ast::AstStartDecl;
 
 use super::IrNode;
 use super::IrNodeLowering;
@@ -45,28 +45,25 @@ impl IrOverlayEntry {
 
 impl_ir_node_struct!(IrOverlayEntry);
 
-// ─── IrEffectNeed ────────────────────────────────────────────
+// ─── IrEffectStart ────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
-pub struct IrEffectNeed {
+pub struct IrEffectStart {
     effect: DiagEffectId,
-    canonical_overlay: String,
     overlay: Vec<IrOverlayEntry>,
     alias: Option<String>,
     span: IrSpan,
 }
 
-impl IrEffectNeed {
+impl IrEffectStart {
     pub fn new(
         effect: DiagEffectId,
-        canonical_overlay: String,
         overlay: Vec<IrOverlayEntry>,
         alias: Option<String>,
         span: IrSpan,
     ) -> Self {
         Self {
             effect,
-            canonical_overlay,
             overlay,
             alias,
             span,
@@ -75,10 +72,6 @@ impl IrEffectNeed {
 
     pub fn effect(&self) -> &DiagEffectId {
         &self.effect
-    }
-
-    pub fn canonical_overlay(&self) -> &str {
-        &self.canonical_overlay
     }
 
     pub fn overlay(&self) -> &[IrOverlayEntry] {
@@ -90,23 +83,69 @@ impl IrEffectNeed {
     }
 }
 
-impl_ir_node_struct!(IrEffectNeed);
+impl_ir_node_struct!(IrEffectStart);
+
+// ─── IrExposeDecl ───────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct IrExposeDecl {
+    qualifier: Option<String>,
+    shell: String,
+    alias: Option<String>,
+    span: IrSpan,
+}
+
+impl IrExposeDecl {
+    pub fn new(
+        qualifier: Option<String>,
+        shell: String,
+        alias: Option<String>,
+        span: IrSpan,
+    ) -> Self {
+        Self {
+            qualifier,
+            shell,
+            alias,
+            span,
+        }
+    }
+
+    pub fn qualifier(&self) -> Option<&str> {
+        self.qualifier.as_deref()
+    }
+
+    pub fn shell(&self) -> &str {
+        &self.shell
+    }
+
+    /// The name callers use to refer to this exposed shell.
+    /// Falls back to the shell name if no alias is given.
+    pub fn exposed_name(&self) -> &str {
+        self.alias.as_deref().unwrap_or(&self.shell)
+    }
+}
+
+impl_ir_node_struct!(IrExposeDecl);
 
 // ─── IrEffectItem ────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub enum IrEffectItem {
     Comment { comment: IrComment, span: IrSpan },
-    Need { need: IrEffectNeed, span: IrSpan },
+    Expect { vars: Vec<IrIdent>, span: IrSpan },
+    Start { start: IrEffectStart, span: IrSpan },
     Let { stmt: IrPureLetStmt, span: IrSpan },
+    Expose { decl: IrExposeDecl, span: IrSpan },
     Shell { block: IrShellBlock, span: IrSpan },
     Cleanup { block: IrCleanupBlock, span: IrSpan },
 }
 
 impl_ir_node_enum!(IrEffectItem {
     Comment,
-    Need,
+    Expect,
+    Start,
     Let,
+    Expose,
     Shell,
     Cleanup
 });
@@ -116,8 +155,9 @@ impl_ir_node_enum!(IrEffectItem {
 #[derive(Debug, Clone)]
 pub struct IrEffect {
     name: IrIdent,
-    exported_shell: IrIdent,
-    needs: Vec<IrEffectNeed>,
+    expects: Vec<IrIdent>,
+    exposes: Vec<IrExposeDecl>,
+    starts: Vec<IrEffectStart>,
     body: Vec<IrEffectItem>,
     span: IrSpan,
 }
@@ -125,15 +165,17 @@ pub struct IrEffect {
 impl IrEffect {
     pub fn new(
         name: IrIdent,
-        exported_shell: IrIdent,
-        needs: Vec<IrEffectNeed>,
+        expects: Vec<IrIdent>,
+        exposes: Vec<IrExposeDecl>,
+        starts: Vec<IrEffectStart>,
         body: Vec<IrEffectItem>,
         span: IrSpan,
     ) -> Self {
         Self {
             name,
-            exported_shell,
-            needs,
+            expects,
+            exposes,
+            starts,
             body,
             span,
         }
@@ -143,12 +185,16 @@ impl IrEffect {
         &self.name
     }
 
-    pub fn exported_shell(&self) -> &IrIdent {
-        &self.exported_shell
+    pub fn expects(&self) -> &[IrIdent] {
+        &self.expects
     }
 
-    pub fn needs(&self) -> &[IrEffectNeed] {
-        &self.needs
+    pub fn exposes(&self) -> &[IrExposeDecl] {
+        &self.exposes
+    }
+
+    pub fn starts(&self) -> &[IrEffectStart] {
+        &self.starts
     }
 
     pub fn body(&self) -> &[IrEffectItem] {
@@ -179,10 +225,10 @@ impl IrNodeLowering for IrOverlayEntry {
     }
 }
 
-impl IrNodeLowering for IrEffectNeed {
-    type Ast = AstNeedDecl;
+impl IrNodeLowering for IrEffectStart {
+    type Ast = AstStartDecl;
     fn lower(
-        ast: &AstNeedDecl,
+        ast: &AstStartDecl,
         file: &FileId,
         ctx: &mut LoweringContext,
     ) -> Result<Self, LoweringBail> {
@@ -196,14 +242,11 @@ impl IrNodeLowering for IrEffectNeed {
         };
 
         let global_key = global_key.ok_or_else(|| {
-            LoweringBail::invalid(InvalidReport::UndefinedEffectNeed {
-                name: effect_name.clone(),
-                span: IrSpan::new(file.clone(), ast.effect.node.span),
-            })
+            LoweringBail::invalid(InvalidReport::undefined_effect_start(
+                effect_name.clone(),
+                IrSpan::new(file.clone(), ast.effect.node.span),
+            ))
         })?;
-
-        // Resolve the effect (ensures it's lowered and cached)
-        ctx.resolve_effect(&global_key)?;
 
         // Lower overlay entries
         let overlay = ast
@@ -212,20 +255,53 @@ impl IrNodeLowering for IrEffectNeed {
             .map(|e| IrOverlayEntry::lower(&e.node, file, ctx))
             .collect::<Result<Vec<_>, _>>()?;
 
-        // Build canonical overlay string (sorted by key)
-        let mut canonical_parts: Vec<String> = ast
-            .overlay
-            .iter()
-            .map(|e| format!("{}={}", e.node.key.node.name, e.node.value.node.canonical()))
-            .collect();
-        canonical_parts.sort();
-        let canonical_overlay = canonical_parts.join(",");
+        // Build a child shallow env with overlay key names for nested effect lowering
+        let saved_shallow = ctx.shallow_env().cloned();
+        if let Some(caller_env) = &saved_shallow {
+            let overlay_names = overlay.iter().map(|e| e.key().name().to_string());
+            let child =
+                std::sync::Arc::new(crate::dsl::resolver::shallow_env::ShallowLayeredEnv::child(
+                    std::sync::Arc::clone(caller_env),
+                    overlay_names,
+                ));
+            ctx.set_shallow_env(child);
+        }
+
+        // Resolve the effect (ensures it's lowered and cached; may recurse).
+        // IrEffect::lower may mutate ctx.shallow_env (pushing expect/let names
+        // for inner start validation), so we must restore the caller's env
+        // afterward. We split resolve + restore + `?` to guarantee restoration
+        // even on error — the IrNodeLowering trait signature prevents passing
+        // the shallow env as a parameter, forcing us to thread it through ctx
+        // with manual save/restore.
+        let resolved = ctx.resolve_effect(&global_key);
+        if let Some(env) = saved_shallow {
+            ctx.set_shallow_env(env);
+        }
+        let resolved = resolved?;
+
+        // Validate expect satisfiability: every expected var must be
+        // in the overlay keys or reachable in the caller's shallow env.
+        if let Some(caller_env) = ctx.shallow_env() {
+            let overlay_names: std::collections::HashSet<String> =
+                overlay.iter().map(|e| e.key().name().to_string()).collect();
+            for expected in resolved.expects() {
+                let name = expected.name();
+                if !overlay_names.contains(name) && !caller_env.contains(name) {
+                    return Err(LoweringBail::invalid(InvalidReport::unsatisfied_expect(
+                        resolved.name().name().to_string(),
+                        name.to_string(),
+                        expected.span().clone(),
+                        IrSpan::new(file.clone(), ast.span),
+                    )));
+                }
+            }
+        }
 
         let alias = ast.alias.as_ref().map(|a| a.node.name.clone());
 
-        Ok(IrEffectNeed::new(
+        Ok(IrEffectStart::new(
             global_key,
-            canonical_overlay,
             overlay,
             alias,
             IrSpan::new(file.clone(), ast.span),
@@ -249,10 +325,10 @@ impl IrNodeLowering for IrEffectItem {
                     span: s(span),
                 })
             }
-            AstEffectItem::Need { decl, span } => {
-                let need = IrEffectNeed::lower(decl, file, ctx)?;
-                Ok(IrEffectItem::Need {
-                    need,
+            AstEffectItem::Start { decl, span } => {
+                let start = IrEffectStart::lower(decl, file, ctx)?;
+                Ok(IrEffectItem::Start {
+                    start,
                     span: s(span),
                 })
             }
@@ -277,6 +353,27 @@ impl IrNodeLowering for IrEffectItem {
                     span: s(span),
                 })
             }
+            AstEffectItem::Expect { decl, span } => {
+                let vars = decl
+                    .vars
+                    .iter()
+                    .map(|v| IrIdent::lower(&v.node, file, ctx))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(IrEffectItem::Expect {
+                    vars,
+                    span: s(span),
+                })
+            }
+            AstEffectItem::Expose { decl, span } => {
+                let qualifier = decl.qualifier.as_ref().map(|q| q.node.name.clone());
+                let shell = decl.shell.node.name.clone();
+                let alias = decl.alias.as_ref().map(|a| a.node.name.clone());
+                let ir = IrExposeDecl::new(qualifier, shell, alias, s(span));
+                Ok(IrEffectItem::Expose {
+                    decl: ir,
+                    span: s(span),
+                })
+            }
         }
     }
 }
@@ -289,23 +386,109 @@ impl IrNodeLowering for IrEffect {
         ctx: &mut LoweringContext,
     ) -> Result<Self, LoweringBail> {
         let name = IrIdent::lower(&ast.name.node, file, ctx)?;
-        let exported_shell = IrIdent::lower(&ast.exported_shell.node, file, ctx)?;
 
-        let mut needs = Vec::new();
+        let mut expects = Vec::new();
+        let mut exposes = Vec::new();
+        let mut starts = Vec::new();
         let mut body_items = Vec::new();
 
         for spanned_item in &ast.body {
             let ir_item = IrEffectItem::lower(&spanned_item.node, file, ctx)?;
-            if let IrEffectItem::Need { ref need, .. } = ir_item {
-                needs.push(need.clone());
+            match &ir_item {
+                IrEffectItem::Start { start, .. } => starts.push(start.clone()),
+                IrEffectItem::Expect { vars, .. } => {
+                    expects.extend(vars.clone());
+                    // Expected vars are guaranteed available (validated at start site);
+                    // add them to the shallow env so inner starts can see them.
+                    if let Some(env) = ctx.shallow_env() {
+                        let names = vars.iter().map(|v| v.name().to_string());
+                        let updated = std::sync::Arc::new(
+                            crate::dsl::resolver::shallow_env::ShallowLayeredEnv::child(
+                                std::sync::Arc::clone(env),
+                                names,
+                            ),
+                        );
+                        ctx.set_shallow_env(updated);
+                    }
+                }
+                IrEffectItem::Let { stmt, .. } => {
+                    // Track let-bound names for inner start expect checking
+                    if let Some(env) = ctx.shallow_env() {
+                        let updated = std::sync::Arc::new(
+                            crate::dsl::resolver::shallow_env::ShallowLayeredEnv::with_name(
+                                env,
+                                stmt.name().name().to_string(),
+                            ),
+                        );
+                        ctx.set_shallow_env(updated);
+                    }
+                }
+                IrEffectItem::Expose { decl, .. } => exposes.push(decl.clone()),
+                _ => {}
             }
             body_items.push(ir_item);
         }
 
+        // Validate expose references
+        let shell_names: Vec<String> = body_items
+            .iter()
+            .filter_map(|item| match item {
+                IrEffectItem::Shell { block, .. } if block.qualifier().is_none() => {
+                    Some(block.name().name().to_string())
+                }
+                _ => None,
+            })
+            .collect();
+        // Build map from alias → set of shells exposed by that dependency
+        let mut dep_exposed: std::collections::HashMap<String, std::collections::HashSet<String>> =
+            std::collections::HashMap::new();
+        for start in &starts {
+            if let Some(alias) = start.alias() {
+                let exposed_names: std::collections::HashSet<String> = ctx
+                    .effects()
+                    .get(start.effect())
+                    .and_then(|r| r.as_ref().ok())
+                    .map(|eff| {
+                        eff.exposes()
+                            .iter()
+                            .map(|e| e.exposed_name().to_string())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                dep_exposed.insert(alias.to_string(), exposed_names);
+            }
+        }
+
+        for expose in &exposes {
+            let valid = if let Some(qualifier) = expose.qualifier() {
+                // Qualified: `expose alias.shell as name` — alias must exist
+                // and the dependency must actually expose that shell
+                dep_exposed
+                    .get(qualifier)
+                    .is_some_and(|shells| shells.contains(expose.shell()))
+            } else {
+                // Simple: `expose shell` — shell must be a local shell
+                shell_names.contains(&expose.shell().to_string())
+            };
+            if !valid {
+                let label = if let Some(q) = expose.qualifier() {
+                    format!("{}.{}", q, expose.shell())
+                } else {
+                    expose.shell().to_string()
+                };
+                return Err(LoweringBail::invalid(InvalidReport::invalid_expose(
+                    name.name().to_string(),
+                    label,
+                    expose.span().clone(),
+                )));
+            }
+        }
+
         Ok(IrEffect::new(
             name,
-            exported_shell,
-            needs,
+            expects,
+            exposes,
+            starts,
             body_items,
             IrSpan::new(file.clone(), ast.span),
         ))
@@ -341,60 +524,42 @@ mod tests {
     }
 
     #[test]
-    fn ir_effect_with_needs() {
+    fn ir_effect_with_starts() {
         let s = test_span();
-        let need = IrEffectNeed::new(test_effect_id(), "".into(), vec![], None, s.clone());
-        let eff = IrEffect::new(test_ident("Db"), test_ident("db"), vec![need], vec![], s);
-        assert_eq!(eff.needs().len(), 1);
+        let start = IrEffectStart::new(test_effect_id(), vec![], None, s.clone());
+        let eff = IrEffect::new(test_ident("Db"), vec![], vec![], vec![start], vec![], s);
+        assert_eq!(eff.starts().len(), 1);
     }
 
     #[test]
-    fn ir_effect_empty_needs() {
+    fn ir_effect_empty_starts() {
         let eff = IrEffect::new(
             test_ident("Standalone"),
-            test_ident("sh"),
+            vec![],
+            vec![],
             vec![],
             vec![],
             test_span(),
         );
-        assert!(eff.needs().is_empty());
+        assert!(eff.starts().is_empty());
     }
 
     #[test]
-    fn ir_effect_need_canonical_overlay() {
-        let need = IrEffectNeed::new(
-            test_effect_id(),
-            "PORT=5432".into(),
-            vec![],
-            None,
-            test_span(),
-        );
-        assert_eq!(need.canonical_overlay(), "PORT=5432");
+    fn ir_effect_start_no_overlay() {
+        let start = IrEffectStart::new(test_effect_id(), vec![], None, test_span());
+        assert!(start.overlay().is_empty());
     }
 
     #[test]
-    fn ir_effect_need_no_overlay() {
-        let need = IrEffectNeed::new(test_effect_id(), "".into(), vec![], None, test_span());
-        assert!(need.overlay().is_empty());
-        assert_eq!(need.canonical_overlay(), "");
+    fn ir_effect_start_with_alias() {
+        let start = IrEffectStart::new(test_effect_id(), vec![], Some("my_db".into()), test_span());
+        assert_eq!(start.alias(), Some("my_db"));
     }
 
     #[test]
-    fn ir_effect_need_with_alias() {
-        let need = IrEffectNeed::new(
-            test_effect_id(),
-            "".into(),
-            vec![],
-            Some("my_db".into()),
-            test_span(),
-        );
-        assert_eq!(need.alias(), Some("my_db"));
-    }
-
-    #[test]
-    fn ir_effect_need_without_alias() {
-        let need = IrEffectNeed::new(test_effect_id(), "".into(), vec![], None, test_span());
-        assert_eq!(need.alias(), None);
+    fn ir_effect_start_without_alias() {
+        let start = IrEffectStart::new(test_effect_id(), vec![], None, test_span());
+        assert_eq!(start.alias(), None);
     }
 
     #[test]
@@ -420,7 +585,7 @@ mod tests {
 
     #[test]
     fn lower_effect_simple() {
-        let source = r#"effect Db -> db {
+        let source = r#"effect Db {
   shell db {
     > start_db
   }
@@ -438,14 +603,14 @@ mod tests {
     }
 
     #[test]
-    fn lower_effect_with_need() {
-        let source = r#"effect Base -> base {
+    fn lower_effect_with_start() {
+        let source = r#"effect Base {
   shell base {
     > base
   }
 }
-effect App -> app {
-  need Base
+effect App {
+  start Base
   shell app {
     > app
   }
@@ -458,24 +623,24 @@ effect App -> app {
         };
         let result = ctx.resolve_effect(&effect_id);
         assert!(result.is_ok());
-        assert!(!result.unwrap().needs().is_empty());
+        assert!(!result.unwrap().starts().is_empty());
     }
 
     #[test]
-    fn lower_effect_recursive_need() {
-        let source = r#"effect A -> a {
+    fn lower_effect_recursive_start() {
+        let source = r#"effect A {
   shell a {
     > a
   }
 }
-effect B -> b {
-  need A
+effect B {
+  start A
   shell b {
     > b
   }
 }
-effect C -> c {
-  need B
+effect C {
+  start B
   shell c {
     > c
   }
@@ -502,14 +667,14 @@ effect C -> c {
 
     #[test]
     fn lower_effect_cycle_mutual() {
-        let source = r#"effect A -> a {
-  need B
+        let source = r#"effect A {
+  start B
   shell a {
     > a
   }
 }
-effect B -> b {
-  need A
+effect B {
+  start A
   shell b {
     > b
   }
@@ -526,8 +691,8 @@ effect B -> b {
 
     #[test]
     fn lower_effect_cycle_self() {
-        let source = r#"effect A -> a {
-  need A
+        let source = r#"effect A {
+  start A
   shell a {
     > a
   }
@@ -544,20 +709,20 @@ effect B -> b {
 
     #[test]
     fn lower_effect_cycle_deep() {
-        let source = r#"effect A -> a {
-  need B
+        let source = r#"effect A {
+  start B
   shell a {
     > a
   }
 }
-effect B -> b {
-  need C
+effect B {
+  start C
   shell b {
     > b
   }
 }
-effect C -> c {
-  need A
+effect C {
+  start A
   shell c {
     > c
   }
@@ -583,7 +748,7 @@ effect C -> c {
 
     #[test]
     fn lower_effect_memoized() {
-        let source = r#"effect Shared -> sh {
+        let source = r#"effect Shared {
   shell sh {
     > s
   }
@@ -601,7 +766,7 @@ effect C -> c {
 
     #[test]
     fn lower_effect_with_cleanup() {
-        let source = r#"effect Db -> db {
+        let source = r#"effect Db {
   shell db {
     > start
   }
@@ -625,9 +790,9 @@ effect C -> c {
     }
 
     #[test]
-    fn lower_effect_undefined_need() {
-        let source = r#"effect A -> a {
-  need Nonexistent
+    fn lower_effect_undefined_start() {
+        let source = r#"effect A {
+  start Nonexistent
   shell a {
     > a
   }
@@ -644,13 +809,13 @@ effect C -> c {
 
     #[test]
     fn lower_effect_with_overlay() {
-        let source = r#"effect Db -> db {
+        let source = r#"effect Db {
   shell db {
     > start
   }
 }
-effect App -> app {
-  need Db { PORT = "5432" }
+effect App {
+  start Db { PORT = "5432" }
   shell app {
     > app
   }
@@ -662,37 +827,13 @@ effect App -> app {
             name: EffectName("App".into()),
         };
         let result = ctx.resolve_effect(&effect_id).unwrap();
-        let need = &result.needs()[0];
-        assert!(!need.overlay().is_empty());
-    }
-
-    #[test]
-    fn lower_effect_no_overlay_canonical() {
-        let source = r#"effect Db -> db {
-  shell db {
-    > start
-  }
-}
-effect App -> app {
-  need Db
-  shell app {
-    > app
-  }
-}
-"#;
-        let mut ctx = ctx_with_source(source);
-        let effect_id = EffectId {
-            module: ModulePath("tests/a".into()),
-            name: EffectName("App".into()),
-        };
-        let result = ctx.resolve_effect(&effect_id).unwrap();
-        let need = &result.needs()[0];
-        assert_eq!(need.canonical_overlay(), "");
+        let start = &result.starts()[0];
+        assert!(!start.overlay().is_empty());
     }
 
     #[test]
     fn lower_effect_with_let_vars() {
-        let source = r#"effect Db -> db {
+        let source = r#"effect Db {
   let port = "5432"
   shell db {
     > start
@@ -718,7 +859,7 @@ effect App -> app {
         let source = r#"fn setup() {
   > setup
 }
-effect Db -> db {
+effect Db {
   shell db {
     setup()
   }
@@ -740,14 +881,14 @@ effect Db -> db {
     }
 
     #[test]
-    fn lower_effect_need_with_alias() {
-        let source = r#"effect Db -> db {
+    fn lower_effect_start_with_alias() {
+        let source = r#"effect Db {
   shell db {
     > start
   }
 }
-effect App -> app {
-  need Db as mydb
+effect App {
+  start Db as mydb
   shell app {
     > app
   }
@@ -759,19 +900,19 @@ effect App -> app {
             name: EffectName("App".into()),
         };
         let result = ctx.resolve_effect(&effect_id).unwrap();
-        let need = &result.needs()[0];
-        assert_eq!(need.alias(), Some("mydb"));
+        let start = &result.starts()[0];
+        assert_eq!(start.alias(), Some("mydb"));
     }
 
     #[test]
-    fn lower_effect_need_without_alias() {
-        let source = r#"effect Db -> db {
+    fn lower_effect_start_without_alias() {
+        let source = r#"effect Db {
   shell db {
     > start
   }
 }
-effect App -> app {
-  need Db
+effect App {
+  start Db
   shell app {
     > app
   }
@@ -783,14 +924,14 @@ effect App -> app {
             name: EffectName("App".into()),
         };
         let result = ctx.resolve_effect(&effect_id).unwrap();
-        let need = &result.needs()[0];
-        assert!(need.alias().is_none());
+        let start = &result.starts()[0];
+        assert!(start.alias().is_none());
     }
 
     #[test]
     fn lower_effect_error_cached() {
-        let source = r#"effect A -> a {
-  need Nonexistent
+        let source = r#"effect A {
+  start Nonexistent
   shell a {
     > a
   }
@@ -814,7 +955,7 @@ effect App -> app {
         let source = r#"fn impure_fn() {
   > cmd
 }
-effect E -> sh {
+effect E {
   let x = impure_fn()
   shell sh {
     > start
@@ -832,7 +973,7 @@ effect E -> sh {
 
     #[test]
     fn lower_effect_let_accepts_pure_fn_call() {
-        let source = r#"effect E -> sh {
+        let source = r#"effect E {
   let x = trim("hi")
   shell sh {
     > start
@@ -856,7 +997,7 @@ effect E -> sh {
 
     #[test]
     fn lower_effect_let_accepts_string_literal() {
-        let source = r#"effect E -> sh {
+        let source = r#"effect E {
   let x = "hello"
   shell sh {
     > start
@@ -874,7 +1015,7 @@ effect E -> sh {
 
     #[test]
     fn lower_effect_let_accepts_var_ref() {
-        let source = r#"effect E -> sh {
+        let source = r#"effect E {
   let x = "val"
   let y = x
   shell sh {
@@ -893,13 +1034,13 @@ effect E -> sh {
 
     #[test]
     fn lower_overlay_accepts_pure_fn_call() {
-        let source = r#"effect Db -> db {
+        let source = r#"effect Db {
   shell db {
     > start
   }
 }
-effect App -> app {
-  need Db { PORT = available_port() }
+effect App {
+  start Db { PORT = available_port() }
   shell app {
     > app
   }
@@ -913,8 +1054,8 @@ effect App -> app {
         let result = ctx.resolve_effect(&effect_id);
         assert!(result.is_ok());
         let eff = result.unwrap();
-        let need = &eff.needs()[0];
-        assert!(!need.overlay().is_empty());
+        let start = &eff.starts()[0];
+        assert!(!start.overlay().is_empty());
     }
 
     #[test]
@@ -922,13 +1063,13 @@ effect App -> app {
         let source = r#"fn impure_fn() {
   > cmd
 }
-effect Db -> db {
+effect Db {
   shell db {
     > start
   }
 }
-effect App -> app {
-  need Db { PORT = impure_fn() }
+effect App {
+  start Db { PORT = impure_fn() }
   shell app {
     > app
   }
@@ -941,5 +1082,243 @@ effect App -> app {
         };
         let result = ctx.resolve_effect(&effect_id);
         assert!(matches!(result, Err(LoweringBail::Invalid(_))));
+    }
+
+    // ─── Expose validation ──────────────────────────────────
+
+    #[test]
+    fn lower_effect_expose_valid_local_shell() {
+        let source = r#"effect Db {
+  expose db
+  shell db {
+    > start
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let effect_id = EffectId {
+            module: ModulePath("tests/a".into()),
+            name: EffectName("Db".into()),
+        };
+        let result = ctx.resolve_effect(&effect_id);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().exposes().len(), 1);
+    }
+
+    #[test]
+    fn lower_effect_expose_invalid_shell() {
+        let source = r#"effect Db {
+  expose nonexistent
+  shell db {
+    > start
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let effect_id = EffectId {
+            module: ModulePath("tests/a".into()),
+            name: EffectName("Db".into()),
+        };
+        let result = ctx.resolve_effect(&effect_id);
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
+    }
+
+    #[test]
+    fn lower_effect_expose_qualified_valid() {
+        let source = r#"effect Base {
+  expose sh
+  shell sh {
+    > base
+  }
+}
+effect Wrapper {
+  start Base as b
+  expose b.sh as base_shell
+  shell wrapper {
+    > wrapper
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let effect_id = EffectId {
+            module: ModulePath("tests/a".into()),
+            name: EffectName("Wrapper".into()),
+        };
+        let result = ctx.resolve_effect(&effect_id);
+        assert!(result.is_ok());
+        let eff = result.unwrap();
+        assert_eq!(eff.exposes().len(), 1);
+        assert_eq!(eff.exposes()[0].exposed_name(), "base_shell");
+    }
+
+    #[test]
+    fn lower_effect_expose_qualified_invalid_alias() {
+        let source = r#"effect Base {
+  expose sh
+  shell sh {
+    > base
+  }
+}
+effect Wrapper {
+  start Base as b
+  expose nonexistent.sh
+  shell wrapper {
+    > wrapper
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let effect_id = EffectId {
+            module: ModulePath("tests/a".into()),
+            name: EffectName("Wrapper".into()),
+        };
+        let result = ctx.resolve_effect(&effect_id);
+        assert!(matches!(result, Err(LoweringBail::Invalid(_))));
+    }
+
+    #[test]
+    fn lower_effect_expose_qualified_unexposed_shell() {
+        // Base exposes `sh` but NOT `internal`.
+        // Wrapper tries to re-expose `b.internal` — this should fail
+        // because Base does not expose `internal` to callers.
+        let source = r#"effect Base {
+  expose sh
+  shell sh {
+    > base
+  }
+  shell internal {
+    > secret
+  }
+}
+effect Wrapper {
+  start Base as b
+  expose b.internal as leaked
+  shell wrapper {
+    > wrapper
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let effect_id = EffectId {
+            module: ModulePath("tests/a".into()),
+            name: EffectName("Wrapper".into()),
+        };
+        let result = ctx.resolve_effect(&effect_id);
+        assert!(
+            matches!(result, Err(LoweringBail::Invalid(_))),
+            "expose should reject referencing a shell not exposed by the dependency"
+        );
+    }
+
+    #[test]
+    fn lower_effect_expose_rejects_qualified_shell_name() {
+        // `shell b.sh { ... }` is a qualified block that operates on a dependency's
+        // shell — it does NOT create a local shell. `expose sh` (unqualified) should
+        // fail because no local shell named `sh` exists.
+        let source = r#"effect Base {
+  expose sh
+  shell sh {
+    > base
+  }
+}
+effect Wrapper {
+  start Base as b
+  expose sh
+  shell b.sh {
+    > use dep shell
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let effect_id = EffectId {
+            module: ModulePath("tests/a".into()),
+            name: EffectName("Wrapper".into()),
+        };
+        let result = ctx.resolve_effect(&effect_id);
+        assert!(
+            matches!(result, Err(LoweringBail::Invalid(_))),
+            "expose should reject a qualified shell block's name as a local shell"
+        );
+    }
+
+    #[test]
+    fn lower_effect_expect_vars() {
+        let source = r#"effect Db {
+  expect DB_PORT, DB_NAME
+  expose db
+  shell db {
+    > start
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let effect_id = EffectId {
+            module: ModulePath("tests/a".into()),
+            name: EffectName("Db".into()),
+        };
+        let result = ctx.resolve_effect(&effect_id);
+        assert!(result.is_ok());
+        let eff = result.unwrap();
+        assert_eq!(eff.expects().len(), 2);
+        assert_eq!(eff.expects()[0].name(), "DB_PORT");
+        assert_eq!(eff.expects()[1].name(), "DB_NAME");
+    }
+
+    #[test]
+    fn lower_effect_no_expose_is_valid() {
+        let source = r#"effect SideEffect {
+  shell setup {
+    > side effect
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let effect_id = EffectId {
+            module: ModulePath("tests/a".into()),
+            name: EffectName("SideEffect".into()),
+        };
+        let result = ctx.resolve_effect(&effect_id);
+        assert!(result.is_ok());
+        assert!(result.unwrap().exposes().is_empty());
+    }
+
+    #[test]
+    fn lower_effect_expose_local_with_alias() {
+        let source = r#"effect Auth {
+  expose auth as svc
+  shell auth {
+    > start
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let effect_id = EffectId {
+            module: ModulePath("tests/a".into()),
+            name: EffectName("Auth".into()),
+        };
+        let result = ctx.resolve_effect(&effect_id);
+        assert!(result.is_ok());
+        let eff = result.unwrap();
+        assert_eq!(eff.exposes().len(), 1);
+        assert_eq!(eff.exposes()[0].exposed_name(), "svc");
+    }
+
+    #[test]
+    fn lower_effect_no_expect_is_valid() {
+        let source = r#"effect Simple {
+  expose sh
+  shell sh {
+    > start
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let effect_id = EffectId {
+            module: ModulePath("tests/a".into()),
+            name: EffectName("Simple".into()),
+        };
+        let result = ctx.resolve_effect(&effect_id);
+        assert!(result.is_ok());
+        assert!(result.unwrap().expects().is_empty());
     }
 }

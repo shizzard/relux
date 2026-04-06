@@ -165,7 +165,7 @@ test "basic" {
 
     #[test]
     fn module_with_effect() {
-        let source = r#"effect Db -> db {
+        let source = r#"effect Db {
   shell db {
     > echo start
   }
@@ -207,7 +207,7 @@ pure fn concat(a, b) {
   > echo hello
 }
 
-effect Db -> db {
+effect Db {
   shell db {
     > echo start
   }
