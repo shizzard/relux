@@ -12,22 +12,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
 
+      - uses: dtolnay/rust-toolchain@stable
+
       - uses: Swatinem/rust-cache@v2
 
       - name: Clippy
-        run: cargo +stable clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Format check
         run: rustup run nightly rustfmt --edition 2024 --check $(find src -name '*.rs') bin/relux.rs
 
       - name: Unit tests
-        run: cargo +stable test --lib
+        run: cargo test --lib
 
   e2e:
     name: E2E (${{ matrix.os }})
