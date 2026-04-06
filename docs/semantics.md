@@ -61,15 +61,23 @@
 ## Effects
 
 - Effect names must start with an uppercase letter (`CamelCase`) — this is enforced at the syntactic level, disambiguating effects from functions in imports
-- An effect is a reusable setup procedure that produces a running shell
-- The `-> <name>` in the effect head declares which shell is exported
-- `need Effect` runs the dependency for side effects only — its shell is not accessible
-- `need Effect as alias` runs the dependency and makes its exported shell available as `shell alias`
-- Effects see the base environment plus their explicit overlay — no implicit inheritance from parent effects
-- Effect instance identity is determined by `(effect-name, arguments, overlay)`:
+- An effect is a reusable setup procedure that produces running shells
+- An effect has three explicit interface components:
+  - **`expect`** — declares required environment variables the effect reads; the resolver validates these are satisfiable
+  - **`expose`** — declares which shells the effect makes available to callers; internal shells not listed in `expose` are terminated after setup
+  - **`start`** — declares dependency effects with optional env remapping via overlay
+- None of these declarations are mandatory: an effect may have no `expect`, no `start`, and no `expose`
+- `start Effect` runs the dependency for side effects only — its shells are not accessible
+- `start Effect as alias` runs the dependency and makes its exposed shells available via dot-access (`shell alias.shell_name`)
+- `start Effect as alias { KEY = expr }` provides an overlay that remaps the caller's environment into the dependency's environment
+  - The shorthand form `KEY` (without `= expr`) is equivalent to `KEY = KEY`
+- Effects inherit the full parent environment — overlay entries override specific keys
+- Effect instance identity is determined by `(effect-name, evaluated overlay restricted to expect-declared vars)`:
   - Same identity tuple = same instance (deduplicated, reused)
   - Different identity tuple = separate instances
-- When a test or effect `need`s the same effect multiple times with the same overlay, only one instance is created
+- When a test or effect starts the same effect multiple times with the same evaluated overlay, only one instance is created
+- Exposed shells are accessed via dot notation: `shell alias.shell_name { ... }`
+- For composed effects, `expose` can re-export a dependency's shell: `expose dep.shell as public_name`
 - Effects run before the test body; the dependency graph is resolved and executed in topological order
 - Circular effect dependencies are a parse error
 - If an effect fails (a match times out during setup), all tests depending on it are failed
@@ -113,8 +121,8 @@
 - Condition markers (`# skip/run/flaky ...`) are placed immediately before the `test` declaration
 - Test structure (in order):
   1. Doc string (optional `"""..."""`)
-  2. `need` declarations (effect dependencies)
-  3. `let` declarations (test-scoped variables)
+  2. `let` declarations (test-scoped variables)
+  3. `start` declarations (effect dependencies)
   4. `shell` blocks (test body)
   5. `cleanup` block (optional)
 - Effects are instantiated and their shells are available before the test body runs
@@ -130,7 +138,7 @@
 - Only `>`, `=>`, `let`, and variable reassignment are allowed — no match operators, no function calls
 - Cleanup always executes, regardless of whether the test/effect passed or failed
 - Cleanup failures are logged as warnings but do not change the test result
-- Cleanup order: test cleanup runs first, then effect cleanups in reverse dependency order
+- Cleanup order: test cleanup runs first, then effect cleanups
 
 ## Execution Model
 
@@ -141,6 +149,6 @@
   2. Run effects in topological order (reusing deduplicated instances)
   3. Execute the test body (shell blocks in declaration order)
   4. Run test cleanup
-  5. Tear down effect instances (cleanup + shell termination, reverse order)
+  5. Tear down effect instances (cleanup + shell termination)
 - All shells within a test share the same test-scoped variables
 - Only one shell is "active" at a time — statements execute sequentially, switching shells as blocks are entered

@@ -312,17 +312,20 @@ impl ExecutionContext {
     }
 
     /// Build the environment variables map for spawning a shell process.
-    /// Merges base env with shell-level and scope-level overlays.
+    /// For effects, the effect env already inherits the base env via LayeredEnv
+    /// parent chain, so only the effect env is needed.
     pub fn process_env(&self) -> Vec<(String, String)> {
-        let mut result: Vec<(String, String)> = self
-            .env
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect();
-        // Effect scope env layers override the base env
-        if let Scope::Effect { env, .. } = &self.scope {
-            result.extend(env.iter().map(|(k, v)| (k.to_string(), v.to_string())));
-        }
+        let mut result: Vec<(String, String)> = match &self.scope {
+            Scope::Effect { env, .. } => env
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            Scope::Test { .. } => self
+                .env
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        };
         if let Some(ref overlay) = self.shell.env_overlay {
             result.extend(overlay.iter().map(|(k, v)| (k.to_string(), v.to_string())));
         }

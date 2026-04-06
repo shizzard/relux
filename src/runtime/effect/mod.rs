@@ -7,6 +7,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
 
+use futures::future::join_all;
+
 use crate::dsl::resolver::ir::IrCleanupBlock;
 use crate::dsl::resolver::ir::IrEffectItem;
 use crate::dsl::resolver::ir::IrEffectStart;
@@ -107,16 +109,15 @@ impl EffectManager {
         })
     }
 
-    /// Release all effects in the registry regardless of how they were acquired.
-    /// Safe to call unconditionally — handles Ready (teardown), Failed (no-op),
-    /// and Empty (no-op) slots.
+    /// Release all effects acquired during this test run.
+    /// Runs one `run_cleanup` per acquisition (matching the symmetric `acquire` calls),
+    /// concurrently. The slot mutex serializes access and refcount ensures the last
+    /// releaser triggers actual teardown + recursive dependency cleanup.
     pub async fn cleanup_all(&self) -> Vec<Warning> {
-        let keys = self.registry.all_keys();
-        let mut warnings = Vec::new();
-        for key in &keys {
-            warnings.extend(self.run_cleanup(key).await);
-        }
-        warnings
+        let keys = self.registry.acquired_keys();
+        let futures: Vec<_> = keys.iter().map(|key| self.run_cleanup(key)).collect();
+        let results = join_all(futures).await;
+        results.into_iter().flatten().collect()
     }
 
     async fn acquire(
@@ -130,7 +131,7 @@ impl EffectManager {
         let slot = self.registry.slot(key);
         let mut guard = slot.lock().await;
 
-        match &mut *guard {
+        let result = match &mut *guard {
             EffectSlot::Ready { refcount, handle } => {
                 *refcount += 1;
                 Ok(handle.exposed_shells())
@@ -154,7 +155,11 @@ impl EffectManager {
                     Err(failure)
                 }
             },
+        };
+        if result.is_ok() {
+            self.registry.record_acquisition(key.clone());
         }
+        result
     }
 
     async fn bootstrap_effect(

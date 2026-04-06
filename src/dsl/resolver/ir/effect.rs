@@ -433,7 +433,9 @@ impl IrNodeLowering for IrEffect {
         let shell_names: Vec<String> = body_items
             .iter()
             .filter_map(|item| match item {
-                IrEffectItem::Shell { block, .. } => Some(block.name().name().to_string()),
+                IrEffectItem::Shell { block, .. } if block.qualifier().is_none() => {
+                    Some(block.name().name().to_string())
+                }
                 _ => None,
             })
             .collect();
@@ -1205,6 +1207,37 @@ effect Wrapper {
         assert!(
             matches!(result, Err(LoweringBail::Invalid(_))),
             "expose should reject referencing a shell not exposed by the dependency"
+        );
+    }
+
+    #[test]
+    fn lower_effect_expose_rejects_qualified_shell_name() {
+        // `shell b.sh { ... }` is a qualified block that operates on a dependency's
+        // shell — it does NOT create a local shell. `expose sh` (unqualified) should
+        // fail because no local shell named `sh` exists.
+        let source = r#"effect Base {
+  expose sh
+  shell sh {
+    > base
+  }
+}
+effect Wrapper {
+  start Base as b
+  expose sh
+  shell b.sh {
+    > use dep shell
+  }
+}
+"#;
+        let mut ctx = ctx_with_source(source);
+        let effect_id = EffectId {
+            module: ModulePath("tests/a".into()),
+            name: EffectName("Wrapper".into()),
+        };
+        let result = ctx.resolve_effect(&effect_id);
+        assert!(
+            matches!(result, Err(LoweringBail::Invalid(_))),
+            "expose should reject a qualified shell block's name as a local shell"
         );
     }
 

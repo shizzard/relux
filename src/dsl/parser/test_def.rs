@@ -48,7 +48,7 @@ fn test_preamble<'a>()
 
 // ─── L6: Test Definition ───────────────────────────────────
 
-/// `[preamble] test "name" [timeout] { docstring, lets, needs, shells, cleanup }` — test definition.
+/// `[preamble] test "name" [timeout] { docstring, lets, starts, shells, cleanup }` — test definition.
 pub fn def_test<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstTestDef>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     // Header: test "name" [~5s] {

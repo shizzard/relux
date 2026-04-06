@@ -182,25 +182,6 @@ The overlay is evaluated at effect setup time. All overlay expressions are pure,
 
 This fixes the pass-through problem from R007: a test's `start Node { NODE_PORT = port }` and a Cluster's internal `start Node { NODE_PORT = PORT1 }` both evaluate to the same port value, producing the same identity — correct deduplication.
 
-### Accidental-collision warning
-
-Within a single scope (test or effect body), the runtime detects when two `start` declarations target the same effect with different overlay expressions that happen to evaluate to the same values. This suggests the user intended separate instances but the runtime values accidentally collide.
-
-```
-warning: different overlay expressions evaluate to the same values — these
-         will share a single Node instance
-   ┌─ tests/app.relux:5:20
-   │
- 5 │     start Node as n1 { NODE_PORT = FOO }
-   │                                    ^^^ evaluated to: 9000
- 6 │     start Node as n2 { NODE_PORT = BAR }
-   │                                    ^^^ evaluated to: 9000
-   │
-   = help: if you intended separate instances, use distinct values
-```
-
-The check compares canonical (AST-based) overlay representations within the same scope. If two `start` declarations have different canonical forms but identical evaluated forms, a warning is emitted. Cross-scope deduplication (a test's `start` matching an effect's internal `start`) is intentional and never triggers a warning.
-
 ### Start ordering via runtime instrumentation
 
 The effect dependency graph's start ordering is derived from runtime execution, not from the IR. The runtime already walks the graph in topological order via recursive `acquire` calls. By emitting structured events during `bootstrap_effect`, the start sequence is captured naturally.

@@ -43,19 +43,30 @@ fn <name>(<param>, <param>) {
 ## Effects
 
 ```
-effect <EffectName> -> <exported_shell> {
-    need <EffectName>
-    need <EffectName> as <alias>
-    need <EffectName> as <alias> { KEY = "value" }
+effect <EffectName> {
+    expect <VAR>, <VAR>, <VAR>
+    start <EffectName>
+    start <EffectName> as <alias>
+    start <EffectName> as <alias> { KEY = expr, KEY }
+    let <name> = <expr>
+    expose <shell_name>
+    expose <alias>.<shell_name>
+    expose <alias>.<shell_name> as <public_name>
     shell <name> { <body> }
+    shell <alias>.<shell_name> { <body> }
     cleanup { <body> }
 }
 ```
 
-- `-> <name>` declares the exported shell
-- `need` declares dependencies (one per line)
-- `need Effect` runs the dependency for side effects only — its shell is not accessible
-- `need Effect as alias` runs the dependency and makes its shell available as `shell alias`
+- `expect` declares required environment variables (comma-separated)
+- `start` declares dependencies (one per line)
+- `start Effect` runs the dependency for side effects only — its shells are not accessible
+- `start Effect as alias` runs the dependency and makes its exposed shells available via dot-access
+- `start Effect as alias { KEY = expr }` provides an overlay; shorthand `KEY` is equivalent to `KEY = KEY`
+- `expose` declares which shells are part of the effect's public interface
+- `expose alias.shell as name` re-exports a dependency's shell under a new name
+- `shell alias.shell_name { ... }` — qualified shell block for operating on a dependency's exposed shell
+- Internal shells not listed in `expose` are terminated after setup
 - `cleanup` block: only `>`, `=>`, `let`, variable reassignment allowed (no match operators)
 
 ## Tests
@@ -65,11 +76,12 @@ test "<name>" {
     """
     <doc string>
     """
-    need <EffectName>
-    need <EffectName> as <alias>
-    need <EffectName> as <alias> { KEY = "value" }
     let <name>
+    start <EffectName>
+    start <EffectName> as <alias>
+    start <EffectName> as <alias> { KEY = expr, KEY }
     shell <name> { <body> }
+    shell <alias>.<shell_name> { <body> }
     cleanup { <body> }
 }
 ```
@@ -133,9 +145,14 @@ Examples:
 shell <name> {
     <statements>
 }
+shell <alias>.<shell_name> {
+    <statements>
+}
 ```
 
-Valid inside `effect` and `test` blocks.
+- Unqualified form (`shell name`) creates or switches to a local shell
+- Qualified form (`shell alias.shell_name`) operates on a dependency's exposed shell
+- Valid inside `effect` and `test` blocks
 
 ## Variables
 
@@ -234,10 +251,10 @@ Last expression in a function body is the return value.
 
 ## Effect Identity
 
-`(effect-name, arguments, overlay)` determines instance identity:
+`(effect-name, evaluated overlay restricted to expect-declared vars)` determines instance identity:
 - Same tuple = same instance (deduplicated)
 - Different tuple = different instance
-- Overlays are explicit, never inherited
+- Overlay expressions are evaluated at setup time; identity is based on evaluated values, not AST form
 
 ## Cleanup Blocks
 

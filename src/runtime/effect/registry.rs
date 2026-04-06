@@ -84,6 +84,10 @@ pub enum EffectSlot {
 
 pub struct EffectRegistry {
     slots: std::sync::Mutex<HashMap<EffectInstanceKey, Arc<TokioMutex<EffectSlot>>>>,
+    /// Ordered log of every acquisition (with duplicates for deduped effects).
+    /// Mirrors the order in which `acquire` was called, so cleanup can run
+    /// one `run_cleanup` per acquisition — correctly draining refcounts.
+    acquisition_order: std::sync::Mutex<Vec<EffectInstanceKey>>,
 }
 
 impl Default for EffectRegistry {
@@ -96,6 +100,7 @@ impl EffectRegistry {
     pub fn new() -> Self {
         Self {
             slots: std::sync::Mutex::new(HashMap::new()),
+            acquisition_order: std::sync::Mutex::new(Vec::new()),
         }
     }
 
@@ -110,14 +115,20 @@ impl EffectRegistry {
             .clone()
     }
 
-    /// Return all keys that have been registered (any state).
-    pub fn all_keys(&self) -> Vec<EffectInstanceKey> {
-        self.slots
+    /// Record that a key was acquired (called once per `acquire`, including dedup hits).
+    pub fn record_acquisition(&self, key: EffectInstanceKey) {
+        self.acquisition_order
             .lock()
-            .expect("slot map mutex poisoned")
-            .keys()
-            .cloned()
-            .collect()
+            .expect("acquisition order mutex poisoned")
+            .push(key);
+    }
+
+    /// Return the full ordered acquisition log (with duplicates).
+    pub fn acquired_keys(&self) -> Vec<EffectInstanceKey> {
+        self.acquisition_order
+            .lock()
+            .expect("acquisition order mutex poisoned")
+            .clone()
     }
 }
 
@@ -215,23 +226,24 @@ mod tests {
     }
 
     #[test]
-    fn all_keys_empty_registry() {
+    fn acquired_keys_empty_registry() {
         let reg = EffectRegistry::new();
-        assert!(reg.all_keys().is_empty());
+        assert!(reg.acquired_keys().is_empty());
     }
 
-    #[tokio::test]
-    async fn all_keys_returns_accessed_slots() {
+    #[test]
+    fn acquired_keys_preserves_order_and_duplicates() {
         let reg = EffectRegistry::new();
         let k1 = test_key("Db");
         let k2 = test_key("Redis");
-        reg.slot(&k1);
-        reg.slot(&k2);
-        let mut keys = reg.all_keys();
-        keys.sort_by(|a, b| a.effect_id.name.0.cmp(&b.effect_id.name.0));
-        assert_eq!(keys.len(), 2);
+        reg.record_acquisition(k1.clone());
+        reg.record_acquisition(k2.clone());
+        reg.record_acquisition(k1.clone());
+        let keys = reg.acquired_keys();
+        assert_eq!(keys.len(), 3);
         assert_eq!(keys[0].effect_id.name.0, "Db");
         assert_eq!(keys[1].effect_id.name.0, "Redis");
+        assert_eq!(keys[2].effect_id.name.0, "Db");
     }
 
     #[test]
@@ -333,20 +345,13 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn all_keys_includes_failed_slots() {
-        // Regression: cleanup_all must see Failed slots too
-        // (they are no-ops but must be reachable)
+    #[test]
+    fn acquired_keys_not_recorded_for_failed_slots() {
+        // Failed acquisitions should not be recorded — only successful ones.
         let reg = EffectRegistry::new();
+        // Slot exists but no acquisition was recorded.
         let key = test_key("Broken");
-        let slot = reg.slot(&key);
-        *slot.lock().await = EffectSlot::Failed(crate::runtime::report::result::Failure::Runtime {
-            message: "test failure".into(),
-            span: None,
-            shell: None,
-        });
-        let keys = reg.all_keys();
-        assert_eq!(keys.len(), 1);
-        assert_eq!(keys[0].effect_id.name.0, "Broken");
+        reg.slot(&key);
+        assert!(reg.acquired_keys().is_empty());
     }
 }
