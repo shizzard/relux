@@ -39,10 +39,10 @@ test "regex match advances cursor" {
     """
     shell s {
         > echo first
-        > echo second
-        > echo third
         <? ^first$
+        > echo second
         <? ^second$
+        > echo third
         <? ^third$
     }
 }
