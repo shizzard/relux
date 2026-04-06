@@ -64,8 +64,10 @@ impl PtyShell {
         prompt: &str,
         timeout: Duration,
     ) -> Result<(), tokio::time::error::Elapsed> {
-        let init_cmd = format!("export PS1='{prompt}' PS2='' PROMPT_COMMAND=''\n");
-        let _ = self.writer.write_all(init_cmd.as_bytes()).await;
+        let any_output_re = RegexBuilder::new(".+")
+            .dot_matches_new_line(false)
+            .build()
+            .expect("any-output regex must be valid");
 
         let prompt_re = RegexBuilder::new(&format!("^{}", regex::escape(prompt)))
             .multi_line(true)
@@ -74,6 +76,25 @@ impl PtyShell {
             .expect("prompt regex must be valid");
 
         tokio::time::timeout(timeout, async {
+            // Step 1: Wait for any shell output (rc files, default prompt, etc.)
+            loop {
+                let notified = self.output_buf.notify.notified();
+                if self
+                    .output_buf
+                    .consume_regex(&any_output_re)
+                    .await
+                    .is_some()
+                {
+                    break;
+                }
+                notified.await;
+            }
+
+            // Step 2: Send the prompt-setting command
+            let init_cmd = format!("export PS1='{prompt}' PS2='' PROMPT_COMMAND=''\n");
+            let _ = self.writer.write_all(init_cmd.as_bytes()).await;
+
+            // Step 3: Wait for the new prompt to appear
             loop {
                 let notified = self.output_buf.notify.notified();
                 if self.output_buf.consume_regex(&prompt_re).await.is_some() {
