@@ -104,6 +104,6 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-logs-${{ matrix.os }}
+          name: e2e-logs-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: tests/relux/out/
           retention-days: 7

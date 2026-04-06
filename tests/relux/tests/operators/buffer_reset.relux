@@ -42,8 +42,8 @@ test "buffer reset does not affect subsequent matches" {
         sleep("10ms")
         <?
         > echo first
-        > echo second
         <? ^first$
+        > echo second
         <? ^second$
     }
 }

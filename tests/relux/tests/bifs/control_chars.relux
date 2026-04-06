@@ -23,9 +23,11 @@ test "ctrl_d sends eof to interactive program" {
     }
 }
 
+# skip if RUNNER_OS = "Linux"
 test "ctrl_z suspends a process" {
     """
     Verify ctrl_z sends SIGTSTP to suspend a process, returning to prompt.
+    SIGTSTP is signal 18 on macOS (exit code 146).
     """
     shell s {
         > sleep 60
@@ -33,6 +35,23 @@ test "ctrl_z suspends a process" {
         ctrl_z()
         match_prompt()
         match_exit_code(146)
+        > kill %%
+        match_exit_code(0)
+    }
+}
+
+# run if RUNNER_OS = "Linux"
+test "ctrl_z suspends a process (linux)" {
+    """
+    Verify ctrl_z sends SIGTSTP to suspend a process, returning to prompt.
+    SIGTSTP is signal 20 on Linux (exit code 148).
+    """
+    shell s {
+        > sleep 60
+        sleep("100ms")
+        ctrl_z()
+        match_prompt()
+        match_exit_code(148)
         > kill %%
         match_exit_code(0)
     }
