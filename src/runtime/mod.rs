@@ -868,7 +868,7 @@ async fn run_test_body(
                         let name = block.name().name().to_string();
                         rt_ctx.events.emit_shell_switch(&name);
                         if !shells.contains_key(&name) {
-                            let shell_state = ShellState::new(name.clone(), None, None);
+                            let shell_state = ShellState::new(name.clone(), None);
                             let ctx = ExecutionContext::new(
                                 scope.clone(),
                                 shell_state,
@@ -904,7 +904,7 @@ async fn run_test_body(
     // 7. Run test cleanup (fresh shell, best-effort)
     if let Some(cleanup) = &cleanup_block {
         rt_ctx.events.emit_cleanup("__cleanup");
-        let shell_state = ShellState::new("__cleanup".to_string(), None, None);
+        let shell_state = ShellState::new("__cleanup".to_string(), None);
         let ctx = ExecutionContext::new(
             scope.clone(),
             shell_state,

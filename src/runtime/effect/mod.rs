@@ -284,8 +284,7 @@ impl EffectManager {
                         let name = block.name().name().to_string();
                         self.rt_ctx.events.emit_shell_switch(&name);
                         if !shells.contains_key(&name) {
-                            let shell_state =
-                                ShellState::new(name.clone(), None, Some(effect_env.clone()));
+                            let shell_state = ShellState::new(name.clone(), None);
                             let ctx = ExecutionContext::new(
                                 scope.clone(),
                                 shell_state,
@@ -517,7 +516,7 @@ impl EffectManager {
         cleanup_block: &IrCleanupBlock,
         scope: &Scope,
     ) -> Result<(), Failure> {
-        let shell_state = ShellState::new("__cleanup".to_string(), None, None);
+        let shell_state = ShellState::new("__cleanup".to_string(), None);
         let ctx = ExecutionContext::new(
             scope.clone(),
             shell_state,

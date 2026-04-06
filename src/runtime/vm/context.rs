@@ -95,11 +95,10 @@ pub struct ShellState {
     pub captures: Captures,
     pub timeout: Option<IrTimeout>,
     pub fail_pattern: Option<FailPattern>,
-    pub env_overlay: Option<Arc<LayeredEnv>>,
 }
 
 impl ShellState {
-    pub fn new(name: String, alias: Option<String>, env_overlay: Option<Arc<LayeredEnv>>) -> Self {
+    pub fn new(name: String, alias: Option<String>) -> Self {
         Self {
             name,
             alias,
@@ -108,7 +107,6 @@ impl ShellState {
             captures: Captures::new(),
             timeout: None,
             fail_pattern: None,
-            env_overlay,
         }
     }
 }
@@ -161,11 +159,6 @@ impl ExecutionContext {
 
         // Direct shell execution
         if let Some(v) = self.shell.vars.get(key) {
-            return Some(v.to_string());
-        }
-        if let Some(ref overlay) = self.shell.env_overlay
-            && let Some(v) = overlay.get(key)
-        {
             return Some(v.to_string());
         }
         if let Some(v) = self.scope.vars().lock().await.get(key) {
@@ -294,7 +287,7 @@ impl ExecutionContext {
         self.scope = new_scope;
         self.shell.vars = VarScope::new();
         self.shell.captures = Captures::new();
-        // timeout, fail_pattern, env_overlay are preserved
+        // timeout, fail_pattern are preserved
     }
 
     /// Set captures on the current context.
@@ -315,7 +308,7 @@ impl ExecutionContext {
     /// For effects, the effect env already inherits the base env via LayeredEnv
     /// parent chain, so only the effect env is needed.
     pub fn process_env(&self) -> Vec<(String, String)> {
-        let mut result: Vec<(String, String)> = match &self.scope {
+        let result: Vec<(String, String)> = match &self.scope {
             Scope::Effect { env, .. } => env
                 .iter()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -326,9 +319,6 @@ impl ExecutionContext {
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect(),
         };
-        if let Some(ref overlay) = self.shell.env_overlay {
-            result.extend(overlay.iter().map(|(k, v)| (k.to_string(), v.to_string())));
-        }
         result
     }
 }
@@ -355,7 +345,7 @@ mod tests {
     }
 
     fn test_shell(name: &str) -> ShellState {
-        ShellState::new(name.into(), None, None)
+        ShellState::new(name.into(), None)
     }
 
     fn test_ctx() -> ExecutionContext {
@@ -665,7 +655,7 @@ mod tests {
             _timeout: None,
             env: Arc::new(LayeredEnv::root(Env::from_map(overlay_map))),
         };
-        let shell = ShellState::new("db".into(), None, None);
+        let shell = ShellState::new("db".into(), None);
         let ctx = ExecutionContext::new(
             scope,
             shell,
@@ -695,7 +685,7 @@ mod tests {
             _timeout: None,
             env: child_env,
         };
-        let shell = ShellState::new("s".into(), None, None);
+        let shell = ShellState::new("s".into(), None);
         let ctx = ExecutionContext::new(
             scope,
             shell,
@@ -725,7 +715,7 @@ mod tests {
             _timeout: None,
             env: child_env,
         };
-        let shell = ShellState::new("s".into(), None, None);
+        let shell = ShellState::new("s".into(), None);
         let ctx = ExecutionContext::new(
             scope,
             shell,
@@ -740,38 +730,6 @@ mod tests {
             penv.get("BASE_PORT"),
             Some(&"5432".to_string()),
             "process_env must include variables from parent LayeredEnv layers"
-        );
-    }
-
-    #[test]
-    fn process_env_shell_overlay_includes_parent_layers() {
-        // Same bug but via shell.env_overlay path.
-        let mut base = Env::new();
-        base.insert("DB_HOST".into(), "localhost".into());
-        let root = Arc::new(LayeredEnv::root(base));
-
-        let mut overlay = Env::new();
-        overlay.insert("DB_PORT".into(), "5432".into());
-        let child_env = Arc::new(LayeredEnv::child(root, overlay));
-
-        let scope = Scope::Test {
-            name: "test".into(),
-            vars: Arc::new(Mutex::new(VarScope::new())),
-            timeout: None,
-        };
-        let shell = ShellState::new("s".into(), None, Some(child_env));
-        let ctx = ExecutionContext::new(
-            scope,
-            shell,
-            IrTimeout::tolerance(Duration::from_secs(5)),
-            test_env(),
-        );
-        let penv: HashMap<String, String> = ctx.process_env().into_iter().collect();
-        assert_eq!(penv.get("DB_PORT"), Some(&"5432".to_string()));
-        assert_eq!(
-            penv.get("DB_HOST"),
-            Some(&"localhost".to_string()),
-            "process_env must include variables from parent layers of shell env_overlay"
         );
     }
 
