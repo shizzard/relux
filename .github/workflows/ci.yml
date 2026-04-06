@@ -21,16 +21,17 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo +stable clippy --all-targets -- -D warnings
 
       - name: Format check
         run: rustup run nightly rustfmt --edition 2024 --check $(find src -name '*.rs') bin/relux.rs
 
       - name: Unit tests
-        run: cargo test --lib
+        run: cargo +stable test --lib
 
   e2e:
     name: E2E (${{ matrix.os }})
+    needs: check
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
