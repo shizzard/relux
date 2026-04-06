@@ -72,8 +72,8 @@ jobs:
       - name: Unit tests
         run: cargo test --lib
 
-  e2e:
-    name: E2E (${{ matrix.os }})
+  build:
+    name: Build (${{ matrix.os }})
     needs: [lint, test]
     runs-on: ${{ matrix.os }}
     strategy:
@@ -96,13 +96,42 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-e2e-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/**', 'bin/**', 'Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/**', 'bin/**', 'Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-e2e-${{ hashFiles('**/Cargo.lock') }}-
-            ${{ runner.os }}-cargo-e2e-
+            ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-build-dev-
 
       - name: Build
         run: cargo build
+
+  e2e:
+    name: E2E (${{ matrix.os }})
+    needs: [build]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Restore file timestamps
+        uses: chetan/git-restore-mtime-action@v2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/**', 'bin/**', 'Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-build-dev-
 
       - name: E2E tests
         run: |
