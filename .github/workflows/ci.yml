@@ -12,11 +12,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Restore file timestamps
+        uses: chetan/git-restore-mtime-action@v2
+
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
 
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
