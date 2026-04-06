@@ -46,9 +46,9 @@ test "send empty line" {
     """
     shell s {
         > echo before
+        <? ^before$
         >
         > echo after
-        <? ^before$
         <? ^after$
     }
 }

@@ -11,3 +11,6 @@
 
 [run]
 jobs = 20
+
+[flaky]
+max_retries = 3

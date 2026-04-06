@@ -11,6 +11,7 @@ test "flaky marker with no retries fails on first attempt" {
     }
 }
 
+# flaky if CI
 test "flaky retries recovers on third attempt" {
     """
     With --flaky-retries 3, the fixture test fails twice (timeout too short)

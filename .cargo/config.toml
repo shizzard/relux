@@ -1,0 +1,8 @@
+# Use the classic macOS linker to work around a symbol name length limit
+# in Apple's new linker (ld_prime) shipped with Xcode 16+.
+# See: https://github.com/rust-lang/rust/issues/130729
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-Wl,-ld_classic"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-Wl,-ld_classic"]
