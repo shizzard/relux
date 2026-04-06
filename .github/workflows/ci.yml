@@ -42,6 +42,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Debug fingerprint
+        run: CARGO_LOG=cargo::core::compiler::fingerprint=info cargo test --lib --no-run 2>&1 | head -100
+
       - name: Unit tests
         run: cargo test --lib
 
