@@ -368,6 +368,29 @@ impl EffectManager {
             exposed.insert(first_name);
         }
 
+        // 8. Terminate non-exposed local shells (deduplicate by Arc pointer).
+        //    Collect pointers of exposed VMs first — a non-exposed key may alias
+        //    the same Arc as an exposed key (e.g. backwards-compat single-shell alias),
+        //    so we must not shut those down.
+        let exposed_ptrs: HashSet<usize> = shells
+            .iter()
+            .filter(|(k, _)| exposed.contains(k.as_str()))
+            .map(|(_, v)| Arc::as_ptr(v) as usize)
+            .collect();
+        let non_exposed_keys: Vec<String> = shells
+            .keys()
+            .filter(|k| !exposed.contains(k.as_str()))
+            .cloned()
+            .collect();
+        for key in non_exposed_keys {
+            if let Some(vm_arc) = shells.remove(&key) {
+                let ptr = Arc::as_ptr(&vm_arc) as usize;
+                if !exposed_ptrs.contains(&ptr) {
+                    vm_arc.lock().await.shutdown().await;
+                }
+            }
+        }
+
         Ok(EffectHandle {
             scope,
             shells,

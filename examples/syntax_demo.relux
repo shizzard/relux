@@ -33,8 +33,7 @@ fn match_uuid() {
 }
 
 // effects produce a running shell as their output
-// exposed shells are declared with `expose`
-effect StartSomething {
+effect Service {
     // expected ENV: effect will fail if not set
     expect SOMETHING_HOST, SOMETHING_PORT
 
@@ -50,6 +49,7 @@ effect StartSomething {
         E3_VAR = e3_var
     }
 
+    // exposed shells are declared with `expose`
     expose e3.service as e3
 
     // interact with a shell provided by a started effect
@@ -58,11 +58,6 @@ effect StartSomething {
         <? match regex here (\d+)
         // reassign a previously declared variable
         some_important_var = $1
-    }
-
-    // this shell is exported as the effect shell
-    shell something {
-        some_function("arg1", "arg2")
     }
 
     // cleanup runs when the effect is torn down, even on failure
@@ -91,14 +86,18 @@ test "Some test" {
     let global_test_var
 
     // effects are instantiated before the test body runs
-    start StartSomething as something_shell
+    start Service as service1 {
+        SOMETHING_HOST = "localhost"
+        SOMETHING_PORT = "8080"
+    }
     // same effect with different overlay = different instance
-    start StartSomething as another_something_shell {
-        E3_VAR = "another value"
+    start Service as service2 {
+        SOMETHING_HOST = "localhost"
+        SOMETHING_PORT = "9090"
     }
     // same effect with same overlay = same instance (deduplication)
 
-    shell myshell {
+    shell testshell {
         // set match timeout (humantime format)
         ~10s
         // set fail pattern: test fails immediately if this regex matches output
@@ -112,7 +111,7 @@ test "Some test" {
         > echo ${variable}
         <? always-string
 
-        // override timeout for a slow operation
+        // override timeout for slow operations
         ~120s
         > ./long_running_command
         <? completed
@@ -126,7 +125,7 @@ test "Some test" {
         <~30s= slow response
     }
 
-    shell something_shell {
+    shell service1.e3 {
         // calling a function — runs in this shell's context
         let result = some_function("arg1", "arg2")
         // function return value captured

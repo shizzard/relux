@@ -80,7 +80,7 @@ public class ReluxColorSettingsPage implements ColorSettingsPage {
                     }
                 }
 
-                # skip unless "${CI}"
+                # skip unless CI
                 test "Example test" {
                     \"""
                     Test description goes here
@@ -88,7 +88,7 @@ public class ReluxColorSettingsPage implements ColorSettingsPage {
 
                     start StartServer as srv { SERVER_PORT = "8080" }
 
-                    srv.server {
+                    shell srv.server {
                         > curl localhost:8080
                         <? 200 OK
 
