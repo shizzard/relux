@@ -50,3 +50,11 @@ jobs:
         run: |
           cargo run -- check --manifest tests/Relux.toml
           cargo run -- run --manifest tests/Relux.toml
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs-${{ matrix.os }}
+          path: tests/relux/out/
+          retention-days: 7
