@@ -6,14 +6,11 @@ on:
   pull_request:
 
 jobs:
-  check:
-    name: Lint & Unit Tests
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Restore file timestamps
-        uses: chetan/git-restore-mtime-action@v2
 
       - uses: dtolnay/rust-toolchain@nightly
         with:
@@ -21,20 +18,31 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: Swatinem/rust-cache@v2
-
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Format check
         run: rustup run nightly rustfmt --edition 2024 --check $(find src -name '*.rs') bin/relux.rs
 
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore file timestamps
+        uses: chetan/git-restore-mtime-action@v2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
       - name: Unit tests
         run: cargo test --lib
 
   e2e:
     name: E2E (${{ matrix.os }})
-    needs: check
+    needs: [lint, test]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
