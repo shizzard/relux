@@ -30,3 +30,4 @@ Substantial changes to Relux are proposed and discussed through RFCs (Requests f
 | R006 | Multiple Marker Semantics | draft                         |
 | R007 | Overlay Identity          | rejected (superseded by R008) |
 | R008 | Effects Rework            | implemented                   |
+| R009 | Variable Match Operator   | draft                         |

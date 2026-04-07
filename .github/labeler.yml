@@ -41,3 +41,7 @@ e2e:
 editors:
   - changed-files:
       - any-glob-to-any-file: editors/**
+
+rfc:
+  - changed-files:
+      - any-glob-to-any-file: rfc/**
