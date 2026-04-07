@@ -1,0 +1,440 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>The CLI - Relux DSL Tutorial</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-a69d687d.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-71544b70.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Relux DSL Tutorial</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="the-cli"><a class="header" href="#the-cli">The CLI</a></h1>
+<p><a href="15-condition-markers.html">Previous: Condition Markers</a></p>
+<p>This is the final article in the tutorial series. You have come a long way — from your <a href="02-getting-started.html">first test</a> through <a href="03-send-match-and-logs.html">send and match</a>, <a href="06-variables.html">variables</a>, <a href="08-functions.html">functions</a>, <a href="11-effects-and-dependencies.html">effects</a>, <a href="14-modules-and-imports.html">modules</a>, and <a href="15-condition-markers.html">condition markers</a>. You now know the entire Relux DSL. Congratulations — that is a real achievement.</p>
+<p>This article covers the tool that drives everything: the <code>relux</code> binary itself. You have already used <code>relux new</code>, <code>relux check</code>, and <code>relux run</code> throughout the series. Here we go deeper into every subcommand, every flag, and the workflows they enable.</p>
+<p>Here is a typical development cycle, end to end:</p>
+<pre><code class="language-text">relux new                           # scaffold a project
+relux new --test smoke/login        # create a test module
+# ... write the test ...
+relux check                         # validate without running
+relux run                           # execute the full suite
+relux run --rerun                   # re-run only the failures
+relux history --flaky               # spot intermittent tests
+</code></pre>
+<p>Each of these commands has options that give you precise control over what runs, how it runs, and what output you get.</p>
+<h2 id="relux-new"><a class="header" href="#relux-new"><code>relux new</code></a></h2>
+<p>The <code>new</code> subcommand scaffolds projects and modules. Without any flags, it initializes a new Relux project in the current directory:</p>
+<pre><code class="language-text">relux new
+</code></pre>
+<p>This creates:</p>
+<pre><code class="language-text">Relux.toml
+relux/
+  .gitignore
+  tests/
+  lib/
+</code></pre>
+<p>The generated <a href="02-getting-started.html"><code>Relux.toml</code></a> has all values commented out, showing the defaults. The <code>.gitignore</code> excludes <code>out/</code> — the directory where test run output goes.</p>
+<p>Running <code>relux new</code> in a directory that already has a <code>Relux.toml</code> is an error. The command will not overwrite an existing project.</p>
+<h3 id="scaffolding-modules"><a class="header" href="#scaffolding-modules">Scaffolding modules</a></h3>
+<p>To create a test module:</p>
+<pre><code class="language-text">relux new --test auth/login
+</code></pre>
+<p>This creates <code>relux/tests/auth/login.relux</code> with a starter test you can run immediately. The path you provide maps directly to the filesystem under <code>relux/tests/</code>. Intermediate directories are created automatically.</p>
+<p>To create an <a href="11-effects-and-dependencies.html">effect</a> module:</p>
+<pre><code class="language-text">relux new --effect services/database
+</code></pre>
+<p>This creates <code>relux/lib/services/database.relux</code> with a skeleton effect definition. Effect modules go under <code>relux/lib/</code>, matching the <a href="14-modules-and-imports.html">module resolution rules</a> you already know.</p>
+<p>Module paths must follow snake_case rules: lowercase letters, digits, and underscores. Each segment must start with a letter or underscore. The <code>.relux</code> extension is added automatically — you do not need to include it.</p>
+<p>The <code>--test</code> and <code>--effect</code> flags are mutually exclusive. You can create one or the other per invocation.</p>
+<h2 id="relux-check"><a class="header" href="#relux-check"><code>relux check</code></a></h2>
+<p>The <code>check</code> subcommand validates test files without executing them. It runs the full front end of the pipeline — lexer, parser, and resolver — catching syntax errors, unresolved names, invalid imports, and circular dependencies. No shells are spawned.</p>
+<pre><code class="language-text">relux check
+</code></pre>
+<p>Without arguments, it checks everything under <code>relux/tests/</code>. You can also target specific files or directories:</p>
+<pre><code class="language-text">relux check relux/tests/auth/
+relux check relux/tests/smoke/login.relux
+</code></pre>
+<p>On success, it prints <code>check passed</code> to stderr. On failure, it prints diagnostic errors with source locations and exits with status 1.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--manifest PATH</code></td><td>Use a specific <code>Relux.toml</code> instead of auto-discovering one</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="relux-run"><a class="header" href="#relux-run"><code>relux run</code></a></h2>
+<p>The <code>run</code> subcommand executes tests. This is the main event — everything else in the CLI exists to support it.</p>
+<pre><code class="language-text">relux run
+</code></pre>
+<p>Without arguments, it runs all tests under <code>relux/tests/</code>. You can target specific files or directories:</p>
+<pre><code class="language-text">relux run relux/tests/smoke/
+relux run relux/tests/auth/login.relux relux/tests/auth/signup.relux
+</code></pre>
+<h3 id="parallel-execution"><a class="header" href="#parallel-execution">Parallel execution</a></h3>
+<p>By default tests run sequentially. The <code>-j</code> (or <code>--jobs</code>) flag sets the number of parallel workers:</p>
+<pre><code class="language-text">relux run -j 4
+</code></pre>
+<p>You can also set the default in <code>Relux.toml</code>:</p>
+<pre><code class="language-toml">[run]
+jobs = 4
+</code></pre>
+<p>The CLI flag overrides the config value. Each test gets its own isolated set of effects — parallel tests never share state.</p>
+<p>When running in parallel, the final summary reports both wall-clock time and cumulative (sum of all workers) time.</p>
+<h3 id="progress-and-strategy"><a class="header" href="#progress-and-strategy">Progress and strategy</a></h3>
+<p>Two flags control the experience during a run:</p>
+<pre><code class="language-text">relux run --progress tui --strategy fail-fast
+</code></pre>
+<p><strong><code>--progress</code></strong> controls the progress display mode:</p>
+<ul>
+<li><code>auto</code> — show a live TUI when connected to a TTY, plain output otherwise (default)</li>
+<li><code>plain</code> — print only result lines as tests finish, no live progress</li>
+<li><code>tui</code> — force the live TUI even when not connected to a TTY</li>
+</ul>
+<p><strong><code>--strategy</code></strong> controls what happens when a test fails:</p>
+<ul>
+<li><code>all</code> — run every test regardless of failures (default)</li>
+<li><code>fail-fast</code> — stop at the first failure</li>
+</ul>
+<h3 id="timeout-multiplier"><a class="header" href="#timeout-multiplier">Timeout multiplier</a></h3>
+<p>The <code>-m</code> (or <code>--timeout-multiplier</code>) flag scales <a href="09-timeouts.html">tolerance timeouts</a>:</p>
+<pre><code class="language-text">relux run -m 2.0
+</code></pre>
+<p>This doubles every tolerance (<code>~</code>) timeout in the suite. If a shell-scoped <code>~10s</code> would normally wait 10 seconds, with <code>-m 2.0</code> it waits 20 seconds.</p>
+<p>Critically, <a href="09-timeouts.html">assertion (<code>@</code>) timeouts</a> are <strong>never scaled</strong>. An <code>@2s</code> timeout means “the system must respond within 2 seconds” — that is a correctness check, and stretching it would defeat its purpose.</p>
+<p>The default multiplier is <code>1.0</code>. It must be a positive finite number.</p>
+<h3 id="re-running-failures"><a class="header" href="#re-running-failures">Re-running failures</a></h3>
+<p>After a run with failures, you can re-run only the failed tests:</p>
+<pre><code class="language-text">relux run --rerun
+</code></pre>
+<p>This loads the latest run summary from <code>relux/out/latest</code>, identifies which tests failed, and runs only those. It ignores any path arguments you provide — the filter comes entirely from the previous run.</p>
+<p>If there are no previous runs or no failed tests, the command exits cleanly with status 0.</p>
+<h3 id="output-artifacts"><a class="header" href="#output-artifacts">Output artifacts</a></h3>
+<p>Every run creates a timestamped directory under <code>relux/out/</code>:</p>
+<pre><code class="language-text">relux/out/
+  run-2026-03-16-14-30-00-a1b2c3d4e5/
+    artifacts/
+    run_summary.toml
+    index.html
+    ...
+  latest -&gt; run-2026-03-16-14-30-00-a1b2c3d4e5/
+</code></pre>
+<p>The <code>latest</code> symlink always points to the most recent run. The <code>run_summary.toml</code> file stores the run summary — this is what <code>--rerun</code> and <code>relux history</code> read.</p>
+<p>Two flags generate additional artifacts in the <code>artifacts/</code> subdirectory:</p>
+<pre><code class="language-text">relux run --tap --junit
+</code></pre>
+<p><strong><code>--tap</code></strong> generates a <a href="https://testanything.org/">TAP</a> (Test Anything Protocol) file — a plain-text format understood by many CI systems.</p>
+<p><strong><code>--junit</code></strong> generates a JUnit XML file — the de facto standard for CI test result ingestion. Most CI platforms (Jenkins, GitHub Actions, GitLab CI) can parse JUnit XML to display test results in their UI.</p>
+<p>Both flags can be used together. They are independent of each other and of the console output.</p>
+<h3 id="flaky-retries"><a class="header" href="#flaky-retries">Flaky retries</a></h3>
+<p>Tests marked with the <code>@flaky</code> <a href="15-condition-markers.html">condition marker</a> can be automatically retried on failure. The <code>--flaky-retries</code> flag sets the maximum retry count:</p>
+<pre><code class="language-text">relux run --flaky-retries 3
+</code></pre>
+<p>By default, each retry applies an exponential timeout multiplier so that tolerance timeouts grow across attempts. The <code>--flaky-multiplier</code> flag controls the base of that multiplier (default: <code>1.5</code>):</p>
+<pre><code class="language-text">relux run --flaky-retries 3 --flaky-multiplier 2.0
+</code></pre>
+<h3 id="timeout-overrides"><a class="header" href="#timeout-overrides">Timeout overrides</a></h3>
+<p>You can override the per-test and suite timeouts from the command line, without editing <code>Relux.toml</code>:</p>
+<pre><code class="language-text">relux run --test-timeout 2m --suite-timeout 1h
+</code></pre>
+<p>These accept the same humantime format as the config file (<code>5s</code>, <code>1m30s</code>, <code>2h</code>).</p>
+<h3 id="all-run-flags"><a class="header" href="#all-run-flags">All <code>run</code> flags</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Short</th><th>Default</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--jobs</code></td><td><code>-j</code></td><td><code>1</code></td><td>Number of parallel test workers</td></tr>
+<tr><td><code>--progress</code></td><td></td><td><code>auto</code></td><td>Display mode: <code>auto</code>, <code>plain</code>, <code>tui</code></td></tr>
+<tr><td><code>--strategy</code></td><td></td><td><code>all</code></td><td>Run strategy: <code>all</code> or <code>fail-fast</code></td></tr>
+<tr><td><code>--timeout-multiplier</code></td><td><code>-m</code></td><td><code>1.0</code></td><td>Scale tolerance (<code>~</code>) timeouts by this factor</td></tr>
+<tr><td><code>--rerun</code></td><td></td><td></td><td>Re-run only failed tests from the latest run</td></tr>
+<tr><td><code>--tap</code></td><td></td><td></td><td>Generate TAP artifact file</td></tr>
+<tr><td><code>--junit</code></td><td></td><td></td><td>Generate JUnit XML artifact file</td></tr>
+<tr><td><code>--flaky-retries</code></td><td></td><td></td><td>Max retries for <code>@flaky</code>-marked tests</td></tr>
+<tr><td><code>--flaky-multiplier</code></td><td></td><td><code>1.5</code></td><td>Exponential timeout multiplier base for retries</td></tr>
+<tr><td><code>--test-timeout</code></td><td></td><td>from config</td><td>Override per-test timeout (humantime string)</td></tr>
+<tr><td><code>--suite-timeout</code></td><td></td><td>from config</td><td>Override suite timeout (humantime string)</td></tr>
+<tr><td><code>--manifest</code></td><td></td><td>auto-discover</td><td>Path to <code>Relux.toml</code></td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="relux-history"><a class="header" href="#relux-history"><code>relux history</code></a></h2>
+<p>The <code>history</code> subcommand analyzes data from previous runs. It reads the <code>run_summary.toml</code> files stored in each run directory under <code>relux/out/</code> and computes statistics across them.</p>
+<p>You must specify exactly one analysis type:</p>
+<h3 id="--flaky"><a class="header" href="#--flaky"><code>--flaky</code></a></h3>
+<p>Shows the flakiness rate per test — how often each test alternates between passing and failing:</p>
+<pre><code class="language-text">relux history --flaky
+</code></pre>
+<p>This is your first stop when a test starts intermittently failing.</p>
+<h3 id="--failures"><a class="header" href="#--failures"><code>--failures</code></a></h3>
+<p>Shows failure frequency and distribution by failure mode (timeout, assertion, etc.):</p>
+<pre><code class="language-text">relux history --failures
+</code></pre>
+<p>This helps you spot patterns. If most failures are timeouts, you may need to adjust your timeout strategy. If they cluster around a specific assertion, there is a targeted bug.</p>
+<h3 id="--first-fail"><a class="header" href="#--first-fail"><code>--first-fail</code></a></h3>
+<p>Shows the most recent pass-to-fail regression per test:</p>
+<pre><code class="language-text">relux history --first-fail
+</code></pre>
+<p>Useful for pinpointing when a test started breaking. Combined with your version control history, this helps trace failures back to specific changes.</p>
+<h3 id="--durations"><a class="header" href="#--durations"><code>--durations</code></a></h3>
+<p>Shows duration trends and statistics — min, max, mean, and trend across runs:</p>
+<pre><code class="language-text">relux history --durations
+</code></pre>
+<p>Use this to catch tests that are getting progressively slower, or to identify outliers that might benefit from tighter timeouts.</p>
+<h3 id="filters"><a class="header" href="#filters">Filters</a></h3>
+<p>All four analysis types support the same set of filters:</p>
+<pre><code class="language-text">relux history --flaky --tests relux/tests/auth/ --last 10 --top 5
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--tests PATH...</code></td><td>Filter to specific test files or directories</td></tr>
+<tr><td><code>--last N</code></td><td>Limit to the N most recent runs</td></tr>
+<tr><td><code>--top N</code></td><td>Show only the top N results</td></tr>
+<tr><td><code>--format</code></td><td>Output format: <code>human</code> (default, formatted tables) or <code>toml</code> (structured, machine-readable)</td></tr>
+<tr><td><code>--manifest</code></td><td>Path to <code>Relux.toml</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>The <code>--format toml</code> option is particularly useful for scripting — pipe the output into another tool or parse it programmatically.</p>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best practices</a></h2>
+<h3 id="use---rerun-after-fixing-a-failure"><a class="header" href="#use---rerun-after-fixing-a-failure">Use <code>--rerun</code> after fixing a failure</a></h3>
+<p>When a run has failures and you think you have fixed the issue, use <code>relux run --rerun</code> instead of re-running the full suite. This targets only the tests that failed last time, giving you faster feedback. Once the reruns pass, do a full <code>relux run</code> to confirm nothing else broke.</p>
+<h3 id="match-strategy-to-context"><a class="header" href="#match-strategy-to-context">Match strategy to context</a></h3>
+<p>Use <code>--strategy fail-fast</code> during local development — you want to know about the first failure quickly so you can fix it. Use <code>--strategy all</code> in CI — you want a complete picture of the suite’s health, not just the first problem.</p>
+<h3 id="start-flakiness-investigation-with-history"><a class="header" href="#start-flakiness-investigation-with-history">Start flakiness investigation with <code>history</code></a></h3>
+<p>When a test starts failing intermittently, run <code>relux history --flaky</code> before digging into the test code. The flakiness rate tells you whether you are dealing with an environment issue (sporadic) or a logic bug (consistent). If the test passes 95% of the time, you are probably looking at a timing issue. If it passes 50% of the time, there may be a race condition or uncontrolled dependency.</p>
+<hr>
+<p>Next: <a href="A1-best-practices.html">Appendix A1 — Best Practices</a> — all best-practices guidelines from the series in one place</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="15-condition-markers.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="A1-best-practices.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="15-condition-markers.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="A1-best-practices.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="highlight-relux-8a60f327.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

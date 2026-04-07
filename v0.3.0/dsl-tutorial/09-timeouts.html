@@ -1,0 +1,488 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Timeouts - Relux DSL Tutorial</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-a69d687d.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-71544b70.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Relux DSL Tutorial</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="timeouts"><a class="header" href="#timeouts">Timeouts</a></h1>
+<p><a href="08-functions.html">Previous: Functions</a></p>
+<p>Every match operation in Relux has a timeout — a maximum duration to wait for the expected output to appear. If the output does not arrive in time, the test fails. So far, the tutorials have relied on the default timeout from <code>Relux.toml</code> without thinking about it. That works for simple cases, but real test suites need more control: some commands respond in milliseconds, others take seconds, and some tests must enforce strict time boundaries on the system under test.</p>
+<p>Relux draws a sharp line between two kinds of timeout. A <strong>tolerance</strong> timeout (<code>~</code>) says “be patient for this long” — it absorbs environmental variability and scales with the <code>--timeout-multiplier</code> flag. An <strong>assertion</strong> timeout (<code>@</code>) says “the system must respond within this time” — it is a correctness check and never scales. The prefix determines the intent, not the position: both <code>~</code> and <code>@</code> work at every level — config defaults, shell scope, inline overrides, and test definitions.</p>
+<pre><code class="language-relux">test "layered timeouts" @40s {
+    shell s {
+        ~10s
+        &gt; slow_startup_command
+        &lt;? ready
+
+        @2s
+        &gt; fast_command
+        &lt;? done
+
+        &gt; very_slow_query --timeout 25
+        &lt;~28s? ^query complete$
+    }
+}
+</code></pre>
+<p>The config sets a default match timeout. Inside the shell, <code>~10s</code> raises the tolerance timeout to 10 seconds for the startup command — if CI is slow, the multiplier can stretch this further. Then <code>@2s</code> switches to an assertion timeout: the <code>fast_command</code> must respond within 2 seconds regardless of environment. The final match uses <code>&lt;~28s?</code> to set a one-shot tolerance override for just that operation. The test itself has <code>@40s</code> — an assertion that the entire test must complete within 40 seconds, multiplier or not.</p>
+<h2 id="config-defaults"><a class="header" href="#config-defaults">Config defaults</a></h2>
+<p>The <code>[timeout]</code> section in <a href="02-getting-started.html"><code>Relux.toml</code></a> controls three values:</p>
+<pre><code class="language-toml">[timeout]
+match = "5s"
+test = "10m"
+suite = "1h"
+</code></pre>
+<p><strong><code>match</code></strong> is the default timeout for every match operation — <a href="03-send-match-and-logs.html"><code>&lt;=</code></a>, <a href="07-regex-matching.html"><code>&lt;?</code></a>, and their variants. When a match operator waits for output, this is how long it waits. Defaults to <code>5s</code> if not specified.</p>
+<p><strong><code>test</code></strong> is the maximum duration for a single test. If a test exceeds this limit, Relux aborts it and reports a timeout failure. Optional — no limit by default.</p>
+<p><strong><code>suite</code></strong> is the maximum duration for the entire test run. If the suite exceeds this limit, Relux aborts the remaining tests. Optional — no limit by default.</p>
+<p>All three config timeouts are <strong>tolerances</strong> — they are scaled by <code>--timeout-multiplier</code>.</p>
+<h2 id="--timeout-multiplier"><a class="header" href="#--timeout-multiplier"><code>--timeout-multiplier</code></a></h2>
+<p>Different environments run at different speeds. A test suite that passes in 2 seconds on a developer laptop might need 6 seconds on an overloaded CI server. Rather than hardcoding generous timeouts everywhere, Relux provides a multiplier:</p>
+<pre><code class="language-text">relux run --timeout-multiplier 3.0
+relux run -m 3.0
+</code></pre>
+<p>The multiplier scales every <strong>tolerance</strong> timeout (<code>~</code>) by the given factor. With <code>-m 3.0</code> and a config of <code>match = "5s"</code>, every match operation defaults to 15 seconds. A shell-scoped <code>~2s</code> becomes 6 seconds. Config <code>test</code> and <code>suite</code> timeouts are scaled the same way.</p>
+<p><strong>Assertion</strong> timeouts (<code>@</code>) are never scaled. They express exact intent about the system under test — stretching them would weaken the assertion. If a test says <code>@2s</code>, the system must respond within 2 seconds whether you are running on a laptop or a loaded CI box.</p>
+<h2 id="the--operator"><a class="header" href="#the--operator">The <code>~</code> operator</a></h2>
+<p>The <code>~</code> operator sets a tolerance timeout for the current shell, overriding the config default:</p>
+<pre><code class="language-relux">test "scoped timeout allows delayed output" {
+    shell s {
+        ~3s
+        &gt; sh -c 'sleep 1 &amp;&amp; echo delayed'
+        &lt;? ^delayed$
+    }
+}
+</code></pre>
+<p>The <code>~3s</code> sets the timeout to 3 seconds. Every match operation after it — <code>&lt;?</code>, <code>&lt;=</code>, and their variants — uses 3 seconds instead of the config default. The change persists until another timeout operator replaces it:</p>
+<pre><code class="language-relux">test "scoped timeout overrides previous timeout" {
+    shell s {
+        ~200ms
+        ~3s
+        &gt; sh -c 'sleep 1 &amp;&amp; echo delayed'
+        &lt;? ^delayed$
+    }
+}
+</code></pre>
+<p>The first <code>~200ms</code> would be too short for the command, but the second <code>~3s</code> replaces it before the match runs.</p>
+<p>The <code>~</code> operator accepts milliseconds (<code>~200ms</code>), seconds (<code>~3s</code>), minutes (<code>~2m</code>), and compound durations (<code>~1m30s</code>).</p>
+<p>Because <code>~</code> is a tolerance timeout, it is scaled by <code>--timeout-multiplier</code>. With <code>-m 2.0</code>, a <code>~3s</code> becomes 6 seconds.</p>
+<h2 id="the--operator-1"><a class="header" href="#the--operator-1">The <code>@</code> operator</a></h2>
+<p>The <code>@</code> operator sets an assertion timeout for the current shell. It works exactly like <code>~</code> in terms of scope and persistence, but it is never scaled:</p>
+<pre><code class="language-relux">test "assertion timeout in shell scope" {
+    shell s {
+        @2s
+        &gt; echo hello
+        &lt;? ^hello$
+    }
+}
+</code></pre>
+<p>The <code>@2s</code> sets a 2-second assertion timeout. Every match after it must be complete within 2 seconds — no multiplier adjustment, no environmental slack. Use <code>@</code> when the time boundary is part of what you are testing: “the system must respond within X.”</p>
+<p>You can switch between <code>~</code> and <code>@</code> freely within a shell. Each one replaces the previous timeout, regardless of kind:</p>
+<pre><code class="language-relux">test "mixing tolerance and assertion" {
+    shell s {
+        ~3s
+        &gt; startup_command
+        &lt;? ready
+
+        @1s
+        &gt; echo fast
+        &lt;? ^fast$
+
+        ~5s
+        &gt; slow_command
+        &lt;? ^done$
+    }
+}
+</code></pre>
+<p>The startup match uses a 3-second tolerance. The <code>echo fast</code> match uses a 1-second assertion. The final match switches back to a 5-second tolerance.</p>
+<h2 id="inline-overrides"><a class="header" href="#inline-overrides">Inline overrides</a></h2>
+<p>Sometimes a single operation needs a different timeout without changing the shell’s default. The <code>&lt;~</code> and <code>&lt;@</code> prefixes add a one-shot timeout to any match operator:</p>
+<pre><code class="language-relux">test "inline timeout overrides scoped timeout for regex" {
+    shell s {
+        ~200ms
+        &gt; sh -c 'sleep 1 &amp;&amp; echo delayed_regex'
+        &lt;~3s? ^delayed_regex$
+    }
+}
+</code></pre>
+<p>The shell timeout is 200ms — far too short for a command that takes over 100 milliseconds. But <code>&lt;~3s?</code> overrides the timeout for just this one match. The next match after it reverts to the 200ms shell timeout:</p>
+<pre><code class="language-relux">test "inline timeout is one-shot" {
+    shell s {
+        ~200ms
+        &gt; sh -c 'sleep 1 &amp;&amp; echo delayed'
+        &lt;~3s? ^delayed$
+        &gt; echo immediate
+        &lt;? ^immediate$
+    }
+}
+</code></pre>
+<p>The <code>&lt;~3s?</code> match waits up to 3 seconds. The <code>&lt;? ^immediate$</code> that follows uses the shell’s 200ms timeout — the override did not persist.</p>
+<p>Both prefixes work with both match operators:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operator</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><code>&lt;~[duration]?</code></td><td><a href="07-regex-matching.html">Regex match</a> with tolerance override (scaled)</td></tr>
+<tr><td><code>&lt;~[duration]=</code></td><td><a href="03-send-match-and-logs.html">Literal match</a> with tolerance override (scaled)</td></tr>
+<tr><td><code>&lt;@[duration]?</code></td><td>Regex match with assertion override (not scaled)</td></tr>
+<tr><td><code>&lt;@[duration]=</code></td><td>Literal match with assertion override (not scaled)</td></tr>
+</tbody>
+</table>
+</div>
+<p>The prefix only changes the timeout. Everything else about the operator stays the same — you can use <a href="07-regex-matching.html">captures</a>, <a href="06-variables.html">variable interpolation</a>, and all other features exactly as before:</p>
+<pre><code class="language-relux">test "inline timeout with variable interpolation" {
+    shell s {
+        ~200ms
+        let word = "interp_val"
+        &gt; sh -c 'sleep 1 &amp;&amp; echo interp_val'
+        &lt;~3s? ^${word}$
+    }
+}
+</code></pre>
+<p>Use <code>&lt;@</code> when a single match is an assertion about response time:</p>
+<pre><code class="language-relux">test "assertion timeout inline regex match" {
+    shell s {
+        ~200ms
+        &gt; sh -c 'sleep 1 &amp;&amp; echo assert_regex'
+        &lt;@3s? ^assert_regex$
+    }
+}
+</code></pre>
+<p>The <code>&lt;@3s?</code> asserts the system responds within 3 seconds. The multiplier will not stretch it.</p>
+<h2 id="test-level-timeout"><a class="header" href="#test-level-timeout">Test-level timeout</a></h2>
+<p>A test can declare its own timeout directly in the definition, using either prefix:</p>
+<pre><code class="language-relux">test "tolerance on test" ~30s {
+    shell s {
+        &gt; echo hello
+        &lt;? ^hello$
+    }
+}
+
+test "assertion on test" @3s {
+    shell s {
+        &gt; echo hello
+        &lt;? ^hello$
+    }
+}
+</code></pre>
+<p>The <code>~30s</code> is a tolerance — scaled by the multiplier, it says “be patient for 30 seconds.” The <code>@3s</code> is an assertion — never scaled, it says, “this test must complete within 3 seconds or the system is broken.”</p>
+<p>Consider testing Relux’s own timeout mechanism. You want to verify that a shell-level timeout of 1 second actually fires:</p>
+<pre><code class="language-relux">test "shell timeout fires within bound" @5s {
+    shell s {
+        ~1s
+        &gt; sleep 999
+        &lt;? ^this will never appear$
+    }
+}
+</code></pre>
+<p>The inner <code>~1s</code> timeout should fire after 1 second when the match fails. The outer <code>@5s</code> test timeout is the assertion: if 5 seconds pass and the inner timeout somehow did not fire, the system is broken. Without the test-level assertion timeout, a bug in the timeout mechanism would cause the test to hang forever.</p>
+<p>If neither prefix is used on the test definition, the config <code>test</code> timeout applies (if set). A test-level timeout — whether <code>~</code> or <code>@</code> — overrides the config value.</p>
+<h2 id="timeout-scoping-across-function-calls"><a class="header" href="#timeout-scoping-across-function-calls">Timeout scoping across function calls</a></h2>
+<p>When you call a <a href="08-functions.html">function</a>, the function inherits the caller’s current timeout. When the function returns, the timeout reverts to what the caller had before the call:</p>
+<pre><code class="language-relux">fn slow_operation() {
+    ~10s
+    &gt; long_running_command
+    &lt;? ^done$
+    match_ok()
+}
+
+test "timeout reverts after function call" {
+    shell s {
+        ~2s
+        slow_operation()
+        # Back to 2s here — the function's ~10s did not persist
+        &gt; echo quick
+        &lt;? ^quick$
+    }
+}
+</code></pre>
+<p>The caller sets <code>~2s</code>. Inside <code>slow_operation()</code>, <code>~10s</code> changes the timeout — but only within the function’s scope. When the function returns, the caller’s 2-second timeout is restored.</p>
+<p>The timeout lives on the shell — it is part of the shell’s own state, like the <a href="04-the-output-buffer.html">output buffer</a> or the running processes. Reverting the timeout on function return prevents accidental side effects: a function can adjust the timeout for its own operations without forcing the caller to save and restore the previous value manually.</p>
+<p>If a function does not set its own timeout, it uses whatever the caller had:</p>
+<pre><code class="language-relux">fn check_output() {
+    &gt; echo test
+    &lt;? ^test$
+    match_ok()
+}
+
+test "function inherits caller timeout" {
+    shell s {
+        ~10s
+        check_output()
+        # check_output used the 10s timeout for its match
+    }
+}
+</code></pre>
+<p>This scoping applies equally to <code>~</code> and <code>@</code> timeouts. A function that sets <code>@1s</code> does not change the caller’s timeout kind when it returns — the caller gets back exactly what it had, whether that was a tolerance or an assertion.</p>
+<h2 id="precedence"><a class="header" href="#precedence">Precedence</a></h2>
+<p>When a match operation runs, Relux resolves the timeout using this precedence chain:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Priority</th><th>Source</th><th>Example</th><th>Scaled by <code>-m</code>?</th></tr>
+</thead>
+<tbody>
+<tr><td>1 (highest)</td><td>Inline tolerance</td><td><code>&lt;~3s? pattern</code></td><td>Yes</td></tr>
+<tr><td>1 (highest)</td><td>Inline assertion</td><td><code>&lt;@3s? pattern</code></td><td>No</td></tr>
+<tr><td>2</td><td>Shell scope tolerance</td><td><code>~2s</code></td><td>Yes</td></tr>
+<tr><td>2</td><td>Shell scope assertion</td><td><code>@2s</code></td><td>No</td></tr>
+<tr><td>3 (lowest)</td><td>Config default</td><td><code>match = "5s"</code></td><td>Yes</td></tr>
+</tbody>
+</table>
+</div>
+<p>The first one that applies wins. If there is no inline override, the shell scope is used. If no <code>~</code> or <code>@</code> has been set, the config default applies.</p>
+<p>Separately, the test-level timeout (<code>test "name" ~5s</code> or <code>test "name" @3s</code>) and the config <code>test</code>/<code>suite</code> timeouts operate as outer boundaries — they cap the total duration of a test or run, independent of which match timeout is in effect.</p>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best practices</a></h2>
+<h3 id="use-the-multiplier-for-ci-flakiness-not-longer-timeouts"><a class="header" href="#use-the-multiplier-for-ci-flakiness-not-longer-timeouts">Use the multiplier for CI flakiness, not longer timeouts</a></h3>
+<p>When tests start failing on CI but pass locally, the tempting fix is to increase the timeouts in the test files. A <code>~2s</code> becomes <code>~5s</code>, then <code>~10s</code>, and soon every test has generous timeouts that mask real performance regressions.</p>
+<p>The multiplier exists for this problem. Keep your timeouts tight — reflecting how fast the system <em>should</em> respond — and use <code>-m 2.0</code> or <code>-m 3.0</code> on slow environments. This way, timeouts still catch genuine slowdowns on the developer’s machine while tolerating CI variability.</p>
+<h3 id="choose-the-prefix-not-the-position"><a class="header" href="#choose-the-prefix-not-the-position">Choose the prefix, not the position</a></h3>
+<p>The <code>~</code> vs <code>@</code> prefix is what determines whether a timeout is environmental tolerance or a system assertion. Both prefixes work at every level — shell scope, inline override, and test definition. Ask yourself: “is this about the environment or about the system?”</p>
+<ul>
+<li>The CI server is slow → use <code>~</code> (tolerance), let <code>-m</code> scale it</li>
+<li>One specific command is slower than the rest → use <code>~</code> with a larger value, or <code>&lt;~</code> on the match</li>
+<li>The system must respond within 2 seconds → use <code>@2s</code> or <code>&lt;@2s?</code></li>
+<li>The entire test must complete within a bound → use <code>test "name" @5s</code></li>
+</ul>
+<h3 id="reserve--for-real-assertions"><a class="header" href="#reserve--for-real-assertions">Reserve <code>@</code> for real assertions</a></h3>
+<p>If you put <code>@</code> on everything, the multiplier becomes useless — nothing scales, and slow environments fail. Use <code>@</code> only when the time boundary is genuinely part of what you are testing. Most timeouts in a typical test suite should be <code>~</code> tolerances, with <code>@</code> reserved for the few cases where timing is the assertion.</p>
+<h2 id="try-it-yourself"><a class="header" href="#try-it-yourself">Try it yourself</a></h2>
+<p>Write a test that exercises both kinds of timeout:</p>
+<ol>
+<li>Use <code>~</code> to set a shell-scoped tolerance timeout long enough for a <code>sleep 0.5 &amp;&amp; echo done</code> command</li>
+<li>Add an <code>@</code> assertion timeout on the test definition — the whole test must finish within a strict bound</li>
+<li>Add a second match using <code>&lt;@</code> with an inline assertion timeout for a fast command</li>
+<li>Run the test, then try adding <code>-m 0.5</code> to halve the tolerance timeouts — notice which timeouts shrink and which stay fixed</li>
+</ol>
+<hr>
+<p>Next: <a href="10-fail-patterns.html">Fail Patterns</a> — continuous monitoring for errors with <code>!?</code> and <code>!=</code></p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="08-functions.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="10-fail-patterns.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="08-functions.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="10-fail-patterns.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="highlight-relux-8a60f327.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

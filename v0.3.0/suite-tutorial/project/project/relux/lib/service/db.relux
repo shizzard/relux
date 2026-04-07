@@ -1,0 +1,19 @@
+import api/http
+
+effect StartDb -> db {
+    shell db {
+        let db_root = "${__RELUX_TEST_ARTIFACTS}/database"
+
+        > mkdir ${db_root}
+        match_ok()
+
+        !? ^error:
+
+        > ${__RELUX_SUITE_ROOT}/db_service.py --port ${DB_PORT} --data-dir ${db_root}
+        <~10s? ^listening on ${DB_PORT}$
+    }
+}
+
+pure fn url(port, path) {
+    "http://localhost:${port}${path}"
+}
