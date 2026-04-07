@@ -11,7 +11,6 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
-    environment: release
     steps:
       - uses: googleapis/release-please-action@v4
         with:
