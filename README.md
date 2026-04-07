@@ -34,7 +34,11 @@ Relux sends input to PTY shells and matches output against regex or literal patt
 
 ## Installation
 
-Build from source:
+```
+cargo install relux
+```
+
+Or build from source:
 
 ```
 git clone https://github.com/shizzard/relux.git
@@ -42,7 +46,7 @@ cd relux
 cargo build --release
 ```
 
-The binary is at `target/release/relux`. Pre-built binaries are available on the [Releases](https://github.com/shizzard/relux/releases) page.
+Pre-built binaries are also available on the [Releases](https://github.com/shizzard/relux/releases) page.
 
 ## Quick start
 
