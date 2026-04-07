@@ -150,7 +150,7 @@
 - Cleanup runs in a freshly spawned implicit shell, not in any existing shell
 - Existing shells are terminated automatically by the runtime (cleanup is not for graceful shutdown)
 - Cleanup is for external side effects: temp files, docker containers, log collection
-- Only `>`, `=>`, `let`, and variable reassignment are allowed — no match operators, no function calls
+- Any statement valid in a shell block is valid in a cleanup block
 - Cleanup always executes, regardless of whether the test/effect passed or failed
 - Cleanup failures are logged as warnings but do not change the test result
 - Cleanup order: test cleanup runs first, then effect cleanups

@@ -293,11 +293,10 @@ Last expression in a function body is the return value.
 
 ```relux
 cleanup {
-    <send and let statements only>
+    <statements>
 }
 ```
 
 - Runs in a fresh implicit shell
-- No match operators (`<?`, `<=`), no fail patterns, no timeout
-- No function calls
+- Any statement valid in a shell block is valid in a cleanup block
 - Always executes, regardless of pass/fail
