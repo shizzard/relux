@@ -50,3 +50,49 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: relux-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
+
+  vscode-plugin:
+    name: VSCode Plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Package VSCode extension
+        working-directory: editors/vscode
+        run: |
+          npm install -g @vscode/vsce
+          vsce package --out ../../relux-vscode-${{ github.ref_name }}.vsix
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: relux-vscode-${{ github.ref_name }}.vsix
+
+  intellij-plugin:
+    name: IntelliJ Plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build IntelliJ plugin
+        working-directory: editors/intellij
+        run: |
+          gradle buildPlugin --info
+          cp build/distributions/*.zip ../../relux-intellij-${{ github.ref_name }}.zip
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: relux-intellij-${{ github.ref_name }}.zip
