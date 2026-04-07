@@ -6,14 +6,15 @@ Expect-style integration testing for interactive shell programs.
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
 
 ```relux
-test "echo and match" {
-    shell s {
-        > echo hello-relux
-        <= hello-relux
-
-        > echo "value=42"
-        <? value=(\d+)
-        let captured = $1
+test "service healthcheck" {
+    let DATABASE_PORT = available_port()
+    let SERVICE_PORT = available_port()
+    
+    start Service as service { DATABASE_PORT, SERVICE_PORT }
+    
+    shell test {
+        > curl localhost:${SERVICE_PORT}/status
+        <? ^status: running
     }
 }
 ```
