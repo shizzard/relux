@@ -42,6 +42,12 @@ Syntax highlighting and editor support for the [Relux](https://github.com/spawnl
 2. Run the Gradle task `runIde` to launch a development instance with the plugin installed
 3. Make changes and test in the development instance
 
+## Versioning
+
+Bump `version` in `build.gradle.kts` when the plugin changes. The release
+workflow publishes to JetBrains Marketplace, which rejects duplicate versions —
+so unchanged plugins are silently skipped.
+
 ## Building
 
 ```bash
