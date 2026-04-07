@@ -61,4 +61,3 @@ relux run                        # run all tests
 - [DSL Tutorial](https://shizzard.github.io/relux/latest/dsl-tutorial/) — learn the Relux language from scratch
 - [Suite Tutorial](https://shizzard.github.io/relux/latest/suite-tutorial/) — build a real-world test suite with shared infrastructure
 - [Reference](https://shizzard.github.io/relux/latest/reference/) — semantic model, configuration, syntax, built-in functions, CI integration
-- [Reference](https://shizzard.github.io/relux/latest/reference/) — semantic model, configuration, syntax, built-in functions, CI integration
