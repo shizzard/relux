@@ -46,11 +46,13 @@ jobs:
       - name: Initialize gh-pages if needed
         run: |
           if [ ! -d gh-pages/.git ]; then
-            mkdir -p gh-pages
+            git clone --no-checkout "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
             cd gh-pages
-            git init
-            git checkout -b gh-pages
+            git checkout --orphan gh-pages
+            git rm -rf . 2>/dev/null || true
           fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Deploy versioned docs
         run: |
