@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.1](https://github.com/shizzard/relux/compare/v0.3.0...v0.3.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* **ci:** fix gh-pages initialization for first deployment ([2760e6f](https://github.com/shizzard/relux/commit/2760e6f8e8f20957d575cf81531bdbbf7ca5a177))
+* **docs:** remove duplicate reference link in README ([cc7146f](https://github.com/shizzard/relux/commit/cc7146f6f60ad444462741a7870dd0476dc33058))
+* **release:** remove component prefix from release tags ([87490b9](https://github.com/shizzard/relux/commit/87490b9d22c5fab1f3015df48d103ff4721ef9ca))
+
 ## [0.3.0](https://github.com/shizzard/relux/compare/relux-v0.2.0...relux-v0.3.0) (2026-04-07)
 
 
