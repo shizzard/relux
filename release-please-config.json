@@ -5,7 +5,8 @@
       "release-type": "rust",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
-      "extra-files": ["Cargo.lock"]
+      "extra-files": ["Cargo.lock"],
+      "include-component-in-tag": false
     }
   }
 }
