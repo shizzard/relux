@@ -25,6 +25,9 @@ intellijPlatform {
         name = "Relux"
         version = project.version.toString()
     }
+    publishing {
+        token = providers.environmentVariable("JETBRAINS_PLUGIN_RELEASE_TOKEN")
+    }
 }
 
 java {

@@ -91,6 +91,7 @@ jobs:
   intellij-plugin:
     name: IntelliJ Plugin
     runs-on: ubuntu-latest
+    environment: release
     steps:
       - uses: actions/checkout@v6
 
@@ -112,3 +113,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: relux-intellij-${{ github.ref_name }}.zip
+
+      - name: Publish to JetBrains Marketplace
+        working-directory: editors/intellij
+        run: gradle publishPlugin
+        env:
+          JETBRAINS_PLUGIN_RELEASE_TOKEN: ${{ secrets.JETBRAINS_PLUGIN_RELEASE_TOKEN }}
