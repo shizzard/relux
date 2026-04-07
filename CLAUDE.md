@@ -120,7 +120,7 @@ Unified CLI with subcommands: `new`, `run`, `check`, `dump`, `history`. Uses cla
 - **Effects are CamelCase, functions are snake_case** — enforced at parse level, used to disambiguate in imports
 - **Effect identity** = `(name, expects)` — same tuple means deduplicated/reused instance
 - **Functions execute in caller's shell context** — no own shell, side effects (timeout/fail-pattern changes) persist
-- **Cleanup blocks** run in fresh implicit shells with uncancellable tokens, only send/let allowed (no match operators)
+- **Cleanup blocks** run in fresh implicit shells with uncancellable tokens; any statement valid in a shell block is valid in a cleanup block
 - **Module imports** resolve from project root, never relative to importing file
 - **LayeredEnv** — environment variables use Arc-shared layered chain (no cloning of base env)
 - **Concurrent test execution** — N worker tasks pull from a shared queue; results sorted back to original order
@@ -130,4 +130,12 @@ Unified CLI with subcommands: `new`, `run`, `check`, `dump`, `history`. Uses cla
 - Rust 2024 edition idioms
 - Unit tests are colocated in each module via `#[cfg(test)] mod tests`
 - Documentation as mdbooks in `docs/` — `reference/` (semantics, syntax, BIFs, CI), `dsl-tutorial/`, `suite-tutorial/`
-- RFCs for new features go in `rfc/` (at project root)
+- **Every code change must be accompanied by updates to the relevant documentation** — review `docs/reference/` (semantics, syntax, BIFs, CI), `docs/dsl-tutorial/`, and `docs/suite-tutorial/` and update any articles affected by the change
+
+## RFCs
+
+- RFCs for new features go in `rfc/` as `RXXX-short-name.md`
+- `rfc/README.md` is the index — it must stay consistent with the actual RFC files
+- Each RFC is committed and submitted as a PR:
+  - PR title: `RFC R009: Variable Match Operator` (format: `RFC RXXX: Capitalized RFC Name`)
+  - PR body: the full RFC contents
