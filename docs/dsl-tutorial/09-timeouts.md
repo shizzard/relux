@@ -48,7 +48,7 @@ All three config timeouts are **tolerances** — they are scaled by `--timeout-m
 
 Different environments run at different speeds. A test suite that passes in 2 seconds on a developer laptop might need 6 seconds on an overloaded CI server. Rather than hardcoding generous timeouts everywhere, Relux provides a multiplier:
 
-```bash
+```text
 relux run --timeout-multiplier 3.0
 relux run -m 3.0
 ```

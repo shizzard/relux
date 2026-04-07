@@ -33,7 +33,7 @@ This example comes from `tests/relux/tests/operators/send.relux` in the Relux so
 
 Let's run the example and look at what Relux produces beyond the pass/fail result. Create a file `relux/tests/raw_send.relux` with the example from this article, then run it:
 
-```
+```text
 $ relux run relux/tests/raw_send.relux
 running 1 tests
 test raw_send.relux/multiple-raw-sends: |.... ok (5.8 ms)
@@ -52,7 +52,7 @@ So `|....` means: open shell, then four operations (our two `=>`s, `>`, and `<=`
 
 Every test run writes detailed logs to `relux/out/`. After running the test above, the directory looks like this (the `RnwTRJ4AMY` is the run id, and it would be different in your case):
 
-```
+```text
 relux/out/
 ├── latest -> run-2026-03-11-14-04-08-RnwTRJ4AMY
 └── run-2026-03-11-14-04-08-RnwTRJ4AMY/
@@ -85,7 +85,7 @@ Alongside the event log, each shell produces four log files:
 
 The `.log` files are the ones you'll read most often. Here is what `s.stdout.log` looks like for our test:
 
-```
+```text
 [+0.003s] export PS1='relux> ' PS2='' PROMPT_COMMAND=''
 [+0.008s] relux> echo one-two-three
 [+0.009s] one-two-three
@@ -121,7 +121,7 @@ test "echo and match" {
 
 Run it:
 
-```
+```text
 $ relux run relux/tests/hello.relux
 running 1 tests
 test hello.relux/echo-and-match: |... ok (9.7 ms)

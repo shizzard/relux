@@ -165,7 +165,7 @@ Each layer adds exactly one concern. Tests choose the layer they need: a registr
 
 Create `relux/tests/auth/smoke.relux`:
 
-```bash
+```text
 relux new --test auth/smoke
 ```
 
@@ -230,7 +230,7 @@ Notice the different effect choices: the duplicate registration test starts `See
 
 ## What we have so far
 
-```
+```text
 project/
 ├── Relux.toml
 ├── db_service.py

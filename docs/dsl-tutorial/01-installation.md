@@ -8,13 +8,13 @@ Relux is distributed as a single binary with no runtime dependencies. For now, t
 
 You need a working Rust toolchain. The recommended way to install it is through [rustup](https://rustup.rs/):
 
-```bash
+```text
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
 Relux uses Rust edition 2024, which requires **Rust 1.85 or later**. If you already have Rust installed, make sure you are on a recent stable version:
 
-```bash
+```text
 rustup update stable
 ```
 
@@ -22,7 +22,7 @@ rustup update stable
 
 Clone the repository and build in release mode:
 
-```bash
+```text
 git clone https://github.com/spawnlink/relux.git
 cd relux
 cargo build --release
@@ -32,7 +32,7 @@ The binary will be at `target/release/relux`. You can copy it somewhere on your 
 
 If you have [just](https://github.com/casey/just) installed, you can also build with:
 
-```bash
+```text
 just release
 ```
 
@@ -40,7 +40,7 @@ just release
 
 Run `relux` without arguments to confirm the binary works:
 
-```bash
+```text
 relux
 ```
 

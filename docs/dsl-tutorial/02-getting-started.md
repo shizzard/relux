@@ -6,25 +6,25 @@
 
 Let's go from an empty directory to a passing test. Let's create a new project and add an integration test suite for it.
 
-```bash
+```text
 mkdir my-project && cd my-project
 relux new
 ```
 
 Now scaffold a test:
 
-```bash
+```text
 relux new --test hello
 ```
 
 And run it:
 
-```bash
+```text
 relux run
 ```
 
 You should see something like this:
-```
+```text
 test result: ok. 1 passed; 0 failed; finished in 132.7ms
 ```
 
@@ -36,7 +36,7 @@ Unlike tools such as `cargo new` or `npm init` that create a new project directo
 
 Running `relux new` creates exactly two things at the project root:
 
-```
+```text
 my-project/
 ├── Relux.toml
 └── relux/
@@ -95,7 +95,7 @@ You already saw `relux new --test hello` in the opening example. This command cr
 
 The path you provide maps directly to the filesystem under `relux/tests/`. You can use subdirectories to organize your tests:
 
-```bash
+```text
 relux new --test auth/login
 ```
 
@@ -188,23 +188,23 @@ You have two commands for working with tests:
 
 **`relux run`** actually executes the tests:
 
-```bash
+```text
 relux run
 ```
 
-```
+```text
 test result: ok. 1 passed; 0 failed; finished in 12.5ms
 ```
 
 You can also run a specific test file:
 
-```bash
+```text
 relux run relux/tests/hello.relux
 ```
 
 Or a directory of tests:
 
-```bash
+```text
 relux run relux/tests/auth/
 ```
 

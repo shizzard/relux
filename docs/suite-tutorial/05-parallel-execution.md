@@ -282,7 +282,7 @@ jobs = 4
 
 Or pass it on the command line:
 
-```bash
+```text
 relux run -j 4
 ```
 
@@ -294,7 +294,7 @@ A few flags make the suite CI-friendly:
 
 **Timeout multiplier.** Tolerance timeouts (`~`) scale with the `-m` flag. CI machines are often slower, so double the timeouts:
 
-```bash
+```text
 relux run -m 2.0
 ```
 
@@ -302,13 +302,13 @@ Assertion timeouts (`@`) are never scaled -- they test hard time bounds that sho
 
 **Fail-fast vs. all.** For local development, stop at the first failure:
 
-```bash
+```text
 relux run --strategy fail-fast
 ```
 
 For CI, run everything to get the full picture:
 
-```bash
+```text
 relux run --strategy all
 ```
 
@@ -349,7 +349,7 @@ The suite started in chapter 0 as an empty project. Over five chapters it grew i
 
 The final architecture separates concerns cleanly:
 
-```
+```text
 project/
 ├── Relux.toml
 ├── db_service.py

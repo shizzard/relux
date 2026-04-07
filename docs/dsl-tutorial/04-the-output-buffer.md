@@ -40,28 +40,28 @@ The position where the next match starts searching is called the **cursor**. Whe
 
 Let's trace the buffer and cursor through the working example. For clarity, the buffer content stays the same in these diagrams — only the cursor moves. After `> echo hello`, the buffer contains (simplified for clarity):
 
-```
+```text
 echo hello<newline>hello<newline>relux>
 ^cursor
 ```
 
 `<= echo hello` scans forward from the cursor and matches the echoed command. The cursor advances past the match:
 
-```
+```text
 echo hello<newline>hello<newline>relux>
           ^cursor
 ```
 
 `<= hello` scans forward and finds the actual output. The cursor advances:
 
-```
+```text
 echo hello<newline>hello<newline>relux>
                         ^cursor
 ```
 
 `<= relux>` scans forward and finds the prompt. The cursor advances past it:
 
-```
+```text
 echo hello<newline>hello<newline>relux>
                                       ^cursor
 ```

@@ -112,7 +112,7 @@ pure fn bad() {
 }
 ```
 
-```
+```text
 error: shell operator cannot be used in a pure function
 ```
 
@@ -129,7 +129,7 @@ pure fn bad() {
 }
 ```
 
-```
+```text
 error: impure_helper/0 cannot be used in a pure function
 ```
 
@@ -141,7 +141,7 @@ pure fn bad() {
 }
 ```
 
-```
+```text
 error: match_prompt/0 cannot be used in a pure function
 ```
 

@@ -280,7 +280,7 @@ annotate("setup complete")
 
 For example, a test with two annotations might produce progress output like this:
 
-```
+```text
 test my_test.relux/server-startup: |...[setup complete]....[server ready].. ok (2.1s)
 ```
 

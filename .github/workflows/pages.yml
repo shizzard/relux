@@ -1,0 +1,77 @@
+name: GitHub Pages
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install mdBook
+        uses: peaceiris/actions-mdbook@v2
+        with:
+          mdbook-version: latest
+
+      - name: Build DSL tutorial
+        run: mdbook build docs/dsl-tutorial
+
+      - name: Build Suite tutorial
+        run: mdbook build docs/suite-tutorial
+
+      - name: Copy project examples into suite tutorial output
+        run: cp -r docs/suite-tutorial/project target/book/suite-tutorial/project
+
+      - name: Prepare versioned deployment
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          mkdir -p deploy/${VERSION}
+          cp -r target/book/dsl-tutorial deploy/${VERSION}/dsl-tutorial
+          cp -r target/book/suite-tutorial deploy/${VERSION}/suite-tutorial
+          cp docs/landing.html deploy/${VERSION}/index.html
+
+      - name: Checkout gh-pages
+        uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+          path: gh-pages
+          fetch-depth: 0
+        continue-on-error: true
+
+      - name: Initialize gh-pages if needed
+        run: |
+          if [ ! -d gh-pages/.git ]; then
+            mkdir -p gh-pages
+            cd gh-pages
+            git init
+            git checkout -b gh-pages
+          fi
+
+      - name: Deploy versioned docs
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          cp -r deploy/${VERSION} gh-pages/${VERSION}
+          rm -rf gh-pages/latest
+          cp -r deploy/${VERSION} gh-pages/latest
+
+          cat > gh-pages/index.html << 'REDIRECT'
+          <!DOCTYPE html>
+          <html>
+          <head><meta http-equiv="refresh" content="0; url=latest/"></head>
+          <body>Redirecting...</body>
+          </html>
+          REDIRECT
+
+          cd gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "docs: deploy ${VERSION}"
+          git push origin gh-pages --force
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

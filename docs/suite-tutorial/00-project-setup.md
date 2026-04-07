@@ -4,7 +4,7 @@
 
 This tutorial walks through building an integration test suite for a small but realistic system: three HTTP services that depend on each other.
 
-```
+```text
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
 │ task_service │────▶│ auth_service │     │              │
 │   :9020      │     │   :9010      │     │  db_service  │
@@ -25,7 +25,7 @@ All three are small Python scripts — no frameworks, no dependencies beyond the
 
 ## Prerequisites
 
-This tutorial assumes you have completed the [DSL tutorial](../dsl-tutorial/00-introduction.md) and are comfortable with all Relux language features: shells, operators, variables, functions, effects, imports, and condition markers.
+This tutorial assumes you have completed the [DSL tutorial](../dsl-tutorial/index.html) and are comfortable with all Relux language features: shells, operators, variables, functions, effects, imports, and condition markers.
 
 You will also need:
 
@@ -37,13 +37,13 @@ You will also need:
 
 Copy the services scripts into new directory: this will be out "monorepo". Now, from the project root:
 
-```bash
+```text
 relux new
 ```
 
 This creates `Relux.toml` and the `relux/` directory structure:
 
-```
+```text
 project/
 ├── Relux.toml
 ├── SPEC.md
@@ -78,11 +78,11 @@ suite = "5m"
 
 Let's scaffold a test file for the database service:
 
-```bash
+```text
 relux new --test db/smoke
 ```
 
-```
+```text
 Created relux/tests/db/smoke.relux
 ```
 
@@ -104,17 +104,17 @@ This is a placeholder — it just sends `echo hello-relux` and matches the outpu
 
 First, validate the file without executing it:
 
-```bash
+```text
 relux check
 ```
 
 `check passed` shows that the relux code is fine. Now run it:
 
-```bash
+```text
 relux run
 ```
 
-```
+```text
 ...
 test result: ok. 1 passed; 0 failed; finished in 8.7ms
 ...
@@ -128,7 +128,7 @@ You will not need to start the services by hand once the test suite is written �
 
 Each service is a standalone Python script with command-line arguments:
 
-```bash
+```text
 # Start the database (port 9000, data in ./data)
 python3 db_service.py --port 9000 --data-dir /tmp/db-data
 

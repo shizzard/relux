@@ -26,6 +26,11 @@ fix:
     cargo clippy --all-targets --fix --allow-dirty --allow-staged -- -D warnings
     rustup run nightly rustfmt --edition 2024 $(find src -name '*.rs') bin/relux.rs
 
+# Build tutorial books
+books:
+    mdbook build docs/dsl-tutorial
+    mdbook build docs/suite-tutorial
+
 # Run all tests (unit + e2e)
 test: unit e2e
 

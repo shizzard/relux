@@ -25,6 +25,7 @@
             buildInputs = [
               rust
               pkgs.just
+              pkgs.mdbook
               pkgs.jdk17
               pkgs.gradle
             ];

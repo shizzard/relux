@@ -8,7 +8,7 @@ This article covers the tool that drives everything: the `relux` binary itself. 
 
 Here is a typical development cycle, end to end:
 
-```bash
+```text
 relux new                           # scaffold a project
 relux new --test smoke/login        # create a test module
 # ... write the test ...
@@ -24,13 +24,13 @@ Each of these commands has options that give you precise control over what runs,
 
 The `new` subcommand scaffolds projects and modules. Without any flags, it initializes a new Relux project in the current directory:
 
-```bash
+```text
 relux new
 ```
 
 This creates:
 
-```
+```text
 Relux.toml
 relux/
   .gitignore
@@ -46,7 +46,7 @@ Running `relux new` in a directory that already has a `Relux.toml` is an error. 
 
 To create a test module:
 
-```bash
+```text
 relux new --test auth/login
 ```
 
@@ -54,7 +54,7 @@ This creates `relux/tests/auth/login.relux` with a starter test you can run imme
 
 To create an [effect](11-effects-and-dependencies.md) module:
 
-```bash
+```text
 relux new --effect services/database
 ```
 
@@ -68,13 +68,13 @@ The `--test` and `--effect` flags are mutually exclusive. You can create one or 
 
 The `check` subcommand validates test files without executing them. It runs the full front end of the pipeline — lexer, parser, and resolver — catching syntax errors, unresolved names, invalid imports, and circular dependencies. No shells are spawned.
 
-```bash
+```text
 relux check
 ```
 
 Without arguments, it checks everything under `relux/tests/`. You can also target specific files or directories:
 
-```bash
+```text
 relux check relux/tests/auth/
 relux check relux/tests/smoke/login.relux
 ```
@@ -89,13 +89,13 @@ On success, it prints `check passed` to stderr. On failure, it prints diagnostic
 
 The `run` subcommand executes tests. This is the main event — everything else in the CLI exists to support it.
 
-```bash
+```text
 relux run
 ```
 
 Without arguments, it runs all tests under `relux/tests/`. You can target specific files or directories:
 
-```bash
+```text
 relux run relux/tests/smoke/
 relux run relux/tests/auth/login.relux relux/tests/auth/signup.relux
 ```
@@ -104,7 +104,7 @@ relux run relux/tests/auth/login.relux relux/tests/auth/signup.relux
 
 By default tests run sequentially. The `-j` (or `--jobs`) flag sets the number of parallel workers:
 
-```bash
+```text
 relux run -j 4
 ```
 
@@ -123,7 +123,7 @@ When running in parallel, the final summary reports both wall-clock time and cum
 
 Two flags control the experience during a run:
 
-```bash
+```text
 relux run --progress tui --strategy fail-fast
 ```
 
@@ -142,7 +142,7 @@ relux run --progress tui --strategy fail-fast
 
 The `-m` (or `--timeout-multiplier`) flag scales [tolerance timeouts](09-timeouts.md):
 
-```bash
+```text
 relux run -m 2.0
 ```
 
@@ -156,7 +156,7 @@ The default multiplier is `1.0`. It must be a positive finite number.
 
 After a run with failures, you can re-run only the failed tests:
 
-```bash
+```text
 relux run --rerun
 ```
 
@@ -168,7 +168,7 @@ If there are no previous runs or no failed tests, the command exits cleanly with
 
 Every run creates a timestamped directory under `relux/out/`:
 
-```
+```text
 relux/out/
   run-2026-03-16-14-30-00-a1b2c3d4e5/
     artifacts/
@@ -182,7 +182,7 @@ The `latest` symlink always points to the most recent run. The `run_summary.toml
 
 Two flags generate additional artifacts in the `artifacts/` subdirectory:
 
-```bash
+```text
 relux run --tap --junit
 ```
 
@@ -196,13 +196,13 @@ Both flags can be used together. They are independent of each other and of the c
 
 Tests marked with the `@flaky` [condition marker](15-condition-markers.md) can be automatically retried on failure. The `--flaky-retries` flag sets the maximum retry count:
 
-```bash
+```text
 relux run --flaky-retries 3
 ```
 
 By default, each retry applies an exponential timeout multiplier so that tolerance timeouts grow across attempts. The `--flaky-multiplier` flag controls the base of that multiplier (default: `1.5`):
 
-```bash
+```text
 relux run --flaky-retries 3 --flaky-multiplier 2.0
 ```
 
@@ -210,7 +210,7 @@ relux run --flaky-retries 3 --flaky-multiplier 2.0
 
 You can override the per-test and suite timeouts from the command line, without editing `Relux.toml`:
 
-```bash
+```text
 relux run --test-timeout 2m --suite-timeout 1h
 ```
 
@@ -243,7 +243,7 @@ You must specify exactly one analysis type:
 
 Shows the flakiness rate per test — how often each test alternates between passing and failing:
 
-```bash
+```text
 relux history --flaky
 ```
 
@@ -253,7 +253,7 @@ This is your first stop when a test starts intermittently failing.
 
 Shows failure frequency and distribution by failure mode (timeout, assertion, etc.):
 
-```bash
+```text
 relux history --failures
 ```
 
@@ -263,7 +263,7 @@ This helps you spot patterns. If most failures are timeouts, you may need to adj
 
 Shows the most recent pass-to-fail regression per test:
 
-```bash
+```text
 relux history --first-fail
 ```
 
@@ -273,7 +273,7 @@ Useful for pinpointing when a test started breaking. Combined with your version 
 
 Shows duration trends and statistics — min, max, mean, and trend across runs:
 
-```bash
+```text
 relux history --durations
 ```
 
@@ -283,7 +283,7 @@ Use this to catch tests that are getting progressively slower, or to identify ou
 
 All four analysis types support the same set of filters:
 
-```bash
+```text
 relux history --flaky --tests relux/tests/auth/ --last 10 --top 5
 ```
 

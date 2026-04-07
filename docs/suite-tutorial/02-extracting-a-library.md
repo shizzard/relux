@@ -8,7 +8,7 @@ The smoke tests work, but we only covered the happy path. The database has sever
 
 Create `relux/tests/db/errors.relux`:
 
-```bash
+```text
 relux new --test db/errors
 ```
 
@@ -152,7 +152,7 @@ Selective imports make it obvious which functions are in use and prevent name co
 
 Run both files:
 
-```bash
+```text
 relux run
 ```
 
@@ -214,7 +214,7 @@ The gain is small for now. But in chapter 6, when we replace the hardcoded port 
 
 ## What we have so far
 
-```
+```text
 project/
 ├── Relux.toml
 ├── db_service.py

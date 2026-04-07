@@ -78,7 +78,7 @@ timeout_multiplier = 1.5   # tolerance timeouts scale by 1.5^retry
 
 Or override from the command line:
 
-```bash
+```text
 relux run --flaky-retries 3 --flaky-multiplier 2.0
 ```
 

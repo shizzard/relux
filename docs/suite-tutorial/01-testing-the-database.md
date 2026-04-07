@@ -32,7 +32,7 @@ The `db` shell starts the service and waits for the readiness message. The `clie
 
 Now, it is time to run the first actual test.
 
-```bash
+```text
 relux run
 ```
 

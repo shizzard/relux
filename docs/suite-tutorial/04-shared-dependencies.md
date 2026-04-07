@@ -46,7 +46,7 @@ pure fn url(path) {
 
 `Tasks` declares two dependencies: `start Db` and `start Auth`. But `Auth` itself also starts `Db`. This creates a diamond in the dependency graph:
 
-```
+```text
   Tasks
   |   |
   |   Auth
@@ -128,7 +128,7 @@ The first `<? ^jq (.*)$` skips past the echoed command in the output buffer. The
 
 Create `relux/tests/tasks/smoke.relux`:
 
-```bash
+```text
 relux new --test tasks/smoke
 ```
 
@@ -179,7 +179,7 @@ Notice how `jq_extract` captures the token and task ID into variables that are u
 
 With all three services, the full effect graph looks like this:
 
-```
+```text
   test "task CRUD"
   |              |
   Tasks          SeededAuth
@@ -193,7 +193,7 @@ Five `start` statements across effects and the test, but only four unique effect
 
 ## What we have so far
 
-```
+```text
 project/
 ├── Relux.toml
 ├── db_service.py
