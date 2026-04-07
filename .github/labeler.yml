@@ -1,0 +1,43 @@
+lexer:
+  - changed-files:
+      - any-glob-to-any-file: src/dsl/lexer/**
+
+parser:
+  - changed-files:
+      - any-glob-to-any-file: src/dsl/parser/**
+
+resolver:
+  - changed-files:
+      - any-glob-to-any-file: src/dsl/resolver/**
+
+runtime:
+  - changed-files:
+      - any-glob-to-any-file: src/runtime/**
+
+diagnostics:
+  - changed-files:
+      - any-glob-to-any-file: src/diagnostics/**
+
+cli:
+  - changed-files:
+      - any-glob-to-any-file: bin/relux.rs
+
+core:
+  - changed-files:
+      - any-glob-to-any-file: src/core/**
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file: docs/**
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file: .github/**
+
+e2e:
+  - changed-files:
+      - any-glob-to-any-file: tests/**
+
+editors:
+  - changed-files:
+      - any-glob-to-any-file: editors/**
