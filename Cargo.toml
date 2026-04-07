@@ -2,6 +2,14 @@
 name = "relux"
 version = "0.1.0"
 edition = "2024"
+description = "Expect-style integration test framework for interactive shell programs"
+license = "MIT"
+repository = "https://github.com/shizzard/relux"
+homepage = "https://shizzard.github.io/relux/"
+keywords = ["testing", "integration-testing", "expect", "pty", "shell"]
+categories = ["development-tools::testing"]
+readme = "README.md"
+exclude = ["tests/", "docs/", "editors/", ".github/"]
 
 [[bin]]
 name = "relux"
