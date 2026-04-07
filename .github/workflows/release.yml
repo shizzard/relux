@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/**', 'bin/**', 'Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-release-
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf ../../../relux-${{ github.ref_name }}-${{ matrix.target }}.tar.gz relux
+          cd ../../..
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: relux-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
