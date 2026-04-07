@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/shizzard/relux/compare/v0.3.1...v0.3.2) (2026-04-07)
+
+
+### Bug Fixes
+
+* **ci:** use PAT for release-please to trigger downstream workflows ([5a5c80e](https://github.com/shizzard/relux/commit/5a5c80e0318c6a2263db4b0dc2b2c09657c53272))
+
 ## [0.3.1](https://github.com/shizzard/relux/compare/v0.3.0...v0.3.1) (2026-04-07)
 
 
