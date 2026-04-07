@@ -24,6 +24,9 @@ jobs:
       - name: Build Suite tutorial
         run: mdbook build docs/suite-tutorial
 
+      - name: Build Reference
+        run: mdbook build docs/reference
+
       - name: Copy project examples into suite tutorial output
         run: cp -r docs/suite-tutorial/project target/book/suite-tutorial/project
 
@@ -33,6 +36,7 @@ jobs:
           mkdir -p deploy/${VERSION}
           cp -r target/book/dsl-tutorial deploy/${VERSION}/dsl-tutorial
           cp -r target/book/suite-tutorial deploy/${VERSION}/suite-tutorial
+          cp -r target/book/reference deploy/${VERSION}/reference
           cp docs/landing.html deploy/${VERSION}/index.html
 
       - name: Checkout gh-pages

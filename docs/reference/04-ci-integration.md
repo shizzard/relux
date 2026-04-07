@@ -2,7 +2,7 @@
 
 Relux can produce TAP and JUnit output for integration with CI systems:
 
-```bash
+```text
 relux run --tap --junit
 ```
 
@@ -52,14 +52,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Run tests
         run: relux run --junit
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: relux-results
           path: relux/out/latest/
@@ -145,14 +145,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Run tests
         run: relux run --junit --tap
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: relux-results
           path: relux/out/latest/
@@ -169,7 +169,7 @@ The `--tap` flag produces TAP version 14 output in `results.tap`. This is
 useful with any TAP consumer (e.g., `tap-diff`, `tap-dot`, Jenkins TAP
 Plugin):
 
-```bash
+```text
 # Stream TAP to a formatter
 cat relux/out/latest/results.tap | tap-diff
 

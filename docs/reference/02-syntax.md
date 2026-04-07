@@ -19,7 +19,7 @@ Naming conventions are enforced at the syntactic level (parse error on violation
 
 ## Imports
 
-```
+```relux
 import <path> { <name>, <name> as <alias>, }
 import <path>
 ```
@@ -30,7 +30,7 @@ import <path>
 
 ## Functions
 
-```
+```relux
 fn <name>(<param>, <param>) {
     <body>
 }
@@ -40,9 +40,23 @@ fn <name>(<param>, <param>) {
 - Execute in the caller's shell context
 - Shell operators (`>`, `=>`, `<?`, `<=`, etc.) are valid inside body
 
+## Pure Functions
+
+```relux
+pure fn <name>(<param>, <param>) {
+    <body>
+}
+```
+
+- Return value: last expression in body
+- Cannot contain shell operators (`>`, `=>`, `<?`, `<=`, `!?`, `!=`, timeouts)
+- Cannot call impure built-in functions or regular `fn` functions
+- Only `let`, variable reassignment, and expressions (including pure BIF calls) are allowed
+- Can be called from condition markers, overlay expressions, and regular shell blocks
+
 ## Effects
 
-```
+```relux
 effect <EffectName> {
     expect <VAR>, <VAR>, <VAR>
     start <EffectName>
@@ -71,7 +85,9 @@ effect <EffectName> {
 
 ## Tests
 
-```
+```relux
+test "<name>" ~<duration> {
+test "<name>" @<duration> {
 test "<name>" {
     """
     <doc string>
@@ -88,7 +104,7 @@ test "<name>" {
 
 ## Condition Markers
 
-```
+```relux
 # kind                                  // unconditional
 # kind modifier expr                    // truthiness check
 # kind modifier expr = expr             // equality comparison
@@ -102,7 +118,7 @@ Where:
 - `regex`: regex pattern with `${var}` interpolation, to end of line
 
 Examples:
-```
+```relux
 # skip
 # skip unless "${CI}"
 # run if "${OS}" = "linux"
@@ -141,7 +157,7 @@ Examples:
 
 ## Shell Blocks
 
-```
+```relux
 shell <name> {
     <statements>
 }
@@ -156,7 +172,7 @@ shell <alias>.<shell_name> {
 
 ## Variables
 
-```
+```relux
 let <name>                  # declare, defaults to ""
 let <name> = "<value>"      # declare with value
 let <name> = <expression>   # declare from expression
@@ -196,18 +212,31 @@ All operators are followed by a space, then payload to end of line.
 - `<=` matches literal with variable substitution
 - Both block until match or timeout
 
+### Buffer Reset
+
+```relux
+<?
+<=
+```
+
+- A match operator with no payload consumes all current output and resets the cursor
+- Useful to skip past output you don't care about
+
 ### Inline Timeout Override
 
-Any match operator can be prefixed with `~<duration>` to set a one-shot timeout:
+Any match operator can be prefixed with `~<duration>` (tolerance) or `@<duration>` (assertion) to set a one-shot timeout:
 
-```
-<~2s? regex pattern       # regex match with 2s timeout
-<~500ms= literal text     # literal match with 500ms timeout
+```relux
+<~2s? regex pattern       # regex match with 2s tolerance timeout
+<~500ms= literal text     # literal match with 500ms tolerance timeout
+<@2s? regex pattern       # regex match with 2s assertion timeout
+<@500ms= literal text     # literal match with 500ms assertion timeout
 ```
 
 - Duration uses compact humantime format (no spaces): `2s`, `500ms`, `1m30s`
 - Applies only to that single operation — does not affect the scoped timeout
 - Works with both match operators: `?`, `=`
+- Tolerance (`~`) timeouts are scaled by `--timeout-multiplier`; assertion (`@`) timeouts are never scaled
 
 ### Fail Pattern
 
@@ -218,14 +247,18 @@ Any match operator can be prefixed with `~<duration>` to set a one-shot timeout:
 
 - One active fail pattern at a time (single slot)
 - Setting a new one replaces the previous (regex or literal)
+- An empty `!?` or `!=` (no payload) clears the active fail pattern
 
 ### Timeout
 
-```
+```relux
 ~<duration>
+@<duration>
 ```
 
-- Compact humantime format (no spaces): `~10s`, `~1m`, `~500ms`, `~2m30s`
+- Compact humantime format (no spaces): `~10s`, `@2s`, `~500ms`, `~2m30s`
+- `~` sets a **tolerance** timeout — scaled by `--timeout-multiplier`
+- `@` sets an **assertion** timeout — never scaled (asserts the system responds within a hard deadline)
 - Sets timeout for subsequent match operations in the current shell
 - Overrides previous timeout
 - Scoped to the current function call — reverts when the function returns
@@ -258,7 +291,7 @@ Last expression in a function body is the return value.
 
 ## Cleanup Blocks
 
-```
+```relux
 cleanup {
     <send and let statements only>
 }

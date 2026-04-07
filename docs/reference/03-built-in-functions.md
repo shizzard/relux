@@ -55,6 +55,7 @@ Relux provides built-in functions (BIFs) that are always available without impor
 | `match_prompt`    | `match_prompt()`        | string  | Match the shell prompt configured in `Relux.toml`. Advances the output cursor past the prompt.                                                                                  |
 | `match_ok`        | `match_ok()`            | string  | Match the shell prompt, send `echo $?`, match `0`, and match the prompt again. Verifies the previous command exited with status 0.                                              |
 | `match_not_ok`    | `match_not_ok()`        | string  | Match the shell prompt, verify the previous command exited with a non-zero status, and match the prompt again. The inverse of `match_ok()`.                                     |
+| `match_not_ok`    | `match_not_ok(code)`    | string  | Match the shell prompt, verify the previous command exited with a specific non-zero status `code`, and match the prompt again. Like `match_exit_code(code)` but also asserts the code is non-zero. |
 | `match_exit_code` | `match_exit_code(code)` | string  | Send `echo $?`, match `code`, and match the prompt. Verifies the previous command exited with the given status. `code` is passed as a bare literal (e.g. `match_exit_code(1)`). |
 
 ### Control characters

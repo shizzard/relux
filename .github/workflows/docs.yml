@@ -24,3 +24,6 @@ jobs:
 
       - name: Build Suite tutorial
         run: mdbook build docs/suite-tutorial
+
+      - name: Build Reference
+        run: mdbook build docs/reference

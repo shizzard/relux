@@ -6,7 +6,7 @@
 - A module can contain any combination of: imports, functions, effects, tests
 - There is no distinction between "library" and "test" modules
 - Module path is its filesystem path relative to the project root (e.g. `lib/matchers` resolves to `lib/matchers.relux`)
-- The project root is defined by the location of `relux.toml`
+- The project root is defined by the location of `Relux.toml`
 
 ## Imports
 
@@ -40,6 +40,16 @@
 - Functions can call other functions
 - Functions can use imports from their own module
 
+## Pure Functions
+
+- Declared with `pure fn` instead of `fn`
+- Cannot contain shell operators (`>`, `=>`, `<?`, `<=`, `!?`, `!=`, timeouts)
+- Cannot call impure built-in functions (e.g., `match_prompt()`, `ctrl_c()`)
+- Cannot call regular `fn` functions — only other pure functions and pure built-in functions
+- Can only contain: `let` declarations, variable reassignment, and expressions
+- Can be called from condition markers, overlay expressions, and regular shell blocks
+- "Pure" means shell-independent, not side-effect-free — pure BIFs like `sleep()` and `log()` are allowed
+
 ## Shells
 
 - A shell is a spawned PTY process (default: `/bin/sh`)
@@ -48,13 +58,18 @@
 - Match operators (`<?`, `<=`) assert against the shell's accumulated output
 - Match operations block until a match is found or the timeout expires
 - A timeout expiry is a test failure
-- Any match operator can include an inline timeout override (`<~dur`):
+- Any match operator can include an inline timeout override (`<~dur` or `<@dur`):
   - Applies only to that single operation (one-shot)
   - Does not affect the shell's scoped timeout
   - Duration uses compact humantime format (no spaces): `2s`, `500ms`, `1m30s`
+- Timeouts come in two kinds:
+  - **Tolerance** (`~`) — scaled by `--timeout-multiplier`. Used for operations that may be slower under load
+  - **Assertion** (`@`) — never scaled. Used to assert the system responds within a hard deadline
 - Each shell has one active fail pattern slot — if shell output matches the fail pattern, the test fails immediately
   - Fail patterns are checked inline during match operations (under the same lock as consume) and at statement boundaries
   - Setting a fail pattern immediately rescans the buffer for the pattern
+  - An empty fail pattern operator (`!?` or `!=` with no payload) clears the active fail pattern
+- A match operator with no payload (`<?` or `<=` with nothing after it) resets the output buffer cursor, consuming all current output
 - Each shell has one active timeout value, initially set to a framework default
 - Multiple `shell <name>` blocks with the same name in a test/effect refer to the same shell (switching the active shell, like lux's `[shell name]`)
 
@@ -98,7 +113,7 @@
   - `"literal"` — literal string
   - `"${HOST}:${PORT}"` — compound interpolation
   - `42` — bare number (compared as string)
-- Bare variable identifiers (e.g. `CI`) are **not** valid in markers — use `"${CI}"` instead
+- Bare variable identifiers (e.g. `CI`) are valid in markers
 - Expression evaluation uses ENV-only lookup (`Arc<Env>`) — no frame variables or test-scope variables exist at evaluation time
 - Truthiness: empty string or unset variable is false, any non-empty string is true
 - `=` operator: evaluates both sides, returns the LHS value if LHS equals RHS, empty string otherwise

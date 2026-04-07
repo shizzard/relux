@@ -30,6 +30,7 @@ fix:
 books:
     mdbook build docs/dsl-tutorial
     mdbook build docs/suite-tutorial
+    mdbook build docs/reference
 
 # Run all tests (unit + e2e)
 test: unit e2e
