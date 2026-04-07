@@ -1,0 +1,38 @@
+import api/http
+import service/db { url as db_url, StartDb }
+
+effect StartAuth -> auth {
+    need StartDb {
+        DB_PORT = DB_PORT
+    }
+
+    shell db_client {
+        log("create the auth database")
+        http_request(200, db_url(DB_PORT, "/db/auth"), "POST")
+    }
+
+    shell auth {
+        !? ^error:
+
+        > ${__RELUX_SUITE_ROOT}/auth_service.py --port ${AUTH_PORT} --db-port ${DB_PORT}
+        <~10s? ^listening on ${AUTH_PORT}$
+    }
+}
+
+effect SeededAuth -> auth {
+    need StartAuth as auth {
+        DB_PORT = DB_PORT
+        AUTH_PORT = AUTH_PORT
+    }
+
+    shell auth_client {
+        log("create seed database users")
+        http_request(200, url(AUTH_PORT, "/register"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
+        http_request(200, url(AUTH_PORT, "/register"), "POST", "{\"login\": \"bob\", \"password\": \"bob_secret\"}")
+        http_request(200, url(AUTH_PORT, "/register"), "POST", "{\"login\": \"eva\", \"password\": \"eva_secret\"}")
+    }
+}
+
+pure fn url(port, path) {
+    "http://localhost:${port}${path}"
+}

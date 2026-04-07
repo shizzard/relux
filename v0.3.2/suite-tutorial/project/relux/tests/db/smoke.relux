@@ -1,0 +1,36 @@
+import service/db { url as db_url, StartDb }
+import api/http
+import jq
+
+test "key-value CRUD" {
+    """
+    Create a database, write a key, read it back, and delete it.
+    """
+    let db_port = available_port()
+
+    need StartDb {
+        DB_PORT = db_port
+    }
+
+    shell client {
+        log("create the database")
+        let response_filename = http_request(200, db_url(db_port, "/db/mydb"), "POST")
+        jq_match_query(response_filename, ".created", "^mydb$")
+
+        log("write a key")
+        let response_filename = http_request(200, db_url(db_port, "/db/mydb/greeting"), "PUT", "{\"value\": \"hello\"}")
+        jq_match_query(response_filename, ".wrote", "^greeting$")
+
+        log("read it back")
+        let response_filename = http_request(200, db_url(db_port, "/db/mydb/greeting"))
+        jq_match_query(response_filename, ".value", "^hello$")
+
+        log("delete it")
+        let response_filename = http_request(200, db_url(db_port, "/db/mydb/greeting"), "DELETE")
+        jq_match_query(response_filename, ".deleted", "^greeting$")
+
+        log("read again — should be gone")
+        let response_filename = http_request(404, db_url(db_port, "/db/mydb/greeting"))
+        jq_match_query(response_filename, ".error", "^.*not found.*$")
+    }
+}
