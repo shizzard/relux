@@ -4,6 +4,20 @@
 
 Relux is distributed as a single binary with no runtime dependencies.
 
+## Prerequisites
+
+`cargo install` and building from source require a working Rust toolchain. The recommended way to install it is through [rustup](https://rustup.rs/):
+
+```text
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Relux uses Rust edition 2024, which requires **Rust 1.85 or later**. If you already have Rust installed, make sure you are on a recent stable version:
+
+```text
+rustup update stable
+```
+
 ## Install from crates.io
 
 The simplest way to install Relux is via Cargo:
@@ -16,7 +30,7 @@ This downloads, compiles, and installs the `relux` binary into `~/.cargo/bin/`.
 
 ## Pre-built binaries
 
-Pre-built binaries for Linux (x86_64) and macOS (aarch64) are available on the [Releases](https://github.com/shizzard/relux/releases) page.
+Pre-built binaries for Linux (x86_64) and macOS (aarch64) are available on the [Releases](https://github.com/shizzard/relux/releases) page. No Rust toolchain required.
 
 ## Building from source
 
@@ -34,20 +48,6 @@ If you have [just](https://github.com/casey/just) installed, you can also build 
 
 ```text
 just release
-```
-
-## Prerequisites
-
-All installation methods require a working Rust toolchain. The recommended way to install it is through [rustup](https://rustup.rs/):
-
-```text
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-Relux uses Rust edition 2024, which requires **Rust 1.85 or later**. If you already have Rust installed, make sure you are on a recent stable version:
-
-```text
-rustup update stable
 ```
 
 ## Verifying the installation
