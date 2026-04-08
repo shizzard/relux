@@ -23,8 +23,8 @@ just books                      # Build tutorial/reference mdbooks
 just test                       # Run all tests (unit + e2e)
 just unit                       # Run all unit tests
 just unit lexer                 # Run tests matching "lexer"
+just run <args>                  # Run relux with arguments
 just e2e                        # Run e2e tests (check then run)
-just e2e <path from cwd>        # Run a particular e2e test(s)
 just history                    # Analyze e2e run history
 ```
 

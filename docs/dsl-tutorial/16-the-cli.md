@@ -93,12 +93,20 @@ The `run` subcommand executes tests. This is the main event — everything else 
 relux run
 ```
 
-Without arguments, it runs all tests under `relux/tests/`. You can target specific files or directories:
+Without arguments, it runs all tests under `relux/tests/`. Use `-f` (or `--file`) to target specific files or directories:
 
 ```text
-relux run relux/tests/smoke/
-relux run relux/tests/auth/login.relux relux/tests/auth/signup.relux
+relux run -f relux/tests/smoke/
+relux run -f relux/tests/auth/login.relux -f relux/tests/auth/signup.relux
 ```
+
+Use `-t` (or `--test`) to run specific tests by name within a single file:
+
+```text
+relux run -f relux/tests/auth/login.relux -t "login with valid credentials"
+```
+
+The `--test` flag requires exactly one `--file` and can be repeated to select multiple tests.
 
 ### Parallel execution
 
@@ -160,7 +168,7 @@ After a run with failures, you can re-run only the failed tests:
 relux run --rerun
 ```
 
-This loads the latest run summary from `relux/out/latest`, identifies which tests failed, and runs only those. It ignores any path arguments you provide — the filter comes entirely from the previous run.
+This loads the latest run summary from `relux/out/latest`, identifies which tests failed, and runs only those. It ignores any `--file` flags you provide — the filter comes entirely from the previous run.
 
 If there are no previous runs or no failed tests, the command exits cleanly with status 0.
 
@@ -220,6 +228,8 @@ These accept the same humantime format as the config file (`5s`, `1m30s`, `2h`).
 
 | Flag                   | Short | Default       | Purpose                                            |
 |------------------------|-------|---------------|----------------------------------------------------|
+| `--file`               | `-f`  | `relux/tests/`| Test file or directory to run (repeatable)         |
+| `--test`               | `-t`  |               | Run only tests with this name (repeatable; requires one `--file`) |
 | `--jobs`               | `-j`  | `1`           | Number of parallel test workers                    |
 | `--progress`           |       | `auto`        | Display mode: `auto`, `plain`, `tui`               |
 | `--strategy`           |       | `all`         | Run strategy: `all` or `fail-fast`                 |

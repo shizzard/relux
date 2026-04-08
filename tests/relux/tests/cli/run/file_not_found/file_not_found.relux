@@ -4,7 +4,7 @@ test "run exits 1 for non-existent file" {
     # TODO: non-existent file silently runs 0 tests instead of erroring
     """
     shell s {
-        > ${__RELUX} run --progress plain relux/tests/nonexistent.relux --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        > ${__RELUX} run --progress plain -f relux/tests/nonexistent.relux --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? 0 passed
         match_exit_code(0)
     }

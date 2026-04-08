@@ -60,10 +60,29 @@ pub async fn cmd_run(matches: &clap::ArgMatches) {
         fc
     };
 
+    let test_names: Option<Vec<String>> = if rerun {
+        None
+    } else {
+        matches
+            .get_many::<String>("test")
+            .map(|v| v.cloned().collect())
+    };
+    if test_names.is_some() && test_paths.len() != 1 {
+        eprintln!("error: --test requires exactly one --file");
+        process::exit(1);
+    }
+
     let loader = build_source_loader(&project_root);
     let env = Arc::new(LayeredEnv::from(Env::capture()));
 
-    let suite = resolve(&*loader, test_paths, env, multiplier, &project_root);
+    let mut suite = resolve(&*loader, test_paths, env, multiplier, &project_root);
+
+    if let Some(ref names) = test_names {
+        suite
+            .plans
+            .retain(|plan| names.iter().any(|n| n == plan.meta().name()));
+    }
+
     let strategy = match matches.get_one::<String>("strategy").map(|s| s.as_str()) {
         Some("fail-fast") => RunStrategy::FailFast,
         _ => RunStrategy::All,
@@ -104,15 +123,21 @@ pub async fn cmd_run(matches: &clap::ArgMatches) {
         IrTimeout::tolerance_scaled(d, multiplier)
     };
 
-    let suite_timeout = matches
-        .get_one::<String>("suite-timeout")
-        .map(|s| {
-            humantime::parse_duration(s).unwrap_or_else(|e| {
-                eprintln!("error: invalid --suite-timeout: {e}");
-                process::exit(1);
+    let suite_timeout = {
+        let d = matches
+            .get_one::<String>("suite-timeout")
+            .map(|s| {
+                humantime::parse_duration(s).unwrap_or_else(|e| {
+                    eprintln!("error: invalid --suite-timeout: {e}");
+                    process::exit(1);
+                })
             })
-        })
-        .unwrap_or(cfg.timeout.suite);
+            .unwrap_or(cfg.timeout.suite);
+        // Unlike test/match timeouts which use IrTimeout (tolerance vs assertion
+        // distinction, flaky retry scaling), the suite timeout is a plain Duration
+        // used as a hard watchdog deadline. We apply the multiplier directly.
+        d.mul_f64(multiplier)
+    };
 
     let jobs = matches
         .get_one::<usize>("jobs")

@@ -1,0 +1,33 @@
+test "--test runs only the named test" {
+    """
+    Verify relux run -f <file> -t <name> runs only the matching test.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain -f ${__RELUX_TEST_ROOT}/fixtures/relux/tests/two_tests.relux -t alpha --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 passed; 0 failed
+        match_ok()
+    }
+}
+
+test "--test errors when test name not found" {
+    """
+    Verify relux run -f <file> -t <nonexistent> runs zero tests.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain -f ${__RELUX_TEST_ROOT}/fixtures/relux/tests/two_tests.relux -t nonexistent --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 0 passed; 0 failed
+        match_ok()
+    }
+}
+
+test "--test errors with multiple --file flags" {
+    """
+    Verify relux run -f a -f b -t name prints an error and exits 1.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain -f ${__RELUX_TEST_ROOT}/fixtures/relux/tests/two_tests.relux -f ${__RELUX_TEST_ROOT}/fixtures/relux/tests/two_tests.relux -t alpha --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? --test requires exactly one --file
+        match_prompt()
+        match_exit_code(1)
+    }
+}

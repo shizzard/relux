@@ -4,6 +4,9 @@ use std::path::PathBuf;
 use clap_complete::engine::CompletionCandidate;
 
 use crate::core::config;
+use crate::dsl::parser::ast::AstItem;
+use crate::dsl::parser::ast::AstTestItem;
+use crate::dsl::parser::parse;
 
 fn is_not_skipped_dir(entry: &walkdir::DirEntry) -> bool {
     if !entry.file_type().is_dir() {
@@ -146,4 +149,68 @@ pub fn complete_shell(_current: &OsStr) -> Vec<CompletionCandidate> {
         CompletionCandidate::new("zsh").help(Some("Z SHell".into())),
         CompletionCandidate::new("fish").help(Some("Friendly Interactive SHell".into())),
     ]
+}
+
+pub fn complete_test_names(_current: &OsStr) -> Vec<CompletionCandidate> {
+    // ArgValueCompleter only receives the current partial value, not other parsed args.
+    // We re-parse std::env::args() with ignore_errors to access the --file value.
+    //
+    // Note: this calls cli() which registers this very function as a completer,
+    // making it self-referential. This is safe because try_get_matches_from only
+    // parses args and does not invoke completers.
+    // During shell completion, clap_complete invokes the binary as
+    // `<binary> -- relux run --file foo.relux --test <partial>`.
+    // The args after `--` are the actual command line being completed,
+    // already starting with the binary name.
+    let all_args: Vec<String> = std::env::args().collect();
+    let args: Vec<&str> = match all_args.iter().position(|a| a == "--") {
+        Some(pos) => all_args[pos + 1..].iter().map(|s| s.as_str()).collect(),
+        None => all_args.iter().map(|s| s.as_str()).collect(),
+    };
+    let Ok(matches) = super::cli().ignore_errors(true).try_get_matches_from(args) else {
+        return vec![];
+    };
+    let Some(run_matches) = matches.subcommand_matches("run") else {
+        return vec![];
+    };
+    let files: Vec<&PathBuf> = run_matches
+        .get_many::<PathBuf>("paths")
+        .map(|v| v.collect())
+        .unwrap_or_default();
+    if files.len() != 1 {
+        return vec![];
+    }
+    let source = match std::fs::read_to_string(files[0]) {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
+    let Ok(module) = parse(&source) else {
+        return vec![];
+    };
+    module
+        .items
+        .iter()
+        .filter_map(|item| match &item.node {
+            AstItem::Test { def, .. } => {
+                let name = def.name.node.clone();
+                let help = def
+                    .body
+                    .iter()
+                    .find_map(|item| match &item.node {
+                        AstTestItem::DocString { text, .. } => text
+                            .lines()
+                            .find(|l| !l.trim().is_empty())
+                            .map(|l| l.trim()),
+                        _ => None,
+                    })
+                    .unwrap_or("");
+                let mut candidate = CompletionCandidate::new(name);
+                if !help.is_empty() {
+                    candidate = candidate.help(Some(help.to_string().into()));
+                }
+                Some(candidate)
+            }
+            _ => None,
+        })
+        .collect()
 }

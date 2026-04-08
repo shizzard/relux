@@ -39,10 +39,14 @@ test: unit e2e
 unit *ARGS:
     cargo test --lib {{ARGS}}
 
+# Run relux with arguments
+run *ARGS:
+    cargo run -- {{ARGS}}
+
 # Run e2e tests (check then run)
-e2e *ARGS:
-    cargo run -- check --manifest tests/Relux.toml {{ARGS}}
-    cargo run -- run --manifest tests/Relux.toml {{ARGS}}
+e2e:
+    cargo run -- check --manifest tests/Relux.toml
+    cargo run -- run --manifest tests/Relux.toml
 
 # Analyze run history
 history *ARGS:

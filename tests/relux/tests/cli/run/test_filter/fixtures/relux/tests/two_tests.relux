@@ -1,0 +1,13 @@
+test "alpha" {
+    shell s {
+        > echo alpha
+        <? ^alpha$
+    }
+}
+
+test "beta" {
+    shell s {
+        > echo beta
+        <? ^beta$
+    }
+}

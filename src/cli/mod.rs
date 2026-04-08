@@ -56,10 +56,20 @@ pub fn cli() -> Command {
                 .about("Run tests")
                 .arg(
                     Arg::new("paths")
+                        .short('f')
+                        .long("file")
                         .help("Test files or directories to run (default: relux/tests/)")
-                        .num_args(0..)
+                        .action(ArgAction::Append)
                         .value_parser(value_parser!(PathBuf))
                         .add(ArgValueCompleter::new(completer::complete_relux_files)),
+                )
+                .arg(
+                    Arg::new("test")
+                        .short('t')
+                        .long("test")
+                        .help("Run only tests with this name (requires exactly one --file)")
+                        .action(ArgAction::Append)
+                        .add(ArgValueCompleter::new(completer::complete_test_names)),
                 )
                 .arg(
                     Arg::new("tap")

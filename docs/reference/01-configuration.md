@@ -98,7 +98,7 @@ project-root/
     └── .gitignore   # ignores out/
 ```
 
-- **`relux/tests/`** — test files are discovered recursively when `relux run` is invoked without explicit paths.
+- **`relux/tests/`** — test files are discovered recursively when `relux run` is invoked without `--file` flags.
 - **`relux/lib/`** — library files are always loaded alongside tests to make functions and effects available. May be empty or absent.
 - **`relux/out/`** — run output directory. Each run creates a timestamped subdirectory. A `latest` symlink points to the most recent run.
 
@@ -125,18 +125,22 @@ Creates an effect module file from a template in `relux/lib/`. Same path rules a
 relux new --effect network/tcp_server       # creates relux/lib/network/tcp_server.relux
 ```
 
-### `relux run [paths...] [flags]`
+### `relux run [flags]`
 
 Runs tests. Discovers `Relux.toml` by walking upward from the current directory.
 
-**Path arguments** accept both files and directories. Directories are searched recursively for `*.relux` files. If no paths are given, tests are discovered from `relux/tests/`.
+Use `-f`/`--file` to specify files or directories. Directories are searched recursively for `*.relux` files. If no `--file` flags are given, tests are discovered from `relux/tests/`.
 
-Library files from `relux/lib/` are always loaded regardless of which paths are specified.
+Use `-t`/`--test` to filter by test name within a single file. Requires exactly one `--file`.
+
+Library files from `relux/lib/` are always loaded regardless of which files are specified.
 
 Exits with code 1 if any test fails.
 
 | Flag                         | Description                                                                                      |
 |------------------------------|--------------------------------------------------------------------------------------------------|
+| `-f`, `--file <path>`       | Test file or directory to run (repeatable; default: `relux/tests/`)                              |
+| `-t`, `--test <name>`       | Run only tests with this name (repeatable; requires exactly one `--file`)                        |
 | `--manifest <path>`         | Path to `Relux.toml` (default: auto-discover by walking upward)                                  |
 | `-j`, `--jobs`               | Number of parallel test workers (default: `1`)                                                   |
 | `--tap`                      | Generate TAP artifact file in the run directory                                                  |
@@ -162,13 +166,17 @@ Validates test files without executing them. Runs the parser and resolver, repor
 
 Analyze run history from `relux/out/`.
 
-| Flag                | Description                                                     |
-|---------------------|-----------------------------------------------------------------|
-| `--manifest <path>` | Path to `Relux.toml` (default: auto-discover by walking upward) |
-| `--flaky`           | Show tests that have been both passing and failing               |
-| `--failures`        | Show tests that have failed                                      |
-| `--first-fail`      | Show the first failure for each test                             |
-| `--durations`       | Show test duration statistics                                    |
+| Flag                  | Description                                                     |
+|-----------------------|-----------------------------------------------------------------|
+| `--manifest <path>`   | Path to `Relux.toml` (default: auto-discover by walking upward) |
+| `--flaky`             | Show tests that have been both passing and failing               |
+| `--failures`          | Show tests that have failed                                      |
+| `--first-fail`        | Show the first failure for each test                             |
+| `--durations`         | Show test duration statistics                                    |
+| `--tests <path>...`   | Filter to specific test files or directories                    |
+| `--last <N>`          | Limit analysis to the N most recent runs                        |
+| `--top <N>`           | Show only the top N results                                     |
+| `--format <format>`   | Output format: `human` (default) or `toml`                      |
 
 ### `relux completions [flags]`
 

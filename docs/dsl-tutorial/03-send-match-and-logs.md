@@ -34,7 +34,7 @@ This example comes from `tests/relux/tests/operators/send.relux` in the Relux so
 Let's run the example and look at what Relux produces beyond the pass/fail result. Create a file `relux/tests/raw_send.relux` with the example from this article, then run it:
 
 ```text
-$ relux run relux/tests/raw_send.relux
+$ relux run -f relux/tests/raw_send.relux
 running 1 tests
 test raw_send.relux/multiple-raw-sends: |.... ok (5.8 ms)
 
@@ -122,7 +122,7 @@ test "echo and match" {
 Run it:
 
 ```text
-$ relux run relux/tests/hello.relux
+$ relux run -f relux/tests/hello.relux
 running 1 tests
 test hello.relux/echo-and-match: |... ok (9.7 ms)
 

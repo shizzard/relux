@@ -48,8 +48,11 @@ pub fn docstring<'a>()
         .ignore_then(
             // Match anything that isn't three consecutive quotes.
             // We use a custom approach: collect tokens until we see `"""`.
-            none_of([Token::Quote])
-                .map(|tok: Token<'a>| tok.to_string())
+            // Token::Newline displays as literal "\n" (for debug), so we
+            // map it to a real newline character here.
+            just(Token::Newline)
+                .to("\n".to_string())
+                .or(none_of([Token::Quote, Token::Newline]).map(|tok: Token<'a>| tok.to_string()))
                 .or(
                     // A quote that is NOT followed by two more quotes
                     just(Token::Quote)

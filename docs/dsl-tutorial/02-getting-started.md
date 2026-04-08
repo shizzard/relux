@@ -199,13 +199,13 @@ test result: ok. 1 passed; 0 failed; finished in 12.5ms
 You can also run a specific test file:
 
 ```text
-relux run relux/tests/hello.relux
+relux run -f relux/tests/hello.relux
 ```
 
 Or a directory of tests:
 
 ```text
-relux run relux/tests/auth/
+relux run -f relux/tests/auth/
 ```
 
 ## Best practices
