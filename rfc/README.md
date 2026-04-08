@@ -23,7 +23,7 @@ Substantial changes to Relux are proposed and discussed through RFCs (Requests f
 | RFC  | Title                     | Status                        |
 |------|---------------------------|-------------------------------|
 | R001 | Pure Functions            | implemented                   |
-| R002 | Best-Effort Cleanup       | accepted                      |
+| R002 | Best-Effort Cleanup       | implemented                   |
 | R003 | Lexer/Parser Rework       | implemented                   |
 | R004 | Resolver Rework           | implemented                   |
 | R005 | Runtime Rework            | implemented                   |
@@ -31,3 +31,4 @@ Substantial changes to Relux are proposed and discussed through RFCs (Requests f
 | R007 | Overlay Identity          | rejected (superseded by R008) |
 | R008 | Effects Rework            | implemented                   |
 | R009 | Variable Match Operator   | draft                         |
+| R010 | TUI Debugger              | draft                         |
