@@ -6,6 +6,8 @@ use serde::Deserialize;
 pub const DEFAULT_SHELL_COMMAND: &str = "/bin/sh";
 pub const DEFAULT_SHELL_PROMPT: &str = "relux> ";
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
+pub const DEFAULT_TEST_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+pub const DEFAULT_SUITE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 pub const RELUX_DIR: &str = "relux";
 pub const TESTS_DIR: &str = "tests";
@@ -19,19 +21,6 @@ where
 {
     let s = String::deserialize(deserializer)?;
     humantime::parse_duration(&s).map_err(serde::de::Error::custom)
-}
-
-fn deserialize_optional_duration<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let s: Option<String> = Option::deserialize(deserializer)?;
-    match s {
-        None => Ok(None),
-        Some(s) => humantime::parse_duration(&s)
-            .map(Some)
-            .map_err(serde::de::Error::custom),
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -105,18 +94,18 @@ impl Default for ShellConfig {
 pub struct TimeoutConfig {
     #[serde(rename = "match", deserialize_with = "deserialize_duration")]
     pub match_timeout: Duration,
-    #[serde(deserialize_with = "deserialize_optional_duration")]
-    pub test: Option<Duration>,
-    #[serde(deserialize_with = "deserialize_optional_duration")]
-    pub suite: Option<Duration>,
+    #[serde(deserialize_with = "deserialize_duration")]
+    pub test: Duration,
+    #[serde(deserialize_with = "deserialize_duration")]
+    pub suite: Duration,
 }
 
 impl Default for TimeoutConfig {
     fn default() -> Self {
         Self {
             match_timeout: DEFAULT_TIMEOUT,
-            test: None,
-            suite: None,
+            test: DEFAULT_TEST_TIMEOUT,
+            suite: DEFAULT_SUITE_TIMEOUT,
         }
     }
 }
@@ -192,8 +181,8 @@ mod tests {
         assert_eq!(config.shell.command, "/bin/sh");
         assert_eq!(config.shell.prompt, "relux> ");
         assert_eq!(config.timeout.match_timeout, Duration::from_secs(5));
-        assert!(config.timeout.test.is_none());
-        assert!(config.timeout.suite.is_none());
+        assert_eq!(config.timeout.test, Duration::from_secs(300));
+        assert_eq!(config.timeout.suite, Duration::from_secs(600));
     }
 
     #[test]
@@ -224,8 +213,8 @@ suite = "30m"
         assert_eq!(config.shell.command, "/bin/zsh");
         assert_eq!(config.shell.prompt, "test> ");
         assert_eq!(config.timeout.match_timeout, Duration::from_secs(3));
-        assert_eq!(config.timeout.test, Some(Duration::from_secs(60)));
-        assert_eq!(config.timeout.suite, Some(Duration::from_secs(1800)));
+        assert_eq!(config.timeout.test, Duration::from_secs(60));
+        assert_eq!(config.timeout.suite, Duration::from_secs(1800));
     }
 
     #[test]

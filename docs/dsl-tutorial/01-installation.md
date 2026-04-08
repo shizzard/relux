@@ -60,6 +60,22 @@ relux
 
 You should see the help output listing the available subcommands.
 
+## Shell completions
+
+Relux supports tab completions for bash, zsh, and fish. To install them:
+
+```text
+relux completions --install
+```
+
+This autodetects your shell and writes the completion script to the standard location. For zsh, you need to specify a path:
+
+```text
+relux completions --shell zsh --install --path ~/.zsh/completions
+```
+
+See [The CLI](16-the-cli.md) for details.
+
 ---
 
 Next: [Getting Started](02-getting-started.md) — scaffold a project, write and run your first test

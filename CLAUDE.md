@@ -104,9 +104,18 @@ Side-effect-free evaluation layer, shared between resolver (compile-time let eva
 
 Analyzes test run history across multiple runs: flaky detection, failure modes, first-fail identification, duration trends. Supports human-readable and TOML output formats.
 
+### CLI (`src/cli/`)
+
+CLI logic extracted from the binary into `crate::cli`. Subcommands: `new`, `run`, `check`, `dump`, `history`, `completions`. Uses clap for arg parsing with `clap_complete` for dynamic shell completions (bash/zsh/fish).
+
+- **mod.rs**: `cli()` command definition, shared helpers (`resolve_project`, `resolve_test_paths`, `read_file`, `build_source_loader`, `ModuleKind`).
+- **run.rs**, **check.rs**, **history.rs**, **new.rs**, **dump.rs**: One subcommand handler each.
+- **completions.rs**: Shell completion installer (`--shell`, `--install`, `--path`).
+- **completer.rs**: `ArgValueCompleter` functions for `.relux` files, manifests, timeouts, shells.
+
 ### Binary (`bin/relux.rs`)
 
-Unified CLI with subcommands: `new`, `run`, `check`, `dump`, `history`. Uses clap for arg parsing.
+Thin dispatch layer — delegates to `crate::cli`.
 
 ### Editor Support (`editors/`)
 

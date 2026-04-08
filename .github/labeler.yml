@@ -20,7 +20,9 @@ diagnostics:
 
 cli:
   - changed-files:
-      - any-glob-to-any-file: bin/relux.rs
+      - any-glob-to-any-file:
+          - bin/relux.rs
+          - src/cli/**
 
 core:
   - changed-files:

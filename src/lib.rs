@@ -190,6 +190,7 @@ mod span_tests {
     }
 }
 
+pub mod cli;
 pub mod core;
 pub mod diagnostics;
 pub mod dsl;

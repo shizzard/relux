@@ -32,15 +32,15 @@ The `[timeout]` section in [`Relux.toml`](02-getting-started.md) controls three 
 ```toml
 [timeout]
 match = "5s"
-test = "10m"
-suite = "1h"
+test = "5m"
+suite = "10m"
 ```
 
 **`match`** is the default timeout for every match operation — [`<=`](03-send-match-and-logs.md), [`<?`](07-regex-matching.md), and their variants. When a match operator waits for output, this is how long it waits. Defaults to `5s` if not specified.
 
-**`test`** is the maximum duration for a single test. If a test exceeds this limit, Relux aborts it and reports a timeout failure. Optional — no limit by default.
+**`test`** is the maximum duration for a single test. If a test exceeds this limit, Relux aborts it and reports a timeout failure. Defaults to `5m`.
 
-**`suite`** is the maximum duration for the entire test run. If the suite exceeds this limit, Relux aborts the remaining tests. Optional — no limit by default.
+**`suite`** is the maximum duration for the entire test run. If the suite exceeds this limit, Relux aborts the remaining tests. Defaults to `10m`.
 
 All three config timeouts are **tolerances** — they are scaled by `--timeout-multiplier`.
 
@@ -230,7 +230,7 @@ test "shell timeout fires within bound" @5s {
 
 The inner `~1s` timeout should fire after 1 second when the match fails. The outer `@5s` test timeout is the assertion: if 5 seconds pass and the inner timeout somehow did not fire, the system is broken. Without the test-level assertion timeout, a bug in the timeout mechanism would cause the test to hang forever.
 
-If neither prefix is used on the test definition, the config `test` timeout applies (if set). A test-level timeout — whether `~` or `@` — overrides the config value.
+If neither prefix is used on the test definition, the config `test` timeout applies (default: `5m`). A test-level timeout — whether `~` or `@` — overrides the config value.
 
 ## Timeout scoping across function calls
 

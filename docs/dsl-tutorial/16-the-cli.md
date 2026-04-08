@@ -297,6 +297,46 @@ relux history --flaky --tests relux/tests/auth/ --last 10 --top 5
 
 The `--format toml` option is particularly useful for scripting — pipe the output into another tool or parse it programmatically.
 
+## `relux completions`
+
+The `completions` subcommand installs shell completions for bash, zsh, or fish. Relux uses dynamic completions — the shell calls back into the `relux` binary at tab-press time, so completions stay up to date as the CLI evolves.
+
+```text
+relux completions
+```
+
+Without any flags, it autodetects your shell from `$SHELL` and prints what it would do. To actually install:
+
+```text
+relux completions --install
+```
+
+For bash and fish, completions are written to standard locations automatically. For zsh, you need to specify a directory in your `fpath`:
+
+```text
+relux completions --shell zsh --install --path ~/.zsh/completions
+```
+
+You can override the shell and install path for any shell:
+
+```text
+relux completions --shell fish --install --path ~/my-completions/relux.fish
+```
+
+Once installed, tab completion provides:
+
+- **Subcommands and flags** with help descriptions
+- **`.relux` file paths** for `run`, `check`, and `dump` commands
+- **`Relux.toml` files** for `--manifest`
+- **Timeout presets** for `--test-timeout` and `--suite-timeout` (multiplied from configured values)
+- **Enum values** like `--progress auto|plain|tui` and `--strategy all|fail-fast`
+
+| Flag               | Purpose                                                              |
+|--------------------|----------------------------------------------------------------------|
+| `--shell <shell>`  | Override shell detection: `bash`, `zsh`, or `fish`                   |
+| `--install`        | Write the completion script (dry-run without this flag)              |
+| `--path <path>`    | Override the install path                                            |
+
 ## Best practices
 
 ### Use `--rerun` after fixing a failure

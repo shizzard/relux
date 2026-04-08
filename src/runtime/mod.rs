@@ -85,8 +85,8 @@ pub struct RunContext {
     pub shell_command: String,
     pub shell_prompt: String,
     pub default_timeout: IrTimeout,
-    pub test_timeout: Option<IrTimeout>,
-    pub suite_timeout: Option<Duration>,
+    pub test_timeout: IrTimeout,
+    pub suite_timeout: Duration,
     pub strategy: RunStrategy,
     pub flaky: crate::core::config::FlakyConfig,
     pub jobs: usize,
@@ -248,15 +248,16 @@ pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> ExecuteResult {
     let cancel_reason: Arc<OnceLock<CancelReason>> = Arc::new(OnceLock::new());
 
     // Spawn suite timeout watchdog
-    let watchdog = run_ctx.suite_timeout.map(|timeout| {
+    let watchdog = {
+        let timeout = run_ctx.suite_timeout;
         let watchdog_cancel = cancel.clone();
         let watchdog_reason = cancel_reason.clone();
-        tokio::spawn(async move {
+        Some(tokio::spawn(async move {
             tokio::time::sleep(timeout).await;
             let _ = watchdog_reason.set(CancelReason::SuiteTimeout);
             watchdog_cancel.cancel();
-        })
-    });
+        }))
+    };
 
     // Spawn TUI renderer
     let is_tty = match run_ctx.progress {
@@ -583,15 +584,15 @@ async fn run_test_cancellable(
     let effective_timeout = meta
         .timeout()
         .map(|t| t.adjusted_duration_with_flaky(flaky_timeout_multiplier))
-        .or_else(|| {
+        .unwrap_or_else(|| {
             run_ctx
                 .test_timeout
-                .as_ref()
-                .map(|t| t.adjusted_duration_with_flaky(flaky_timeout_multiplier))
+                .adjusted_duration_with_flaky(flaky_timeout_multiplier)
         });
 
     // Spawn test-level timeout watchdog
-    let test_watchdog = effective_timeout.map(|timeout| {
+    let test_watchdog = Some({
+        let timeout = effective_timeout;
         let timeout_cancel = test_cancel.clone();
         tokio::spawn(async move {
             tokio::time::sleep(timeout).await;
@@ -625,10 +626,9 @@ async fn run_test_cancellable(
     if test_cancel.is_cancelled()
         && !cancel.is_cancelled()
         && matches!(result.outcome, Outcome::Fail(Failure::Cancelled { .. }))
-        && let Some(timeout) = effective_timeout
     {
         result.outcome = Outcome::Fail(Failure::Runtime {
-            message: format!("test timeout ({timeout:?}) exceeded"),
+            message: format!("test timeout ({effective_timeout:?}) exceeded"),
             span: None,
             shell: None,
         });

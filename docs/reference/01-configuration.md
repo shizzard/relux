@@ -38,7 +38,7 @@ prompt = "relux> "
 [timeout]
 match = "5s"
 test = "5m"
-suite = "30m"
+suite = "10m"
 
 [run]
 jobs = 1
@@ -65,11 +65,11 @@ timeout_multiplier = 1.5
 
 All durations use `humantime` format (e.g. `5s`, `1m30s`, `2h`).
 
-| Field     | Type             | Default | Description                                  |
-|-----------|------------------|---------|----------------------------------------------|
-| `match`   | duration         | `5s`    | Per-match timeout                            |
-| `test`    | duration or null | —       | Max wall-clock time per test                 |
-| `suite`   | duration or null | —       | Max wall-clock time for the entire test run  |
+| Field     | Type     | Default | Description                                  |
+|-----------|----------|---------|----------------------------------------------|
+| `match`   | duration | `5s`    | Per-match timeout                            |
+| `test`    | duration | `5m`    | Max wall-clock time per test                 |
+| `suite`   | duration | `10m`   | Max wall-clock time for the entire test run  |
 
 ### `[run]` section
 
@@ -169,6 +169,23 @@ Analyze run history from `relux/out/`.
 | `--failures`        | Show tests that have failed                                      |
 | `--first-fail`      | Show the first failure for each test                             |
 | `--durations`       | Show test duration statistics                                    |
+
+### `relux completions [flags]`
+
+Installs shell completions for bash, zsh, or fish. Relux uses dynamic completions — the shell calls back into the `relux` binary at tab-press time, enabling context-aware completions like `.relux` file discovery and timeout presets.
+
+Without `--install`, shows a dry-run of what would be written. With `--install`, writes the completion script.
+
+| Flag               | Description                                                              |
+|--------------------|--------------------------------------------------------------------------|
+| `--shell <shell>`  | Shell to generate completions for: `bash`, `zsh`, `fish` (default: autodetect from `$SHELL`) |
+| `--install`        | Write the completion script to the target location                       |
+| `--path <path>`    | Override the install path (required for zsh, optional for bash/fish)     |
+
+Default install paths:
+- **bash**: `~/.local/share/bash-completion/completions/relux`
+- **fish**: `~/.config/fish/completions/relux.fish`
+- **zsh**: no default — specify with `--path`
 
 ### `relux dump tokens <file>`
 

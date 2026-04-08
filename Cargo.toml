@@ -31,6 +31,7 @@ ariadne = { version = "~0.6", features = ["auto-color"] }
 async-trait = "~0.1"
 uuid = { version = "~1", features = ["v4"] }
 clap = { version = "~4" }
+clap_complete = { version = "~4", features = ["unstable-dynamic"] }
 quick-junit = "~0.5"
 serde = { version = "~1", features = ["derive"] }
 toml = "~0.8"
