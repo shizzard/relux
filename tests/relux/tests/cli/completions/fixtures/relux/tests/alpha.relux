@@ -1,0 +1,21 @@
+test "first" {
+    """
+    A first test for completion discovery.
+    """
+    shell s {
+        > echo first
+        <? ^first$
+        match_ok()
+    }
+}
+
+test "second" {
+    """
+    A second test for completion discovery.
+    """
+    shell s {
+        > echo second
+        <? ^second$
+        match_ok()
+    }
+}

@@ -1,0 +1,10 @@
+test "beta" {
+    """
+    A test in a nested directory for completion discovery.
+    """
+    shell s {
+        > echo beta
+        <? ^beta$
+        match_ok()
+    }
+}

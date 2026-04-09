@@ -1,0 +1,164 @@
+test "--shell completes shells (bash)" {
+    """
+    Verify bash completion protocol returns shell names.
+    """
+    shell s {
+        > _CLAP_COMPLETE_INDEX=3 _CLAP_COMPLETE_COMP_TYPE=9 COMPLETE=bash ${__RELUX} -- relux completions --shell "" 2>&1; echo
+        <? ^bash$
+        <? ^zsh$
+        <? ^fish$
+        match_ok()
+    }
+}
+
+test "--shell completes shells (zsh)" {
+    """
+    Verify zsh completion protocol returns shells with help text in value:help format.
+    """
+    shell s {
+        > _CLAP_COMPLETE_INDEX=3 COMPLETE=zsh ${__RELUX} -- relux completions --shell "" 2>&1; echo
+        <? ^bash:Bourne Again SHell$
+        <? ^zsh:Z SHell$
+        <? ^fish:Friendly Interactive SHell$
+        match_ok()
+    }
+}
+
+test "--shell completes shells (fish)" {
+    """
+    Verify fish completion protocol returns shells with tab-separated help text.
+    """
+    shell s {
+        > COMPLETE=fish ${__RELUX} -- relux completions --shell "" 2>&1
+        <= bash	Bourne Again SHell
+        <= zsh	Z SHell
+        <= fish	Friendly Interactive SHell
+        match_ok()
+    }
+}
+
+test "--file completes .relux files" {
+    """
+    Verify file completion discovers .relux files in tests/ and lib/.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && _CLAP_COMPLETE_INDEX=3 _CLAP_COMPLETE_COMP_TYPE=9 COMPLETE=bash ${__RELUX} -- relux run --file "" 2>&1 | grep -c .relux
+        <? ^3$
+        match_prompt()
+    }
+}
+
+test "--file excludes nested suite files" {
+    """
+    Verify file completion stops at nested project boundaries.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && _CLAP_COMPLETE_INDEX=3 _CLAP_COMPLETE_COMP_TYPE=9 COMPLETE=bash ${__RELUX} -- relux run --file "" 2>&1 | grep -c hidden
+        <? ^0$
+        match_prompt()
+    }
+}
+
+test "--file completes .relux files (fish)" {
+    """
+    Verify fish completion protocol discovers .relux files.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && COMPLETE=fish ${__RELUX} -- relux run --file "" 2>&1 | grep -c .relux
+        <? ^3$
+        match_prompt()
+    }
+}
+
+test "new --test completes test dirs" {
+    """
+    Verify test directory completion lists subdirectories of relux/tests/.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && _CLAP_COMPLETE_INDEX=3 _CLAP_COMPLETE_COMP_TYPE=9 COMPLETE=bash ${__RELUX} -- relux new --test "" 2>&1
+        <? relux/tests/nested
+        match_ok()
+    }
+}
+
+test "new --test excludes nested suite dirs" {
+    """
+    Verify test directory completion stops at nested project boundaries.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && _CLAP_COMPLETE_INDEX=3 _CLAP_COMPLETE_COMP_TYPE=9 COMPLETE=bash ${__RELUX} -- relux new --test "" 2>&1 | grep -c inner_suite
+        <? ^0$
+        match_prompt()
+    }
+}
+
+test "new --effect completes lib dirs" {
+    """
+    Verify effect directory completion lists subdirectories of relux/lib/.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && _CLAP_COMPLETE_INDEX=3 _CLAP_COMPLETE_COMP_TYPE=9 COMPLETE=bash ${__RELUX} -- relux new --effect "" 2>&1
+        <? relux/lib/helpers
+        match_ok()
+    }
+}
+
+test "--test completes test names from file" {
+    """
+    Verify test name completion parses the target file and lists test names.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && _CLAP_COMPLETE_INDEX=5 _CLAP_COMPLETE_COMP_TYPE=9 COMPLETE=bash ${__RELUX} -- relux run -f relux/tests/alpha.relux -t "" 2>&1; echo
+        <? ^first$
+        <? ^second$
+        match_ok()
+    }
+}
+
+test "--manifest completes root Relux.toml" {
+    """
+    Verify manifest completion discovers the root Relux.toml.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && _CLAP_COMPLETE_INDEX=3 _CLAP_COMPLETE_COMP_TYPE=9 COMPLETE=bash ${__RELUX} -- relux run --manifest "" 2>&1 | grep -c Relux.toml
+        <? ^2$
+        match_prompt()
+    }
+}
+
+test "--manifest completes nested suite Relux.toml" {
+    """
+    Verify manifest completion discovers Relux.toml files in nested suites.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && _CLAP_COMPLETE_INDEX=3 _CLAP_COMPLETE_COMP_TYPE=9 COMPLETE=bash ${__RELUX} -- relux run --manifest "" 2>&1 | grep inner_suite
+        <? inner_suite/Relux\.toml
+        match_ok()
+    }
+}
+
+test "--test-timeout completes timeout values" {
+    """
+    Verify test timeout completion suggests multiples of the default 5m timeout.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && _CLAP_COMPLETE_INDEX=3 _CLAP_COMPLETE_COMP_TYPE=9 COMPLETE=bash ${__RELUX} -- relux run --test-timeout "" 2>&1; echo
+        <? ^10m$
+        <? ^15m$
+        <? ^25m$
+        match_ok()
+    }
+}
+
+test "--suite-timeout completes timeout values" {
+    """
+    Verify suite timeout completion suggests multiples of the default 10m timeout.
+    """
+    shell s {
+        > cd ${__RELUX_TEST_ROOT}/fixtures && _CLAP_COMPLETE_INDEX=3 _CLAP_COMPLETE_COMP_TYPE=9 COMPLETE=bash ${__RELUX} -- relux run --suite-timeout "" 2>&1; echo
+        <? ^20m$
+        <? ^30m$
+        <? ^50m$
+        match_ok()
+    }
+}

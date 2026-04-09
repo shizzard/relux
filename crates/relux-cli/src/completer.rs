@@ -8,7 +8,7 @@ use relux_ast::AstTestItem;
 use relux_core::config;
 use relux_parser::parse;
 
-fn is_not_skipped_dir(entry: &walkdir::DirEntry) -> bool {
+fn is_not_out_dir(entry: &walkdir::DirEntry) -> bool {
     if !entry.file_type().is_dir() {
         return true;
     }
@@ -23,6 +23,17 @@ fn is_not_skipped_dir(entry: &walkdir::DirEntry) -> bool {
     true
 }
 
+fn is_not_nested_suite(entry: &walkdir::DirEntry, base: &std::path::Path) -> bool {
+    if !entry.file_type().is_dir() {
+        return true;
+    }
+    // Stop at nested project boundaries (directories containing Relux.toml)
+    if entry.path() != base && entry.path().join(config::CONFIG_FILE).exists() {
+        return false;
+    }
+    true
+}
+
 fn find_relux_files(base: &std::path::Path) -> Vec<PathBuf> {
     let Ok(cwd) = std::env::current_dir() else {
         return vec![];
@@ -30,9 +41,10 @@ fn find_relux_files(base: &std::path::Path) -> Vec<PathBuf> {
     if !base.is_dir() {
         return vec![];
     }
-    walkdir::WalkDir::new(base)
+    let base = base.to_path_buf();
+    walkdir::WalkDir::new(&base)
         .into_iter()
-        .filter_entry(is_not_skipped_dir)
+        .filter_entry(|e| is_not_out_dir(e) && is_not_nested_suite(e, &base))
         .filter_map(|e| e.ok())
         .filter(|e| {
             e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "relux")
@@ -48,9 +60,10 @@ fn find_dirs(base: &std::path::Path) -> Vec<PathBuf> {
     if !base.is_dir() {
         return vec![];
     }
-    walkdir::WalkDir::new(base)
+    let base = base.to_path_buf();
+    walkdir::WalkDir::new(&base)
         .into_iter()
-        .filter_entry(is_not_skipped_dir)
+        .filter_entry(|e| is_not_out_dir(e) && is_not_nested_suite(e, &base))
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_dir() && e.path() != base)
         .filter_map(|e| e.path().strip_prefix(&cwd).ok().map(|p| p.to_path_buf()))
@@ -93,7 +106,7 @@ pub fn complete_manifest(_current: &OsStr) -> Vec<CompletionCandidate> {
     };
     walkdir::WalkDir::new(&cwd)
         .into_iter()
-        .filter_entry(is_not_skipped_dir)
+        .filter_entry(is_not_out_dir)
         .filter_map(|e| e.ok())
         .filter(|e| {
             e.file_type().is_file() && e.file_name().to_string_lossy() == config::CONFIG_FILE

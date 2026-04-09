@@ -1,0 +1,10 @@
+test "hidden" {
+    """
+    This test lives inside a nested suite and must not appear in completions.
+    """
+    shell s {
+        > echo hidden
+        <? ^hidden$
+        match_ok()
+    }
+}

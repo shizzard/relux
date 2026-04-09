@@ -1,0 +1,4 @@
+fn noop() {
+    > true
+    match_ok()
+}
