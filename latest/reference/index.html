@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-ee625287.js";
+            window.path_to_searchindex_js = "searchindex-12de170e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-7e381e0d.js"></script>
@@ -361,7 +361,7 @@
 <li>Cleanup runs in a freshly spawned implicit shell, not in any existing shell</li>
 <li>Existing shells are terminated automatically by the runtime (cleanup is not for graceful shutdown)</li>
 <li>Cleanup is for external side effects: temp files, docker containers, log collection</li>
-<li>Only <code>&gt;</code>, <code>=&gt;</code>, <code>let</code>, and variable reassignment are allowed — no match operators, no function calls</li>
+<li>Any statement valid in a shell block is valid in a cleanup block</li>
 <li>Cleanup always executes, regardless of whether the test/effect passed or failed</li>
 <li>Cleanup failures are logged as warnings but do not change the test result</li>
 <li>Cleanup order: test cleanup runs first, then effect cleanups</li>

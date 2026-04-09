@@ -1,0 +1,60 @@
+import api/http
+import jq
+import service/db { url as db_url, StartDb }
+import service/auth { SeededAuth }
+
+effect StartTasks -> tasks {
+    need StartDb {
+        DB_PORT = DB_PORT
+    }
+    need SeededAuth {
+        DB_PORT = DB_PORT
+        AUTH_PORT = AUTH_PORT
+    }
+
+    shell db_client {
+        log("create the tasks database")
+        http_request(200, db_url(DB_PORT, "/db/tasks"), "POST")
+    }
+
+    shell tasks {
+        !? ^error:
+
+        > ${__RELUX_SUITE_ROOT}/task_service.py --port ${TASKS_PORT} --db-port ${DB_PORT} --auth-port ${AUTH_PORT}
+        <~10s? ^listening on ${TASKS_PORT}$
+    }
+}
+
+effect SeededTasks -> tasks {
+    need StartTasks as tasks {
+        DB_PORT = DB_PORT
+        AUTH_PORT = AUTH_PORT
+        TASKS_PORT = TASKS_PORT
+    }
+
+    shell tasks_client {
+        log("login as alice")
+        let response_filename = http_request(200, url(TASKS_PORT, "/login"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
+        let token = jq_extract(response_filename, ".token")
+        log("auth token: ${token}")
+
+        log("create a task")
+        let response_filename = http_request_authorized(200, url(TASKS_PORT, "/tasks"), "POST", token, "{\"title\": \"buy milk\", \"status\": \"todo\"}")
+        let task_id = jq_extract(response_filename, ".id")
+        jq_match_query(response_filename, ".title", "^buy milk$")
+
+        log("login as bob")
+        let response_filename = http_request(200, url(TASKS_PORT, "/login"), "POST", "{\"login\": \"bob\", \"password\": \"bob_secret\"}")
+        let token = jq_extract(response_filename, ".token")
+        log("auth token: ${token}")
+
+        log("create a task")
+        let response_filename = http_request_authorized(200, url(TASKS_PORT, "/tasks"), "POST", token, "{\"title\": \"buy milk\", \"status\": \"todo\"}")
+        let task_id = jq_extract(response_filename, ".id")
+        jq_match_query(response_filename, ".title", "^buy milk$")
+    }
+}
+
+pure fn url(port, path) {
+    "http://localhost:${port}${path}"
+}
