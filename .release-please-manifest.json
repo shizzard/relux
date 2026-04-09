@@ -1,3 +1,10 @@
 {
-  ".": "0.3.2"
+  "crates/relux-core": "0.3.2",
+  "crates/relux-ast": "0.3.2",
+  "crates/relux-lexer": "0.3.2",
+  "crates/relux-parser": "0.3.2",
+  "crates/relux-ir": "0.3.2",
+  "crates/relux-resolver": "0.3.2",
+  "crates/relux-runtime": "0.3.2",
+  "crates/relux-cli": "0.3.2"
 }

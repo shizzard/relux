@@ -1,46 +1,62 @@
-[package]
-name = "relux"
+[workspace]
+members = [
+    "crates/relux-core",
+    "crates/relux-ast",
+    "crates/relux-lexer",
+    "crates/relux-parser",
+    "crates/relux-ir",
+    "crates/relux-resolver",
+    "crates/relux-runtime",
+    "crates/relux-cli",
+]
+resolver = "3"
+
+[workspace.package]
 version = "0.3.2"
 edition = "2024"
 description = "Expect-style integration test framework for interactive shell programs"
 license = "MIT"
 repository = "https://github.com/shizzard/relux"
 homepage = "https://shizzard.github.io/relux/"
+readme = "README.md"
 keywords = ["testing", "integration-testing", "expect", "pty", "shell"]
 categories = ["development-tools::testing"]
-readme = "README.md"
-exclude = ["tests/", "docs/", "editors/", ".github/"]
 
-[[bin]]
-name = "relux"
-path = "bin/relux.rs"
+[workspace.dependencies]
+# ── Internal crates ──
+relux-core     = { path = "crates/relux-core" }
+relux-ast      = { path = "crates/relux-ast" }
+relux-lexer    = { path = "crates/relux-lexer" }
+relux-parser   = { path = "crates/relux-parser" }
+relux-ir       = { path = "crates/relux-ir" }
+relux-resolver = { path = "crates/relux-resolver" }
+relux-runtime  = { path = "crates/relux-runtime" }
 
-[dependencies]
-logos = { version = "~0.16" }
-chumsky = { version = "~0.12" }
-daggy = { version = "~0.9" }
-humantime = { version = "~2.3" }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-util", "process", "sync"] }
-pty-process = { version = "~0.5", features = ["async"] }
-regex = "~1"
+# ── External deps ──
+logos           = { version = "~0.16" }
+chumsky         = { version = "~0.12" }
+humantime       = { version = "~2.3" }
+tokio           = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-util", "process", "sync"] }
+pty-process     = { version = "~0.5", features = ["async"] }
+regex           = "~1"
 async-recursion = "~1"
-chrono = "~0.4"
-rand = "~0.10"
-bs58 = "~0.5"
-ariadne = { version = "~0.6", features = ["auto-color"] }
-async-trait = "~0.1"
-uuid = { version = "~1", features = ["v4"] }
-clap = { version = "~4" }
-clap_complete = { version = "~4", features = ["unstable-dynamic"] }
-quick-junit = "~0.5"
-serde = { version = "~1", features = ["derive"] }
-toml = "~0.8"
-walkdir = "~2"
-colored = "~2"
-tabled = "~0.18"
-terminal_size = "~0.4"
-bytes = "~1.11"
-thiserror = "~2"
-elsa = "~1.11"
-tokio-util = { version = "~0.7", features = ["rt"] }
-futures = "0.3.32"
+chrono          = "~0.4"
+rand            = "~0.10"
+bs58            = "~0.5"
+ariadne         = { version = "~0.6", features = ["auto-color"] }
+async-trait     = "~0.1"
+uuid            = { version = "~1", features = ["v4"] }
+clap            = { version = "~4" }
+clap_complete   = { version = "~4", features = ["unstable-dynamic"] }
+quick-junit     = "~0.5"
+serde           = { version = "~1", features = ["derive"] }
+toml            = "~0.8"
+walkdir         = "~2"
+colored         = "~2"
+tabled          = "~0.18"
+terminal_size   = "~0.4"
+bytes           = "~1.11"
+thiserror       = "~2"
+elsa            = "~1.11"
+tokio-util      = { version = "~0.7", features = ["rt"] }
+futures         = "~0.3"

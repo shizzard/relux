@@ -1,12 +1,28 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "plugins": [
+    {
+      "type": "linked-versions",
+      "groupName": "relux",
+      "components": [
+        "relux-core", "relux-ast", "relux-lexer", "relux-parser",
+        "relux-ir", "relux-resolver", "relux-runtime", "relux"
+      ]
+    },
+    { "type": "cargo-workspace", "merge": true }
+  ],
   "packages": {
-    ".": {
-      "release-type": "rust",
-      "changelog-path": "CHANGELOG.md",
-      "bump-minor-pre-major": true,
-      "extra-files": ["Cargo.lock"],
-      "include-component-in-tag": false
-    }
-  }
+    "crates/relux-core":     { "release-type": "rust", "component": "relux-core" },
+    "crates/relux-ast":      { "release-type": "rust", "component": "relux-ast" },
+    "crates/relux-lexer":    { "release-type": "rust", "component": "relux-lexer" },
+    "crates/relux-parser":   { "release-type": "rust", "component": "relux-parser" },
+    "crates/relux-ir":       { "release-type": "rust", "component": "relux-ir" },
+    "crates/relux-resolver": { "release-type": "rust", "component": "relux-resolver" },
+    "crates/relux-runtime":  { "release-type": "rust", "component": "relux-runtime" },
+    "crates/relux-cli":      { "release-type": "rust", "component": "relux" }
+  },
+  "changelog-path": "CHANGELOG.md",
+  "bump-minor-pre-major": true,
+  "extra-files": ["Cargo.lock"],
+  "include-component-in-tag": false
 }

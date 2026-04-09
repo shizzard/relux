@@ -1,0 +1,10 @@
+[package]
+name = "relux-ast"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "AST types for Relux"
+
+[dependencies]
+relux-core = { workspace = true }

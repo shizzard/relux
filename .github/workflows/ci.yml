@@ -33,16 +33,16 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/**', 'bin/**', 'Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('crates/**', 'Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}-
             ${{ runner.os }}-cargo-lint-
 
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Format check
-        run: rustup run nightly rustfmt --edition 2024 --check $(find src -name '*.rs') bin/relux.rs
+        run: rustup run nightly rustfmt --edition 2024 --check $(find crates -name '*.rs')
 
   test:
     name: Unit Tests
@@ -64,13 +64,13 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/**', 'bin/**', 'Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('crates/**', 'Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}-
             ${{ runner.os }}-cargo-test-
 
       - name: Unit tests
-        run: cargo test --lib
+        run: cargo test --workspace
 
   build:
     name: Build (${{ matrix.os }})
@@ -96,13 +96,13 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/**', 'bin/**', 'Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('crates/**', 'Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-
             ${{ runner.os }}-cargo-build-dev-
 
       - name: Build
-        run: cargo build
+        run: cargo build -p relux
 
   e2e:
     name: E2E (${{ matrix.os }})
@@ -128,15 +128,15 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/**', 'bin/**', 'Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('crates/**', 'Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-
             ${{ runner.os }}-cargo-build-dev-
 
       - name: E2E tests
         run: |
-          cargo run -- check --manifest tests/Relux.toml
-          cargo run -- run --manifest tests/Relux.toml --timeout-multiplier 3.0
+          cargo run -p relux -- check --manifest tests/Relux.toml
+          cargo run -p relux -- run --manifest tests/Relux.toml --timeout-multiplier 3.0
 
       - name: Upload test artifacts
         if: failure()

@@ -1,0 +1,37 @@
+[package]
+name = "relux"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Expect-style integration test framework for interactive shell programs"
+readme.workspace = true
+keywords = ["testing", "integration-testing", "expect", "pty", "shell"]
+categories = ["development-tools::testing"]
+
+[[bin]]
+name = "relux"
+path = "bin/relux.rs"
+
+[dependencies]
+relux-core     = { workspace = true }
+relux-ast      = { workspace = true }
+relux-ir       = { workspace = true }
+relux-lexer    = { workspace = true }
+relux-parser   = { workspace = true }
+relux-resolver = { workspace = true }
+relux-runtime  = { workspace = true }
+clap           = { workspace = true }
+clap_complete  = { workspace = true }
+tabled         = { workspace = true }
+terminal_size  = { workspace = true }
+colored        = { workspace = true }
+serde          = { workspace = true }
+toml           = { workspace = true }
+walkdir        = { workspace = true }
+chrono         = { workspace = true }
+humantime      = { workspace = true }
+rand           = { workspace = true }
+bs58           = { workspace = true }
+tokio          = { workspace = true }

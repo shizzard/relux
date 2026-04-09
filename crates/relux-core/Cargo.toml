@@ -1,0 +1,22 @@
+[package]
+name = "relux-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Core types and utilities for Relux"
+
+[dependencies]
+elsa      = { workspace = true }
+serde     = { workspace = true }
+toml      = { workspace = true }
+humantime = { workspace = true }
+thiserror = { workspace = true }
+ariadne   = { workspace = true }
+walkdir   = { workspace = true }
+uuid      = { workspace = true }
+rand      = { workspace = true }
+bs58      = { workspace = true }
+
+[dev-dependencies]
+regex = { workspace = true }
