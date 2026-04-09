@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.0](https://github.com/shizzard/relux/compare/v0.3.2...v0.4.0) (2026-04-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** `relux run` no longer accepts positional path arguments. Use `--file`/`-f` instead (e.g. `relux run -f foo.relux`).
+* **cli:** test and suite timeouts are no longer optional. Tests and suites that previously ran with no time limit will now timeout at 5m and 10m respectively unless overridden in Relux.toml.
+
+### Features
+
+* **cli:** add --file and --test flags to relux run ([c03cd81](https://github.com/shizzard/relux/commit/c03cd81fd2f239810c5dcc90d556ce876bcab510))
+* **cli:** add dynamic shell completions and refactor CLI ([5f0b12e](https://github.com/shizzard/relux/commit/5f0b12e5bd892f9b0669eaa8ef50ca516cda1e35))
+
+
+### Bug Fixes
+
+* **ci:** remove environment gate from release-please workflow ([952f86e](https://github.com/shizzard/relux/commit/952f86e692b6be3086c0f1997a2c985cb367eaf6))
+
 ## [0.3.2](https://github.com/shizzard/relux/compare/v0.3.1...v0.3.2) (2026-04-07)
 
 
