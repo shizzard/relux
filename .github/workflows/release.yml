@@ -93,15 +93,32 @@ jobs:
 
       # Publish all workspace crates in dependency order.
       # --no-verify: build job already validated compilation.
-      # sleep 30: give crates.io index time to propagate between publishes.
-      # || echo: allow re-runs when some crates are already published.
+      # Retries with backoff handle crates.io rate limits for new crates.
       - name: Publish
         run: |
+          publish_crate() {
+            local crate=$1
+            for attempt in 1 2 3; do
+              echo "Publishing $crate (attempt $attempt)..."
+              output=$(cargo publish -p "$crate" --no-verify 2>&1) && return 0
+              if echo "$output" | grep -q "already uploaded"; then
+                echo "$crate already published, skipping."
+                return 0
+              fi
+              echo "$output"
+              if [ "$attempt" -lt 3 ]; then
+                echo "Retrying in 120s..."
+                sleep 120
+              fi
+            done
+            echo "::error::Failed to publish $crate after 3 attempts"
+            return 1
+          }
+
           for crate in relux-core relux-ast relux-lexer relux-ir relux-parser relux-runtime relux-resolver relux; do
-            echo "Publishing $crate..."
-            cargo publish -p "$crate" --no-verify || echo "Skipping $crate (already published or error)"
+            publish_crate "$crate"
             if [ "$crate" != "relux" ]; then
-              sleep 30
+              sleep 60
             fi
           done
         env:
