@@ -1,0 +1,1476 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Relux Suite Tutorial</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-0807badb.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-c1844a20.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Relux Suite Tutorial</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="project-setup"><a class="header" href="#project-setup">Project Setup</a></h1>
+<h2 id="what-we-are-testing"><a class="header" href="#what-we-are-testing">What we are testing</a></h2>
+<p>This tutorial walks through building an integration test suite for a small but realistic system: three HTTP services that depend on each other.</p>
+<pre><code class="language-text">┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│ task_service │────▶│ auth_service │     │              │
+│   :9020      │     │   :9010      │     │  db_service  │
+│              │──┐  └──────┬───────┘     │   :9000      │
+└──────────────┘  │         │             │              │
+                  │         └────────────▶│              │
+                  └──────────────────────▶│              │
+                                          └──────────────┘
+</code></pre>
+<p><strong>db_service</strong> is a key-value database. It stores data in flat files, exposes a JSON REST API, and logs every operation to stdout. You create named databases, then read and write keys inside them.</p>
+<p><strong>auth_service</strong> handles authentication. It stores login/password pairs in the db service and exposes register and login endpoints. It depends on a running db_service with a pre-created database.</p>
+<p><strong>task_service</strong> is the system under test. It provides a task management API with full CRUD, authenticates users through the auth service, and stores tasks in the db service. It depends on both other services.</p>
+<p>All three are small Python scripts — no frameworks, no dependencies beyond the standard library. You can read their full specification in <code>SPEC.md</code>.</p>
+<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
+<p>This tutorial assumes you have completed the <a href="../dsl-tutorial/index.html">DSL tutorial</a> and are comfortable with all Relux language features: shells, operators, variables, functions, effects, imports, and condition markers.</p>
+<p>You will also need:</p>
+<ul>
+<li><strong>Relux</strong> installed and on your <code>PATH</code></li>
+<li><strong>Python 3</strong> (any recent version — the services use only the standard library)</li>
+<li>Some other common tools, but we will get to it later</li>
+</ul>
+<h2 id="scaffolding-the-project"><a class="header" href="#scaffolding-the-project">Scaffolding the project</a></h2>
+<p>Copy the services scripts into new directory: this will be out “monorepo”. Now, from the project root:</p>
+<pre><code class="language-text">relux new
+</code></pre>
+<p>This creates <code>Relux.toml</code> and the <code>relux/</code> directory structure:</p>
+<pre><code class="language-text">project/
+├── Relux.toml
+├── SPEC.md
+├── db_service.py
+├── auth_service.py
+├── task_service.py
+└── relux/
+    ├── .gitignore
+    ├── tests/
+    └── lib/
+</code></pre>
+<p>The generated <code>Relux.toml</code> is fully commented out — feel free to play with it. Although, I do not recommend to change the jobs number yet:</p>
+<pre><code class="language-toml">name = "suite-tutorial"
+
+# [shell]
+# command = "/bin/sh"
+# prompt = "relux&gt; "
+
+[timeout]
+match = "2s"
+test = "30s"
+suite = "5m"
+
+# [run]
+# jobs = 1
+</code></pre>
+<h2 id="creating-the-first-test-file"><a class="header" href="#creating-the-first-test-file">Creating the first test file</a></h2>
+<p>Let’s scaffold a test file for the database service:</p>
+<pre><code class="language-text">relux new --test db/smoke
+</code></pre>
+<pre><code class="language-text">Created relux/tests/db/smoke.relux
+</code></pre>
+<p>The command creates <code>relux/tests/db/smoke.relux</code> with a starter test:</p>
+<pre><code class="language-relux">test "hello-relux" {
+    shell myshell {
+        &gt; echo hello-relux
+        &lt;? ^hello-relux$
+        match_ok()
+    }
+}
+</code></pre>
+<p>This is a placeholder — it just sends <code>echo hello-relux</code> and matches the output. Not useful yet, but it proves the toolchain works.</p>
+<h2 id="checking-and-running"><a class="header" href="#checking-and-running">Checking and running</a></h2>
+<p>First, validate the file without executing it:</p>
+<pre><code class="language-text">relux check
+</code></pre>
+<p><code>check passed</code> shows that the relux code is fine. Now run it:</p>
+<pre><code class="language-text">relux run
+</code></pre>
+<pre><code class="language-text">...
+test result: ok. 1 passed; 0 failed; finished in 8.7ms
+...
+</code></pre>
+<p>The template test passes. We have a working project and a confirmed toolchain. The placeholder test will be replaced with real database tests in the next chapter.</p>
+<h2 id="starting-services-manually"><a class="header" href="#starting-services-manually">Starting services manually</a></h2>
+<p>You will not need to start the services by hand once the test suite is written — effects will handle that. But it helps to understand how they work before automating them.</p>
+<p>Each service is a standalone Python script with command-line arguments:</p>
+<pre><code class="language-text"># Start the database (port 9000, data in ./data)
+python3 db_service.py --port 9000 --data-dir /tmp/db-data
+
+# In another terminal: create a database and write a key
+curl -X POST http://localhost:9000/db/mydb
+curl -X PUT http://localhost:9000/db/mydb/greeting -d '{"value": "hello"}'
+curl http://localhost:9000/db/mydb/greeting
+</code></pre>
+<p>Every service prints <code>listening on PORT</code> when it is ready to accept requests, and logs each operation as a plain-text line to stdout. This is important — Relux tests will match these log lines to verify service behavior from the inside, not just through HTTP responses.</p>
+<hr>
+<p>Next: <a href="#testing-the-database-service">Testing the Database Service</a> — write the first real tests</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="testing-the-database-service"><a class="header" href="#testing-the-database-service">Testing the Database Service</a></h1>
+<p><a href="#project-setup">Previous: Project Setup</a></p>
+<h2 id="the-two-shell-pattern"><a class="header" href="#the-two-shell-pattern">The two-shell pattern</a></h2>
+<p>Integration testing a service always starts the same way: one shell runs the service, another shell talks to it. Open <code>relux/tests/db/smoke.relux</code> and replace the placeholder with a real test.</p>
+<p>The database service takes a <code>--data-dir</code> argument and listens on port 9000 by default. We will use a temporary directory for storage. Here is the first test — create a database and verify the response:</p>
+<pre><code class="language-relux">test "create a database" {
+    """
+    Start db_service, create a database, and verify the JSON response.
+    """
+    shell db {
+        &gt; ${__RELUX_SUITE_ROOT}/db_service.py
+        &lt;? ^listening on 9000$
+    }
+
+    shell client {
+        &gt; curl -s -X POST http://localhost:9000/db/testdb
+        &lt;? "created": "testdb"
+        match_ok()
+    }
+}
+</code></pre>
+<p><code>${__RELUX_SUITE_ROOT}</code> is the directory containing relux manifest (<code>Relux.toml</code> file). Relux sets this variable, and some others, for every spawned PTY.</p>
+<p>The <code>db</code> shell starts the service and waits for the readiness message. The <code>client</code> shell sends a curl request and matches part of the JSON response. <code>match_ok()</code> confirms the command exited successfully — without it, we would only know the output looked right, not that the exit code was zero.</p>
+<p>Now, it is time to run the first actual test.</p>
+<pre><code class="language-text">relux run
+</code></pre>
+<pre><code class="language-text">...
+test result: ok. 1 passed; 0 failed; finished in 127.4 ms
+...
+</code></pre>
+<p>Nice, the test passed. The test actually started our database service, and created a new database in it. But what would happen if we run the test again?</p>
+<pre><code class="language-text">running 1 tests
+test db/smoke.relux/create-a-database: FAILED (2.1 s)
+Error: match timeout in shell `client`
+    ╭─[ relux/tests/db/smoke.relux:12:9 ]
+    │
+ 12 │         &lt;? "created": "testdb"
+    │         ───────────┬──────────
+    │                    ╰──────────── timed out waiting for `"created": "testdb"`
+────╯
+  Event log: file://.../logs/relux/tests/db/smoke/create-a-database/event.html
+</code></pre>
+<p>Oh no, what happened? Let’s take a look into the log that was generated by relux.</p>
+<p>In the ‘match timeout’ line you will see a part of the shell output buffer:</p>
+<pre><code class="language-text">...ST http://localhost:9000/db/testdb
+{"error": "db testdb already exists"}relux&gt; 
+</code></pre>
+<p>We expected to match on <code>"created": "testdb"</code> line, but the database actually returned an error: database already exists. Right, we created it during the first test run, and it persisted on the disk.</p>
+<p>A good test suite incorporates tests that are isolated from each other. If your test can observe some leftover artifacts from previous runs, or, what’s worse, even rely on them, you are doomed to have flaky tests, that would run fine 9 out of 10 times, but eventually will fail, destroying your trust. After that, if a test in your suite fails, you will not know if something is broken, or if the suite is once again playing jokes with you. Such a test suite is in the best case useless.</p>
+<p>What can we do to isolate the test runs from each other in our case? Right, we need the cleanup.</p>
+<p>Add another special shell block:</p>
+<pre><code class="language-relux">    cleanup {
+        &gt; rm -rf /tmp/database/*
+        match_ok()
+    }
+</code></pre>
+<p>Cleanup blocks run after the test is finished, no matter what the result was: pass or fail.</p>
+<p>Rerun the suite a few times. It should pass every time now. Of course, this is brittle — you’re relying on cleanup to undo side effects. A better approach is to avoid shared state entirely, giving each test run its own directory. One may use something like <code>mktemp</code>, but there is a better way:</p>
+<pre><code class="language-relux">    shell db {
+        let db_root = "${__RELUX_TEST_ARTIFACTS}/database"
+
+        &gt; mkdir ${db_root}
+        match_ok()
+
+        &gt; ${__RELUX_SUITE_ROOT}/db_service.py --data-dir ${db_root}
+        &lt;? ^listening on 9000$
+    }
+</code></pre>
+<p><code>${__RELUX_TEST_ARTIFACTS}</code> is a directory that is created for every test and every suite run. It is always unique for the particular test. What is better, this directory will not be removed: it is bundled with the test logs. If your test ever fails, and you have a suspicion that something is wrong with the database, you will have the whole data directory to analyze.</p>
+<pre><code class="language-text">~&gt; tree -d relux/out/run-2026-03-28-12-36-10-7WQvaZT7Yk/logs
+logs
+└── relux
+    └── tests
+        └── db
+            └── smoke
+                └── create-a-database
+                    └── artifacts
+                        └── database
+                            └── testdb
+</code></pre>
+<p>Now, we can remove the cleanup block, we don’t need it anymore.</p>
+<h2 id="fail-patterns"><a class="header" href="#fail-patterns">Fail patterns</a></h2>
+<p>The db_service prefixes all error log lines with <code>error:</code>. Instead of explicitly matching the log lines after every request, set a fail pattern on the service shell once:</p>
+<pre><code class="language-relux">    shell db {
+        let db_root = "${__RELUX_TEST_ARTIFACTS}/database"
+
+        &gt; mkdir ${db_root}
+        match_ok()
+
+        !? ^error:
+
+        &gt; ${__RELUX_SUITE_ROOT}/db_service.py --data-dir ${db_root}
+        &lt;? ^listening on 9000$
+    }
+</code></pre>
+<p>Now if the database logs any line starting with <code>error:</code> at any point during the test, the test fails immediately. This catches problems you didn’t anticipate — a corrupted data directory, a port conflict, an internal exception. Set it early, before the first command, and it monitors the shell for the entire test.</p>
+<p>Don’t set the fail pattern when you’re intentionally provoking errors. Or unset it when entering an error-triggering section (this is done with the same empty operator <code>!?</code>).</p>
+<h2 id="crud-operations"><a class="header" href="#crud-operations">CRUD operations</a></h2>
+<p>One database operation is not much of a test. Let’s exercise the full lifecycle — create, write, read, delete — all in one test:</p>
+<pre><code class="language-relux">test "key-value CRUD" {
+    """
+    Create a database, write a key, read it back, and delete it.
+    """
+    shell db {
+        let db_root = "${__RELUX_TEST_ARTIFACTS}/database"
+
+        &gt; mkdir ${db_root}
+        match_ok()
+
+        !? ^error:
+
+        &gt; ${__RELUX_SUITE_ROOT}/db_service.py --data-dir ${db_root}
+        &lt;? ^listening on 9000$
+    }
+
+    shell client {
+        // create the database
+        &gt; curl -s -X POST http://localhost:9000/db/mydb
+        &lt;? "created": "mydb"
+        match_ok()
+
+        // write a key
+        &gt; curl -s -X PUT http://localhost:9000/db/mydb/greeting -d '{"value": "hello"}'
+        &lt;? "wrote": "greeting"
+        match_ok()
+
+        // read it back
+        &gt; curl -s http://localhost:9000/db/mydb/greeting
+        &lt;? "value": "hello"
+        match_ok()
+
+        // delete it
+        &gt; curl -s -X DELETE http://localhost:9000/db/mydb/greeting
+        &lt;? "deleted": "greeting"
+        match_ok()
+
+        // read again — should be gone
+        &gt; curl -s http://localhost:9000/db/mydb/greeting
+        &lt;? "error":
+        match_ok()
+    }
+}
+</code></pre>
+<p>Run these tests. The suite should run and pass every time. Now imagine writing five more tests like this — the copy-pasted boilerplate gets annoying fast.</p>
+<h2 id="the-duplication-problem"><a class="header" href="#the-duplication-problem">The duplication problem</a></h2>
+<p>Look at what we have so far. Every curl call follows the same pattern:</p>
+<pre><code class="language-relux">&gt; curl -s -X METHOD http://localhost:9000/PATH BODY
+&lt;? expected response
+match_ok()
+</code></pre>
+<p>The URL prefix, the <code>-s</code> flag, the match-then-check dance — it’s all repeated. When you have five CRUD operations and three error cases, that’s a lot of identical scaffolding. If the port changes, you update it in dozens of places.</p>
+<p>Let’s define helper functions in the same file, above the tests.</p>
+<pre><code class="language-relux">fn curl(url) {
+    curl(url, "GET")
+}
+
+fn curl(url, method) {
+    curl(url, method, "")
+}
+
+# skip unless which("curl")
+fn curl(url, method, req_body) {
+    let outdir = "${__RELUX_TEST_ARTIFACTS}/http"
+    &gt; mkdir -p ${outdir}
+    match_ok()
+
+    let file_rand = rand(10)
+    let filename = "${outdir}/${file_rand}.http_response.txt"
+
+    &gt; curl -v -X ${method} -d '${req_body}' -o ${filename} ${url}
+    &lt;? ^* Request completely sent off
+
+    filename
+}
+
+fn match_http_code(code) {
+    &lt;? ^&lt; HTTP/(\d\.\d) ${code} (.*)$
+}
+
+fn http_request(expected_code, url) {
+    http_request(expected_code, url, "GET")
+}
+
+fn http_request(expected_code, url, method) {
+    http_request(expected_code, url, method, "")
+}
+
+fn http_request(expected_code, url, method, req_body) {
+    let response_filename = curl(url, method, req_body)
+    match_http_code(expected_code)
+    match_ok()
+    response_filename
+}
+
+# skip unless which("jq")
+fn jq_match_query(filename, query, pattern) {
+    &gt; jq -r '${query}' ${filename}
+    &lt;? ${pattern}
+    match_ok()
+}
+</code></pre>
+<p>The <code># skip unless which("curl")</code> and <code># skip unless which("jq")</code> are condition markers. They tell relux to skip any test that calls these functions if the required tool is not installed. The built-in <code>which()</code> function checks the <code>PATH</code> for an executable — if it returns an empty string, the condition is not met and the test is skipped, not failed. This distinction matters: a test that fails because <code>curl</code> is missing is not a real failure — the test was never actually run. Condition markers make this explicit in the test report.</p>
+<p>You see four functions with different arities (number of parameters). Since a relux function always returns the last expression value, each function with lower arity can be read as a default value definition. For example, <code>curl("http://example.com")</code> call will execute <code>curl("http://example.com", "GET", "")</code>.</p>
+<p><code>curl</code> creates the directory for output bodies, generates the output filename via call to the built-in function <code>rand</code>, and executes the curl command. It returns the generated filename that contains the output body.</p>
+<p><code>match_http_code</code> matches the expected HTTP code.</p>
+<p><code>http_request</code> combines the two, and also checks the exit code of the curl command. <code>curl</code> and <code>match_http_code</code> can still be used independently, for example, if you need to also match some specific response header.</p>
+<p><code>jq_match_query</code> runs the jq query against the file contents, and matches the output.</p>
+<p>Now, with all these functions, our tests look very compact:</p>
+<pre><code class="language-relux">test "key-value CRUD" {
+    """
+    Create a database, write a key, read it back, and delete it.
+    """
+    shell db {
+        let db_root = "${__RELUX_TEST_ARTIFACTS}/database"
+
+        &gt; mkdir ${db_root}
+        match_ok()
+
+        !? ^error:
+
+        &gt; ${__RELUX_SUITE_ROOT}/db_service.py --data-dir ${db_root}
+        &lt;? ^listening on 9000$
+    }
+
+    shell client {
+        log("create the database")
+        let response_filename = http_request(200, "http://localhost:9000/db/mydb", "POST")
+        jq_match_query(response_filename, ".created", "^mydb$")
+
+        log("write a key")
+        let response_filename = http_request(200, "http://localhost:9000/db/mydb/greeting", "PUT", "{\"value\": \"hello\"}")
+        jq_match_query(response_filename, ".wrote", "^greeting$")
+
+        log("read it back")
+        let response_filename = http_request(200, "http://localhost:9000/db/mydb/greeting")
+        jq_match_query(response_filename, ".value", "^hello$")
+
+        log("delete it")
+        let response_filename = http_request(200, "http://localhost:9000/db/mydb/greeting", "DELETE")
+        jq_match_query(response_filename, ".deleted", "^greeting$")
+
+        log("read again — should be gone")
+        let response_filename = http_request(404, "http://localhost:9000/db/mydb/greeting")
+        jq_match_query(response_filename, ".error", "^.*not found.*$")
+    }
+}
+</code></pre>
+<p>This might not seem to be a very big win in code size, but there are few notable changes:</p>
+<ul>
+<li>All the HTTP requests check for the HTTP response code now.</li>
+<li>These functions are universal: any other test can now reuse it.</li>
+<li>All the response bodies are now stored in the test artifacts directory, making the test easier to debug.</li>
+</ul>
+<hr>
+<p>Next: <a href="#extracting-a-library">Extracting a Library</a> — move shared functions into <code>relux/lib/</code></p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="extracting-a-library"><a class="header" href="#extracting-a-library">Extracting a Library</a></h1>
+<p><a href="#testing-the-database-service">Previous: Testing the Database Service</a></p>
+<h2 id="a-second-test-file"><a class="header" href="#a-second-test-file">A second test file</a></h2>
+<p>The smoke tests work, but we only covered the happy path. The database has several error conditions worth testing: creating a database that already exists, reading a key that doesn’t exist, operating on a nonexistent database. These deserve their own file.</p>
+<p>Create <code>relux/tests/db/errors.relux</code>:</p>
+<pre><code class="language-text">relux new --test db/errors
+</code></pre>
+<p>Replace the placeholder with an error-path test. You’ll want to use the same helper functions from <code>smoke.relux</code> — <code>http_request</code>, <code>jq_match_query</code> — but of course they’re not available here. Try writing the test anyway:</p>
+<pre><code class="language-relux"># skip if SMOKE
+test "create duplicate database" {
+    """
+    Verify creating a database that already exists returns 409.
+    """
+    shell db {
+        let db_root = "${__RELUX_TEST_ARTIFACTS}/database"
+
+        &gt; mkdir ${db_root}
+        match_ok()
+        
+        !? ^error:
+
+        &gt; ${__RELUX_SUITE_ROOT}/db_service.py --data-dir ${db_root}
+        &lt;? ^listening on 9000$
+    }
+
+    shell client {
+        log("create the database")
+        let response_filename = http_request(200, "http://localhost:9000/db/testdb", "POST")
+        jq_match_query(response_filename, ".created", "^testdb$")
+
+        log("create it again — should fail")
+        let response_filename = http_request(409, "http://localhost:9000/db/testdb", "POST")
+        jq_match_query(response_filename, ".error", "^.*already exists.*$")
+    }
+}
+</code></pre>
+<p>Notice the <code># skip if SMOKE</code> marker. As the suite grows, you will want a way to run just the smoke tests — the fast, happy-path checks that confirm services are alive. Error-path tests are important but slower and less critical for a quick sanity check. The marker reads the <code>SMOKE</code> environment variable: if it is set to any non-empty value, the test is skipped. Run <code>SMOKE=true relux run</code> and only the smoke tests execute. Skipped tests appear in the report as “skipped”, not “failed” — because they were never run. We will add this marker to all non-smoke tests from here on.</p>
+<p>Run <code>relux check</code> and you’ll get errors: <code>http_request</code> and <code>jq_match_query</code> are not defined. They live in <code>smoke.relux</code>, and there’s no way to reach them from here.</p>
+<h2 id="moving-functions-to-lib"><a class="header" href="#moving-functions-to-lib">Moving functions to lib/</a></h2>
+<p>The helper functions fall into two groups: HTTP plumbing (<code>curl</code>, <code>http_request</code>) and JSON inspection (<code>jq_match_query</code>). Let’s split them accordingly.</p>
+<p>Create <code>relux/lib/api/http.relux</code> with the HTTP helpers:</p>
+<pre><code class="language-relux">// curl functions
+
+fn curl(url) {
+    curl(url, "GET")
+}
+
+fn curl(url, method) {
+    curl(url, method, "")
+}
+
+# skip unless which("curl")
+fn curl(url, method, req_body) {
+    let outdir = "${__RELUX_TEST_ARTIFACTS}/http"
+    &gt; mkdir -p ${outdir}
+    match_ok()
+
+    let file_rand = rand(10)
+    let filename = "${outdir}/${file_rand}.http_response.txt"
+
+    &gt; curl -v -X ${method} -d '${req_body}' -o ${filename} ${url}
+    &lt;? ^&gt; $
+
+    filename
+}
+
+// http functions
+
+fn http_match_code(code) {
+    &lt;? ^&lt; HTTP/(\d\.\d) ${code} (.*)$
+}
+
+fn http_request(expected_code, url) {
+    http_request(expected_code, url, "GET")
+}
+
+fn http_request(expected_code, url, method) {
+    http_request(expected_code, url, method, "")
+}
+
+fn http_request(expected_code, url, method, req_body) {
+    let response_filename = curl(url, method, req_body)
+    http_match_code(expected_code)
+    match_ok()
+    response_filename
+}
+</code></pre>
+<p>Create <code>relux/lib/jq.relux</code> with the JSON helper:</p>
+<pre><code class="language-relux"># skip unless which("jq")
+fn jq_match_query(filename, query, pattern) {
+    &gt; jq -r '${query}' ${filename}
+    &lt;? ${pattern}
+    match_ok()
+}
+</code></pre>
+<p>Neither file has tests — they are pure library code. The <code>api/</code> subdirectory groups API-related helpers together; as the library grows, you might add <code>api/grpc.relux</code> or <code>api/mqtt.relux</code> next to it.</p>
+<h2 id="imports"><a class="header" href="#imports">Imports</a></h2>
+<p>Update <code>smoke.relux</code>: remove the function definitions and add imports at the top:</p>
+<pre><code class="language-relux">import api/http
+import jq
+
+test "key-value CRUD" {
+    ...
+}
+</code></pre>
+<p>Do the same for <code>errors.relux</code>:</p>
+<pre><code class="language-relux">import api/http
+import jq
+
+test "create duplicate database" {
+    ...
+}
+</code></pre>
+<p>Import paths resolve from the <code>&lt;project_root&gt;/relux/lib/</code> directory (reminder: <code>project_root</code> is the directory where <code>Relux.toml</code> lives). <code>api/http</code> thus points to <code>&lt;project_root&gt;/relux/lib/api/http.relux</code>.</p>
+<p>These are wildcard imports — they bring in everything from the module. For a small project with well-named functions, this is fine. If you want to be explicit about what you use, selective imports list the names in curly braces:</p>
+<pre><code class="language-relux">import api/http { http_request }
+import jq { jq_match_query }
+</code></pre>
+<p>Selective imports make it obvious which functions are in use and prevent name collisions. For now, wildcards keep things simple.</p>
+<p>Run both files:</p>
+<pre><code class="language-text">relux run
+</code></pre>
+<pre><code class="language-text">...
+test result: ok. 3 passed; 0 failed; finished in 382.1 ms
+...
+</code></pre>
+<h2 id="pure-functions"><a class="header" href="#pure-functions">Pure functions</a></h2>
+<p>Look at the test files again. The URL <code>http://localhost:9000</code> is hardcoded everywhere. When we later need to support dynamic ports (for parallel test execution), this will be a problem. Let’s prepare by extracting URL construction into a function.</p>
+<p>URL construction is just string concatenation — no shell commands needed. This is a good case for <code>pure fn</code>. Create <code>relux/lib/service/db.relux</code>:</p>
+<pre><code class="language-relux">pure fn url(path) {
+    "http://localhost:9000${path}"
+}
+</code></pre>
+<p>A <code>pure fn</code> cannot contain shell operators (<code>&gt;</code>, <code>&lt;?</code>, <code>&lt;=</code>, <code>!?</code>, etc.). It can only do variable assignments, call other pure functions, and return values. The compiler enforces this — if you accidentally add a send or match operator inside a <code>pure fn</code>, <code>relux check</code> will reject it.</p>
+<p>Why bother? Pure functions can be called in more places than regular functions: inside condition markers, inside overlay blocks, and inside other pure functions. They are also easier to reason about since they have no side effects.</p>
+<p>The function is named <code>url</code> — generic within its module. To avoid confusion at the call site, import it with an alias:</p>
+<pre><code class="language-relux">import service/db { url as db_url }
+import api/http
+import jq
+</code></pre>
+<p>The <code>as</code> keyword renames the imported function. Now <code>db_url("/db/mydb")</code> reads clearly, and later we can add <code>service/auth.relux</code> with its own <code>url</code> function aliased to <code>auth_url</code>.</p>
+<p>With all three imports in place, the tests look like this:</p>
+<pre><code class="language-relux">import service/db { url as db_url }
+import api/http
+import jq
+
+test "key-value CRUD" {
+    ...
+    shell client {
+        log("create the database")
+        let response_filename = http_request(200, db_url("/db/mydb"), "POST")
+        jq_match_query(response_filename, ".created", "^mydb$")
+
+        log("write a key")
+        let response_filename = http_request(200, db_url("/db/mydb/greeting"), "PUT", "{\"value\": \"hello\"}")
+        jq_match_query(response_filename, ".wrote", "^greeting$")
+        ...
+    }
+}
+</code></pre>
+<p>The gain is small for now. But in chapter 6, when we replace the hardcoded port with a dynamic one, we’ll only need to change <code>url</code> in <code>service/db.relux</code> — not every test.</p>
+<h2 id="what-we-have-so-far"><a class="header" href="#what-we-have-so-far">What we have so far</a></h2>
+<pre><code class="language-text">project/
+├── Relux.toml
+├── db_service.py
+├── auth_service.py
+├── task_service.py
+└── relux/
+    ├── tests/
+    │   └── db/
+    │       ├── smoke.relux
+    │       └── errors.relux
+    └── lib/
+        ├── jq.relux
+        ├── api/
+        │   └── http.relux
+        └── service/
+            └── db.relux
+</code></pre>
+<p>The HTTP and JSON helpers are shared. Both test files are focused on testing, not on plumbing. Adding a third test file for the database — say, multi-key workflows or concurrency — means writing only the test logic and a one-line import.</p>
+<p>But look at the <code>shell db { ... }</code> block. It’s still duplicated across every test in both files: create the artifacts directory, start the service, match the readiness line. When we add auth tests in the next chapter, we’ll need the same db startup there too — plus auth on top of it. This is the kind of boilerplate that effects were designed to eliminate.</p>
+<hr>
+<p>Next: <a href="#effects-and-dependencies">Effects and Dependencies</a> — extract service startup into reusable effects</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="effects-and-dependencies"><a class="header" href="#effects-and-dependencies">Effects and Dependencies</a></h1>
+<p><a href="#extracting-a-library">Previous: Extracting a Library</a></p>
+<h2 id="the-problem"><a class="header" href="#the-problem">The problem</a></h2>
+<p>Every test that needs the database service repeats the same setup:</p>
+<pre><code class="language-relux">    shell db {
+        let db_root = "${__RELUX_TEST_ARTIFACTS}/database"
+
+        &gt; mkdir ${db_root}
+        match_ok()
+
+        !? ^error:
+
+        &gt; ${__RELUX_SUITE_ROOT}/db_service.py --data-dir ${db_root}
+        &lt;? ^listening on 9000$
+    }
+</code></pre>
+<p>Many lines, copy-pasted into every test in every file. But the real pain starts now: the auth service needs a running database with a pre-created <code>auth</code> database. Every auth test would need to start db, create the database, then start auth – that is 15+ lines of setup before a single assertion. And if you get any of it wrong, you get a cryptic match timeout instead of a clear error.</p>
+<p>Effects solve this. An effect is a reusable setup block that starts infrastructure and exposes shells for tests to use.</p>
+<h2 id="the-db-effect"><a class="header" href="#the-db-effect">The Db effect</a></h2>
+<p>Open <code>service/db.relux</code> – we already have the <code>pure fn url</code> there. Add the effect to the same file:</p>
+<pre><code class="language-relux">import api/http
+
+effect Db {
+    expose service
+
+    shell service {
+        let db_root = "${__RELUX_TEST_ARTIFACTS}/database"
+
+        &gt; mkdir ${db_root}
+        match_ok()
+
+        !? ^error:
+
+        &gt; ${__RELUX_SUITE_ROOT}/db_service.py --data-dir ${db_root}
+        &lt;? ^listening on 9000$
+    }
+}
+
+pure fn url(path) {
+    "http://localhost:9000${path}"
+}
+</code></pre>
+<p>The <code>expose service</code> declaration means: the <code>service</code> shell is part of this effect’s public interface. After the effect runs, tests that started it with an alias can interact with that shell via dot-access (e.g. <code>shell db.service { ... }</code>). If a test only needs the effect for its side effects (in this case, just for running the database), it can omit the alias and skip shell access entirely.</p>
+<p>Co-locating the effect with the <code>url</code> function keeps everything about the database service in one module. Tests import both from the same place:</p>
+<pre><code class="language-relux">import service/db { url as db_url, Db }
+</code></pre>
+<p>Now update <code>smoke.relux</code>:</p>
+<pre><code class="language-relux">import service/db { url as db_url, Db }
+import api/http
+import jq
+
+test "key-value CRUD" {
+    """
+    Create a database, write a key, read it back, and delete it.
+    """
+    start Db
+
+    shell client {
+        log("create the database")
+        let response_filename = http_request(200, db_url("/db/mydb"), "POST")
+        jq_match_query(response_filename, ".created", "^mydb$")
+        ...
+    }
+}
+</code></pre>
+<p><code>start Db</code> tells relux: before this test runs, execute the <code>Db</code> effect. The setup block is gone – replaced by a single line. If you would need to match log lines on the running database shell, you would use <code>start Db as db</code>. After that, <code>shell db.service { ... }</code> blocks would be executed on the shell that was exposed by the <code>Db</code> effect.</p>
+<p>Do the same for <code>errors.relux</code>. The manual <code>shell db { ... }</code> block is replaced by <code>start Db</code> in both files.</p>
+<h2 id="the-auth-effect"><a class="header" href="#the-auth-effect">The Auth effect</a></h2>
+<p>The auth service depends on db. It needs:</p>
+<ol>
+<li>A running db_service</li>
+<li>The <code>auth</code> database created in it</li>
+<li>The auth_service itself started and ready</li>
+</ol>
+<p>This is our first dependency chain – an effect that depends on another effect. Create <code>relux/lib/service/auth.relux</code>:</p>
+<pre><code class="language-relux">import api/http
+import service/db { url as db_url, Db }
+
+effect Auth {
+    start Db
+    expose service
+
+    shell setup {
+        log("create the auth database")
+        http_request(200, db_url("/db/auth"), "POST")
+    }
+
+    shell service {
+        !? ^error:
+
+        &gt; ${__RELUX_SUITE_ROOT}/auth_service.py
+        &lt;? ^listening on 9010$
+    }
+}
+
+pure fn url(path) {
+    "http://localhost:9010${path}"
+}
+</code></pre>
+<p><code>start Db</code> inside the effect declares a dependency. When a test says <code>start Auth</code>, relux resolves the chain: it starts <code>Db</code> first, then runs <code>Auth</code>.</p>
+<p>The <code>shell setup { ... }</code> block opens a fresh shell to send the HTTP request that creates the <code>auth</code> database in the already-running db_service. The effect then starts auth_service in its own exposed <code>service</code> shell, sets a fail pattern, and waits for readiness.</p>
+<p>Just like <code>service/db.relux</code>, the module co-locates the effect with a <code>pure fn url</code> for the auth service’s base URL. Tests import both:</p>
+<pre><code class="language-relux">import service/auth { url as auth_url, Auth }
+</code></pre>
+<h2 id="seeding-test-data"><a class="header" href="#seeding-test-data">Seeding test data</a></h2>
+<p>Before writing auth tests, think about what most of them need: pre-existing users. A registration test can create its own user, but every login test would repeat the same registration calls as setup noise.</p>
+<p>We can solve this with another effect that builds on <code>Auth</code>. Add <code>SeededAuth</code> to <code>service/auth.relux</code>:</p>
+<pre><code class="language-relux">effect SeededAuth {
+    start Auth as auth
+    expose auth.service as service
+
+    shell seeder {
+        log("create seed database users")
+        http_request(200, url("/register"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
+        http_request(200, url("/register"), "POST", "{\"login\": \"bob\", \"password\": \"bob_secret\"}")
+        http_request(200, url("/register"), "POST", "{\"login\": \"eva\", \"password\": \"eva_secret\"}")
+    }
+}
+</code></pre>
+<p><code>SeededAuth</code> doesn’t define its own service shell — the auth service is already running inside <code>Auth</code>. The <code>expose auth.service as service</code> declaration re-exposes the <code>service</code> shell from the <code>Auth</code> dependency (aliased <code>auth</code>) so that tests starting <code>SeededAuth</code> can access it the same way they would with <code>Auth</code>.</p>
+<p>The chain grows:</p>
+<ol>
+<li><strong>Db</strong> – raw database service running</li>
+<li><strong>Auth</strong> – auth service running, <code>auth</code> database created</li>
+<li><strong>SeededAuth</strong> – auth service with pre-registered test users</li>
+</ol>
+<p>Each layer adds exactly one concern. Tests choose the layer they need: a registration test starts <code>Auth</code>, a login test starts <code>SeededAuth</code>.</p>
+<h2 id="writing-auth-tests"><a class="header" href="#writing-auth-tests">Writing auth tests</a></h2>
+<p>Create <code>relux/tests/auth/smoke.relux</code>:</p>
+<pre><code class="language-text">relux new --test auth/smoke
+</code></pre>
+<pre><code class="language-relux">import api/http
+import service/auth { url as auth_url, Auth }
+
+test "register and login" {
+    """
+    Register a new user, log in with correct and incorrect passwords.
+    """
+    start Auth
+
+    shell client {
+        log("register a new user")
+        http_request(200, auth_url("/register"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
+
+        log("login with correct password")
+        http_request(200, auth_url("/login"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
+
+        log("login with wrong password")
+        http_request(401, auth_url("/login"), "POST", "{\"login\": \"alice\", \"password\": \"wrong\"}")
+    }
+}
+</code></pre>
+<p>One line of setup: <code>start Auth</code>. The test registers its own user, then exercises both success and failure login paths. This is a smoke test – it only needs the auth service running, not pre-seeded data.</p>
+<p>Now add error-path tests in <code>relux/tests/auth/errors.relux</code>. These use <code>SeededAuth</code> where pre-existing users are needed:</p>
+<pre><code class="language-relux">import api/http
+import service/auth { url as auth_url, Auth, SeededAuth }
+
+# skip if SMOKE
+test "register duplicate user" {
+    """
+    Verify registering a user that already exists returns 409.
+    """
+    start SeededAuth
+
+    shell client {
+        log("register alice again")
+        http_request(409, auth_url("/register"), "POST", "{\"login\": \"alice\", \"password\": \"other\"}")
+    }
+}
+
+# skip if SMOKE
+test "login unknown user" {
+    """
+    Verify logging in with a nonexistent user returns 404.
+    """
+    start Auth
+
+    shell client {
+        http_request(404, auth_url("/login"), "POST", "{\"login\": \"nobody\", \"password\": \"whatever\"}")
+    }
+}
+</code></pre>
+<p>Notice the different effect choices: the duplicate registration test starts <code>SeededAuth</code> because alice must already exist. The unknown user test only starts <code>Auth</code> – no seeded users, just a running auth service.</p>
+<h2 id="what-we-have-so-far-1"><a class="header" href="#what-we-have-so-far-1">What we have so far</a></h2>
+<pre><code class="language-text">project/
+├── Relux.toml
+├── db_service.py
+├── auth_service.py
+├── task_service.py
+└── relux/
+    ├── tests/
+    │   ├── db/
+    │   │   ├── smoke.relux
+    │   │   └── errors.relux
+    │   └── auth/
+    │       ├── smoke.relux
+    │       └── errors.relux
+    └── lib/
+        ├── jq.relux
+        ├── api/
+        │   └── http.relux
+        └── service/
+            ├── db.relux
+            └── auth.relux
+</code></pre>
+<p>Each service module in <code>lib/service/</code> owns its effects and its <code>url</code> function. Tests import both from the same place. Effects compose into layers – <code>Db</code> -&gt; <code>Auth</code> -&gt; <code>SeededAuth</code> – and tests pick the layer they need.</p>
+<p>The pattern scales: when we add the task service in the next chapter, it will start both db and auth. Since <code>Auth</code> already starts <code>Db</code>, relux will resolve the full dependency graph automatically – and run each effect exactly once.</p>
+<hr>
+<p>Next: <a href="#shared-dependencies">Shared Dependencies</a> – add the task service and see effect deduplication in action</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="shared-dependencies"><a class="header" href="#shared-dependencies">Shared Dependencies</a></h1>
+<p><a href="#effects-and-dependencies">Previous: Effects and Dependencies</a></p>
+<h2 id="the-task-service"><a class="header" href="#the-task-service">The task service</a></h2>
+<p>The task service is the most complex piece of the stack. It depends on both db and auth:</p>
+<ul>
+<li>It stores tasks in the db service (in a <code>tasks</code> database)</li>
+<li>It authenticates users through the auth service</li>
+<li>It has its own <code>/login</code> endpoint that forwards credentials to auth and issues a Bearer token</li>
+</ul>
+<p>To start it, we need a running db_service, a running auth_service, and the <code>tasks</code> database created. But <code>Auth</code> already starts <code>Db</code> internally. If <code>Tasks</code> also starts <code>Db</code>, does the database start twice?</p>
+<h2 id="the-tasks-effect"><a class="header" href="#the-tasks-effect">The Tasks effect</a></h2>
+<p>Create <code>relux/lib/service/tasks.relux</code>:</p>
+<pre><code class="language-relux">import api/http
+import service/db { url as db_url, Db }
+import service/auth { Auth }
+
+effect Tasks {
+    start Db
+    start Auth
+    expose service
+
+    shell setup {
+        log("create the tasks database")
+        http_request(200, db_url("/db/tasks"), "POST")
+    }
+
+    shell service {
+        !? ^error:
+
+        &gt; ${__RELUX_SUITE_ROOT}/task_service.py
+        &lt;? ^listening on 9020$
+    }
+}
+
+pure fn url(path) {
+    "http://localhost:9020${path}"
+}
+</code></pre>
+<p><code>Tasks</code> declares two dependencies: <code>start Db</code> and <code>start Auth</code>. But <code>Auth</code> itself also starts <code>Db</code>. This creates a diamond in the dependency graph:</p>
+<pre><code class="language-text">  Tasks
+  |   |
+  |   Auth
+  |   |
+  +-- Db
+</code></pre>
+<p>If relux started a new db_service for each <code>start Db</code>, we would end up with two database instances on the same port – and the second one would fail to bind. This is where effect deduplication comes in.</p>
+<p>Relux identifies each effect instance by its name and overlay values (we will cover overlays in the next chapter). Two <code>start Db</code> statements with no overlay both refer to the same identity: <code>(Db, {})</code>. Relux resolves the full dependency graph as a DAG and runs each unique instance exactly once.</p>
+<p>In our case, the execution order is:</p>
+<ol>
+<li><strong>Db</strong> – starts the database (once)</li>
+<li><strong>Auth</strong> – creates the <code>auth</code> database, starts auth_service</li>
+<li><strong>Tasks</strong> setup – creates the <code>tasks</code> database, starts task_service</li>
+</ol>
+<p>Step 2 and the setup part of step 3 both use the single running database from step 1. No port conflicts, no duplicated work.</p>
+<h2 id="authenticated-requests"><a class="header" href="#authenticated-requests">Authenticated requests</a></h2>
+<p>The task service requires a Bearer token on every request except <code>/login</code>. We need to extend the HTTP library to support authentication headers.</p>
+<p>Add a 4-arity <code>curl</code> and <code>http_request_authorized</code> functions to <code>api/http.relux</code>:</p>
+<pre><code class="language-relux"># skip unless which("curl")
+fn curl(url, method, req_body, extra_headers) {
+    let outdir = "${__RELUX_TEST_ARTIFACTS}/http"
+    &gt; mkdir -p ${outdir}
+    match_ok()
+
+    let file_rand = rand(10)
+    let filename = "${outdir}/${file_rand}.http_response.txt"
+
+    &gt; curl -v -X ${method} ${extra_headers} -d '${req_body}' -o ${filename} ${url}
+    &lt;? ^&gt; $
+
+    filename
+}
+</code></pre>
+<p>The existing 3-arity <code>curl</code> now delegates to the 4-arity version with an empty <code>extra_headers</code>. The new <code>http_request_authorized</code> functions pass the Bearer header:</p>
+<pre><code class="language-relux">fn http_request_authorized(expected_code, url, token) {
+    http_request_authorized(expected_code, url, "GET", token, "")
+}
+
+fn http_request_authorized(expected_code, url, method, token) {
+    http_request_authorized(expected_code, url, method, token, "")
+}
+
+fn http_request_authorized(expected_code, url, method, token, req_body) {
+    let response_filename = curl(url, method, req_body, "-H 'Authorization: Bearer ${token}'")
+    http_match_code(expected_code)
+    match_ok()
+    response_filename
+}
+</code></pre>
+<p>We also need a way to extract values (not just match them) from JSON responses. The login endpoint returns a token that we need to capture and use in subsequent requests. Add <code>jq_extract</code> to <code>jq.relux</code>:</p>
+<pre><code class="language-relux"># skip unless which("jq")
+fn jq_extract(filename, query) {
+    &gt; jq -r '${query}' ${filename}
+    &lt;? ^jq (.*)$
+    &lt;? ^(.+)$
+    let value = $0
+    match_ok()
+    value
+}
+</code></pre>
+<p>The first <code>&lt;? ^jq (.*)$</code> skips past the echoed command in the output buffer. The second <code>&lt;? ^(.+)$</code> matches the actual jq output, and <code>let value = $0</code> captures the full match into <code>value</code>. The function returns it so the caller can store the result.</p>
+<h2 id="writing-task-tests"><a class="header" href="#writing-task-tests">Writing task tests</a></h2>
+<p>Create <code>relux/tests/tasks/smoke.relux</code>:</p>
+<pre><code class="language-text">relux new --test tasks/smoke
+</code></pre>
+<pre><code class="language-relux">import api/http
+import jq
+import service/auth { SeededAuth }
+import service/tasks { url as tasks_url, Tasks }
+
+test "task CRUD" {
+    """
+    Log in, create a task, read it back, update it, and delete it.
+    """
+    start Tasks
+    start SeededAuth
+
+    shell client {
+        log("login as alice")
+        let response_filename = http_request(200, tasks_url("/login"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
+        let token = jq_extract(response_filename, ".token")
+
+        log("create a task")
+        let response_filename = http_request_authorized(200, tasks_url("/tasks"), "POST", token, "{\"title\": \"buy milk\", \"status\": \"todo\"}")
+        let task_id = jq_extract(response_filename, ".id")
+        jq_match_query(response_filename, ".title", "^buy milk$")
+
+        log("read it back")
+        let response_filename = http_request_authorized(200, tasks_url("/tasks/${task_id}"), token)
+        jq_match_query(response_filename, ".title", "^buy milk$")
+        jq_match_query(response_filename, ".status", "^todo$")
+
+        log("update the status")
+        let response_filename = http_request_authorized(200, tasks_url("/tasks/${task_id}"), "PUT", token, "{\"status\": \"done\"}")
+        jq_match_query(response_filename, ".status", "^done$")
+
+        log("delete it")
+        let response_filename = http_request_authorized(200, tasks_url("/tasks/${task_id}"), "DELETE", token)
+        jq_match_query(response_filename, ".deleted", "^${task_id}$")
+    }
+}
+</code></pre>
+<p>The test starts both <code>Tasks</code> and <code>SeededAuth</code>. Behind the scenes, this pulls in the entire stack: db starts once, auth starts with the <code>auth</code> database and seed users, tasks starts with the <code>tasks</code> database. The test itself is just login and CRUD.</p>
+<p>Notice how <code>jq_extract</code> captures the token and task ID into variables that are used in subsequent requests. The <code>${task_id}</code> in <code>tasks_url("/tasks/${task_id}")</code> is interpolated at the call site – relux variables are just strings.</p>
+<h2 id="the-dependency-graph"><a class="header" href="#the-dependency-graph">The dependency graph</a></h2>
+<p>With all three services, the full effect graph looks like this:</p>
+<pre><code class="language-text">  test "task CRUD"
+  |              |
+  Tasks          SeededAuth
+  |   |          |
+  |   +--------&gt; Auth
+  |              |
+  +------------&gt; Db
+</code></pre>
+<p>Five <code>start</code> statements across effects and the test, but only four unique effect instances. <code>Auth</code> is started by both <code>Tasks</code> and <code>SeededAuth</code> – it runs once. <code>Db</code> is started by both <code>Tasks</code> and <code>Auth</code> – it runs once. You declare what you need; relux figures out the rest.</p>
+<h2 id="what-we-have-so-far-2"><a class="header" href="#what-we-have-so-far-2">What we have so far</a></h2>
+<pre><code class="language-text">project/
+├── Relux.toml
+├── db_service.py
+├── auth_service.py
+├── task_service.py
+└── relux/
+    ├── tests/
+    │   ├── db/
+    │   │   ├── smoke.relux
+    │   │   └── errors.relux
+    │   ├── auth/
+    │   │   ├── smoke.relux
+    │   │   └── errors.relux
+    │   └── tasks/
+    │       └── smoke.relux
+    └── lib/
+        ├── jq.relux
+        ├── api/
+        │   └── http.relux
+        └── service/
+            ├── db.relux
+            ├── auth.relux
+            └── tasks.relux
+</code></pre>
+<p>The suite now tests all three services. Each service has its own effect module. Dependencies are declared, not managed – relux resolves the graph and deduplicates automatically.</p>
+<p>But all the effects use hardcoded ports: 9000, 9010, 9020. Running tests sequentially works because each test tears down before the next starts. Run with <code>-j 4</code> and multiple tests will try to bind the same ports simultaneously. The next chapter solves this with dynamic ports and overlays.</p>
+<hr>
+<p>Next: <a href="#parallel-execution">Parallel Execution</a> – replace hardcoded ports with dynamic allocation</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="parallel-execution"><a class="header" href="#parallel-execution">Parallel Execution</a></h1>
+<p><a href="#shared-dependencies">Previous: Shared Dependencies</a></p>
+<h2 id="the-problem-port-collisions"><a class="header" href="#the-problem-port-collisions">The problem: port collisions</a></h2>
+<p>Every effect in the suite uses a hardcoded port: db on 9000, auth on 9010, tasks on 9020. This works when tests run one at a time – each test tears down its effects before the next starts. But run the suite with <code>-j 4</code> and four tests spin up simultaneously. Four copies of <code>Db</code> all try to bind port 9000 – the first succeeds, the other three crash.</p>
+<p>The fix is to stop hardcoding ports. Each effect instance should get its own port, and downstream effects should know which port their dependency is listening on.</p>
+<h2 id="dynamic-ports-with-available_port"><a class="header" href="#dynamic-ports-with-available_port">Dynamic ports with <code>available_port()</code></a></h2>
+<p>Relux provides a built-in pure function <code>available_port()</code> that binds to an ephemeral TCP port, records the port number, and releases the socket. Call it as close to startup as possible to minimize the window for another process to claim the same port.</p>
+<p>Environment overlay variables let us pass a port into an effect at the <code>start</code> site. Combine the two and each effect instance gets a unique port.</p>
+<p>Update <code>service/db.relux</code>:</p>
+<pre><code class="language-relux">import api/http
+
+effect Db {
+    expect DB_PORT
+    expose service
+
+    shell service {
+        let db_root = "${__RELUX_TEST_ARTIFACTS}/database"
+
+        &gt; mkdir ${db_root}
+        match_ok()
+
+        !? ^error:
+
+        &gt; ${__RELUX_SUITE_ROOT}/db_service.py --port ${DB_PORT} --data-dir ${db_root}
+        &lt;~10s? ^listening on ${DB_PORT}$
+    }
+}
+
+pure fn url(port, path) {
+    "http://localhost:${port}${path}"
+}
+</code></pre>
+<p>The <code>expect DB_PORT</code> declaration says: this effect requires <code>DB_PORT</code> to be provided by whoever starts it. If a caller forgets to pass it, relux reports an error at check time. The <code>&lt;~10s?</code> is an inline tolerance timeout – it means “wait up to 10 seconds for this pattern”. When multiple tests run in parallel, services compete for CPU and may take longer to start than the default match timeout.</p>
+<p>The <code>url</code> function takes the port as an argument – functions cannot read overlay variables, so the caller must pass it explicitly.</p>
+<h2 id="propagating-ports-through-the-chain"><a class="header" href="#propagating-ports-through-the-chain">Propagating ports through the chain</a></h2>
+<p><code>Auth</code> depends on <code>Db</code>. It needs to know the database port so it can pass <code>--db-port</code> to auth_service. The <code>expect</code> declaration names the required variables, and the <code>start</code> site passes them through an overlay block.</p>
+<p>Update <code>service/auth.relux</code>:</p>
+<pre><code class="language-relux">import api/http
+import service/db { url as db_url, Db }
+
+effect Auth {
+    expect DB_PORT, AUTH_PORT
+    start Db
+    expose service
+
+    shell setup {
+        log("create the auth database")
+        http_request(200, db_url(DB_PORT, "/db/auth"), "POST")
+    }
+
+    shell service {
+        !? ^error:
+
+        &gt; ${__RELUX_SUITE_ROOT}/auth_service.py --port ${AUTH_PORT} --db-port ${DB_PORT}
+        &lt;~10s? ^listening on ${AUTH_PORT}$
+    }
+}
+
+effect SeededAuth {
+    expect DB_PORT, AUTH_PORT
+    start Auth as auth
+    expose auth.service as service
+
+    shell seeder {
+        log("create seed database users")
+        http_request(200, url(AUTH_PORT, "/register"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
+        http_request(200, url(AUTH_PORT, "/register"), "POST", "{\"login\": \"bob\", \"password\": \"bob_secret\"}")
+        http_request(200, url(AUTH_PORT, "/register"), "POST", "{\"login\": \"eva\", \"password\": \"eva_secret\"}")
+    }
+}
+
+pure fn url(port, path) {
+    "http://localhost:${port}${path}"
+}
+</code></pre>
+<p><code>Auth</code> declares <code>expect DB_PORT, AUTH_PORT</code> — both must be provided by whoever starts it. Note that it does not need to pass the expected environment variables explicitly: these are passed inside the inherited enviroment overlay. This works as long as the expected environment variables in different overlays have the same name.</p>
+<p><code>SeededAuth</code> declares the same expects and passes them through to <code>Auth</code>. Each effect in the chain declares what it requires and forwards what its dependencies need.</p>
+<p>Update <code>service/tasks.relux</code>:</p>
+<pre><code class="language-relux">import api/http
+import jq
+import service/db { url as db_url, Db }
+import service/auth { SeededAuth }
+
+effect Tasks {
+    expect DB_PORT, AUTH_PORT, TASKS_PORT
+    start Db
+    start SeededAuth
+    expose service
+
+    shell setup {
+        log("create the tasks database")
+        http_request(200, db_url(DB_PORT, "/db/tasks"), "POST")
+    }
+
+    shell service {
+        !? ^error:
+
+        &gt; ${__RELUX_SUITE_ROOT}/task_service.py --port ${TASKS_PORT} --db-port ${DB_PORT} --auth-port ${AUTH_PORT}
+        &lt;~10s? ^listening on ${TASKS_PORT}$
+    }
+}
+
+effect SeededTasks {
+    expect DB_PORT, AUTH_PORT, TASKS_PORT
+    start Tasks as tasks
+    expose tasks.service as service
+
+    shell seeder {
+        log("login as alice")
+        let response_filename = http_request(200, url(TASKS_PORT, "/login"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
+        let token = jq_extract(response_filename, ".token")
+        log("auth token: ${token}")
+
+        log("create a task")
+        let response_filename = http_request_authorized(200, url(TASKS_PORT, "/tasks"), "POST", token, "{\"title\": \"buy milk\", \"status\": \"todo\"}")
+        let task_id = jq_extract(response_filename, ".id")
+        jq_match_query(response_filename, ".title", "^buy milk$")
+
+        log("login as bob")
+        let response_filename = http_request(200, url(TASKS_PORT, "/login"), "POST", "{\"login\": \"bob\", \"password\": \"bob_secret\"}")
+        let token = jq_extract(response_filename, ".token")
+        log("auth token: ${token}")
+
+        log("create a task")
+        let response_filename = http_request_authorized(200, url(TASKS_PORT, "/tasks"), "POST", token, "{\"title\": \"buy milk\", \"status\": \"todo\"}")
+        let task_id = jq_extract(response_filename, ".id")
+        jq_match_query(response_filename, ".title", "^buy milk$")
+    }
+}
+
+pure fn url(port, path) {
+    "http://localhost:${port}${path}"
+}
+</code></pre>
+<p><code>SeededTasks</code> follows the same layering pattern we used for auth: it starts <code>Tasks</code>, logs in as two users, and creates a task for each. Tests that need pre-existing tasks use <code>start SeededTasks</code> instead of setting up data themselves.</p>
+<p>Each port is allocated once at the test level and flows down through overlays. Effect deduplication still works – two <code>start Db { DB_PORT }</code> with the same evaluated value share one instance.</p>
+<h2 id="updating-the-tests"><a class="header" href="#updating-the-tests">Updating the tests</a></h2>
+<p>Each test now passes ports when starting effects. Here is the updated <code>tasks/smoke.relux</code>:</p>
+<pre><code class="language-relux">import api/http
+import jq
+import service/tasks { url as tasks_url, Tasks }
+
+test "task CRUD" {
+    """
+    Log in, create a task, read it back, update it, and delete it.
+    """
+    let db_port = available_port()
+    let auth_port = available_port()
+    let tasks_port = available_port()
+
+    start Tasks {
+        DB_PORT = db_port
+        AUTH_PORT = auth_port
+        TASKS_PORT = tasks_port
+    }
+
+    shell client {
+        log("login as alice")
+        let response_filename = http_request(200, tasks_url(tasks_port, "/login"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
+        let token = jq_extract(response_filename, ".token")
+        log("auth token: ${token}")
+
+        log("create a task")
+        let response_filename = http_request_authorized(200, tasks_url(tasks_port, "/tasks"), "POST", token, "{\"title\": \"buy milk\", \"status\": \"todo\"}")
+        let task_id = jq_extract(response_filename, ".id")
+        jq_match_query(response_filename, ".title", "^buy milk$")
+
+        log("read it back")
+        let response_filename = http_request_authorized(200, tasks_url(tasks_port, "/tasks/${task_id}"), token)
+        jq_match_query(response_filename, ".title", "^buy milk$")
+        jq_match_query(response_filename, ".status", "^todo$")
+
+        log("update the status")
+        let response_filename = http_request_authorized(200, tasks_url(tasks_port, "/tasks/${task_id}"), "PUT", token, "{\"status\": \"done\"}")
+        jq_match_query(response_filename, ".status", "^done$")
+
+        log("delete it")
+        let response_filename = http_request_authorized(200, tasks_url(tasks_port, "/tasks/${task_id}"), "DELETE", token)
+        jq_match_query(response_filename, ".deleted", "^${task_id}$")
+    }
+}
+</code></pre>
+<p>The three <code>available_port()</code> calls at the top allocate unique ports. The overlay blocks on <code>start</code> pass them down. The test body passes <code>tasks_port</code> to <code>tasks_url()</code> so the curl commands target the right port.</p>
+<p>The same pattern applies to the db and auth test files. Each test allocates the ports it needs and passes them through overlays.</p>
+<h2 id="error-path-tests"><a class="header" href="#error-path-tests">Error-path tests</a></h2>
+<p>The <code>SeededTasks</code> effect pays off in error-path tests. Create <code>tasks/errors.relux</code>:</p>
+<pre><code class="language-relux">import api/http
+import jq
+import service/tasks { url as tasks_url, Tasks, SeededTasks }
+
+# skip if SMOKE
+test "unauthorized without token" {
+    """
+    Verify requests without a Bearer token return 401.
+    """
+    let db_port = available_port()
+    let auth_port = available_port()
+    let tasks_port = available_port()
+
+    start Tasks {
+        DB_PORT = db_port
+        AUTH_PORT = auth_port
+        TASKS_PORT = tasks_port
+    }
+
+    shell client {
+        http_request(401, tasks_url(tasks_port, "/tasks"), "POST", "{\"title\": \"nope\"}")
+    }
+}
+
+# skip if SMOKE
+test "get nonexistent task" {
+    """
+    Verify reading a task that does not exist returns 404.
+    """
+    let db_port = available_port()
+    let auth_port = available_port()
+    let tasks_port = available_port()
+
+    start SeededTasks {
+        DB_PORT = db_port
+        AUTH_PORT = auth_port
+        TASKS_PORT = tasks_port
+    }
+
+    shell client {
+        log("login as alice")
+        let response_filename = http_request(200, tasks_url(tasks_port, "/login"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
+        let token = jq_extract(response_filename, ".token")
+
+        log("get a task that does not exist")
+        let response_filename = http_request_authorized(404, tasks_url(tasks_port, "/tasks/999"), token)
+        jq_match_query(response_filename, ".error", "^task 999 not found$")
+    }
+}
+</code></pre>
+<p>Notice the different effect choices: the unauthorized test only starts <code>Tasks</code> – no seeded data, just a running service to reject the request. The nonexistent task test starts <code>SeededTasks</code> because it logs in as alice, who must exist.</p>
+<h2 id="running-in-parallel"><a class="header" href="#running-in-parallel">Running in parallel</a></h2>
+<p>Enable parallel execution in <code>Relux.toml</code>:</p>
+<pre><code class="language-toml">[run]
+jobs = 4
+</code></pre>
+<p>Or pass it on the command line:</p>
+<pre><code class="language-text">relux run -j 4
+</code></pre>
+<p>Each test gets its own set of ports. Four tests running simultaneously means four separate service stacks, each on different ports, with no collisions. The effect graph is resolved per-test, and deduplication operates within a single test’s dependency tree – not across tests.</p>
+<h2 id="ci-readiness"><a class="header" href="#ci-readiness">CI readiness</a></h2>
+<p>A few flags make the suite CI-friendly:</p>
+<p><strong>Timeout multiplier.</strong> Tolerance timeouts (<code>~</code>) scale with the <code>-m</code> flag. CI machines are often slower, so double the timeouts:</p>
+<pre><code class="language-text">relux run -m 2.0
+</code></pre>
+<p>Assertion timeouts (<code>@</code>) are never scaled – they test hard time bounds that should hold on any machine.</p>
+<p><strong>Fail-fast vs. all.</strong> For local development, stop at the first failure:</p>
+<pre><code class="language-text">relux run --strategy fail-fast
+</code></pre>
+<p>For CI, run everything to get the full picture:</p>
+<pre><code class="language-text">relux run --strategy all
+</code></pre>
+<p><strong>Flaky markers.</strong> If a test is inherently timing-sensitive, mark it so relux retries before reporting failure:</p>
+<pre><code class="language-relux"># flaky
+test "sometimes slow" {
+    """
+    Verify the service responds under load.
+    """
+    ...
+}
+</code></pre>
+<p><strong>CI-only tests.</strong> Some tests only make sense in CI:</p>
+<pre><code class="language-relux"># run if CI
+test "full integration" {
+    """
+    Run the full integration suite against the staging environment.
+    """
+    ...
+}
+</code></pre>
+<h2 id="what-we-built"><a class="header" href="#what-we-built">What we built</a></h2>
+<p>The suite started in chapter 0 as an empty project. Over five chapters it grew into a parallel integration test suite for three interconnected services:</p>
+<ul>
+<li><strong>Chapter 0</strong> – project setup and first empty test</li>
+<li><strong>Chapter 1</strong> – testing the database with inline curl commands</li>
+<li><strong>Chapter 2</strong> – extracting reusable HTTP and jq libraries</li>
+<li><strong>Chapter 3</strong> – effects for declarative infrastructure setup</li>
+<li><strong>Chapter 4</strong> – shared dependencies and effect deduplication</li>
+<li><strong>Chapter 5</strong> – dynamic ports, overlays, and parallel execution</li>
+</ul>
+<p>The final architecture separates concerns cleanly:</p>
+<pre><code class="language-text">project/
+├── Relux.toml
+├── db_service.py
+├── auth_service.py
+├── task_service.py
+└── relux/
+    ├── tests/
+    │   ├── db/
+    │   │   ├── smoke.relux
+    │   │   └── errors.relux
+    │   ├── auth/
+    │   │   ├── smoke.relux
+    │   │   └── errors.relux
+    │   └── tasks/
+    │       ├── smoke.relux
+    │       └── errors.relux
+    └── lib/
+        ├── jq.relux
+        ├── api/
+        │   └── http.relux
+        └── service/
+            ├── db.relux
+            ├── auth.relux
+            └── tasks.relux
+</code></pre>
+<p>Test files say what to test. Library files say how to talk to services. Effect modules say how to start them. Environment overlays make everything parallel-safe.</p>
+<hr>
+<p>The complete working example project is available at <a href="project"><code>project/</code></a>.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="highlight-relux-8a60f327.js"></script>
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+
+    </div>
+    </body>
+</html>
