@@ -212,6 +212,7 @@ pub fn test_display_id(test_path: &str, test_name: &str) -> String {
     format!("{}/{}", test_path, slugify(test_name))
 }
 
+/// Convert a test name to a filesystem-safe slug.
 pub fn slugify(name: &str) -> String {
     name.chars()
         .map(|c| {
