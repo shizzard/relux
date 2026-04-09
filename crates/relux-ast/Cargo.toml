@@ -3,8 +3,8 @@ name = "relux-ast"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-publish = false
-description = "AST types for Relux"
+repository.workspace = true
+description = "Internal: AST types for Relux. No semver guarantees."
 
 [dependencies]
 relux-core = { workspace = true }

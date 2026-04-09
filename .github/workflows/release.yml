@@ -91,9 +91,19 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-publish-${{ hashFiles('**/Cargo.lock') }}
 
-      # --no-verify: build job already validated compilation
+      # Publish all workspace crates in dependency order.
+      # --no-verify: build job already validated compilation.
+      # sleep 30: give crates.io index time to propagate between publishes.
+      # || echo: allow re-runs when some crates are already published.
       - name: Publish
-        run: cargo publish -p relux --no-verify
+        run: |
+          for crate in relux-core relux-ast relux-lexer relux-ir relux-parser relux-runtime relux-resolver relux; do
+            echo "Publishing $crate..."
+            cargo publish -p "$crate" --no-verify || echo "Skipping $crate (already published or error)"
+            if [ "$crate" != "relux" ]; then
+              sleep 30
+            fi
+          done
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 

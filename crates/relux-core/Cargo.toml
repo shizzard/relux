@@ -3,8 +3,8 @@ name = "relux-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-publish = false
-description = "Core types and utilities for Relux"
+repository.workspace = true
+description = "Internal: core types for Relux. No semver guarantees."
 
 [dependencies]
 elsa      = { workspace = true }
