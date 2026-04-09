@@ -1,0 +1,15 @@
+[package]
+name = "relux-parser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Internal: parser for Relux. No semver guarantees."
+
+[dependencies]
+relux-core  = { workspace = true }
+relux-lexer = { workspace = true }
+relux-ast   = { workspace = true }
+chumsky     = { workspace = true }
+thiserror   = { workspace = true }
+humantime   = { workspace = true }

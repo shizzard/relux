@@ -1,0 +1,13 @@
+[package]
+name = "relux-ir"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Internal: IR types and lowering for Relux. No semver guarantees."
+
+[dependencies]
+relux-core = { workspace = true }
+relux-ast  = { workspace = true }
+regex      = { workspace = true }
+

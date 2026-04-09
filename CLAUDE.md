@@ -44,78 +44,90 @@ just clean-logs                 # Remove e2e test output logs
 
 ## Architecture
 
-Classic compiler pipeline: **Lexer → Parser → Resolver → Runtime → Reporter**
+Cargo workspace with 8 crates under `crates/`. Classic compiler pipeline: **Lexer → Parser → Resolver → Runtime → Reporter**
 
-### Shared Types (`src/lib.rs`)
+### `relux-core` (`crates/relux-core/`)
 
-`Span` and `Spanned<T>` — byte-offset source spans used across all pipeline stages. Span arithmetic is encapsulated with private fields.
+Foundation types shared across all crates.
 
-### Core (`src/core/`)
-
+- **lib.rs**: `Span` and `Spanned<T>` — byte-offset source spans. Span arithmetic is encapsulated with private fields.
 - **config.rs**: Parses `Relux.toml` at project root. Shell command/prompt, timeout defaults (match/test/suite), flaky retry config. Constants for directory layout (`relux/`, `tests/`, `lib/`, `out/`).
-- **error.rs**: Shared error types.
-- **table.rs**: `SharedTable<K,V>` — thread-safe write-once table backed by `elsa::FrozenMap`. `FileId` for cross-file source tracking.
+- **error.rs**: `DiagnosticReport`, `DiagnosticReports` — Ariadne-powered error rendering.
+- **table.rs**: `SharedTable<K,V>` — thread-safe write-once table backed by `elsa::FrozenMap`. `FileId`, `SourceFile`, `SourceTable`.
+- **diagnostics.rs**: `IrSpan`, `ModulePath`, `EffectName`, `CauseTable`, `CauseId`, `WarningId` — typed diagnostic infrastructure for cross-file error reporting.
+- **pure/mod.rs**: `VarScope`, `Env`, `LayeredEnv` — variable scoping with layered environment chain (own → parent → grandparent). `LayeredEnv` uses `Arc`-sharing, no cloning of base env.
+- **pure/bifs.rs**: Pure built-in functions: `trim`, `upper`, `lower`, `replace`, `split`, `len`, `uuid`, `rand`, `available_port`, `which`, `default`.
+- **discover.rs**: `discover_relux_files()` — recursive `.relux` file discovery, stops at nested project boundaries.
 
-### Diagnostics (`src/diagnostics/`)
+### `relux-ast` (`crates/relux-ast/`)
 
-`IrSpan`, `ModulePath`, `EffectName`, `CauseTable`, `CauseId`, `WarningId` — typed diagnostic infrastructure for cross-file error reporting with Ariadne-powered annotations.
+AST type definitions: `AstModule`, `AstItem`, `AstTestDef`, `AstEffectDef`, `AstFnDef`, `AstStmt`, `AstExpr`, etc. Depends only on `relux-core` for `Span`/`Spanned`.
 
-### DSL Pipeline (`src/dsl/`)
+### `relux-lexer` (`crates/relux-lexer/`)
 
-- **Lexer** (`dsl/lexer/`): Logos-based tokenizer. `Token` enum with keyword/operator/literal variants. `mod.rs` handles multi-mode lexing and `normalize()` for whitespace normalization.
-- **Parser** (`dsl/parser/`): Chumsky combinator parser. Split into focused modules: `ast.rs` (AST types), `module.rs` (top-level), `fn_def.rs`, `effect.rs`, `test_def.rs`, `stmt.rs`, `expr.rs`, `operator.rs`, `interpolation.rs`, `overlay.rs`, `block.rs`, `import.rs`, `need.rs`, `ident.rs`, `prefix.rs`, `timeout.rs`, `annotation.rs`, `punctuation.rs`, `ws.rs`, `token.rs`.
-- **Resolver** (`dsl/resolver/`): Converts AST → IR. `discover.rs` finds test modules, `loader.rs` loads sources, `lower.rs` lowers AST to IR, `shallow_env.rs` handles environment pre-resolution. IR is defined in `resolver/ir/` with separate files for `plan.rs`, `test_def.rs`, `effect.rs`, `func.rs`, `stmt.rs`, `expr.rs`, `block.rs`, `interpolation.rs`, `ident.rs`, `timeout.rs`, `marker.rs`, `comment.rs`, `regex_validate.rs`, `tables.rs`.
+Logos-based tokenizer. `Token` enum with keyword/operator/literal variants. Multi-mode lexing and `normalize()` for whitespace normalization.
 
-### Pure (`src/pure/`)
+### `relux-parser` (`crates/relux-parser/`)
 
-Side-effect-free evaluation layer, shared between resolver (compile-time let evaluation) and runtime.
+Chumsky combinator parser. Split into focused modules: `module.rs` (top-level), `fn_def.rs`, `effect.rs`, `test_def.rs`, `stmt.rs`, `expr.rs`, `operator.rs`, `interpolation.rs`, `overlay.rs`, `block.rs`, `import.rs`, `need.rs`, `ident.rs`, `prefix.rs`, `timeout.rs`, `annotation.rs`, `punctuation.rs`, `ws.rs`, `token.rs`, `error.rs`.
 
-- **mod.rs**: `VarScope`, `Env`, `LayeredEnv` — variable scoping with layered environment chain (own → parent → grandparent). `LayeredEnv` uses `Arc`-sharing, no cloning of base env.
-- **bifs.rs**: Pure built-in functions: `trim`, `upper`, `lower`, `replace`, `split`, `len`, `uuid`, `rand`, `available_port`, `which`, `default`.
+### `relux-ir` (`crates/relux-ir/`)
+
+IR types and AST→IR lowering.
+
+- **Type definitions**: `plan.rs`, `test_def.rs`, `effect.rs`, `func.rs`, `stmt.rs`, `expr.rs`, `block.rs`, `interpolation.rs`, `ident.rs`, `timeout.rs`, `comment.rs`, `tables.rs`. Each file defines IR types and their `IrNodeLowering` impl.
+- **lowering_context.rs**: `LoweringContext` — orchestrates caching, cycle detection, scope stacks, BIF registration, import resolution, and diagnostic collection during AST→IR lowering.
+- **lowering_trait.rs**: `IrNodeLowering` trait — cached, cycle-detecting AST→IR conversion.
 - **evaluator.rs**: `eval_pure_expr()` — infallible pure expression evaluator (all failure modes caught at lowering time).
+- **shallow_env.rs**: `ShallowLayeredEnv` — name-only layered env for resolve-time `expect` satisfiability checks.
+- **marker.rs**: Marker/annotation evaluation (`@skip`, `@flaky`, conditional markers).
+- **regex_validate.rs**: Compile-time regex validation for match patterns.
 
-### Runtime (`src/runtime/`)
+### `relux-resolver` (`crates/relux-resolver/`)
 
-- **mod.rs**: Suite executor. `execute()` runs tests with N workers (tokio tasks pulling from shared queue), cancellation support (fail-fast, suite timeout), flaky retry loop with timeout multiplier. `RunContext` holds per-run config. `EffectManager` handles effect lifecycle (instantiate → cleanup).
+Resolver orchestration: module discovery, source loading, and the `resolve()` entry point.
+
+- **lib.rs**: `resolve()` public API, `SourceLoader` trait, `FsSourceLoader`.
+- **discover.rs**: `discover_test_modules()` — converts discovered `.relux` files to `ModulePath`s.
+- **loader.rs**: `load_modules()` — BFS worklist that loads, parses, and enqueues transitive imports. `InMemoryLoader` for tests.
+- **lower.rs**: Re-exports `LoweringContext`/`LoweringScope` from `relux-ir`. Contains shared test helpers.
+
+### `relux-runtime` (`crates/relux-runtime/`)
+
+- **lib.rs**: Suite executor. `execute()` runs tests with N workers (tokio tasks pulling from shared queue), cancellation support (fail-fast, suite timeout), flaky retry loop with timeout multiplier. `RunContext` holds per-run config. `EffectManager` handles effect lifecycle (instantiate → cleanup).
 - **runtime_context.rs**: `RuntimeContext` — per-test context with event sink, shell config, log dir, tables, env, cancellation token.
-- **vm/** (`runtime/vm/`):
+- **vm/**:
   - **mod.rs**: Per-shell virtual machine. PTY child process, send/match operations with timeouts, fail pattern checking, statement execution, function calls.
   - **bifs.rs**: Impure built-in functions (`Bif` trait): `sleep`, `annotate`, `log`, `match_prompt`, `match_exit_code`, `match_ok`, `match_not_ok`, `ctrl_c`, `ctrl_d`, `ctrl_z`, `ctrl_l`, `ctrl_backslash`.
   - **buffer.rs**: Output buffer with cursor for matching operations.
   - **context.rs**: `ExecutionContext` — per-shell state: `Scope` (test/effect/function), `ShellState`, variable frames.
   - **pty.rs**: PTY process management.
-- **effect/** (`runtime/effect/`):
+- **effect/**:
   - **mod.rs**: `EffectManager` — instantiates effects, manages cleanup (reverse order), warning collection.
   - **registry.rs**: `EffectRegistry` — deduplicates effect instances by `(name, args, overlay)` key.
-- **observe/** (`runtime/observe/`):
+- **observe/**:
   - **event_sink.rs**: `EventSink` — structured event collection for test execution.
   - **event_log.rs**: `BufferSnapshot`, event log types.
   - **progress.rs**: Progress channel for live updates.
   - **tui.rs**: Terminal UI renderer (live progress with cursor control, auto-detects TTY).
   - **shell_log.rs**: Shell I/O logging for debugging.
-- **report/** (`runtime/report/`):
+- **report/**:
   - **result.rs**: `TestResult`, `Outcome` (Pass/Fail/Skipped/Invalid), `Failure` variants (Runtime/Cancelled).
   - **html.rs**: Rich HTML test report generation.
   - **junit.rs**: JUnit XML report output.
   - **tap.rs**: TAP (Test Anything Protocol) output.
   - **run_summary.rs**: `RunSummary` — serializable run results for history analysis.
 
-### History (`src/history/`)
+### `relux` (CLI, `crates/relux-cli/`)
 
-Analyzes test run history across multiple runs: flaky detection, failure modes, first-fail identification, duration trends. Supports human-readable and TOML output formats.
+Published crate (`cargo install relux`). CLI subcommands and the `relux` binary.
 
-### CLI (`src/cli/`)
-
-CLI logic extracted from the binary into `crate::cli`. Subcommands: `new`, `run`, `check`, `dump`, `history`, `completions`. Uses clap for arg parsing with `clap_complete` for dynamic shell completions (bash/zsh/fish).
-
-- **mod.rs**: `cli()` command definition, shared helpers (`resolve_project`, `resolve_test_paths`, `read_file`, `build_source_loader`, `ModuleKind`).
-- **run.rs**, **check.rs**, **history.rs**, **new.rs**, **dump.rs**: One subcommand handler each.
+- **lib.rs**: `cli()` command definition, shared helpers (`resolve_project`, `resolve_test_paths`, `read_file`, `build_source_loader`, `ModuleKind`).
+- **run.rs**, **check.rs**, **new.rs**, **dump.rs**: One subcommand handler each.
 - **completions.rs**: Shell completion installer (`--shell`, `--install`, `--path`).
 - **completer.rs**: `ArgValueCompleter` functions for `.relux` files, manifests, timeouts, shells.
-
-### Binary (`bin/relux.rs`)
-
-Thin dispatch layer — delegates to `crate::cli`.
+- **history/**: Analyzes test run history across multiple runs: flaky detection, failure modes, first-fail identification, duration trends. Supports human-readable and TOML output formats.
+- **bin/relux.rs**: Thin dispatch layer — delegates to the library.
 
 ### Editor Support (`editors/`)
 
@@ -137,7 +149,7 @@ Thin dispatch layer — delegates to `crate::cli`.
 ## Conventions
 
 - Rust 2024 edition idioms
-- Unit tests are colocated in each module via `#[cfg(test)] mod tests`
+- Unit tests are colocated in each module via `#[cfg(test)] mod tests`; IR lowering tests are integration tests in `crates/relux-resolver/tests/`
 - Documentation as mdbooks in `docs/` — `reference/` (semantics, syntax, BIFs, CI), `dsl-tutorial/`, `suite-tutorial/`
 - **Every code change must be accompanied by updates to the relevant documentation** — review `docs/reference/` (semantics, syntax, BIFs, CI), `docs/dsl-tutorial/`, and `docs/suite-tutorial/` and update any articles affected by the change
 

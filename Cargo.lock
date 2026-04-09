@@ -314,15 +314,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "daggy"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "804169db156b21258a2545757336922d93dfa229892c75911a0ad141aa0ff241"
-dependencies = [
- "petgraph",
-]
-
-[[package]]
 name = "elsa"
 version = "1.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -352,12 +343,6 @@ name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
-
-[[package]]
-name = "fixedbitset"
-version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
 
 [[package]]
 name = "fnv"
@@ -722,17 +707,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "petgraph"
-version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8701b58ea97060d5e5b155d383a69952a60943f0e6dfe30b04c287beb0b27455"
-dependencies = [
- "fixedbitset",
- "hashbrown 0.15.5",
- "indexmap",
-]
-
-[[package]]
 name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -905,34 +879,114 @@ checksum = "a96887878f22d7bad8a3b6dc5b7440e0ada9a245242924394987b21cf2210a4c"
 name = "relux"
 version = "0.3.2"
 dependencies = [
- "ariadne",
- "async-recursion",
- "async-trait",
  "bs58",
- "bytes",
  "chrono",
- "chumsky",
  "clap",
  "clap_complete",
  "colored",
- "daggy",
- "elsa",
- "futures",
  "humantime",
- "logos",
- "pty-process",
- "quick-junit",
  "rand",
- "regex",
+ "relux-ast",
+ "relux-core",
+ "relux-ir",
+ "relux-lexer",
+ "relux-parser",
+ "relux-resolver",
+ "relux-runtime",
  "serde",
  "tabled",
  "terminal_size",
- "thiserror",
  "tokio",
- "tokio-util",
+ "toml",
+ "walkdir",
+]
+
+[[package]]
+name = "relux-ast"
+version = "0.3.2"
+dependencies = [
+ "relux-core",
+]
+
+[[package]]
+name = "relux-core"
+version = "0.3.2"
+dependencies = [
+ "ariadne",
+ "bs58",
+ "elsa",
+ "humantime",
+ "rand",
+ "regex",
+ "serde",
+ "thiserror",
  "toml",
  "uuid",
  "walkdir",
+]
+
+[[package]]
+name = "relux-ir"
+version = "0.3.2"
+dependencies = [
+ "regex",
+ "relux-ast",
+ "relux-core",
+]
+
+[[package]]
+name = "relux-lexer"
+version = "0.3.2"
+dependencies = [
+ "logos",
+ "relux-core",
+]
+
+[[package]]
+name = "relux-parser"
+version = "0.3.2"
+dependencies = [
+ "chumsky",
+ "humantime",
+ "relux-ast",
+ "relux-core",
+ "relux-lexer",
+ "thiserror",
+]
+
+[[package]]
+name = "relux-resolver"
+version = "0.3.2"
+dependencies = [
+ "regex",
+ "relux-ast",
+ "relux-core",
+ "relux-ir",
+ "relux-lexer",
+ "relux-parser",
+]
+
+[[package]]
+name = "relux-runtime"
+version = "0.3.2"
+dependencies = [
+ "async-recursion",
+ "async-trait",
+ "bytes",
+ "chrono",
+ "colored",
+ "futures",
+ "humantime",
+ "pty-process",
+ "quick-junit",
+ "regex",
+ "relux-core",
+ "relux-ir",
+ "serde",
+ "terminal_size",
+ "tokio",
+ "tokio-util",
+ "toml",
 ]
 
 [[package]]
