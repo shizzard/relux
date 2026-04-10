@@ -43,6 +43,10 @@ unit *ARGS:
 run *ARGS:
     cargo run -p relux -- {{ARGS}}
 
+# Run relux-dbg with arguments
+dbg *ARGS:
+    cargo run --bin relux-dbg -- {{ARGS}}
+
 # Run e2e tests (check then run)
 e2e:
     cargo run -p relux -- check --manifest tests/Relux.toml

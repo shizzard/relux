@@ -24,6 +24,7 @@ just test                       # Run all tests (unit + e2e)
 just unit                       # Run all unit tests
 just unit lexer                 # Run tests matching "lexer"
 just run <args>                  # Run relux with arguments
+just dbg <args>                  # Run relux-dbg with arguments
 just e2e                        # Run e2e tests (check then run)
 just history                    # Analyze e2e run history
 ```
@@ -120,14 +121,16 @@ Resolver orchestration: module discovery, source loading, and the `resolve()` en
 
 ### `relux` (CLI, `crates/relux-cli/`)
 
-Published crate (`cargo install relux`). CLI subcommands and the `relux` binary.
+Published crate (`cargo install relux`). Two binaries: `relux` (test runner) and `relux-dbg` (TUI debugger).
 
 - **lib.rs**: `cli()` command definition, shared helpers (`resolve_project`, `resolve_test_paths`, `read_file`, `build_source_loader`, `ModuleKind`).
 - **run.rs**, **check.rs**, **new.rs**, **dump.rs**: One subcommand handler each.
 - **completions.rs**: Shell completion installer (`--shell`, `--install`, `--path`).
 - **completer.rs**: `ArgValueCompleter` functions for `.relux` files, manifests, timeouts, shells.
 - **history/**: Analyzes test run history across multiple runs: flaky detection, failure modes, first-fail identification, duration trends. Supports human-readable and TOML output formats.
+- **dbg/tui/**: TUI debugger application (Ratatui). See RFC R010.
 - **bin/relux.rs**: Thin dispatch layer — delegates to the library.
+- **bin/relux-dbg.rs**: TUI debugger entry point.
 
 ### Editor Support (`editors/`)
 

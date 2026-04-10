@@ -1,6 +1,7 @@
 pub mod check;
 pub mod completer;
 pub mod completions;
+pub mod dbg;
 pub mod dump;
 pub mod history;
 pub mod new;

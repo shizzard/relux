@@ -14,6 +14,10 @@ categories = ["development-tools::testing"]
 name = "relux"
 path = "bin/relux.rs"
 
+[[bin]]
+name = "relux-dbg"
+path = "bin/relux-dbg.rs"
+
 [dependencies]
 relux-core     = { workspace = true }
 relux-ast      = { workspace = true }
@@ -35,3 +39,5 @@ humantime      = { workspace = true }
 rand           = { workspace = true }
 bs58           = { workspace = true }
 tokio          = { workspace = true }
+ratatui        = { workspace = true }
+crossterm      = { workspace = true }
