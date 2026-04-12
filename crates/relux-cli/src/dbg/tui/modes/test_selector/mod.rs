@@ -1,13 +1,14 @@
-mod bar;
+mod details;
 mod files;
-mod foo;
 
+use std::path::PathBuf;
+
+use crossterm::event::KeyEvent;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
-use bar::BarPanel;
+use details::DetailsPanel;
 use files::FilesPanel;
-use foo::FooPanel;
 
 use crate::dbg::tui::bordered::Bordered;
 use crate::dbg::tui::core::Hotkey;
@@ -15,116 +16,90 @@ use crate::dbg::tui::core::hotkey_registry::HotkeyLayer;
 use crate::dbg::tui::panel::Mode;
 use crate::dbg::tui::panel::Panel;
 
-// ── PanelId ─────────────────────────────────────────────────────────────────
+// ── Mode state ─────────────────────────────────────────────────────────────
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PanelId {
-    Files,
-    Foo,
-    Bar,
+pub struct TestSelectorState {
+    pub selected_file: PathBuf,
 }
 
-// ── TestSelectorMode ────────────────────────────────────────────────────────
+// ── TestSelectorMode ───────────────────────────────────────────────────────
 
 pub struct TestSelectorMode {
-    pub focused: PanelId,
+    mode_state: TestSelectorState,
     files: FilesPanel,
-    foo: FooPanel,
-    bar: BarPanel,
-}
-
-impl Default for TestSelectorMode {
-    fn default() -> Self {
-        Self::new()
-    }
+    details: DetailsPanel,
 }
 
 impl TestSelectorMode {
-    pub fn new() -> Self {
+    pub fn new(project_root: PathBuf) -> Self {
+        let tests_dir = relux_core::config::tests_dir(&project_root);
+        let files = FilesPanel::new(tests_dir.clone());
+        let mut details = DetailsPanel::new(tests_dir);
+        let mode_state = TestSelectorState {
+            selected_file: files.selected_file_path(),
+        };
+        details.mode_state_changed(&mode_state);
         Self {
-            focused: PanelId::Files,
-            files: FilesPanel,
-            foo: FooPanel,
-            bar: BarPanel,
+            mode_state,
+            files,
+            details,
         }
     }
 }
 
 impl Mode for TestSelectorMode {
     fn render(&self, area: Rect, buf: &mut Buffer) {
-        if area.height < 4 {
+        if area.height < 4 || area.width < 4 {
             return;
         }
 
-        let top_height = area.height / 2;
-        let bottom_height = area.height - top_height;
-        let top_area = Rect {
+        let files_height = area.height * 60 / 100;
+        let details_height = area.height - files_height;
+        let files_area = Rect {
             x: area.x,
             y: area.y,
             width: area.width,
-            height: top_height,
+            height: files_height,
         };
-        let bottom_left_width = area.width / 2;
-        let bottom_right_width = area.width - bottom_left_width;
-        let bottom_left = Rect {
+        let details_area = Rect {
             x: area.x,
-            y: area.y + top_height,
-            width: bottom_left_width,
-            height: bottom_height,
-        };
-        let bottom_right = Rect {
-            x: area.x + bottom_left_width,
-            y: area.y + top_height,
-            width: bottom_right_width,
-            height: bottom_height,
+            y: area.y + files_height,
+            width: area.width,
+            height: details_height,
         };
 
         Bordered::new(&self.files)
             .top_item(Box::new(self.files.label()))
-            .focused(self.focused == PanelId::Files)
-            .render(top_area, buf);
+            .focused(true)
+            .render(files_area, buf);
 
-        Bordered::new(&self.foo)
-            .top_item(Box::new(self.foo.label()))
-            .focused(self.focused == PanelId::Foo)
-            .render(bottom_left, buf);
-
-        Bordered::new(&self.bar)
-            .top_item(Box::new(self.bar.label()))
-            .focused(self.focused == PanelId::Bar)
-            .render(bottom_right, buf);
+        Bordered::new(&self.details)
+            .top_item(Box::new(self.details.label()))
+            .focused(false)
+            .render(details_area, buf);
     }
 
-    fn dispatch_focus(&mut self, hotkey: &Hotkey) {
-        if *hotkey == FilesPanel::FOCUS {
-            self.focused = PanelId::Files;
-        } else if *hotkey == FooPanel::FOCUS {
-            self.focused = PanelId::Foo;
-        } else if *hotkey == BarPanel::FOCUS {
-            self.focused = PanelId::Bar;
-        }
+    fn dispatch_focus(&mut self, _hotkey: &Hotkey) {
+        // Only one focusable panel — nothing to switch.
     }
 
     fn dispatch_panel(&mut self, hotkey: &Hotkey) {
-        match self.focused {
-            PanelId::Files => self.files.dispatch(hotkey),
-            PanelId::Foo => self.foo.dispatch(hotkey),
-            PanelId::Bar => self.bar.dispatch(hotkey),
+        self.files.dispatch(hotkey, &mut self.mode_state);
+        self.details.mode_state_changed(&self.mode_state);
+    }
+
+    fn forward_key_event(&mut self, event: &KeyEvent) {
+        let changed = self.files.handle_key_event(event, &mut self.mode_state);
+        if changed {
+            self.details.mode_state_changed(&self.mode_state);
         }
     }
 
     fn mode_hotkeys(&self) -> HotkeyLayer {
-        HotkeyLayer::new(
-            "Test Selector",
-            vec![FilesPanel::FOCUS, FooPanel::FOCUS, BarPanel::FOCUS],
-        )
+        HotkeyLayer::new("Test Selector", vec![])
     }
 
     fn panel_hotkeys(&self) -> HotkeyLayer {
-        match self.focused {
-            PanelId::Files => self.files.hotkeys(),
-            PanelId::Foo => self.foo.hotkeys(),
-            PanelId::Bar => self.bar.hotkeys(),
-        }
+        self.files.hotkeys()
     }
 }

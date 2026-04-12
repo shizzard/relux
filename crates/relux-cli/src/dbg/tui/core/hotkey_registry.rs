@@ -86,6 +86,7 @@ impl HotkeyRegistry {
     /// Handle a key event: resolve, dispatch to the appropriate handler.
     pub fn handle_key(&mut self, event: &KeyEvent, ctx: &mut Context) {
         let KeyCode::Char(ch) = event.code else {
+            ctx.forward_key_event(event);
             return;
         };
         if event.modifiers != KeyModifiers::NONE && event.modifiers != KeyModifiers::SHIFT {

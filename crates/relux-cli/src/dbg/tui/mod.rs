@@ -10,6 +10,7 @@ pub mod traits;
 pub mod util;
 
 use std::io;
+use std::path::PathBuf;
 
 use crossterm::event::Event;
 use crossterm::event::KeyEventKind;
@@ -24,7 +25,6 @@ use core::Hotkey;
 use core::hotkey_registry::HotkeyLayer;
 use core::hotkey_registry::HotkeyRegistry;
 use help_overlay::HelpOverlay;
-use panel::Mode;
 
 // ── App ─────────────────────────────────────────────────────────────────────
 
@@ -34,16 +34,16 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> Self {
-        let ctx = Context::new();
+    pub fn new(project_root: PathBuf) -> Self {
+        let ctx = Context::new(project_root);
 
         let global = HotkeyLayer::new(
             "Global",
             vec![Hotkey::new('q', "quit"), Hotkey::new('?', "help")],
         );
         let mut registry = HotkeyRegistry::new(global);
-        registry.set_mode(ctx.test_selector.mode_hotkeys());
-        registry.set_panel(ctx.test_selector.panel_hotkeys());
+        registry.set_mode(ctx.mode_hotkeys());
+        registry.set_panel(ctx.panel_hotkeys());
 
         Self { ctx, registry }
     }
@@ -81,12 +81,6 @@ impl App {
             self.registry.handle_key(&key, &mut self.ctx);
         }
         Ok(())
-    }
-}
-
-impl Default for App {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

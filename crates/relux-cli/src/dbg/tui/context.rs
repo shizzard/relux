@@ -1,3 +1,6 @@
+use std::path::PathBuf;
+
+use crossterm::event::KeyEvent;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
@@ -16,25 +19,19 @@ pub enum ModeId {
 // ── Context ─────────────────────────────────────────────────────────────────
 
 pub struct Context {
-    pub active_mode: ModeId,
+    active_mode: ModeId,
     pub should_quit: bool,
     pub show_help: bool,
-    pub test_selector: TestSelectorMode,
-}
-
-impl Default for Context {
-    fn default() -> Self {
-        Self::new()
-    }
+    test_selector: TestSelectorMode,
 }
 
 impl Context {
-    pub fn new() -> Self {
+    pub fn new(project_root: PathBuf) -> Self {
         Self {
             active_mode: ModeId::TestSelector,
             should_quit: false,
             show_help: false,
-            test_selector: TestSelectorMode::new(),
+            test_selector: TestSelectorMode::new(project_root),
         }
     }
 
@@ -53,6 +50,18 @@ impl Context {
     pub fn panel_hotkeys(&self) -> HotkeyLayer {
         match self.active_mode {
             ModeId::TestSelector => self.test_selector.panel_hotkeys(),
+        }
+    }
+
+    pub fn forward_key_event(&mut self, event: &KeyEvent) {
+        match self.active_mode {
+            ModeId::TestSelector => self.test_selector.forward_key_event(event),
+        }
+    }
+
+    pub fn mode_hotkeys(&self) -> HotkeyLayer {
+        match self.active_mode {
+            ModeId::TestSelector => self.test_selector.mode_hotkeys(),
         }
     }
 

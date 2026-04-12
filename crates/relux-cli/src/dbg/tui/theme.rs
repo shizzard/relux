@@ -22,18 +22,20 @@ pub const HOTKEY_INACTIVE: Style = Style::new().fg(Color::DarkGray);
 pub const INPUT_EDITING: Style = Style::new().fg(Color::Yellow);
 pub const INPUT_IDLE: Style = Style::new().fg(Color::White);
 
-// ── Status bar ──────────────────────────────────────────────────────────────
-
-pub const STATUS_BAR_BG: Style = Style::new().bg(Color::DarkGray);
-pub const STATUS_BAR_KEY: Style = Style::new()
-    .fg(Color::Black)
-    .bg(Color::White)
-    .add_modifier(Modifier::BOLD);
-pub const STATUS_BAR_LABEL: Style = Style::new().fg(Color::White).bg(Color::DarkGray);
-
 // ── Hints ───────────────────────────────────────────────────────────────────
 
 pub const HINT: Style = Style::new().fg(Color::DarkGray);
+
+// ── File tree ───────────────────────────────────────────────────────────────
+
+pub const FILE_CURSOR: Style = Style::new().fg(Color::Green).add_modifier(Modifier::BOLD);
+pub const FILE_NAME: Style = Style::new().fg(Color::Green).add_modifier(Modifier::BOLD);
+pub const DIR_NAME: Style = Style::new().fg(Color::DarkGray);
+
+// ── Details ─────────────────────────────────────────────────────────────────
+
+pub const TEST_NAME: Style = Style::new().fg(Color::Green);
+pub const TEST_DOCSTRING: Style = Style::new().fg(Color::DarkGray);
 
 // ── Help overlay ────────────────────────────────────────────────────────────
 
