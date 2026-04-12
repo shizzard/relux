@@ -3,10 +3,9 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 
 use super::bordered::Bordered;
-use super::hotkey::HotkeyRegistry;
+use super::core::HotkeyRegistry;
 use super::theme;
-use super::traits::Overlay;
-use super::traits::Panel;
+use super::traits::BlockRenderable;
 use super::util::set_cell;
 
 // ── Help content panel ──────────────────────────────────────────────────────
@@ -16,7 +15,7 @@ struct HelpContent<'a> {
     registry: &'a HotkeyRegistry,
 }
 
-impl Panel for HelpContent<'_> {
+impl BlockRenderable for HelpContent<'_> {
     fn render(&self, area: Rect, buf: &mut Buffer) {
         let layers = self.registry.all_layers();
         let mut row = area.y;
@@ -72,14 +71,9 @@ impl<'a> HelpOverlay<'a> {
     pub fn new(registry: &'a HotkeyRegistry) -> Self {
         Self { registry }
     }
-}
 
-impl Overlay for HelpOverlay<'_> {
-    fn render(&self, area: Rect, buf: &mut Buffer) {
+    pub fn render(&self, area: Rect, buf: &mut Buffer) {
         let layers = self.registry.all_layers();
-        if layers.is_empty() {
-            return;
-        }
 
         // Measure content: each layer has a header line + one line per hotkey + blank line.
         let content_lines: usize = layers
@@ -115,9 +109,9 @@ impl Overlay for HelpOverlay<'_> {
         };
         let bordered = Bordered::new(content)
             .title("Hotkeys")
-            .bottom_hint("press any key to close", theme::HINT)
+            .bottom_item(Box::new(String::from("press any key to close")))
             .padding(1)
             .border_style(theme::HELP_BORDER);
-        bordered.render(popup, buf, self.registry);
+        bordered.render(popup, buf);
     }
 }

@@ -1,20 +1,27 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::text::Line;
 
-/// A content widget that fills a rectangular area.
-/// Leaf-level: source viewer, tree view, variable list, shell buffer, status bar.
-pub trait Panel {
+// ── Render kind ─────────────────────────────────────────────────────────────
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RenderKind {
+    Active,
+    Inactive,
+}
+
+// ── Traits ──────────────────────────────────────────────────────────────────
+
+pub trait LineRenderable {
+    fn render(&self, max_width: u16, kind: RenderKind) -> Line<'static>;
+}
+
+pub trait BlockRenderable {
     fn render(&self, area: Rect, buf: &mut Buffer);
 }
 
-/// A layout that arranges panels into a full-screen mode.
-/// One per UI mode: test selector, pre-run, execution.
-pub trait Screen {
-    fn render(&self, area: Rect, buf: &mut Buffer);
-}
-
-/// A floating layer rendered on top of a screen.
-/// Popups: eval log overlay, function picker, shell switcher, effects, help.
-pub trait Overlay {
-    fn render(&self, area: Rect, buf: &mut Buffer);
+impl<T: BlockRenderable> BlockRenderable for &T {
+    fn render(&self, area: Rect, buf: &mut Buffer) {
+        (*self).render(area, buf);
+    }
 }

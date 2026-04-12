@@ -1,17 +1,17 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
-use super::traits::Panel;
+use super::traits::BlockRenderable;
 
-/// Wraps a `Panel` that may produce content taller than its visible area.
+/// Wraps a `BlockRenderable` that may produce content taller than its visible area.
 /// Renders the visible window and an optional scroll indicator.
-pub struct Scrollable<P: Panel> {
+pub struct Scrollable<P: BlockRenderable> {
     panel: P,
     offset: usize,
     content_height: usize,
 }
 
-impl<P: Panel> Scrollable<P> {
+impl<P: BlockRenderable> Scrollable<P> {
     pub fn new(panel: P, content_height: usize) -> Self {
         Self {
             panel,
@@ -46,7 +46,7 @@ impl<P: Panel> Scrollable<P> {
     }
 }
 
-impl<P: Panel> Panel for Scrollable<P> {
+impl<P: BlockRenderable> BlockRenderable for Scrollable<P> {
     fn render(&self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;
@@ -92,7 +92,7 @@ impl<P: Panel> Panel for Scrollable<P> {
     }
 }
 
-impl<P: Panel> Scrollable<P> {
+impl<P: BlockRenderable> Scrollable<P> {
     fn render_scroll_indicator(
         &self,
         area: Rect,

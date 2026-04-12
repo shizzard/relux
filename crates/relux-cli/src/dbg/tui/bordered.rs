@@ -2,171 +2,29 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 
-use super::hotkey::Hotkey;
-use super::hotkey::HotkeyRegistry;
 use super::theme;
-use super::traits::Panel;
+use super::traits::BlockRenderable;
+use super::traits::LineRenderable;
+use super::traits::RenderKind;
 use super::util::set_cell;
 
-// ── Border items ────────────────────────────────────────────────────────────
+// ── Bordered ────────────────────────────────────────────────────────────────
 
-pub enum BorderItem {
-    Title {
-        text: String,
-        hotkey: Option<Hotkey>,
-    },
-    Input {
-        hotkey: Hotkey,
-        value: String,
-        editing: bool,
-    },
-}
-
-impl BorderItem {
-    pub fn title(text: impl Into<String>) -> Self {
-        Self::Title {
-            text: text.into(),
-            hotkey: None,
-        }
-    }
-
-    pub fn title_with_hotkey(hotkey: Hotkey) -> Self {
-        Self::Title {
-            text: hotkey.label.clone(),
-            hotkey: Some(hotkey),
-        }
-    }
-
-    pub fn input(hotkey: Hotkey) -> Self {
-        Self::Input {
-            hotkey,
-            value: String::new(),
-            editing: false,
-        }
-    }
-
-    /// Measure the rendered width of this item (without writing).
-    fn measure(&self, registry: &HotkeyRegistry) -> u16 {
-        match self {
-            Self::Title { text, hotkey } => {
-                let base_len = text.chars().count() as u16;
-                if let Some(hk) = hotkey {
-                    let active = registry.is_active(hk.key);
-                    let key_in_label = text.chars().any(|c| c.eq_ignore_ascii_case(&hk.key));
-                    if active && !key_in_label {
-                        1 + base_len
-                    } else {
-                        base_len
-                    }
-                } else {
-                    base_len
-                }
-            }
-            Self::Input {
-                hotkey,
-                value,
-                editing,
-            } => {
-                if *editing {
-                    let label_len = hotkey.label.chars().count() as u16;
-                    label_len + 1 + value.chars().count() as u16 + 1
-                } else {
-                    let active = registry.is_active(hotkey.key);
-                    let key_in_label = hotkey
-                        .label
-                        .chars()
-                        .any(|c| c.eq_ignore_ascii_case(&hotkey.key));
-                    if active && !key_in_label {
-                        1 + hotkey.label.chars().count() as u16
-                    } else {
-                        hotkey.label.chars().count() as u16
-                    }
-                }
-            }
-        }
-    }
-
-    /// Render this item at the given position, returning columns consumed.
-    fn render(
-        &self,
-        x: u16,
-        y: u16,
-        buf: &mut Buffer,
-        focused: bool,
-        registry: &HotkeyRegistry,
-    ) -> u16 {
-        match self {
-            Self::Title { text, hotkey } => match hotkey {
-                Some(hk) => {
-                    let active = registry.is_active(hk.key);
-                    hk.render_label(x, y, buf, active)
-                }
-                None => {
-                    let style = if focused {
-                        theme::TITLE
-                    } else {
-                        theme::HOTKEY_INACTIVE
-                    };
-                    let mut col = x;
-                    for ch in text.chars() {
-                        set_cell(col, y, ch, style, buf);
-                        col += 1;
-                    }
-                    col - x
-                }
-            },
-            Self::Input {
-                hotkey,
-                value,
-                editing,
-            } => {
-                if *editing {
-                    let active = registry.is_active(hotkey.key);
-                    let mut col = x;
-                    col += hotkey.render_label(col, y, buf, active);
-                    set_cell(col, y, ':', theme::INPUT_EDITING, buf);
-                    col += 1;
-                    for ch in value.chars() {
-                        set_cell(col, y, ch, theme::INPUT_EDITING, buf);
-                        col += 1;
-                    }
-                    set_cell(col, y, '█', theme::INPUT_EDITING, buf);
-                    col += 1;
-                    col - x
-                } else {
-                    let active = registry.is_active(hotkey.key);
-                    hotkey.render_label(x, y, buf, active)
-                }
-            }
-        }
-    }
-}
-
-// ── Bordered panel ──────────────────────────────────────────────────────────
-
-/// Static text rendered centered on the bottom border.
-struct BottomHint {
-    text: String,
-    style: Style,
-}
-
-pub struct Bordered<P: Panel> {
-    panel: P,
-    left_items: Vec<BorderItem>,
-    right_items: Vec<BorderItem>,
-    bottom_hint: Option<BottomHint>,
+pub struct Bordered<T: BlockRenderable> {
+    panel: T,
+    top_items: Vec<Box<dyn LineRenderable>>,
+    bottom_items: Vec<Box<dyn LineRenderable>>,
     padding: u16,
     border_style: Option<Style>,
     focused: bool,
 }
 
-impl<P: Panel> Bordered<P> {
-    pub fn new(panel: P) -> Self {
+impl<T: BlockRenderable> Bordered<T> {
+    pub fn new(panel: T) -> Self {
         Self {
             panel,
-            left_items: Vec::new(),
-            right_items: Vec::new(),
-            bottom_hint: None,
+            top_items: Vec::new(),
+            bottom_items: Vec::new(),
             padding: 0,
             border_style: None,
             focused: false,
@@ -174,25 +32,17 @@ impl<P: Panel> Bordered<P> {
     }
 
     pub fn title(mut self, text: impl Into<String>) -> Self {
-        self.left_items.push(BorderItem::title(text));
+        self.top_items.push(Box::new(text.into()));
         self
     }
 
-    pub fn left_item(mut self, item: BorderItem) -> Self {
-        self.left_items.push(item);
+    pub fn top_item(mut self, item: Box<dyn LineRenderable>) -> Self {
+        self.top_items.push(item);
         self
     }
 
-    pub fn right_item(mut self, item: BorderItem) -> Self {
-        self.right_items.push(item);
-        self
-    }
-
-    pub fn bottom_hint(mut self, text: impl Into<String>, style: Style) -> Self {
-        self.bottom_hint = Some(BottomHint {
-            text: text.into(),
-            style,
-        });
+    pub fn bottom_item(mut self, item: Box<dyn LineRenderable>) -> Self {
+        self.bottom_items.push(item);
         self
     }
 
@@ -211,10 +61,6 @@ impl<P: Panel> Bordered<P> {
         self
     }
 
-    pub fn right_items_mut(&mut self) -> &mut Vec<BorderItem> {
-        &mut self.right_items
-    }
-
     /// Compute the inner area (content area inside the border, without padding).
     pub fn inner(area: Rect) -> Rect {
         if area.width < 2 || area.height < 2 {
@@ -229,7 +75,7 @@ impl<P: Panel> Bordered<P> {
     }
 
     /// Render the bordered panel.
-    pub fn render(&self, area: Rect, buf: &mut Buffer, registry: &HotkeyRegistry) {
+    pub fn render(&self, area: Rect, buf: &mut Buffer) {
         if area.width < 2 || area.height < 2 {
             return;
         }
@@ -240,21 +86,17 @@ impl<P: Panel> Bordered<P> {
             theme::BORDER
         });
 
-        // Draw box-drawing border
+        let kind = if self.focused {
+            RenderKind::Active
+        } else {
+            RenderKind::Inactive
+        };
+
         self.render_box(area, buf, border_style);
+        self.render_top(area, buf, border_style, kind);
+        self.render_bottom(area, buf, border_style, kind);
 
-        // Render left items on top border: ┌┤ title ├──┤ title2 ├───...
-        self.render_top_left(area, buf, border_style, registry);
-
-        // Render right items on top border (right-aligned)
-        self.render_top_right(area, buf, border_style, registry);
-
-        // Render bottom hint (centered on bottom border)
-        if let Some(hint) = &self.bottom_hint {
-            self.render_bottom_center(area, buf, border_style, &hint.text, hint.style);
-        }
-
-        // Render inner panel (border + padding)
+        // Render inner panel (border + padding).
         let inner = Self::inner(area);
         let h_padding = self.padding * 2; // compensate for ~1:2 cell aspect ratio
         let padded = Rect {
@@ -289,85 +131,66 @@ impl<P: Panel> Bordered<P> {
         }
     }
 
-    fn render_top_left(
-        &self,
-        area: Rect,
-        buf: &mut Buffer,
-        border_style: Style,
-        registry: &HotkeyRegistry,
-    ) {
+    /// Top border items — left-aligned: ┌┤item1├┤item2├──────┐
+    fn render_top(&self, area: Rect, buf: &mut Buffer, border_style: Style, kind: RenderKind) {
+        if self.top_items.is_empty() {
+            return;
+        }
         let max_x = area.x + area.width.saturating_sub(2);
         let mut col = area.x + 1;
-        for item in &self.left_items {
-            if col >= max_x {
+        for item in &self.top_items {
+            // Need at least 3 cols: ┤ + 1 char + ├
+            if col + 2 >= max_x {
                 break;
             }
             set_cell(col, area.y, '┤', border_style, buf);
             col += 1;
-            set_cell(col, area.y, ' ', border_style, buf);
-            col += 1;
-            col += item.render(col, area.y, buf, self.focused, registry);
-            set_cell(col, area.y, ' ', border_style, buf);
-            col += 1;
+            let available = max_x.saturating_sub(col + 1); // reserve 1 for closing ├
+            let line = item.render(available, kind);
+            let (end_x, _) = buf.set_line(col, area.y, &line, available);
+            col = end_x;
             set_cell(col, area.y, '├', border_style, buf);
             col += 1;
         }
     }
 
-    fn render_top_right(
+    /// Bottom border items — right-aligned: └──────┤item1├┤item2├┘
+    fn render_bottom(
         &self,
         area: Rect,
         buf: &mut Buffer,
         border_style: Style,
-        registry: &HotkeyRegistry,
+        kind: RenderKind,
     ) {
-        if self.right_items.is_empty() {
+        if self.bottom_items.is_empty() {
             return;
         }
-        let total_right: u16 = self
-            .right_items
-            .iter()
-            .map(|item| item.measure(registry) + 4)
-            .sum();
-
-        let right_start = (area.x + area.width).saturating_sub(1 + total_right);
-        let mut rcol = right_start;
-        for item in &self.right_items {
-            if rcol >= area.x + area.width - 1 {
-                break;
-            }
-            set_cell(rcol, area.y, '┤', border_style, buf);
-            rcol += 1;
-            set_cell(rcol, area.y, ' ', border_style, buf);
-            rcol += 1;
-            rcol += item.render(rcol, area.y, buf, self.focused, registry);
-            set_cell(rcol, area.y, ' ', border_style, buf);
-            rcol += 1;
-            set_cell(rcol, area.y, '├', border_style, buf);
-            rcol += 1;
-        }
-    }
-
-    fn render_bottom_center(
-        &self,
-        area: Rect,
-        buf: &mut Buffer,
-        border_style: Style,
-        text: &str,
-        text_style: Style,
-    ) {
         let bottom_y = area.y + area.height - 1;
-        let total_w = text.chars().count() as u16 + 4;
-        let start_x = area.x + (area.width.saturating_sub(total_w)) / 2;
+        let usable = area.width.saturating_sub(2) as usize; // inside the corners
 
-        set_cell(start_x, bottom_y, '┤', border_style, buf);
-        set_cell(start_x + 1, bottom_y, ' ', border_style, buf);
-        let mut col = start_x + 2;
-        for ch in text.chars() {
-            set_cell(col, bottom_y, ch, text_style, buf);
+        // Pre-render all items to measure total width.
+        let max_per_item = usable.saturating_sub(self.bottom_items.len() * 2); // each needs ┤├
+        let lines: Vec<_> = self
+            .bottom_items
+            .iter()
+            .map(|item| item.render(max_per_item as u16, kind))
+            .collect();
+
+        let total: usize = lines.iter().map(|l| l.width() + 2).sum(); // +2 for ┤├ per item
+        if total == 0 {
+            return;
+        }
+
+        let start_col = (area.x + area.width - 1).saturating_sub(total as u16);
+        let mut col = start_col;
+        for line in &lines {
+            set_cell(col, bottom_y, '┤', border_style, buf);
+            col += 1;
+            let w = line.width() as u16;
+            buf.set_line(col, bottom_y, line, w);
+            col += w;
+            set_cell(col, bottom_y, '├', border_style, buf);
             col += 1;
         }
-        set_cell(col, bottom_y, ' ', border_style, buf);
-        set_cell(col + 1, bottom_y, '├', border_style, buf);
     }
 }
