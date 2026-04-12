@@ -13,8 +13,8 @@ use files::FilesPanel;
 use crate::dbg::tui::bordered::Bordered;
 use crate::dbg::tui::core::Hotkey;
 use crate::dbg::tui::core::hotkey_registry::HotkeyLayer;
-use crate::dbg::tui::panel::Mode;
-use crate::dbg::tui::panel::Panel;
+use crate::dbg::tui::traits::Mode;
+use crate::dbg::tui::traits::Panel;
 
 // ── Mode state ─────────────────────────────────────────────────────────────
 

@@ -9,7 +9,7 @@ use super::TestSelectorState;
 use crate::dbg::tui::core::Hotkey;
 use crate::dbg::tui::core::Label;
 use crate::dbg::tui::core::hotkey_registry::HotkeyLayer;
-use crate::dbg::tui::panel::Panel;
+use crate::dbg::tui::traits::Panel;
 use crate::dbg::tui::scrollable::Scrollable;
 use crate::dbg::tui::theme;
 use crate::dbg::tui::traits::BlockRenderable;

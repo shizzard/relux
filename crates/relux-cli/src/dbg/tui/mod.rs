@@ -3,7 +3,6 @@ pub mod context;
 pub mod core;
 pub mod help_overlay;
 pub mod modes;
-pub mod panel;
 pub mod scrollable;
 pub mod theme;
 pub mod traits;

@@ -7,7 +7,7 @@ use ratatui::layout::Rect;
 use super::core::Hotkey;
 use super::core::hotkey_registry::HotkeyLayer;
 use super::modes::test_selector::TestSelectorMode;
-use super::panel::Mode;
+use super::traits::Mode;
 
 // ── ModeId ──────────────────────────────────────────────────────────────────
 
