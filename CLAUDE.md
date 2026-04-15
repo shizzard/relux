@@ -156,6 +156,7 @@ Published crate (`cargo install relux`). Two binaries: `relux` (test runner) and
 - Documentation as mdbooks in `docs/` — `reference/` (semantics, syntax, BIFs, CI), `dsl-tutorial/`, `suite-tutorial/`
 - **Every code change must be accompanied by updates to the relevant documentation** — review `docs/reference/` (semantics, syntax, BIFs, CI), `docs/dsl-tutorial/`, and `docs/suite-tutorial/` and update any articles affected by the change
 - **PRs are squash-merged** — the final squash commit message must be a single conventional commit (type, optional scope, description, and body)
+- **Always use the `conventional-commits` skill when committing** — invoke it via the Skill tool before creating any git commit
 
 ## RFCs
 
