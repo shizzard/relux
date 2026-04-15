@@ -1,16 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
-  "plugins": [
-    {
-      "type": "linked-versions",
-      "groupName": "relux",
-      "components": [
-        "relux-core", "relux-ast", "relux-lexer", "relux-parser",
-        "relux-ir", "relux-resolver", "relux-runtime", "relux"
-      ]
-    },
-    { "type": "cargo-workspace", "merge": true }
-  ],
+  "plugins": ["cargo-workspace"],
   "packages": {
     "crates/relux-core":     { "release-type": "rust", "component": "relux-core" },
     "crates/relux-ast":      { "release-type": "rust", "component": "relux-ast" },
