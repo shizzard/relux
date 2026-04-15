@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/shizzard/relux/compare/relux-v0.4.0...relux-v0.4.1) (2026-04-15)
+
+
+### Bug Fixes
+
+* **ci:** fix release-please config for cargo workspace ([6ba6bb2](https://github.com/shizzard/relux/commit/6ba6bb293f4a82262436867873d3e831971fb95c))
+
 ## [0.4.0](https://github.com/shizzard/relux/compare/v0.3.2...v0.4.0) (2026-04-08)
 
 

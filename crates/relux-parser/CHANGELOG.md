@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/shizzard/relux/compare/relux-parser-v0.4.0...relux-parser-v0.4.1) (2026-04-15)
+
+
+### Bug Fixes
+
+* **ci:** fix release-please config for cargo workspace ([6ba6bb2](https://github.com/shizzard/relux/commit/6ba6bb293f4a82262436867873d3e831971fb95c))
+* **parser:** box intermediate parser stages to fix macOS linker overflow ([f9bf399](https://github.com/shizzard/relux/commit/f9bf3999e2041e8e5f0fa4a488234b281bf066b6))
+
 ## [0.4.0](https://github.com/shizzard/relux/compare/v0.3.2...v0.4.0) (2026-04-08)
 
 
