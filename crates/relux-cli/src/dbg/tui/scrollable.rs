@@ -1,32 +1,40 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::text::Line;
+use ratatui::text::Span;
 
 use super::theme;
 use super::traits::BlockRenderable;
+use super::traits::Listable;
+use super::traits::MultilineRenderable;
 use super::util::set_cell;
 
 // ── Scrollable ─────────────────────────────────────────────────────────────
 
-/// Owns a `BlockRenderable` content struct and renders a scroll slider on the
-/// right when the content overflows the visible area.
+/// Owns a `Listable` content struct and renders visible items in a scrolling
+/// viewport with a cursor marker and scroll slider.
+///
+/// Cursor is owned by `Scrollable`, not by the inner content. Panels handle
+/// navigation logic (e.g. skipping directories) and call `set_cursor()`.
 pub struct Scrollable<T> {
     inner: T,
-    offset: usize,
-    content_height: usize,
+    cursor: Option<usize>,
 }
 
 impl<T> Scrollable<T> {
     pub fn new(inner: T) -> Self {
         Self {
             inner,
-            offset: 0,
-            content_height: 0,
+            cursor: None,
         }
     }
 
-    pub fn set_scroll(&mut self, offset: usize, content_height: usize) {
-        self.offset = offset;
-        self.content_height = content_height;
+    pub fn set_cursor(&mut self, cursor: Option<usize>) {
+        self.cursor = cursor;
+    }
+
+    pub fn cursor(&self) -> Option<usize> {
+        self.cursor
     }
 
     pub fn inner(&self) -> &T {
@@ -38,27 +46,101 @@ impl<T> Scrollable<T> {
     }
 }
 
-impl<T: BlockRenderable> BlockRenderable for Scrollable<T> {
+impl<T: Listable> Scrollable<T> {
+    /// Clamp cursor to valid range. Call after the inner content changes
+    /// (e.g. filter recomputation, reload). Resets to 0 if out of bounds,
+    /// or `None` if the list is empty.
+    pub fn clamp_cursor(&mut self) {
+        let len = self.inner.iter().len();
+        match self.cursor {
+            Some(c) if c >= len => {
+                self.cursor = if len > 0 { Some(len - 1) } else { None };
+            }
+            _ => {}
+        }
+    }
+}
+
+impl<T: Listable> BlockRenderable for Scrollable<T>
+where
+    for<'a> T::Item<'a>: MultilineRenderable,
+{
     fn render(&self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;
         }
 
-        let visible_height = area.height as usize;
+        let visible = area.height as usize;
+        let item_width = area.width.saturating_sub(2); // cursor marker
 
-        if self.content_height <= visible_height {
-            self.inner.render(area, buf);
-            return;
+        // Clamp cursor: if item count changed and cursor is out of bounds,
+        // treat it as 0 (or None if empty).
+        let item_count = self.inner.iter().len();
+        let cursor = match self.cursor {
+            Some(c) if c >= item_count && item_count > 0 => Some(item_count - 1),
+            Some(_) if item_count == 0 => None,
+            other => other,
+        };
+
+        // First pass: compute total line count and cursor line offset.
+        // This iterates all items before rendering — acceptable for slice
+        // iterators (O(n) with no allocation). Can be optimized to single
+        // pass if profiling shows it matters.
+        let mut total_lines = 0usize;
+        let mut cursor_line = 0usize;
+        for (idx, item) in self.inner.iter().enumerate() {
+            if cursor == Some(idx) {
+                cursor_line = total_lines;
+            }
+            total_lines += item.line_count(item_width);
         }
 
-        // Reserve 1 column on the right for the slider.
-        let inner_area = Rect {
-            width: area.width.saturating_sub(1),
-            ..area
+        // Reserve 1 col for slider if overflowing.
+        let content_width = if total_lines > visible {
+            area.width.saturating_sub(1)
+        } else {
+            area.width
         };
-        self.inner.render(inner_area, buf);
+        let item_width = content_width.saturating_sub(2);
 
-        render_slider(area, buf, self.offset, self.content_height, visible_height);
+        // Compute line-based scroll offset (center cursor in viewport).
+        let offset = match cursor {
+            Some(_) => {
+                let center = visible / 2;
+                let max_scroll = total_lines.saturating_sub(visible);
+                cursor_line.saturating_sub(center).min(max_scroll)
+            }
+            None => 0,
+        };
+
+        // Second pass: render visible lines.
+        let mut line_idx = 0usize;
+        let mut row = 0u16;
+        for (idx, item) in self.inner.iter().enumerate() {
+            let lines = item.render_lines(item_width);
+            let is_cursor = cursor == Some(idx);
+
+            for (i, line) in lines.iter().enumerate() {
+                if line_idx >= offset {
+                    if row >= area.height {
+                        break;
+                    }
+                    let marker = if i == 0 && is_cursor { "► " } else { "  " };
+                    let mut spans = vec![Span::styled(marker.to_string(), theme::FILE_CURSOR)];
+                    spans.extend(line.spans.clone());
+                    buf.set_line(area.x, area.y + row, &Line::from(spans), content_width);
+                    row += 1;
+                }
+                line_idx += 1;
+            }
+            if row >= area.height {
+                break;
+            }
+        }
+
+        if total_lines > visible {
+            render_slider(area, buf, offset, total_lines, visible);
+        }
     }
 }
 

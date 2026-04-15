@@ -26,7 +26,7 @@ impl BlockRenderable for HelpContent<'_> {
                 break;
             }
             // Layer name header
-            for (i, ch) in layer.name.chars().enumerate() {
+            for (i, ch) in layer.name().chars().enumerate() {
                 if area.x + i as u16 >= area.x + area.width {
                     break;
                 }
@@ -35,7 +35,7 @@ impl BlockRenderable for HelpContent<'_> {
             row += 1;
 
             // Hotkeys in this layer
-            for hotkey in &layer.hotkeys {
+            for hotkey in layer.hotkeys() {
                 if row >= max_row {
                     break;
                 }
@@ -78,7 +78,7 @@ impl<'a> HelpOverlay<'a> {
         // Measure content: each layer has a header line + one line per hotkey + blank line.
         let content_lines: usize = layers
             .iter()
-            .map(|l| 1 + l.hotkeys.len() + 1)
+            .map(|l| 1 + l.hotkeys().len() + 1)
             .sum::<usize>()
             .saturating_sub(1); // no trailing blank
 

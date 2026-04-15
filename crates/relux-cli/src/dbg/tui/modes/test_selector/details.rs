@@ -7,18 +7,61 @@ use ratatui::text::Span;
 
 use super::TestSelectorState;
 use crate::dbg::tui::core::Hotkey;
-use crate::dbg::tui::core::Label;
 use crate::dbg::tui::core::hotkey_registry::HotkeyLayer;
-use crate::dbg::tui::traits::Panel;
 use crate::dbg::tui::scrollable::Scrollable;
 use crate::dbg::tui::theme;
 use crate::dbg::tui::traits::BlockRenderable;
+use crate::dbg::tui::traits::LineRenderable;
+use crate::dbg::tui::traits::Listable;
+use crate::dbg::tui::traits::MultilineRenderable;
+use crate::dbg::tui::traits::Panel;
 
-// ── Test info ──────────────────────────────────────────────────────────────
+// ── TestDetail ────────────────────────────────────────────────────────────
 
-struct TestInfo {
+struct TestDetail {
     name: String,
     docstring: Option<String>,
+}
+
+impl MultilineRenderable for &TestDetail {
+    fn render_lines(&self, max_width: u16) -> Vec<Line<'static>> {
+        let mut lines = Vec::new();
+        let width = max_width as usize;
+
+        // Test name.
+        let name = format!("test \"{}\"", self.name);
+        for subline in wrap_line(&name, width) {
+            lines.push(Line::from(Span::styled(subline, theme::TEST_NAME)));
+        }
+
+        // Docstring paragraphs (indented).
+        if let Some(doc) = &self.docstring {
+            let doc_width = width.saturating_sub(2);
+            for paragraph in reformat_docstring(doc) {
+                for subline in wrap_line(&paragraph, doc_width) {
+                    lines.push(Line::from(Span::styled(
+                        format!("  {subline}"),
+                        theme::TEST_DOCSTRING,
+                    )));
+                }
+            }
+        }
+
+        lines
+    }
+
+    fn line_count(&self, max_width: u16) -> usize {
+        let width = max_width as usize;
+        let name = format!("test \"{}\"", self.name);
+        let mut count = wrap_line(&name, width).len();
+        if let Some(doc) = &self.docstring {
+            let doc_width = width.saturating_sub(2);
+            for paragraph in reformat_docstring(doc) {
+                count += wrap_line(&paragraph, doc_width).len();
+            }
+        }
+        count
+    }
 }
 
 /// Wrap a string into lines that fit within `max_width` characters.
@@ -104,82 +147,19 @@ fn reformat_docstring(doc: &str) -> Vec<String> {
 // ── DetailsContent ─────────────────────────────────────────────────────────
 
 struct DetailsContent {
-    tests: Vec<TestInfo>,
-    last_total_lines: std::cell::Cell<usize>,
+    tests: Vec<TestDetail>,
 }
 
-impl DetailsContent {
-    fn total_lines(&self, width: usize) -> usize {
-        self.tests
-            .iter()
-            .map(|t| {
-                let name = format!("test \"{}\"", t.name);
-                let name_lines = wrap_line(&name, width).len();
-                let doc_lines = t
-                    .docstring
-                    .as_ref()
-                    .map(|d| {
-                        let doc_width = width.saturating_sub(2); // "  " indent
-                        reformat_docstring(d)
-                            .iter()
-                            .map(|p| wrap_line(p, doc_width).len())
-                            .sum::<usize>()
-                    })
-                    .unwrap_or(0);
-                name_lines + doc_lines
-            })
-            .sum()
+impl Listable for DetailsContent {
+    type Item<'a> = &'a TestDetail;
+    type Iter<'a> = std::slice::Iter<'a, TestDetail>;
+
+    fn iter(&self) -> Self::Iter<'_> {
+        self.tests.iter()
     }
-}
 
-impl BlockRenderable for DetailsContent {
-    fn render(&self, area: Rect, buf: &mut Buffer) {
-        if area.width == 0 || area.height == 0 {
-            return;
-        }
-
-        if self.tests.is_empty() {
-            let hint = Line::from(Span::styled("no file selected", theme::HINT));
-            buf.set_line(area.x, area.y, &hint, area.width);
-            return;
-        }
-
-        let width = area.width as usize;
-        self.last_total_lines.set(self.total_lines(width));
-
-        let mut row = 0u16;
-        for test in &self.tests {
-            if row >= area.height {
-                break;
-            }
-
-            let name = format!("test \"{}\"", test.name);
-            for subline in wrap_line(&name, width) {
-                if row >= area.height {
-                    break;
-                }
-                let line = Line::from(Span::styled(subline, theme::TEST_NAME));
-                buf.set_line(area.x, area.y + row, &line, area.width);
-                row += 1;
-            }
-
-            if let Some(doc) = &test.docstring {
-                let doc_width = width.saturating_sub(2);
-                for paragraph in reformat_docstring(doc) {
-                    for subline in wrap_line(&paragraph, doc_width) {
-                        if row >= area.height {
-                            break;
-                        }
-                        let line = Line::from(Span::styled(
-                            format!("  {subline}"),
-                            theme::TEST_DOCSTRING,
-                        ));
-                        buf.set_line(area.x, area.y + row, &line, area.width);
-                        row += 1;
-                    }
-                }
-            }
-        }
+    fn index(&self, index: usize) -> &TestDetail {
+        &self.tests[index]
     }
 }
 
@@ -193,10 +173,7 @@ pub struct DetailsPanel {
 impl DetailsPanel {
     pub fn new(tests_dir: PathBuf) -> Self {
         Self {
-            content: Scrollable::new(DetailsContent {
-                tests: Vec::new(),
-                last_total_lines: std::cell::Cell::new(0),
-            }),
+            content: Scrollable::new(DetailsContent { tests: Vec::new() }),
             tests_dir,
         }
     }
@@ -207,7 +184,6 @@ impl DetailsPanel {
             Ok(s) => s,
             Err(_) => {
                 self.content.inner_mut().tests.clear();
-                self.content.set_scroll(0, 0);
                 return;
             }
         };
@@ -216,13 +192,11 @@ impl DetailsPanel {
             Ok(m) => m,
             Err(_) => {
                 self.content.inner_mut().tests.clear();
-                self.content.set_scroll(0, 0);
                 return;
             }
         };
 
-        let inner = self.content.inner_mut();
-        inner.tests = module
+        self.content.inner_mut().tests = module
             .items
             .iter()
             .filter_map(|item| {
@@ -234,7 +208,7 @@ impl DetailsPanel {
                             None
                         }
                     });
-                    Some(TestInfo {
+                    Some(TestDetail {
                         name: def.name.node.clone(),
                         docstring,
                     })
@@ -243,21 +217,23 @@ impl DetailsPanel {
                 }
             })
             .collect();
-
-        let total = inner.last_total_lines.get();
-        self.content.set_scroll(0, total);
     }
 }
 
 impl BlockRenderable for DetailsPanel {
     fn render(&self, area: Rect, buf: &mut Buffer) {
+        if self.content.inner().tests.is_empty() {
+            let hint = Line::from(Span::styled("no file selected", theme::HINT));
+            buf.set_line(area.x, area.y, &hint, area.width);
+            return;
+        }
         self.content.render(area, buf);
     }
 }
 
 impl Panel<TestSelectorState> for DetailsPanel {
-    fn label(&self) -> Label {
-        Label::bare("details")
+    fn top_border_items(&self) -> Vec<Box<dyn LineRenderable>> {
+        vec![Box::new("details".to_string())]
     }
 
     fn hotkeys(&self) -> HotkeyLayer {

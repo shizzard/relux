@@ -68,15 +68,23 @@ impl Mode for TestSelectorMode {
             height: details_height,
         };
 
-        Bordered::new(&self.files)
-            .top_item(Box::new(self.files.label()))
-            .focused(true)
-            .render(files_area, buf);
+        let mut files_bordered = Bordered::new(&self.files).focused(true);
+        for item in self.files.top_border_items() {
+            files_bordered = files_bordered.top_item(item);
+        }
+        for item in self.files.bottom_border_items() {
+            files_bordered = files_bordered.bottom_item(item);
+        }
+        files_bordered.render(files_area, buf);
 
-        Bordered::new(&self.details)
-            .top_item(Box::new(self.details.label()))
-            .focused(false)
-            .render(details_area, buf);
+        let mut details_bordered = Bordered::new(&self.details).focused(false);
+        for item in self.details.top_border_items() {
+            details_bordered = details_bordered.top_item(item);
+        }
+        for item in self.details.bottom_border_items() {
+            details_bordered = details_bordered.bottom_item(item);
+        }
+        details_bordered.render(details_area, buf);
     }
 
     fn dispatch_focus(&mut self, _hotkey: &Hotkey) {

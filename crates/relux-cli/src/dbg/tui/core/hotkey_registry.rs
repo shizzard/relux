@@ -16,23 +16,39 @@ enum Slot {
 // ── Layer ───────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HotkeyLayer {
-    pub name: String,
-    pub hotkeys: Vec<Hotkey>,
+pub enum HotkeyLayer {
+    /// A named set of hotkeys.
+    Set { name: String, hotkeys: Vec<Hotkey> },
+    /// Forward all key events to the panel, bypassing hotkey resolution.
+    CatchAll,
 }
 
 impl HotkeyLayer {
     pub fn new(name: impl Into<String>, hotkeys: Vec<Hotkey>) -> Self {
-        Self {
+        Self::Set {
             name: name.into(),
             hotkeys,
         }
     }
 
     pub fn empty() -> Self {
-        Self {
+        Self::Set {
             name: String::new(),
             hotkeys: Vec::new(),
+        }
+    }
+
+    pub fn hotkeys(&self) -> &[Hotkey] {
+        match self {
+            Self::Set { hotkeys, .. } => hotkeys,
+            Self::CatchAll => &[],
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Set { name, .. } => name,
+            Self::CatchAll => "",
         }
     }
 }
@@ -65,17 +81,17 @@ impl HotkeyRegistry {
     /// Resolve a key char to a hotkey, walking panel → mode → global.
     fn resolve(&self, key: char) -> Option<(Slot, &Hotkey)> {
         let key_lower = key.to_ascii_lowercase();
-        for hotkey in &self.panel.hotkeys {
+        for hotkey in self.panel.hotkeys() {
             if hotkey.key.to_ascii_lowercase() == key_lower {
                 return Some((Slot::Panel, hotkey));
             }
         }
-        for hotkey in &self.mode.hotkeys {
+        for hotkey in self.mode.hotkeys() {
             if hotkey.key.to_ascii_lowercase() == key_lower {
                 return Some((Slot::Mode, hotkey));
             }
         }
-        for hotkey in &self.global.hotkeys {
+        for hotkey in self.global.hotkeys() {
             if hotkey.key.to_ascii_lowercase() == key_lower {
                 return Some((Slot::Global, hotkey));
             }
@@ -85,6 +101,14 @@ impl HotkeyRegistry {
 
     /// Handle a key event: resolve, dispatch to the appropriate handler.
     pub fn handle_key(&mut self, event: &KeyEvent, ctx: &mut Context) {
+        // When the panel is in CatchAll mode, forward everything to it.
+        if matches!(self.panel, HotkeyLayer::CatchAll) {
+            ctx.forward_key_event(event);
+            // The panel may have exited CatchAll — re-read its hotkeys.
+            self.panel = ctx.panel_hotkeys();
+            return;
+        }
+
         let KeyCode::Char(ch) = event.code else {
             ctx.forward_key_event(event);
             return;
@@ -115,6 +139,8 @@ impl HotkeyRegistry {
             }
             Slot::Panel => {
                 ctx.dispatch_panel(&hotkey);
+                // The panel may have entered CatchAll — re-read its hotkeys.
+                self.panel = ctx.panel_hotkeys();
             }
         }
     }
@@ -124,7 +150,7 @@ impl HotkeyRegistry {
         let mut result = Vec::new();
         let mut seen = std::collections::HashSet::new();
         for layer in [&self.panel, &self.mode, &self.global] {
-            for hotkey in &layer.hotkeys {
+            for hotkey in layer.hotkeys() {
                 let key_lower = hotkey.key.to_ascii_lowercase();
                 if seen.insert(key_lower) {
                     result.push(hotkey);

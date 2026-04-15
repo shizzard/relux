@@ -28,14 +28,21 @@ pub const HINT: Style = Style::new().fg(Color::DarkGray);
 
 // ── File tree ───────────────────────────────────────────────────────────────
 
-pub const FILE_CURSOR: Style = Style::new().fg(Color::Green).add_modifier(Modifier::BOLD);
-pub const FILE_NAME: Style = Style::new().fg(Color::Green).add_modifier(Modifier::BOLD);
+pub const FILE_CURSOR: Style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+pub const FILE_NAME: Style = Style::new().fg(Color::White).add_modifier(Modifier::BOLD);
 pub const DIR_NAME: Style = Style::new().fg(Color::DarkGray);
 
 // ── Details ─────────────────────────────────────────────────────────────────
 
-pub const TEST_NAME: Style = Style::new().fg(Color::Green);
+pub const TEST_NAME: Style = Style::new().fg(Color::White);
 pub const TEST_DOCSTRING: Style = Style::new().fg(Color::DarkGray);
+
+// ── Filter match ───────────────────────────────────────────────────────
+
+pub const FILTER_MATCH: Style = Style::new()
+    .fg(Color::Black)
+    .bg(Color::Yellow)
+    .add_modifier(Modifier::BOLD);
 
 // ── Help overlay ────────────────────────────────────────────────────────────
 

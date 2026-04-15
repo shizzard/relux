@@ -1,6 +1,7 @@
 pub mod bordered;
 pub mod context;
 pub mod core;
+pub mod filterable;
 pub mod help_overlay;
 pub mod modes;
 pub mod scrollable;

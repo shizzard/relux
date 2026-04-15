@@ -131,13 +131,13 @@ impl<T: BlockRenderable> Bordered<T> {
         }
     }
 
-    /// Top border items — left-aligned: ┌┤item1├┤item2├──────┐
+    /// Top border items — left-aligned: ┌─┤item1├─┤item2├──────┐
     fn render_top(&self, area: Rect, buf: &mut Buffer, border_style: Style, kind: RenderKind) {
         if self.top_items.is_empty() {
             return;
         }
         let max_x = area.x + area.width.saturating_sub(2);
-        let mut col = area.x + 1;
+        let mut col = area.x + 2; // skip corner + 1 border char
         for item in &self.top_items {
             // Need at least 3 cols: ┤ + 1 char + ├
             if col + 2 >= max_x {
@@ -150,18 +150,12 @@ impl<T: BlockRenderable> Bordered<T> {
             let (end_x, _) = buf.set_line(col, area.y, &line, available);
             col = end_x;
             set_cell(col, area.y, '├', border_style, buf);
-            col += 1;
+            col += 2; // skip 1 border char gap before next item
         }
     }
 
-    /// Bottom border items — right-aligned: └──────┤item1├┤item2├┘
-    fn render_bottom(
-        &self,
-        area: Rect,
-        buf: &mut Buffer,
-        border_style: Style,
-        kind: RenderKind,
-    ) {
+    /// Bottom border items — right-aligned: └──────┤item1├─┤item2├─┘
+    fn render_bottom(&self, area: Rect, buf: &mut Buffer, border_style: Style, kind: RenderKind) {
         if self.bottom_items.is_empty() {
             return;
         }
@@ -176,7 +170,8 @@ impl<T: BlockRenderable> Bordered<T> {
             .map(|item| item.render(max_per_item as u16, kind))
             .collect();
 
-        let total: usize = lines.iter().map(|l| l.width() + 2).sum(); // +2 for ┤├ per item
+        // +2 for ┤├ per item, +1 gap after each item's ├
+        let total: usize = lines.iter().map(|l| l.width() + 2 + 1).sum();
         if total == 0 {
             return;
         }
@@ -190,7 +185,7 @@ impl<T: BlockRenderable> Bordered<T> {
             buf.set_line(col, bottom_y, line, w);
             col += w;
             set_cell(col, bottom_y, '├', border_style, buf);
-            col += 1;
+            col += 2; // skip 1 border char gap
         }
     }
 }

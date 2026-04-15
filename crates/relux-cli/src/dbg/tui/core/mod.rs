@@ -32,6 +32,10 @@ pub enum Label {
     Hotkey {
         label: Box<dyn LineRenderable>,
         hotkey: Hotkey,
+        /// When true, this is a focus-switch hotkey: highlighted when the panel
+        /// is *inactive* (showing how to get there). When false, this is an
+        /// action hotkey: highlighted when the panel is *active*.
+        focus: bool,
     },
 }
 
@@ -42,10 +46,22 @@ impl Label {
         }
     }
 
+    /// Action hotkey — highlighted when the panel is focused/active.
     pub fn hotkey(label: impl LineRenderable + 'static, hotkey: Hotkey) -> Self {
         Self::Hotkey {
             label: Box::new(label),
             hotkey,
+            focus: false,
+        }
+    }
+
+    /// Focus-switch hotkey — highlighted when the panel is *inactive*,
+    /// showing the user how to switch focus to this panel.
+    pub fn focus_hotkey(label: impl LineRenderable + 'static, hotkey: Hotkey) -> Self {
+        Self::Hotkey {
+            label: Box::new(label),
+            hotkey,
+            focus: true,
         }
     }
 }
@@ -54,14 +70,24 @@ impl LineRenderable for Label {
     fn render(&self, max_width: u16, kind: RenderKind) -> Line<'static> {
         match self {
             Label::Bare { label } => label.render(max_width, kind),
-            Label::Hotkey { label, hotkey } => {
+            Label::Hotkey {
+                label,
+                hotkey,
+                focus,
+            } => {
                 let inner = label.render(max_width, kind);
 
-                if kind == RenderKind::Active {
+                // Focus labels highlight when inactive (panel not focused).
+                // Action labels highlight when active (panel focused).
+                let should_highlight = matches!(
+                    (focus, kind),
+                    (true, RenderKind::Inactive) | (false, RenderKind::Active)
+                );
+                if !should_highlight {
                     return inner;
                 }
 
-                // Inactive: accent the hotkey char so user knows how to focus.
+                // Accent the hotkey char.
                 let key_lower = hotkey.key.to_ascii_lowercase();
                 let mut result: Vec<Span<'static>> = Vec::new();
                 let mut found = false;
@@ -85,10 +111,7 @@ impl LineRenderable for Label {
                                 let before: String = chars[..pos].iter().collect();
                                 result.push(Span::styled(before, span.style));
                             }
-                            result.push(Span::styled(
-                                chars[pos].to_string(),
-                                theme::HOTKEY_ACTIVE,
-                            ));
+                            result.push(Span::styled(chars[pos].to_string(), theme::HOTKEY_ACTIVE));
                             if pos + 1 < chars.len() {
                                 let after: String = chars[pos + 1..].iter().collect();
                                 result.push(Span::styled(after, span.style));
@@ -102,10 +125,8 @@ impl LineRenderable for Label {
                     Line::from(result)
                 } else {
                     // Key not in label — prepend it.
-                    let mut spans = vec![Span::styled(
-                        hotkey.key.to_string(),
-                        theme::HOTKEY_ACTIVE,
-                    )];
+                    let mut spans =
+                        vec![Span::styled(hotkey.key.to_string(), theme::HOTKEY_ACTIVE)];
                     spans.append(&mut result);
                     Line::from(spans)
                 };
@@ -120,13 +141,12 @@ impl LineRenderable for Label {
     }
 }
 
-// ── Blanket impl for strings ────────────────────────────────────────────────
+// ── String LineRenderable impl ──────────────────────────────────────────────
 
-impl<T: AsRef<str>> LineRenderable for T {
+impl LineRenderable for String {
     fn render(&self, max_width: u16, _kind: RenderKind) -> Line<'static> {
-        let text = self.as_ref();
-        let line = Line::from(Span::styled(text.to_owned(), Style::default()));
-        if text.chars().count() > max_width as usize {
+        let line = Line::from(Span::styled(self.clone(), Style::default()));
+        if self.chars().count() > max_width as usize {
             truncate_line(line, max_width)
         } else {
             line
@@ -176,4 +196,111 @@ pub fn truncate_line(line: Line<'static>, max_width: u16) -> Line<'static> {
 pub struct InputField {
     pub label: Label,
     pub value: String,
+    pub active: bool,
+    pub max_input_width: u16,
+}
+
+impl InputField {
+    pub fn new(label: Label, max_input_width: u16) -> Self {
+        Self {
+            label,
+            value: String::new(),
+            active: false,
+            max_input_width,
+        }
+    }
+}
+
+impl LineRenderable for InputField {
+    fn render(&self, max_width: u16, kind: RenderKind) -> Line<'static> {
+        if !self.active {
+            return self.label.render(max_width, kind);
+        }
+
+        // Active: render as "/ query_text█"
+        let prefix = "/ ";
+        let cursor_char = "█";
+
+        let width = max_width.min(self.max_input_width);
+        if width < 4 {
+            return Line::default();
+        }
+
+        // Available space for the query text (minus prefix and cursor).
+        let text_width = width as usize - prefix.len() - cursor_char.len();
+        let query = if self.value.len() > text_width {
+            // Show the tail of the query so the cursor stays visible.
+            &self.value[self.value.len() - text_width..]
+        } else {
+            &self.value
+        };
+
+        Line::from(vec![
+            Span::styled(prefix.to_string(), theme::INPUT_EDITING),
+            Span::styled(query.to_string(), theme::INPUT_EDITING),
+            Span::styled(cursor_char.to_string(), theme::INPUT_EDITING),
+        ])
+    }
+}
+
+impl InputField {
+    /// Create an owned snapshot that implements `LineRenderable`,
+    /// for use in `top_border_items()`.
+    pub fn snapshot(&self) -> InputSnapshot {
+        InputSnapshot {
+            active: self.active,
+            // Pre-render the label in both kinds so the snapshot is self-contained.
+            label_active: self.label.render(self.max_input_width, RenderKind::Active),
+            label_inactive: self
+                .label
+                .render(self.max_input_width, RenderKind::Inactive),
+            value: self.value.clone(),
+            max_input_width: self.max_input_width,
+        }
+    }
+}
+
+/// Owned snapshot of an `InputField`'s state. Implements `LineRenderable`.
+pub struct InputSnapshot {
+    active: bool,
+    label_active: Line<'static>,
+    label_inactive: Line<'static>,
+    value: String,
+    max_input_width: u16,
+}
+
+impl LineRenderable for InputSnapshot {
+    fn render(&self, max_width: u16, kind: RenderKind) -> Line<'static> {
+        if !self.active {
+            let line = match kind {
+                RenderKind::Active => self.label_active.clone(),
+                RenderKind::Inactive => self.label_inactive.clone(),
+            };
+            if line.width() > max_width as usize {
+                return truncate_line(line, max_width);
+            }
+            return line;
+        }
+
+        let prefix = "/ ";
+        let cursor_char = "█";
+
+        let width = max_width.min(self.max_input_width);
+        if width < 4 {
+            return Line::default();
+        }
+
+        let text_width = width as usize - prefix.len() - cursor_char.len();
+        let query = if self.value.len() > text_width {
+            &self.value[self.value.len() - text_width..]
+        } else {
+            &self.value
+        };
+
+        Line::from(vec![
+            Span::styled(prefix.to_string(), theme::INPUT_EDITING),
+            Span::styled(query.to_string(), theme::INPUT_EDITING),
+            Span::styled(cursor_char.to_string(), theme::INPUT_EDITING),
+        ])
+    }
 }
