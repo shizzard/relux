@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.1](https://github.com/shizzard/relux/compare/v0.4.0...v0.4.1) (2026-04-15)
+
+
+### Bug Fixes
+
+* **ci:** skip docs deployment when content is unchanged ([8ba5309](https://github.com/shizzard/relux/commit/8ba5309738f0bcb627df127ed1bbe6175e8ad54f))
+* **ci:** switch release-please to simple releaser for virtual workspace ([080109d](https://github.com/shizzard/relux/commit/080109dc9e63031a3541f611de99c9fb329bc99e))
+* **parser:** box intermediate parser stages to fix macOS linker overflow ([f9bf399](https://github.com/shizzard/relux/commit/f9bf3999e2041e8e5f0fa4a488234b281bf066b6))
+
 ## [0.4.0](https://github.com/shizzard/relux/compare/v0.3.2...v0.4.0) (2026-04-08)
 
 
