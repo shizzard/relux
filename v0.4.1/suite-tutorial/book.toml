@@ -1,0 +1,11 @@
+[book]
+title = "Relux Suite Tutorial"
+authors = ["shizzard"]
+language = "en"
+src = "."
+
+[output.html]
+additional-js = ["highlight-relux.js"]
+
+[build]
+build-dir = "../../target/book/suite-tutorial"

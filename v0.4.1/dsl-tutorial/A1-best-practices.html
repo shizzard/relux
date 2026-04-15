@@ -1,0 +1,503 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Appendix: Best Practices - Relux DSL Tutorial</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-7e974fae.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-71544b70.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Relux DSL Tutorial</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="appendix-a1-best-practices"><a class="header" href="#appendix-a1-best-practices">Appendix A1: Best Practices</a></h1>
+<p><a href="16-the-cli.html">Previous: The CLI</a></p>
+<p>This appendix collects every best-practices guideline from the tutorial series into a single reference, grouped by topic. Each item links back to the article where it was originally introduced.</p>
+<h2 id="project-setup"><a class="header" href="#project-setup">Project setup</a></h2>
+<p><em>From <a href="02-getting-started.html">Getting Started</a>:</em></p>
+<h3 id="keep-binsh-as-the-default-shell"><a class="header" href="#keep-binsh-as-the-default-shell">Keep <code>/bin/sh</code> as the default shell</a></h3>
+<p>You might be tempted to configure your favorite shell — <code>zsh</code>, <code>fish</code>, <code>bash</code> — as the default in <code>Relux.toml</code>. After all, you use it every day and know its features well.</p>
+<p>Resist the temptation. A custom shell means every developer on the team and every CI machine needs that shell installed and configured. <code>/bin/sh</code> is available everywhere, and the operations you need in integration tests — running commands, checking output, setting environment variables — work the same across POSIX shells. The interactive niceties of fancier shells (tab completion, syntax highlighting, advanced globbing) don’t matter when Relux is driving the terminal.</p>
+<p>Only switch away from <code>/bin/sh</code> if your system under test genuinely requires a specific shell to function.</p>
+<h3 id="leave-timeouts-at-their-defaults"><a class="header" href="#leave-timeouts-at-their-defaults">Leave timeouts at their defaults</a></h3>
+<p>The default match timeout of 5 seconds is generous for most commands. You might think “I’ll set timeout to 500 ms to speed up failure detection”. Don’t — not yet.</p>
+<p>Timeout tuning is one of those things that should be driven by actual pain, not preemptive optimization. Tight timeouts cause flaky tests on slower machines or under CI load. The defaults are deliberately conservative. When you encounter a specific situation where the default is genuinely wrong — a command that reliably takes 30 seconds — that’s the time to tune. Relux provides fine-grained timeout control at the operator, shell, and test level, as covered in <a href="09-timeouts.html">Timeouts</a>.</p>
+<h3 id="the-shell-prompt-must-be-static"><a class="header" href="#the-shell-prompt-must-be-static">The shell prompt must be static</a></h3>
+<p>The prompt configured in <code>Relux.toml</code> (default: <code>relux&gt; </code>) must be a fixed, unchanging string. Do not include dynamic elements like timestamps, git branch names, hostnames, or user-specific paths.</p>
+<p>Relux uses the prompt as a reliable marker in the shell output stream. A prompt that changes between commands — or between machines — makes that marker unpredictable, which leads to flaky or outright broken tests. The default <code>relux&gt; </code> is a good choice: short, distinctive, and the same everywhere.</p>
+<h2 id="the-output-buffer"><a class="header" href="#the-output-buffer">The output buffer</a></h2>
+<p><em>From <a href="04-the-output-buffer.html">The Output Buffer</a>:</em></p>
+<h3 id="always-match-the-prompt"><a class="header" href="#always-match-the-prompt">Always match the prompt</a></h3>
+<p>If you are done examining a command’s output, match the prompt. Every time. This is the single most effective habit for avoiding flaky tests.</p>
+<p>Without a prompt match, the cursor floats somewhere in the middle of the output. When the buffer contains output from a previous command that was not fully consumed, any pattern that appears in that leftover output will match there first. The cursor advances to an unexpected position, and subsequent matches silently verify stale data.</p>
+<p>Matching the prompt anchors the cursor at a command boundary. It is cheap, it is predictable, and it eliminates an entire class of timing-related failures.</p>
+<h3 id="check-the-exit-code"><a class="header" href="#check-the-exit-code">Check the exit code</a></h3>
+<p>A command can produce the expected output and still fail. Or it can fail silently, producing no output at all, while the match picks up something else entirely. Checking the exit code after a command catches these problems early:</p>
+<pre><code class="language-relux">test "verify success" {
+    shell s {
+        &gt; mkdir -p /tmp/test-dir
+        &lt;= relux&gt;
+        &gt; echo ==$?==
+        &lt;= ==0==
+        &lt;= relux&gt;
+    }
+}
+</code></pre>
+<p>The <code>echo ==$?==</code> / <code>&lt;= ==0==</code> pair is a cheap way to verify the previous command succeeded. The <code>==</code> delimiters are distinctive enough to avoid accidental substring matches. Without this check, a failing <code>mkdir</code> would go unnoticed — the test would continue with a missing directory and fail later with a confusing, unrelated error.</p>
+<h3 id="buffer-reset-does-not-respect-causality"><a class="header" href="#buffer-reset-does-not-respect-causality">Buffer reset does not respect causality</a></h3>
+<p>The buffer reset operator (<code>&lt;=</code> with no pattern) consumes everything currently in the buffer. That “currently” depends on timing — how much output the shell has printed by the instant Relux executes the reset.</p>
+<p>If output is still arriving — a command is running, a log line is being flushed — the cursor might land in the middle of a line, or before a line that is about to appear. This creates a race condition: the test might pass on your machine and fail in CI, or pass nine times and fail on the tenth.</p>
+<p>In almost every case, there is a better anchor than a buffer reset. Match the prompt. Match a specific log line. Match any known text that marks the boundary you actually care about. These anchors are causal — they mean “this specific thing happened” — rather than temporal — “this is where the buffer happened to be at this moment.”</p>
+<p>Only use buffer reset when you are certain all relevant output has already arrived and there is no meaningful boundary to match against.</p>
+<h2 id="regex-matching"><a class="header" href="#regex-matching">Regex matching</a></h2>
+<p><em>From <a href="07-regex-matching.html">Regex Matching</a>:</em></p>
+<h3 id="use-regex-only-when-you-need-it"><a class="header" href="#use-regex-only-when-you-need-it">Use regex only when you need it</a></h3>
+<p>You might default to <code>&lt;?</code> everywhere since it is strictly more powerful than <code>&lt;=</code> — any literal match can be written as a regex. But regex matches are harder to read, easier to get wrong, and can match more than you intended.</p>
+<p>Literal match <code>&lt;=</code> is a simple substring search. It does exactly one thing and it is obvious what it matches. When you do not need capture groups, anchors, or wildcards, <code>&lt;=</code> is the better choice. Reserve <code>&lt;?</code> for when you genuinely need regex capabilities: extracting values, matching variable output, or anchoring to line boundaries.</p>
+<h3 id="always-save-captures-to-named-variables"><a class="header" href="#always-save-captures-to-named-variables">Always save captures to named variables</a></h3>
+<p>Capture groups like <code>$1</code> are convenient — you match a pattern, and the extracted value is right there. It is tempting to use <code>$1</code> directly in several places without saving it to a named variable first.</p>
+<p>The problem is not with the code as you write it today. The problem is with the code as someone changes it five years from now. Test code is still code — it evolves, gets refactored, gets extended. Capture groups are silently replaced on every <code>&lt;?</code> match. If someone inserts a new regex match between your capture and its use — a perfectly reasonable edit — <code>$1</code> now refers to something completely different. No error, no warning, just a test that fails in a confusing way that takes hours to debug.</p>
+<p>Save the capture to a named variable immediately after the match, before doing anything else. Then use the named variable everywhere:</p>
+<pre><code class="language-relux">// Fragile — $1 can be silently replaced by a later edit:
+&lt;? ^port=(\d+)$
+&gt; curl http://localhost:${1}/health
+
+// Durable — the port is safe no matter what happens next:
+&lt;? ^port=(\d+)$
+let port = $1
+&gt; curl http://localhost:${port}/health
+</code></pre>
+<p>The named variable survives any number of subsequent matches. It makes the code self-documenting (the name <code>port</code> says more than <code>$1</code>), and it insulates the test from future edits.</p>
+<h3 id="anchor-your-patterns"><a class="header" href="#anchor-your-patterns">Anchor your patterns</a></h3>
+<p>A regex without anchors will match anywhere in the remaining buffer — the echoed command, a fragment of the prompt, leftover output from a previous step. This is the same problem as with literal match, but worse, because regex metacharacters like <code>.</code> and <code>*</code> match more broadly.</p>
+<p>Use <code>^</code> and <code>$</code> to pin your match to a specific line:</p>
+<pre><code class="language-relux">// Might match the echoed command or something unexpected:
+&lt;? version=\d+
+
+// Matches exactly one complete line:
+&lt;? ^version=\d+$
+</code></pre>
+<p>This does not mean you should anchor every pattern — sometimes a substring regex is what you need. But when you have a choice, anchoring is safer: it documents your intent and prevents accidental matches.</p>
+<h3 id="be-careful-with-interpolated-regex-patterns"><a class="header" href="#be-careful-with-interpolated-regex-patterns">Be careful with interpolated regex patterns</a></h3>
+<p>Variable interpolation in <code>&lt;?</code> patterns lets you define reusable regex fragments — declare a pattern once at the test level and use it in multiple matches. This is handy for repeated patterns like timestamps, UUIDs, or version strings.</p>
+<p>The catch is that after interpolation, the variable’s value becomes part of the regex. If the value contains regex metacharacters — <code>.</code>, <code>*</code>, <code>+</code>, <code>(</code>, <code>[</code>, and so on — they are interpreted as regex syntax, not as literal text. A variable holding <code>192.168.1.1</code> does not match the literal IP address; the <code>.</code> matches any character, so it also matches <code>192X168Y1Z1</code>.</p>
+<p>When the variable comes from your own <code>let</code> and you know the value, this is fine — just be aware of what you are putting into the pattern. When the variable comes from captured output or an environment variable, the content is unpredictable and the regex may compile into something you did not intend, or fail to compile entirely.</p>
+<h2 id="functions"><a class="header" href="#functions">Functions</a></h2>
+<p><em>From <a href="08-functions.html">Functions</a>:</em></p>
+<h3 id="captures-do-not-survive-function-calls"><a class="header" href="#captures-do-not-survive-function-calls">Captures do not survive function calls</a></h3>
+<p>You might call a function that internally uses <code>&lt;?</code> and expect the capture groups (<code>$1</code>, <code>$2</code>, …) to be available in the caller afterward. This seems reasonable — the function ran a regex match, and captures are normally available after <code>&lt;?</code>.</p>
+<p>But captures are part of the variable scope. When a function returns, its entire scope — including captures — is discarded. The caller’s captures are restored to whatever they were before the call:</p>
+<pre><code class="language-relux">fn extract_port() {
+    &gt; echo "port=8080"
+    &lt;? ^port=(\d+)$
+    // The last expression is match_ok(), whose return value is the
+    // prompt string — not the captured port number.
+    match_ok()
+}
+
+test "captures do not survive function calls" {
+    shell s {
+        // Wrong — $1 holds the caller's capture state, not the function's:
+        extract_port()
+        &gt; echo "port=${1}"
+        &lt;? ^port=8080          // $1 is empty
+
+        // Also wrong — the return value is the prompt string, because
+        // match_ok() is the last expression in extract_port():
+        let result = extract_port()
+        &gt; echo "result=${result}"
+        &lt;? ^result=8080        // result is the prompt, not "8080"
+    }
+}
+</code></pre>
+<p>The fix is to design the function to explicitly return what you need. Save the capture to a local variable before calling <code>match_ok()</code>, then return that variable as the last expression:</p>
+<pre><code class="language-relux">fn extract_port() {
+    &gt; echo "port=8080"
+    &lt;? ^port=(\d+)$
+    let port = $1
+    match_ok()
+    port
+}
+</code></pre>
+<p>Now <code>let port = extract_port()</code> in the caller gives you <code>"8080"</code>.</p>
+<p>This is consistent with the scoping model: functions cannot modify the caller’s variable state. Return values are the explicit, reliable channel for passing data back.</p>
+<h3 id="leave-the-shell-clean"><a class="header" href="#leave-the-shell-clean">Leave the shell clean</a></h3>
+<p>When a function interacts with the shell — sending commands and matching output — it should leave the shell in a known state before returning. That means: consume the prompt and verify the exit code with <code>match_ok()</code> (or the appropriate <code>match_not_ok</code> variant) after the last command.</p>
+<pre><code class="language-relux">// Leaves the shell in an unknown state — the caller must
+// know what output is left in the buffer:
+fn check_server() {
+    &gt; curl -s http://localhost:8080/health
+    &lt;= healthy
+}
+
+// Leaves the shell clean — prompt consumed, exit code verified:
+fn check_server() {
+    &gt; curl -s http://localhost:8080/health
+    &lt;= healthy
+    match_ok()
+}
+</code></pre>
+<p>A function that leaves unconsumed output or an unchecked exit code forces every caller to clean up after it. That coupling is invisible and fragile — it works until someone adds a new caller that forgets, or the function’s output changes slightly. Close every shell interaction with a clean handoff.</p>
+<h3 id="do-not-rely-on-shared-shell-state"><a class="header" href="#do-not-rely-on-shared-shell-state">Do not rely on shared shell state</a></h3>
+<p>The caller and the function share a shell session. This means the function can read shell-side environment variables set by the caller, and the caller can read shell-side state left behind by the function. Both directions are tempting shortcuts — and both lead to brittle tests.</p>
+<p>A function cannot predict the shell state of all its callers. Some callers have not been written yet. If a function depends on a shell-side variable that the caller must set beforehand, the requirement is invisible — nothing in the function signature or call site reveals it. Pass the value as a parameter instead.</p>
+<p>In the other direction, a caller that depends on shell-side state set by a function is coupled to the function’s implementation details. If the function’s internals change — a different variable name, a different order of commands — the caller silently breaks.</p>
+<p>If you genuinely cannot avoid relying on shared shell state, make it explicit with a comment at both the definition and call site explaining the dependency. But first, consider whether a parameter or return value would work instead.</p>
+<h3 id="keep-functions-small"><a class="header" href="#keep-functions-small">Keep functions small</a></h3>
+<p>A function runs in the caller’s shell, so a long function body means a long sequence of sends and matches executing in someone else’s shell session. When something fails halfway through a 30-line function, the error points to a line inside the function — but understanding <em>why</em> it failed requires knowing what the caller’s shell looked like at the time of the call.</p>
+<p>Prefer small functions that do one thing: check a status code, verify a service is running, send a login sequence. If you find a function growing beyond a handful of operations, consider splitting it into smaller pieces — so each has a clear, narrow purpose.</p>
+<h2 id="pure-functions"><a class="header" href="#pure-functions">Pure functions</a></h2>
+<p><em>From <a href="12-pure-functions.html">Pure Functions</a>:</em></p>
+<h3 id="prefer-pure-fn-when-a-function-has-no-shell-operators"><a class="header" href="#prefer-pure-fn-when-a-function-has-no-shell-operators">Prefer <code>pure fn</code> when a function has no shell operators</a></h3>
+<p>You might write a helper as a regular function out of habit, because you first use it inside a shell block:</p>
+<pre><code class="language-relux">fn format_url(host, port) {
+    "${host}:${port}/api"
+}
+</code></pre>
+<p>This works fine in shell context. But later, when you want to use the same helper in a test-scope <code>let</code> or an overlay value, you discover it does not work — regular functions require a shell. You then have to go back and add the <code>pure</code> keyword.</p>
+<p>Save yourself the trip: if a function body contains no shell operators, define it as <code>pure fn</code> from the start. It works in all the same places a regular function works, plus everywhere else.</p>
+<h3 id="extract-complex-interpolation-into-a-pure-function"><a class="header" href="#extract-complex-interpolation-into-a-pure-function">Extract complex interpolation into a pure function</a></h3>
+<p>When string interpolation gets deeply nested, the intent can become hard to read:</p>
+<pre><code class="language-relux">test "nested interpolation" {
+    let host = "localhost"
+    let port = "5432"
+    let db = "myapp"
+    shell s {
+        &gt; psql "postgres://${host}:${port}/${db}?sslmode=disable"
+        &lt;? ^connected$
+        match_prompt()
+    }
+}
+</code></pre>
+<p>This is manageable, but as the string grows — multiple parameters, conditional segments, repeated patterns — readability suffers. A pure function gives the construction a name and keeps the test body focused on intent:</p>
+<pre><code class="language-relux">pure fn pg_url(host, port, db) {
+    "postgres://${host}:${port}/${db}?sslmode=disable"
+}
+
+test "extracted into pure function" {
+    let host = "localhost"
+    let port = "5432"
+    shell s {
+        let url = pg_url(host, port, db)
+        &gt; psql "${url}"
+        &lt;? ^connected$
+        match_prompt()
+    }
+}
+</code></pre>
+<h2 id="timeouts"><a class="header" href="#timeouts">Timeouts</a></h2>
+<p><em>From <a href="09-timeouts.html">Timeouts</a>:</em></p>
+<h3 id="use-the-multiplier-for-ci-flakiness-not-longer-timeouts"><a class="header" href="#use-the-multiplier-for-ci-flakiness-not-longer-timeouts">Use the multiplier for CI flakiness, not longer timeouts</a></h3>
+<p>When tests start failing on CI but pass locally, the tempting fix is to increase the timeouts in the test files. A <code>~2s</code> becomes <code>~5s</code>, then <code>~10s</code>, and soon every test has generous timeouts that mask real performance regressions.</p>
+<p>The multiplier exists for this problem. Keep your timeouts tight — reflecting how fast the system <em>should</em> respond — and use <code>-m 2.0</code> or <code>-m 3.0</code> on slow environments. This way, timeouts still catch genuine slowdowns on the developer’s machine while tolerating CI variability.</p>
+<h3 id="choose-the-prefix-not-the-position"><a class="header" href="#choose-the-prefix-not-the-position">Choose the prefix, not the position</a></h3>
+<p>The <code>~</code> vs <code>@</code> prefix is what determines whether a timeout is environmental tolerance or a system assertion. Both prefixes work at every level — shell scope, inline override, and test definition. Ask yourself: “is this about the environment or about the system?”</p>
+<ul>
+<li>The CI server is slow → use <code>~</code> (tolerance), let <code>-m</code> scale it</li>
+<li>One specific command is slower than the rest → use <code>~</code> with a larger value, or <code>&lt;~</code> on the match</li>
+<li>The system must respond within 2 seconds → use <code>@2s</code> or <code>&lt;@2s?</code></li>
+<li>The entire test must complete within a bound → use <code>test "name" @5s</code></li>
+</ul>
+<h3 id="reserve--for-real-assertions"><a class="header" href="#reserve--for-real-assertions">Reserve <code>@</code> for real assertions</a></h3>
+<p>If you put <code>@</code> on everything, the multiplier becomes useless — nothing scales, and slow environments fail. Use <code>@</code> only when the time boundary is genuinely part of what you are testing. Most timeouts in a typical test suite should be <code>~</code> tolerances, with <code>@</code> reserved for the few cases where timing is the assertion.</p>
+<h2 id="fail-patterns"><a class="header" href="#fail-patterns">Fail patterns</a></h2>
+<p><em>From <a href="10-fail-patterns.html">Fail Patterns</a>:</em></p>
+<h3 id="set-fail-patterns-early"><a class="header" href="#set-fail-patterns-early">Set fail patterns early</a></h3>
+<p>Place your <code>!?</code> or <code>!=</code> as the first statement in a shell block, before any commands. This maximizes coverage — the pattern is active from the very first command output. A fail pattern set after several commands has no protection over the output those commands already produced (the immediate rescan will catch it if it’s in the buffer, but that turns a background monitor into a retroactive check, which is harder to reason about).</p>
+<h3 id="use-fail-patterns-for-long-running-services"><a class="header" href="#use-fail-patterns-for-long-running-services">Use fail patterns for long-running services</a></h3>
+<p>Fail patterns are at their most valuable when testing long-running services that produce logs you don’t exhaustively match on. A web server, a database, a background worker — these emit output continuously, and you only match the specific lines that tell you the service is ready or responding correctly. A fail pattern like <code>!? FATAL|panic|Segfault</code> acts as a safety net across all that unmatched output. You focus your <code>&lt;=</code> and <code>&lt;?</code> operators on expected behavior; the fail pattern catches unexpected crashes in the background.</p>
+<h3 id="dont-use-fail-patterns-as-assertions"><a class="header" href="#dont-use-fail-patterns-as-assertions">Don’t use fail patterns as assertions</a></h3>
+<p>Fail patterns are background monitors, not replacements for match operators. If you <em>expect</em> specific output, use <code>&lt;=</code> or <code>&lt;?</code> to match it. If you want to ensure something <em>doesn’t</em> appear, that’s what fail patterns are for. The distinction matters: match operators advance the output buffer cursor and participate in the test’s flow; fail patterns operate silently in the background and only surface when something goes wrong.</p>
+<h3 id="combine-multiple-error-strings-with-regex-alternation"><a class="header" href="#combine-multiple-error-strings-with-regex-alternation">Combine multiple error strings with regex alternation</a></h3>
+<p>Since each shell has only one fail pattern slot, setting a second <code>!?</code> replaces the first. If you need to watch for multiple error patterns, combine them into a single regex using alternation:</p>
+<pre><code class="language-relux">shell s {
+    !? ERROR|PANIC|FATAL|Segfault
+    &gt; start-my-service
+    &lt;? ready
+    match_prompt()
+}
+</code></pre>
+<p>Do not write:</p>
+<pre><code class="language-relux">shell s {
+    !? ERROR
+    !? PANIC
+    !? FATAL
+    &gt; start-my-service
+    &lt;? ready
+    match_prompt()
+}
+</code></pre>
+<p>Only <code>FATAL</code> is active after line 4 — the first two patterns are gone.</p>
+<h2 id="effects-and-dependencies"><a class="header" href="#effects-and-dependencies">Effects and dependencies</a></h2>
+<p><em>From <a href="11-effects-and-dependencies.html">Effects and Dependencies</a>:</em></p>
+<h3 id="set-fail-patterns-early-in-effects"><a class="header" href="#set-fail-patterns-early-in-effects">Set fail patterns early in effects</a></h3>
+<p>Effects that start long-running services should set a fail pattern before the startup command, just like in a regular shell block. This maximizes coverage — any crash output during startup or during the test body triggers an immediate failure:</p>
+<pre><code class="language-relux">effect Service {
+    expose service
+
+    shell service {
+        !? FATAL|ERROR|panic
+        &gt; start-my-service --foreground
+        &lt;? listening on port 8080
+    }
+}
+</code></pre>
+<p>The fail pattern is active from the first line. If the service crashes during startup, the fail pattern catches it before the readiness match even runs.</p>
+<h3 id="deduplication-and-shared-state"><a class="header" href="#deduplication-and-shared-state">Deduplication and shared state</a></h3>
+<p>Because deduplication means two aliases can point to the same shell, mutations through one alias are visible through the other. This is by design — it is how effects like the database chain work, where each layer builds on the state left by the previous one. But it means you should be aware: if two unrelated parts of a test both alias the same effect instance, they share a single PTY session. Commands sent through one alias affect the shell the other alias sees.</p>
+<p>If you need truly independent instances, give them different overlay values — even a dummy key is enough to create separate identities:</p>
+<pre><code class="language-relux">start MyEffect as a { INSTANCE = "1" }
+start MyEffect as b { INSTANCE = "2" }
+</code></pre>
+<h2 id="cleanup"><a class="header" href="#cleanup">Cleanup</a></h2>
+<p><em>From <a href="13-cleanup.html">Cleanup</a>:</em></p>
+<h3 id="do-not-use-cleanup-to-stop-services"><a class="header" href="#do-not-use-cleanup-to-stop-services">Do not use cleanup to stop services</a></h3>
+<p>It is natural to think of cleanup as the place to stop a database or kill a service you started during setup. But Relux already handles this: when a test ends, it terminates all effect and test shells, which kills any processes running in them. Services started in a shell block die automatically with the shell — they are children of the PTY, so when Relux terminates the shell, the process goes with it. Even if Relux itself is killed, the OS cleans up the PTY and its children.</p>
+<p>Using cleanup to stop services is actually worse than relying on shell termination. Cleanup runs in a <strong>separate</strong> shell — it has no connection to the process running in the effect’s shell. If Relux crashes or is killed, cleanup never runs, and any service you expected cleanup to stop is left orphaned.</p>
+<p>For the same reason, avoid starting daemonized or background services (processes that detach from the shell) during setup. A daemonized process is no longer a child of the PTY — it survives shell termination. If Relux is killed or terminated abnormally, neither shell termination nor cleanup can reach it, and it stays running indefinitely. Always run services in the foreground so they remain tied to the shell’s lifecycle.</p>
+<p>Reserve cleanup for things that shell termination does not handle: removing files, cleaning up directories, collecting logs, or any other filesystem side effects that outlive the shell.</p>
+<h3 id="keep-cleanup-self-contained"><a class="header" href="#keep-cleanup-self-contained">Keep cleanup self-contained</a></h3>
+<p>Cleanup can see top-level <code>let</code> variables, overlay variables (for effects), and environment variables — but it cannot see variables declared inside shell blocks or call functions. Shell-level <code>let</code> bindings and regex captures from the test body are not available.</p>
+<p>Plan your cleanup around top-level variables. If a path or identifier is needed in both setup and cleanup, declare it with <code>let</code> at the effect or test level rather than inside a shell block.</p>
+<h3 id="make-cleanup-idempotent"><a class="header" href="#make-cleanup-idempotent">Make cleanup idempotent</a></h3>
+<p>Cleanup runs regardless of whether setup completed successfully. If an effect’s shell block fails halfway through — the database started but the migration crashed — cleanup still runs. This means cleanup commands may encounter a partially initialized state: a file that was never created, a process that was never started, a directory that is already empty.</p>
+<p>Write cleanup commands defensively. Assume nothing about what actually happened during setup — cleanup should be safe to run in any state, including when setup did nothing at all.</p>
+<h2 id="condition-markers"><a class="header" href="#condition-markers">Condition markers</a></h2>
+<p><em>From <a href="15-condition-markers.html">Condition Markers</a>:</em></p>
+<h3 id="markers-assert-effects-provision"><a class="header" href="#markers-assert-effects-provision">Markers assert, effects provision</a></h3>
+<p>The distinction is:</p>
+<ul>
+<li><strong>Markers</strong> assert what the environment <em>already has</em> — an installed binary, a particular OS, a running CI server. These are things outside the test’s control.</li>
+<li><strong>Effects</strong> provision what the test <em>needs</em> — starting a service, creating a temp directory, seeding a database. These are things the test can set up and tear down.</li>
+</ul>
+<p>If you can set it up, use an effect. If you can only check for it, use a marker. A test that needs a PostgreSQL database running should have an effect that starts one. A test that needs <code>psql</code> to be installed should have a marker that checks for it.</p>
+<h3 id="choose-the-marker-that-reads-like-intent"><a class="header" href="#choose-the-marker-that-reads-like-intent">Choose the marker that reads like intent</a></h3>
+<p><code># run if "${CI}"</code> and <code># skip unless "${CI}"</code> are logically identical — both skip the test when <code>CI</code> is not set. The difference is how they communicate intent to someone reading the test file.</p>
+<p>Use <code># run if ...</code> when the condition describes the <em>target environment</em>: “this test runs in CI.” Use <code># skip unless ...</code> when the condition describes a <em>requirement</em>: “skip this test unless docker is available.” The marker should read like a sentence that explains <em>why</em> the test might not run.</p>
+<h3 id="understand-effect-skip-propagation"><a class="header" href="#understand-effect-skip-propagation">Understand effect skip propagation</a></h3>
+<p>Putting a marker on an effect skips every test that depends on it. This is powerful but can be surprising. If an effect is shared by many tests, a single marker on that effect gates a large part of the suite. Before adding a marker to a widely-used effect, consider whether the marker belongs on the individual tests instead.</p>
+<h2 id="the-cli"><a class="header" href="#the-cli">The CLI</a></h2>
+<p><em>From <a href="16-the-cli.html">The CLI</a>:</em></p>
+<h3 id="use---rerun-after-fixing-a-failure"><a class="header" href="#use---rerun-after-fixing-a-failure">Use <code>--rerun</code> after fixing a failure</a></h3>
+<p>When a run has failures and you think you have fixed the issue, use <code>relux run --rerun</code> instead of re-running the full suite. This targets only the tests that failed last time, giving you faster feedback. Once the reruns pass, do a full <code>relux run</code> to confirm nothing else broke.</p>
+<h3 id="match-strategy-to-context"><a class="header" href="#match-strategy-to-context">Match strategy to context</a></h3>
+<p>Use <code>--strategy fail-fast</code> during local development — you want to know about the first failure quickly so you can fix it. Use <code>--strategy all</code> in CI — you want a complete picture of the suite’s health, not just the first problem.</p>
+<h3 id="start-flakiness-investigation-with-history"><a class="header" href="#start-flakiness-investigation-with-history">Start flakiness investigation with <code>history</code></a></h3>
+<p>When a test starts failing intermittently, run <code>relux history --flaky</code> before digging into the test code. The flakiness rate tells you whether you are dealing with an environment issue (sporadic) or a logic bug (consistent). If the test passes 95% of the time, you are probably looking at a timing issue. If it passes 50% of the time, there may be a race condition or uncontrolled dependency.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="16-the-cli.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="16-the-cli.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="highlight-relux-8a60f327.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

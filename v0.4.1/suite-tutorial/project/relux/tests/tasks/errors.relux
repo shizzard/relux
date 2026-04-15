@@ -1,0 +1,49 @@
+import api/http
+import jq
+import service/tasks { url as tasks_url, StartTasks, SeededTasks }
+
+# skip if SMOKE
+test "unauthorized without token" {
+    """
+    Verify requests without a Bearer token return 401.
+    """
+    let db_port = available_port()
+    let auth_port = available_port()
+    let tasks_port = available_port()
+
+    need StartTasks {
+        DB_PORT = db_port
+        AUTH_PORT = auth_port
+        TASKS_PORT = tasks_port
+    }
+
+    shell client {
+        http_request(401, tasks_url(tasks_port, "/tasks"), "POST", "{\"title\": \"nope\"}")
+    }
+}
+
+# skip if SMOKE
+test "get nonexistent task" {
+    """
+    Verify reading a task that does not exist returns 404.
+    """
+    let db_port = available_port()
+    let auth_port = available_port()
+    let tasks_port = available_port()
+
+    need SeededTasks {
+        DB_PORT = db_port
+        AUTH_PORT = auth_port
+        TASKS_PORT = tasks_port
+    }
+
+    shell client {
+        log("login as alice")
+        let response_filename = http_request(200, tasks_url(tasks_port, "/login"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
+        let token = jq_extract(response_filename, ".token")
+
+        log("get a task that does not exist")
+        let response_filename = http_request_authorized(404, tasks_url(tasks_port, "/tasks/999"), token)
+        jq_match_query(response_filename, ".error", "^task 999 not found$")
+    }
+}

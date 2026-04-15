@@ -1,0 +1,387 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Regex Matching - Relux DSL Tutorial</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-7e974fae.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-71544b70.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Relux DSL Tutorial</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="regex-matching"><a class="header" href="#regex-matching">Regex Matching</a></h1>
+<p><a href="06-variables.html">Previous: Variables</a></p>
+<p>The previous articles introduced <a href="03-send-match-and-logs.html">literal matching</a> (<code>&lt;=</code>) for checking that specific text appears in the output, and <a href="06-variables.html">variables</a> for storing and reusing values. But there is a gap between the two: how do you extract a <em>part</em> of the output and store it in a variable?</p>
+<p>Consider a command that prints a version string like <code>server v3.2.1 started on port 8080</code>. With literal match, you can verify the whole string appeared — but you cannot pull out <code>3.2.1</code> or <code>8080</code> separately. You might need the port number to connect from another shell, or the version to include in a log message. Literal match gives you all-or-nothing: the entire matched text, or nothing at all.</p>
+<p>Regex matching solves this. The <code>&lt;?</code> operator matches output using a regular expression, and <strong>capture groups</strong> let you extract specific pieces of the matched text into numbered variables that you can use in subsequent operations.</p>
+<p>Here is a test that extracts a date from command output and uses each part separately:</p>
+<pre><code class="language-relux">test "parse a date" {
+    shell s {
+        &gt; echo "2026-03-08"
+        &lt;? ^(\d{4})-(\d{2})-(\d{2})$
+        &gt; echo "year=${1} month=${2} day=${3}"
+        &lt;? ^year=2026 month=03 day=08$
+    }
+}
+</code></pre>
+<p>This test comes from <code>tests/relux/tests/variables/capture_groups.relux</code> in the Relux source tree.</p>
+<p>The <code>&lt;?</code> operator matches the output against the regex pattern <code>^(\d{4})-(\d{2})-(\d{2})$</code>. The three parenthesized groups capture the year, month, and day. After the match, <code>$1</code>, <code>$2</code>, and <code>$3</code> hold those values — and they can be used in the next send, just like any other variable.</p>
+<h2 id="the--operator"><a class="header" href="#the--operator">The <code>&lt;?</code> operator</a></h2>
+<p>The regex match operator <code>&lt;?</code> works like <a href="03-send-match-and-logs.html">literal match</a> (<code>&lt;=</code>) in most ways: it scans forward from the <a href="04-the-output-buffer.html">cursor</a>, waits up to the timeout for a match, and advances the cursor past the matched text when it succeeds. The difference is in how it interprets the pattern.</p>
+<p>Where <code>&lt;=</code> treats its payload as a plain substring to find, <code>&lt;?</code> compiles it as a regular expression. The regex flavor is Rust’s <a href="https://docs.rs/regex/latest/regex/"><code>regex</code></a> crate — a Perl-compatible syntax without lookahead or backreferences, but with full support for character classes, quantifiers, anchors, alternation, and capture groups. Multi-line mode is enabled by default, so <code>^</code> and <code>$</code> match the start and end of each line, not just the start and end of the entire buffer.</p>
+<p>Like <code>&lt;=</code>, the <code>&lt;?</code> operator with an empty pattern acts as a <a href="04-the-output-buffer.html">buffer reset</a> — it consumes everything currently in the buffer without matching anything specific.</p>
+<p>A simple regex match looks almost identical to a literal match:</p>
+<pre><code class="language-relux">test "basic regex match" {
+    shell s {
+        &gt; echo hello-relux
+        &lt;? ^hello-relux$
+    }
+}
+</code></pre>
+<h2 id="capture-groups"><a class="header" href="#capture-groups">Capture groups</a></h2>
+<p>Parentheses in a regex pattern create <strong>capture groups</strong>. When the match succeeds, each group’s matched text becomes available through a numbered variable: <code>$1</code> for the first group, <code>$2</code> for the second, and so on. <code>$0</code> holds the full match — everything the regex matched, not just the groups.</p>
+<p>Here is a test that shows all three levels — full match, first group, second group:</p>
+<pre><code class="language-relux">test "full match via capture group zero" {
+    shell s {
+        &gt; echo "hello world"
+        &lt;? (hello) (world)
+        &gt; echo "full='${0}' first='${1}' second='${2}'"
+        &lt;? ^full='hello world' first='hello' second='world'$
+    }
+}
+</code></pre>
+<p><code>$0</code> is <code>hello world</code> (the entire matched text), <code>$1</code> is <code>hello</code>, and <code>$2</code> is <code>world</code>.</p>
+<p>If you access a capture group that does not exist — say <code>$5</code> when the regex only has one group — it resolves to the empty string, just like an <a href="06-variables.html">undefined variable</a>:</p>
+<pre><code class="language-relux">test "missing capture group returns empty string" {
+    shell s {
+        &gt; echo "one=1"
+        &lt;? ^one=(\d+)$
+        &gt; echo "five='${5}'"
+        &lt;? ^five=''$
+    }
+}
+</code></pre>
+<h2 id="captures-are-replaced-on-every-match"><a class="header" href="#captures-are-replaced-on-every-match">Captures are replaced on every match</a></h2>
+<p>Each <code>&lt;?</code> match replaces <strong>all</strong> capture groups from the previous match. If the first match produced <code>$1</code> and <code>$2</code>, and the second match has only one group, <code>$2</code> becomes empty — it does not retain its old value:</p>
+<pre><code class="language-relux">test "captures overwritten by next match" {
+    shell s {
+        &gt; echo "key=abc val=xyz"
+        &lt;? ^key=(\w+) val=(\w+)$
+        &gt; echo "g1=${1} g2=${2}"
+        &lt;? ^g1=abc g2=xyz$
+        &gt; echo "only=one"
+        &lt;? ^only=(\w+)$
+        &gt; echo "g1=${1} g2='${2}'"
+        &lt;? ^g1=one g2=''$
+    }
+}
+</code></pre>
+<p>After the second <code>&lt;?</code>, <code>$1</code> is <code>one</code> and <code>$2</code> is gone. The captures from the first match are completely discarded.</p>
+<h2 id="saving-captures-to-named-variables"><a class="header" href="#saving-captures-to-named-variables">Saving captures to named variables</a></h2>
+<p>Because captures are replaced on every match, you can save a captured value into a named variable with <a href="06-variables.html"><code>let</code></a> to keep it around:</p>
+<pre><code class="language-relux">test "capture into variable" {
+    shell s {
+        &gt; echo "key=alpha"
+        &lt;? ^key=(\w+)$
+        let saved = $1
+        &gt; echo "other=beta"
+        &lt;? ^other=(\w+)$
+        &gt; echo "saved=${saved} current=${1}"
+        &lt;? ^saved=alpha current=beta$
+    }
+}
+</code></pre>
+<p><code>let saved = $1</code> reads the current value of <code>$1</code> (which is <code>alpha</code>) and stores it in a named variable. When the second match replaces captures, <code>$1</code> becomes <code>beta</code> — but <code>saved</code> still holds <code>alpha</code>.</p>
+<h2 id="let-with-a-regex-match-expression"><a class="header" href="#let-with-a-regex-match-expression"><code>let</code> with a regex match expression</a></h2>
+<p>You can combine <code>let</code> and <code>&lt;?</code> in a single statement. When you write <code>let result = &lt;? pattern</code>, Relux performs the match <em>and</em> assigns the return value to the variable. The return value of a regex match is the full match text — the same as <code>$0</code>:</p>
+<pre><code class="language-relux">test "let from match expression captures full match" {
+    shell s {
+        &gt; echo "code=42"
+        let result = &lt;? code=(\d+)
+        &gt; echo "result='${result}' group='${1}'"
+        &lt;? ^result='code=42' group='42'$
+    }
+}
+</code></pre>
+<p><code>result</code> gets <code>code=42</code> (the full match), while <code>$1</code> gets <code>42</code> (the first capture group). This is the same behavior as other expressions you have seen in the <a href="06-variables.html">everything has a value</a> table — <code>&lt;?</code> returns the full match text, and <code>let</code> stores it.</p>
+<h2 id="variable-interpolation-in-patterns"><a class="header" href="#variable-interpolation-in-patterns">Variable interpolation in patterns</a></h2>
+<p>Like all operators in Relux, <code>&lt;?</code> supports <a href="06-variables.html">variable interpolation</a> in its pattern. Variables are resolved before the pattern is compiled as a regex:</p>
+<pre><code class="language-relux">test "interpolation in regex pattern" {
+    shell s {
+        let key = "version"
+        &gt; echo "version=42"
+        &lt;? ^${key}=(\d+)$
+        &gt; echo "captured ${1}"
+        &lt;? ^captured 42$
+    }
+}
+</code></pre>
+<p>The pattern <code>^${key}=(\d+)$</code> becomes <code>^version=(\d+)$</code> after interpolation.</p>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best practices</a></h2>
+<h3 id="use-regex-only-when-you-need-it"><a class="header" href="#use-regex-only-when-you-need-it">Use regex only when you need it</a></h3>
+<p>You might default to <code>&lt;?</code> everywhere since it is strictly more powerful than <code>&lt;=</code> — any literal match can be written as a regex. But regex matches are harder to read, easier to get wrong, and can match more than you intended.</p>
+<p>Literal match <code>&lt;=</code> is a simple substring search. It does exactly one thing and it is obvious what it matches. When you do not need capture groups, anchors, or wildcards, <code>&lt;=</code> is the better choice. Reserve <code>&lt;?</code> for when you genuinely need regex capabilities: extracting values, matching variable output, or anchoring to line boundaries.</p>
+<h3 id="always-save-captures-to-named-variables"><a class="header" href="#always-save-captures-to-named-variables">Always save captures to named variables</a></h3>
+<p>Capture groups like <code>$1</code> are convenient — you match a pattern, and the extracted value is right there. It is tempting to use <code>$1</code> directly in several places without saving it to a named variable first.</p>
+<p>The problem is not with the code as you write it today. The problem is with the code as someone changes it five years from now. Test code is still code — it evolves, gets refactored, gets extended. Capture groups are silently replaced on every <code>&lt;?</code> match. If someone inserts a new regex match between your capture and its use — a perfectly reasonable edit — <code>$1</code> now refers to something completely different. No error, no warning, just a test that fails in a confusing way that takes hours to debug.</p>
+<p>Save the capture to a named variable immediately after the match, before doing anything else. Then use the named variable everywhere:</p>
+<pre><code class="language-relux">// Fragile — $1 can be silently replaced by a later edit:
+&lt;? ^port=(\d+)$
+&gt; curl http://localhost:${1}/health
+
+// Durable — the port is safe no matter what happens next:
+&lt;? ^port=(\d+)$
+let port = $1
+&gt; curl http://localhost:${port}/health
+</code></pre>
+<p>The named variable survives any number of subsequent matches. It makes the code self-documenting (the name <code>port</code> says more than <code>$1</code>), and it insulates the test from future edits.</p>
+<h3 id="anchor-your-patterns"><a class="header" href="#anchor-your-patterns">Anchor your patterns</a></h3>
+<p>A regex without anchors will match anywhere in the remaining buffer — the echoed command, a fragment of the prompt, leftover output from a previous step. This is the same problem as with <a href="04-the-output-buffer.html">literal match</a>, but worse, because regex metacharacters like <code>.</code> and <code>*</code> match more broadly.</p>
+<p>Use <code>^</code> and <code>$</code> to pin your match to a specific line:</p>
+<pre><code class="language-relux">// Might match the echoed command or something unexpected:
+&lt;? version=\d+
+
+// Matches exactly one complete line:
+&lt;? ^version=\d+$
+</code></pre>
+<p>This does not mean you should anchor every pattern — sometimes a substring regex is what you need. But when you have a choice, anchoring is safer: it documents your intent and prevents accidental matches.</p>
+<h3 id="be-careful-with-interpolated-regex-patterns"><a class="header" href="#be-careful-with-interpolated-regex-patterns">Be careful with interpolated regex patterns</a></h3>
+<p>Variable interpolation in <code>&lt;?</code> patterns lets you define reusable regex fragments — declare a pattern once at the test level and use it in multiple matches. This is handy for repeated patterns like timestamps, UUIDs, or version strings.</p>
+<p>The catch is that after interpolation, the variable’s value becomes part of the regex. If the value contains regex metacharacters — <code>.</code>, <code>*</code>, <code>+</code>, <code>(</code>, <code>[</code>, and so on — they are interpreted as regex syntax, not as literal text. A variable holding <code>192.168.1.1</code> does not match the literal IP address; the <code>.</code> matches any character, so it also matches <code>192X168Y1Z1</code>.</p>
+<p>When the variable comes from your own <code>let</code> and you know the value, this is fine — just be aware of what you are putting into the pattern. When the variable comes from captured output or an environment variable, the content is unpredictable and the regex may compile into something you did not intend, or fail to compile entirely.</p>
+<h2 id="try-it-yourself"><a class="header" href="#try-it-yourself">Try it yourself</a></h2>
+<p>Write a test that does the following:</p>
+<ol>
+<li>Run a command that produces output with two key-value pairs on the same line — something like <code>echo "host=db.local port=5432"</code>.</li>
+<li>Use a single <code>&lt;?</code> with two capture groups to extract both values into <code>$1</code> and <code>$2</code>.</li>
+<li>Immediately save both captures to named variables (<code>let host = $1</code>, <code>let port = $2</code>).</li>
+<li>Run another command that produces different output and match it with <code>&lt;?</code> — this will overwrite the capture groups.</li>
+<li>Verify that the named variables still hold the original values by echoing them back and matching the result.</li>
+</ol>
+<p>This exercise combines capture groups, the save-to-variable pattern, and the ephemeral nature of captures — all the pieces from this article.</p>
+<hr>
+<p>Next: <a href="08-functions.html">Functions</a> — extract reusable test logic into named, parameterized functions</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="06-variables.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="08-functions.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="06-variables.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="08-functions.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="highlight-relux-8a60f327.js"></script>
+
+
+
+    </div>
+    </body>
+</html>
