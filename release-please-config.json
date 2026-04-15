@@ -4,6 +4,7 @@
     {
       "type": "linked-versions",
       "groupName": "relux",
+      "merge": false,
       "components": [
         "relux-core", "relux-ast", "relux-lexer", "relux-parser",
         "relux-ir", "relux-resolver", "relux-runtime", "relux"
