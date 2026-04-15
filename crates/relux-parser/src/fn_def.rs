@@ -142,6 +142,7 @@ pub fn def_fn<'a>()
             )
         })
         .labelled("function definition")
+        .boxed()
 }
 
 /// `[preamble] pure fn name(params) { body }` — pure function definition.
@@ -172,6 +173,7 @@ pub fn def_pure_fn<'a>()
             )
         })
         .labelled("pure function definition")
+        .boxed()
 }
 
 #[cfg(test)]

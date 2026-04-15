@@ -55,6 +55,7 @@ pub fn shell_block<'a>()
             Spanned::new(AstShellBlock { qualifier: None, name, stmts, span }, span)
         })
         .labelled("shell block")
+        .boxed()
 }
 
 /// `shell qualifier.name { stmts }` — qualified shell block (dot-access to effect-exported shell).
@@ -93,6 +94,7 @@ pub fn qualified_shell_block<'a>()
             Spanned::new(AstShellBlock { qualifier: Some(qualifier), name, stmts, span }, span)
         })
         .labelled("qualified shell block")
+        .boxed()
 }
 
 /// `cleanup { stmts }` — cleanup block.
@@ -127,6 +129,7 @@ pub fn cleanup_block<'a>()
             Spanned::new(AstCleanupBlock { stmts, span }, span)
         })
         .labelled("cleanup block")
+        .boxed()
 }
 
 #[cfg(test)]

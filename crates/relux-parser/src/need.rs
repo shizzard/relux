@@ -34,6 +34,7 @@ pub fn start_decl<'a>()
         })
         .then_ignore(newline())
         .labelled("start declaration")
+        .boxed()
 }
 
 #[cfg(test)]

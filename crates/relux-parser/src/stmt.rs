@@ -272,24 +272,26 @@ pub fn stmt<'a>()
         Spanned::new(AstStmt::Comment { text: s, span }, span)
     });
 
-    leading_ws().ignore_then(
-        choice((
-            stmt_comment,
-            stmt_timed_match_literal(),
-            stmt_timed_match_regex(),
-            stmt_match_regex(),
-            stmt_match_literal(),
-            stmt_send_raw(),
-            stmt_send(),
-            stmt_fail_regex(),
-            stmt_fail_literal(),
-            stmt_timeout(),
-            stmt_let(),
-            stmt_assign(),
-            stmt_expr(),
-        ))
-        .labelled("statement"),
-    )
+    leading_ws()
+        .ignore_then(
+            choice((
+                stmt_comment,
+                stmt_timed_match_literal(),
+                stmt_timed_match_regex(),
+                stmt_match_regex(),
+                stmt_match_literal(),
+                stmt_send_raw(),
+                stmt_send(),
+                stmt_fail_regex(),
+                stmt_fail_literal(),
+                stmt_timeout(),
+                stmt_let(),
+                stmt_assign(),
+                stmt_expr(),
+            ))
+            .labelled("statement"),
+        )
+        .boxed()
 }
 
 /// `stmt_let()` exported for use in effect/test body sections.

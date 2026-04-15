@@ -67,6 +67,7 @@ pub fn overlay<'a>()
         .then_ignore(flex_ws())
         .then_ignore(punctuation_brace_close())
         .labelled("overlay block")
+        .boxed()
 }
 
 #[cfg(test)]

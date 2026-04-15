@@ -160,6 +160,7 @@ pub fn interp_literal<'a>(
         )
     })
     .labelled("interpolated text")
+    .boxed()
 }
 
 /// Collect interpolation parts until `terminator`, passing escape sequences through raw.
@@ -196,6 +197,7 @@ pub fn interp_regex<'a>(
         )
     })
     .labelled("regex pattern")
+    .boxed()
 }
 
 #[cfg(test)]

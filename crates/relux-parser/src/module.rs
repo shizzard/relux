@@ -24,41 +24,43 @@ const SENTINEL: Span = Span::new(0, 0);
 /// A single module-level item.
 fn module_item<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstItem>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
-    leading_ws().ignore_then(
-        choice((
-            import().map(|i| {
-                let span = i.span;
-                Spanned::new(
-                    AstItem::Import {
-                        import: i.node,
+    leading_ws()
+        .ignore_then(
+            choice((
+                import().map(|i| {
+                    let span = i.span;
+                    Spanned::new(
+                        AstItem::Import {
+                            import: i.node,
+                            span,
+                        },
                         span,
-                    },
-                    span,
-                )
-            }),
-            def_pure_fn().map(|f| {
-                let span = f.span;
-                Spanned::new(AstItem::PureFn { def: f.node, span }, span)
-            }),
-            def_fn().map(|f| {
-                let span = f.span;
-                Spanned::new(AstItem::Fn { def: f.node, span }, span)
-            }),
-            def_effect().map(|e| {
-                let span = e.span;
-                Spanned::new(AstItem::Effect { def: e.node, span }, span)
-            }),
-            def_test().map(|t| {
-                let span = t.span;
-                Spanned::new(AstItem::Test { def: t.node, span }, span)
-            }),
-            comment().map_with(|c, e| {
-                let span = crate::span_from_chumsky(e.span());
-                Spanned::new(AstItem::Comment { text: c, span }, span)
-            }),
-        ))
-        .labelled("top-level item (import, fn, effect, test, or comment)"),
-    )
+                    )
+                }),
+                def_pure_fn().map(|f| {
+                    let span = f.span;
+                    Spanned::new(AstItem::PureFn { def: f.node, span }, span)
+                }),
+                def_fn().map(|f| {
+                    let span = f.span;
+                    Spanned::new(AstItem::Fn { def: f.node, span }, span)
+                }),
+                def_effect().map(|e| {
+                    let span = e.span;
+                    Spanned::new(AstItem::Effect { def: e.node, span }, span)
+                }),
+                def_test().map(|t| {
+                    let span = t.span;
+                    Spanned::new(AstItem::Test { def: t.node, span }, span)
+                }),
+                comment().map_with(|c, e| {
+                    let span = crate::span_from_chumsky(e.span());
+                    Spanned::new(AstItem::Comment { text: c, span }, span)
+                }),
+            ))
+            .labelled("top-level item (import, fn, effect, test, or comment)"),
+        )
+        .boxed()
 }
 
 /// Full module: zero or more items with interspersed blank lines.

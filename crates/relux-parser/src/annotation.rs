@@ -35,6 +35,7 @@ pub fn comment<'a>()
             s.trim_end().to_string()
         })
         .labelled("comment")
+        .boxed()
 }
 
 /// `"""..."""` — docstring. Single/double quotes inside are valid content;
@@ -74,6 +75,7 @@ pub fn docstring<'a>()
             Spanned::new(s, crate::span_from_chumsky(e.span()))
         })
         .labelled("docstring")
+        .boxed()
 }
 
 /// Marker condition body: `expr`, `expr = expr`, or `expr ? regex`.
@@ -165,6 +167,7 @@ pub fn marker<'a>()
         })
         .then_ignore(newline())
         .labelled("marker (# skip/run/flaky)")
+        .boxed()
 }
 
 #[cfg(test)]

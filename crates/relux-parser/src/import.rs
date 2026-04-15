@@ -36,6 +36,7 @@ fn import_path<'a>()
             Spanned::new(path, crate::span_from_chumsky(e.span()))
         })
         .labelled("import path")
+        .boxed()
 }
 
 /// `import path [{ names }]` — import declaration.
@@ -87,6 +88,7 @@ pub fn import<'a>()
         })
         .then_ignore(newline())
         .labelled("import declaration")
+        .boxed()
 }
 
 #[cfg(test)]

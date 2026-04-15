@@ -262,8 +262,6 @@ pub fn def_effect<'a>()
         })
     });
 
-    // Stage 1: header through start — flatten nested tuples and box to break
-    // the deeply nested combinator type that exceeds macOS linker symbol limits.
     let stage1 = header
         .then(expect_section)
         .then(let_section)
@@ -271,7 +269,6 @@ pub fn def_effect<'a>()
         .map(|((((markers, name), expects), lets), starts)| (markers, name, expects, lets, starts))
         .boxed();
 
-    // Stage 2: remaining sections through final assembly.
     stage1
         .then(expose_section)
         .then(shell_section)

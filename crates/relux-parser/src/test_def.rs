@@ -191,8 +191,6 @@ pub fn def_test<'a>()
         })
     });
 
-    // Stage 1: header through let — flatten nested tuples and box to break
-    // the deeply nested combinator type that exceeds macOS linker symbol limits.
     let stage1 = header
         .then(doc_section)
         .then(let_section)
@@ -201,7 +199,6 @@ pub fn def_test<'a>()
         })
         .boxed();
 
-    // Stage 2: remaining sections through final assembly.
     stage1
         .then(start_section)
         .then(shell_section)

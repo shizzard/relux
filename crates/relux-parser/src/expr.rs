@@ -131,6 +131,7 @@ pub fn expr<'a>()
             expr_ident,
         ))
         .labelled("expression")
+        .boxed()
     })
 }
 
