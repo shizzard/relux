@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/shizzard/relux/compare/v0.4.1...v0.4.2) (2026-04-15)
+
+
+### Bug Fixes
+
+* **parser:** box all combinators to fix Apple linker overflow ([3318307](https://github.com/shizzard/relux/commit/3318307c38f9ad93a9a6b209cdd154bb9d40f16e))
+
 ## [0.4.1](https://github.com/shizzard/relux/compare/v0.4.0...v0.4.1) (2026-04-15)
 
 
