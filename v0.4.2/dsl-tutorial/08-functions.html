@@ -1,0 +1,546 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Functions - Relux DSL Tutorial</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-7e974fae.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-71544b70.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Relux DSL Tutorial</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="functions"><a class="header" href="#functions">Functions</a></h1>
+<p><a href="07-regex-matching.html">Previous: Regex Matching</a></p>
+<p>The previous articles covered the core toolkit for interacting with a shell: <a href="03-send-match-and-logs.html">sending commands</a>, <a href="04-the-output-buffer.html">matching output</a>, <a href="05-built-in-functions.html">calling built-in functions</a>, <a href="06-variables.html">storing values in variables</a>, and <a href="07-regex-matching.html">extracting data with regex</a>. With these tools you can write any test — but you will quickly find yourself repeating the same sequences of operations across tests. A health check that sends an HTTP request and verifies the status code. A login sequence that types a username, a password, and waits for a prompt. A cleanup step that kills a background process.</p>
+<p>Relux lets you extract these sequences into <strong>functions</strong> — named, reusable blocks of test logic that you define once and call from any test:</p>
+<pre><code class="language-relux">fn check_status(url) {
+    check_status(url, "")
+}
+
+fn check_status(url, params) {
+    check_status(url, params, 200)
+}
+
+fn check_status(url, params, expected) {
+    &gt; curl -s -o /dev/null -w "%{http_code}\n" "${url}${params}"
+    &lt;? ^${expected}$
+    match_ok()
+}
+</code></pre>
+<p>Three definitions of the same function with different numbers of parameters. You can call it three different ways:</p>
+<pre><code class="language-relux">check_status("http://localhost:8080/health")
+check_status("http://localhost:8080/users", "?page=1")
+check_status("http://localhost:8080/admin", "", 403)
+</code></pre>
+<p>One name, three levels of detail.</p>
+<h2 id="defining-a-function"><a class="header" href="#defining-a-function">Defining a function</a></h2>
+<p>A function definition starts with the <code>fn</code> keyword, followed by a name, a parameter list in parentheses, and a body in braces:</p>
+<pre><code class="language-relux">fn greet() {
+    &gt; echo "hello from fn"
+    &lt;? ^hello from fn$
+    match_ok()
+}
+</code></pre>
+<p>This defines a function called <code>greet</code> that takes no arguments. Its body sends a command, matches the output, and consumes the prompt — the same operators you use directly in shell blocks.</p>
+<p>Function names must be <code>snake_case</code> — lowercase letters, digits, and underscores. This is enforced by the parser. If you try to define a function with an uppercase name like <code>CheckStatus</code>, Relux will reject the file.</p>
+<p>Parameters go inside the parentheses, separated by commas:</p>
+<pre><code class="language-relux">fn say(msg) {
+    &gt; echo "${msg}"
+    &lt;? ^${msg}$
+    match_ok()
+}
+
+fn add_label(prefix, value) {
+    &gt; echo "${prefix}: ${value}"
+    &lt;? ^${prefix}: ${value}$
+    match_ok()
+}
+</code></pre>
+<h2 id="calling-a-function"><a class="header" href="#calling-a-function">Calling a function</a></h2>
+<p>If you have been following the series, you already know how to call functions — the syntax is the same as for <a href="05-built-in-functions.html">built-in functions</a>. Write the name, followed by arguments in parentheses:</p>
+<pre><code class="language-relux">test "call function with multiple arguments" {
+    shell s {
+        add_label("status", "ok")
+    }
+}
+</code></pre>
+<p>Function calls can only appear inside <code>shell</code> blocks. This makes sense once you understand the execution model: a function’s body contains shell operators like <code>&gt;</code> and <code>&lt;?</code> that need an active shell to operate on.</p>
+<h2 id="arity-based-dispatch"><a class="header" href="#arity-based-dispatch">Arity-based dispatch</a></h2>
+<p>You saw <a href="05-built-in-functions.html">arity</a> with built-in functions — <code>match_not_ok()</code> and <code>match_not_ok(code)</code> are two separate functions that share a name. The same mechanism works for user-defined functions. Relux identifies every function by its <code>(name, arity)</code> pair, so you can define multiple versions with different parameter counts:</p>
+<pre><code class="language-relux">fn greet() {
+    &gt; echo "hello"
+    &lt;? ^hello$
+    match_ok()
+}
+
+fn greet(name) {
+    &gt; echo "hello, ${name}"
+    &lt;? ^hello, ${name}$
+    match_ok()
+}
+
+fn greet(name, title) {
+    &gt; echo "hello, ${title} ${name}"
+    &lt;? ^hello, ${title} ${name}$
+    match_ok()
+}
+
+test "arity dispatch" {
+    shell s {
+        greet()
+        greet("alice")
+        greet("alice", "Dr.")
+    }
+}
+</code></pre>
+<p>Each call resolves to the definition with the matching number of parameters.</p>
+<p>Arity dispatch is more powerful than it might first appear. Relux has no built-in branching or conditionals in function bodies. You cannot write <code>if params == ""</code> to check whether an argument was provided. Arity dispatch is the language’s answer to default parameters: instead of one function that checks for empty strings internally, you write multiple definitions at different arities and have the simpler ones delegate to the fuller one.</p>
+<p>The <code>check_status</code> function from the opening is the canonical example. Each definition defaults exactly one parameter and delegates to the next arity up:</p>
+<ul>
+<li><code>check_status/1</code> fills in an empty query string and delegates to <code>check_status/2</code></li>
+<li><code>check_status/2</code> fills in the default expected status code of <code>200</code> and delegates to <code>check_status/3</code></li>
+<li><code>check_status/3</code> does the actual work</li>
+</ul>
+<p>This progressive chain means each default value appears exactly once. If the default expected code ever changes from <code>200</code> to something else, you update one line in <code>check_status/2</code>. No value is duplicated across definitions.</p>
+<p>Notice that number literals like <code>200</code> and <code>403</code> are unquoted — since all values are strings, Relux accepts bare numbers and stores them as strings.</p>
+<h2 id="the-callers-shell"><a class="header" href="#the-callers-shell">The caller’s shell</a></h2>
+<p>A function does not get its own shell. When you call a function from inside a shell block, the function’s body executes in <strong>the caller’s shell</strong> — the same PTY session that the call site is running in. Every <code>&gt;</code> sends to that shell, every <code>&lt;?</code> matches against that shell’s output buffer.</p>
+<p>This means a function can see everything the caller has done to the shell:</p>
+<pre><code class="language-relux">fn check_shell_var() {
+    &gt; echo $$MY_VAR
+    &lt;? ^caller_state$
+    match_ok()
+}
+
+test "function executes in caller shell" {
+    shell s {
+        &gt; export MY_VAR=caller_state
+        match_ok()
+        check_shell_var()
+    }
+}
+</code></pre>
+<p>The test exports an environment variable in shell <code>s</code>, then calls <code>check_shell_var()</code>. The function runs in the same shell — it reads <code>MY_VAR</code> and finds <code>caller_state</code>. There is no argument passing or special plumbing; the function simply shares the caller’s PTY session.</p>
+<h2 id="scoping"><a class="header" href="#scoping">Scoping</a></h2>
+<p>Functions share the caller’s shell, but they do <strong>not</strong> share the caller’s <a href="06-variables.html">variables</a>. The isolation goes both ways: the function cannot see the caller’s variables, and the caller cannot see the function’s variables. The only variables available inside a function are its own parameters, anything it declares with <code>let</code>, and environment variables.</p>
+<pre><code class="language-relux">fn try_read_secret() {
+    &gt; echo "secret='${secret}'"
+    &lt;? ^secret=''$
+    match_ok()
+}
+
+test "function cannot see caller variables" {
+    shell s {
+        let secret = "caller-only"
+        try_read_secret()
+    }
+}
+</code></pre>
+<p>The caller declares <code>secret</code>, but inside <code>try_read_secret()</code> the variable <code>${secret}</code> resolves to the empty string. It does not exist in the function’s scope. If a function needs a value from the caller, it must be passed as an argument.</p>
+<pre><code class="language-relux">fn say(msg) {
+    &gt; echo "${msg}"
+    &lt;? ^${msg}$
+    match_ok()
+}
+
+test "function variables do not leak to caller" {
+    shell s {
+        say("test")
+        &gt; echo "msg='${msg}'"
+        &lt;? ^msg=''$
+    }
+}
+</code></pre>
+<p>After <code>say("test")</code> returns, <code>${msg}</code> in the caller’s scope resolves to the empty string. The parameter <code>msg</code> existed only inside the function.</p>
+<pre><code class="language-relux">fn shadow_x() {
+    let x = "from-function"
+    &gt; echo "inside: x=${x}"
+    &lt;? ^inside: x=from-function$
+    match_ok()
+}
+
+test "function let does not mutate outer variable" {
+    shell s {
+        let x = "outer"
+        shadow_x()
+        &gt; echo "x=${x}"
+        &lt;? ^x=outer$
+    }
+}
+</code></pre>
+<p>The function’s <code>let x</code> creates a local variable within the function’s own scope. The caller’s <code>x</code> remains <code>"outer"</code> after the call.</p>
+<p>The mental model is simple: <strong>scope isolation is bidirectional.</strong> The only shared state is the shell itself — the PTY session, the running processes, the shell-side environment variables.</p>
+<h2 id="return-values"><a class="header" href="#return-values">Return values</a></h2>
+<p>The <a href="06-variables.html">variables</a> article introduced the idea that every expression produces a value. Functions follow the same principle: a function’s return value is the value of its last expression. If the caller does not capture it, the return value is silently discarded.</p>
+<pre><code class="language-relux">fn make_label(prefix, value) {
+    "${prefix}:${value}"
+}
+
+test "expression as return value" {
+    shell s {
+        let label = make_label("key", "val")
+        &gt; echo "${label}"
+        &lt;? ^key:val$
+    }
+}
+</code></pre>
+<p>A bare string expression at the end of the body becomes the return value. A <code>let</code> statement also produces a value — the value it assigns — so a function ending with <code>let</code> returns that value too. An empty function returns the empty string.</p>
+<p>A common pattern is a function that runs a command, matches the output with <code>&lt;?</code>, and returns a captured value:</p>
+<pre><code class="language-relux">fn capture_version() {
+    &gt; echo "version=3.2.1"
+    &lt;? ^version=(.+)$
+    let ver = $1
+    match_ok()
+    ver
+}
+
+test "capture return value from match" {
+    shell s {
+        let ver = capture_version()
+        &gt; echo "got=${ver}"
+        &lt;? ^got=3.2.1$
+    }
+}
+</code></pre>
+<p>The regex match sets <code>$1</code> to <code>3.2.1</code>. The function saves the capture, cleans up the shell with <code>match_ok()</code>, and returns the saved value as the last expression.</p>
+<p>As later articles introduce new kinds of expressions, they will note what value each one returns — following the same pattern as the everything-has-a-value table.</p>
+<h2 id="functions-calling-functions"><a class="header" href="#functions-calling-functions">Functions calling functions</a></h2>
+<p>Functions can call other functions. Return values chain naturally — each function captures the result of the one it called and builds on it:</p>
+<pre><code class="language-relux">fn make_prefix(tag) {
+    "[${tag}]"
+}
+
+fn log_msg(tag, msg) {
+    let pfx = make_prefix(tag)
+    &gt; echo "${pfx} ${msg}"
+    &lt;? ^\[${tag}\] ${msg}$
+    match_ok()
+}
+
+test "nested function uses helper return value" {
+    shell s {
+        log_msg("WARN", "check this")
+    }
+}
+</code></pre>
+<p><code>log_msg</code> calls <code>make_prefix</code> to build a formatted tag, then uses the result in a send. Each function has its own scope, so <code>tag</code> in <code>make_prefix</code> and <code>tag</code> in <code>log_msg</code> do not collide — even though they happen to have the same name.</p>
+<p>Return values can chain through multiple levels:</p>
+<pre><code class="language-relux">fn depth_a(x) {
+    let val = depth_b(x)
+    "${val}-a"
+}
+
+fn depth_b(x) {
+    let val = depth_c(x)
+    "${val}-b"
+}
+
+fn depth_c(x) {
+    "${x}-c"
+}
+
+test "nested function return value chains" {
+    shell s {
+        let result = depth_a("root")
+        &gt; echo "${result}"
+        &lt;? ^root-c-b-a$
+    }
+}
+</code></pre>
+<p><code>depth_a</code> calls <code>depth_b</code>, which calls <code>depth_c</code>. Each function appends its suffix to the result. The final value, <code>root-c-b-a</code>, traces the entire call chain.</p>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best practices</a></h2>
+<h3 id="captures-do-not-survive-function-calls"><a class="header" href="#captures-do-not-survive-function-calls">Captures do not survive function calls</a></h3>
+<p>You might call a function that internally uses <code>&lt;?</code> and expect the capture groups (<code>$1</code>, <code>$2</code>, …) to be available in the caller afterward. This seems reasonable — the function ran a regex match, and captures are normally available after <code>&lt;?</code>.</p>
+<p>But captures are part of the variable scope. When a function returns, its entire scope — including captures — is discarded. The caller’s captures are restored to whatever they were before the call:</p>
+<pre><code class="language-relux">fn extract_port() {
+    &gt; echo "port=8080"
+    &lt;? ^port=(\d+)$
+    // The last expression is match_ok(), whose return value is the
+    // prompt string — not the captured port number.
+    match_ok()
+}
+
+test "captures do not survive function calls" {
+    shell s {
+        // Wrong — $1 holds the caller's capture state, not the function's:
+        extract_port()
+        &gt; echo "port=${1}"
+        &lt;? ^port=8080          // $1 is empty
+
+        // Also wrong — the return value is the prompt string, because
+        // match_ok() is the last expression in extract_port():
+        let result = extract_port()
+        &gt; echo "result=${result}"
+        &lt;? ^result=8080        // result is the prompt, not "8080"
+    }
+}
+</code></pre>
+<p>The fix is to design the function to explicitly return what you need. Save the capture to a local variable before calling <code>match_ok()</code>, then return that variable as the last expression:</p>
+<pre><code class="language-relux">fn extract_port() {
+    &gt; echo "port=8080"
+    &lt;? ^port=(\d+)$
+    let port = $1
+    match_ok()
+    port
+}
+</code></pre>
+<p>Now <code>let port = extract_port()</code> in the caller gives you <code>"8080"</code>.</p>
+<p>This is consistent with the scoping model: functions cannot modify the caller’s variable state. Return values are the explicit, reliable channel for passing data back.</p>
+<h3 id="leave-the-shell-clean"><a class="header" href="#leave-the-shell-clean">Leave the shell clean</a></h3>
+<p>When a function interacts with the shell — sending commands and matching output — it should leave the shell in a known state before returning. That means: consume the prompt and verify the exit code with <code>match_ok()</code> (or the appropriate <code>match_not_ok</code> variant) after the last command.</p>
+<pre><code class="language-relux"># Leaves the shell in an unknown state — the caller must
+# know what output is left in the buffer:
+fn check_server() {
+    &gt; curl -s http://localhost:8080/health
+    &lt;= healthy
+}
+
+# Leaves the shell clean — prompt consumed, exit code verified:
+fn check_server() {
+    &gt; curl -s http://localhost:8080/health
+    &lt;= healthy
+    match_ok()
+}
+</code></pre>
+<p>A function that leaves unconsumed output or an unchecked exit code forces every caller to clean up after it. That coupling is invisible and fragile — it works until someone adds a new caller that forgets, or the function’s output changes slightly. Close every shell interaction with a clean handoff.</p>
+<h3 id="do-not-rely-on-a-shared-shell-state"><a class="header" href="#do-not-rely-on-a-shared-shell-state">Do not rely on a shared shell state</a></h3>
+<p>The caller and the function share a shell session. This means the function can read shell-side environment variables set by the caller, and the caller can read shell-side state left behind by the function. Both directions are tempting shortcuts — and both lead to brittle tests.</p>
+<p>A function cannot predict the shell state of all its callers. Some callers have not been written yet. If a function depends on a shell-side variable that the caller must set beforehand, the requirement is invisible — nothing in the function signature or call site reveals it. Pass the value as a parameter instead.</p>
+<p>In the other direction, a caller that depends on shell-side state set by a function is coupled to the function’s implementation details. If the function’s internals change — a different variable name, a different order of commands — the caller silently breaks.</p>
+<p>If you genuinely cannot avoid relying on shared shell state, make it explicit with a comment at both the definition and call site explaining the dependency. But first, consider whether a parameter or return value would work instead.</p>
+<h3 id="keep-functions-small"><a class="header" href="#keep-functions-small">Keep functions small</a></h3>
+<p>A function runs in the caller’s shell, so a long function body means a long sequence of sends and matches executing in someone else’s shell session. When something fails halfway through a 30-line function, the error points to a line inside the function — but understanding <em>why</em> it failed requires knowing what the caller’s shell looked like at the time of the call.</p>
+<p>Prefer small functions that do one thing: check a status code, verify a service is running, send a login sequence. If you find a function growing beyond a handful of operations, consider splitting it into smaller pieces — so each has a clear, narrow purpose.</p>
+<h2 id="try-it-yourself"><a class="header" href="#try-it-yourself">Try it yourself</a></h2>
+<p>Write a function <code>run_and_capture</code> with two arities:</p>
+<ul>
+<li><code>run_and_capture(cmd)</code> — runs a shell command and returns the first line of its output. Leaves the shell clean.</li>
+<li><code>run_and_capture(cmd, pattern)</code> — same, but uses a custom regex pattern instead of matching any line. The one-argument version delegates to this one.</li>
+</ul>
+<p>Then write a test that exercises both arities and verifies the return values.</p>
+<hr>
+<p>Next: <a href="09-timeouts.html">Timeouts</a> — control how long Relux waits for output, from individual matches to entire test suites</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="07-regex-matching.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="09-timeouts.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="07-regex-matching.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="09-timeouts.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="highlight-relux-8a60f327.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

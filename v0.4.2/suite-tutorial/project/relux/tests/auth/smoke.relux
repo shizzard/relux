@@ -1,0 +1,26 @@
+import api/http
+import service/auth { url as auth_url, StartAuth }
+
+test "register and login" {
+    """
+    Register a new user, log in with correct and incorrect passwords.
+    """
+    let db_port = available_port()
+    let auth_port = available_port()
+
+    need StartAuth {
+        DB_PORT = db_port
+        AUTH_PORT = auth_port
+    }
+
+    shell client {
+        log("register a new user")
+        http_request(200, auth_url(auth_port, "/register"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
+
+        log("login with correct password")
+        http_request(200, auth_url(auth_port, "/login"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
+
+        log("login with wrong password")
+        http_request(401, auth_url(auth_port, "/login"), "POST", "{\"login\": \"alice\", \"password\": \"wrong\"}")
+    }
+}
