@@ -1,10 +1,10 @@
 {
-  "crates/relux-core": "0.4.0",
-  "crates/relux-ast": "0.4.0",
-  "crates/relux-lexer": "0.4.0",
-  "crates/relux-parser": "0.4.0",
-  "crates/relux-ir": "0.4.0",
-  "crates/relux-resolver": "0.4.0",
-  "crates/relux-runtime": "0.4.0",
-  "crates/relux-cli": "0.4.0"
+  "crates/relux-core": "0.4.1",
+  "crates/relux-ast": "0.4.1",
+  "crates/relux-lexer": "0.4.1",
+  "crates/relux-parser": "0.4.1",
+  "crates/relux-ir": "0.4.1",
+  "crates/relux-resolver": "0.4.1",
+  "crates/relux-runtime": "0.4.1",
+  "crates/relux-cli": "0.4.1"
 }
