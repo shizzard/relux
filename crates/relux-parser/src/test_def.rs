@@ -191,9 +191,18 @@ pub fn def_test<'a>()
         })
     });
 
-    header
+    // Stage 1: header through let — flatten nested tuples and box to break
+    // the deeply nested combinator type that exceeds macOS linker symbol limits.
+    let stage1 = header
         .then(doc_section)
         .then(let_section)
+        .map(|((((markers, name), timeout_opt), docs), lets)| {
+            (markers, name, timeout_opt, docs, lets)
+        })
+        .boxed();
+
+    // Stage 2: remaining sections through final assembly.
+    stage1
         .then(start_section)
         .then(shell_section)
         .then(cleanup_section)
@@ -207,7 +216,7 @@ pub fn def_test<'a>()
         )
         .then_ignore(punctuation_brace_close())
         .map_with(
-            |(((((((markers, name), timeout_opt), docs), lets), starts), shells), cleanup), e| {
+            |((((markers, name, timeout_opt, docs, lets), starts), shells), cleanup), e| {
                 let outer_span = crate::span_from_chumsky(e.span());
 
                 let timeout = timeout_opt;

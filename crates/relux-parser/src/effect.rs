@@ -262,10 +262,17 @@ pub fn def_effect<'a>()
         })
     });
 
-    header
+    // Stage 1: header through start — flatten nested tuples and box to break
+    // the deeply nested combinator type that exceeds macOS linker symbol limits.
+    let stage1 = header
         .then(expect_section)
         .then(let_section)
         .then(start_section)
+        .map(|((((markers, name), expects), lets), starts)| (markers, name, expects, lets, starts))
+        .boxed();
+
+    // Stage 2: remaining sections through final assembly.
+    stage1
         .then(expose_section)
         .then(shell_section)
         .then(cleanup_section)
@@ -279,7 +286,7 @@ pub fn def_effect<'a>()
         )
         .then_ignore(punctuation_brace_close())
         .map_with(
-            |(((((((markers, name), expects), lets), starts), exposes), shells), cleanup), e| {
+            |((((markers, name, expects, lets, starts), exposes), shells), cleanup), e| {
                 let outer_span = crate::span_from_chumsky(e.span());
                 let mut body = Vec::new();
                 for item in expects {
