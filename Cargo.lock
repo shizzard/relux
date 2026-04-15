@@ -877,7 +877,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "relux"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "bs58",
  "chrono",
@@ -903,14 +903,14 @@ dependencies = [
 
 [[package]]
 name = "relux-ast"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "relux-core",
 ]
 
 [[package]]
 name = "relux-core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "ariadne",
  "bs58",
@@ -927,7 +927,7 @@ dependencies = [
 
 [[package]]
 name = "relux-ir"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "regex",
  "relux-ast",
@@ -936,7 +936,7 @@ dependencies = [
 
 [[package]]
 name = "relux-lexer"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "logos",
  "relux-core",
@@ -944,7 +944,7 @@ dependencies = [
 
 [[package]]
 name = "relux-parser"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "chumsky",
  "humantime",
@@ -956,7 +956,7 @@ dependencies = [
 
 [[package]]
 name = "relux-resolver"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "regex",
  "relux-ast",
@@ -968,7 +968,7 @@ dependencies = [
 
 [[package]]
 name = "relux-runtime"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "async-recursion",
  "async-trait",
