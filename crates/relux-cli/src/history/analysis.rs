@@ -367,7 +367,7 @@ pub fn compute_failure_modes(coll: &LoadedRunsCollection) -> Vec<FailureModeEntr
         })
         .collect();
 
-    modes.sort_by(|a, b| b.count.cmp(&a.count));
+    modes.sort_by_key(|m| std::cmp::Reverse(m.count));
     modes
 }
 
