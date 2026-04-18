@@ -20,6 +20,7 @@ mod token;
 mod ws;
 
 pub use error::ParseError;
+use error::SyntaxError;
 
 use chumsky::error::RichPattern;
 use chumsky::error::RichReason;
@@ -119,7 +120,17 @@ pub fn parse(source: &str) -> Result<relux_ast::AstModule, ParseError> {
         .parse(input)
         .into_result()
         .map_err(|errs| {
-            let msgs: Vec<String> = errs.iter().map(format_rich_error).collect();
-            ParseError::Multiple(msgs.join("; "))
+            // No recovery combinators are used, so chumsky always produces exactly one error.
+            assert_eq!(
+                errs.len(),
+                1,
+                "expected exactly one parse error without recovery"
+            );
+            let err = errs.into_iter().next().unwrap();
+            let message = format_rich_error(&err);
+            let span = *err.span();
+            ParseError::Syntax {
+                error: SyntaxError::custom(span, message),
+            }
         })
 }

@@ -273,6 +273,20 @@ test "basic" {
     }
 
     #[test]
+    fn parse_error_span_points_to_mid_source_token() {
+        // Valid prefix, then unexpected token at a known offset
+        let source = "test \"ok\" bogus\n";
+        let err = crate::parse(source).unwrap_err();
+        let bogus_start = source.find("bogus").unwrap();
+        let expected_span = SimpleSpan::from(bogus_start..bogus_start + "bogus".len());
+        assert_eq!(
+            *err.span(),
+            expected_span,
+            "error span should cover the unexpected token"
+        );
+    }
+
+    #[test]
     fn module_with_only_comments() {
         let m = parse_module(
             r#"// first comment
