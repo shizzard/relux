@@ -170,10 +170,10 @@ mod tests {
         let table: SourceTable = SharedTable::new();
         table.insert(
             FileId::new(PathBuf::from("tests/auth/login.relux")),
-            SourceFile {
-                path: PathBuf::from("tests/auth/login.relux"),
-                source: "line1\nline2\nline3\n".to_string(),
-            },
+            SourceFile::new(
+                PathBuf::from("tests/auth/login.relux"),
+                "line1\nline2\nline3\n".to_string(),
+            ),
         );
         table
     }

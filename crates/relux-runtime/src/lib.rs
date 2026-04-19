@@ -698,7 +698,12 @@ async fn run_test(
         default_timeout: run_ctx.default_timeout.clone(),
     };
 
-    let events = EventSink::new(progress_tx.clone(), test_start);
+    let events = EventSink::new(
+        progress_tx.clone(),
+        test_start,
+        tables.sources.clone(),
+        Arc::from(run_ctx.project_root.as_path()),
+    );
 
     let rt_ctx = RuntimeContext {
         events: events.clone(),
@@ -717,7 +722,7 @@ async fn run_test(
     let outcome = run_test_body(meta, test, &test_manager, &mut warnings, &rt_ctx).await;
 
     if outcome.is_err() {
-        events.emit_failure("");
+        events.emit_failure("", None);
     }
 
     // Release effects (always runs, even after cancellation)
@@ -828,7 +833,7 @@ async fn run_test_body(
 
     // 5. Walk IrTestItems (lets already evaluated, starts already instantiated)
     let cleanup_block = test.body().iter().find_map(|item| match item {
-        IrTestItem::Cleanup { block, .. } => Some(block.clone()),
+        IrTestItem::Cleanup { block, span } => Some((block.clone(), span.clone())),
         _ => None,
     });
     let body_result: Result<(), Failure> = async {
@@ -838,12 +843,14 @@ async fn run_test_body(
                 IrTestItem::Start { .. } => continue,
                 IrTestItem::Let { .. } => continue,
                 IrTestItem::Shell { block, .. } => {
+                    let switch_span = block.name().span();
+                    let exit_span = block.span().at_end();
                     if let Some(qualifier) = block.qualifier() {
                         // Qualified shell block: alias.shell { ... }
                         let alias = qualifier.name();
                         let shell_name = block.name().name();
                         let display = format!("{alias}.{shell_name}");
-                        rt_ctx.events.emit_shell_switch(&display);
+                        rt_ctx.events.emit_shell_switch(&display, Some(switch_span));
                         let dep = effect_shells.get(alias).ok_or_else(|| Failure::Runtime {
                             message: format!("unknown effect alias `{alias}`"),
                             span: None,
@@ -857,12 +864,15 @@ async fn run_test_body(
                             shell: None,
                         })?;
                         let mut vm = vm_arc.lock().await;
-                        rt_ctx.events.emit_shell_switch(vm.current_name());
+                        rt_ctx
+                            .events
+                            .emit_shell_switch(vm.current_name(), Some(switch_span));
                         vm.exec_stmts(block.body()).await?;
+                        vm.set_exit_span(exit_span);
                     } else {
                         // Unqualified shell block: shell name { ... }
                         let name = block.name().name().to_string();
-                        rt_ctx.events.emit_shell_switch(&name);
+                        rt_ctx.events.emit_shell_switch(&name, Some(switch_span));
                         if !shells.contains_key(&name) {
                             let shell_state = ShellState::new(name.clone(), None);
                             let ctx = ExecutionContext::new(
@@ -877,8 +887,11 @@ async fn run_test_body(
                         let vm_arc = shells.get(&name).expect("shell just inserted above");
                         let mut vm = vm_arc.lock().await;
                         let display_name = vm.current_name().to_string();
-                        rt_ctx.events.emit_shell_switch(&display_name);
+                        rt_ctx
+                            .events
+                            .emit_shell_switch(&display_name, Some(switch_span));
                         vm.exec_stmts(block.body()).await?;
+                        vm.set_exit_span(exit_span);
                     }
                 }
                 IrTestItem::Cleanup { .. } => continue,
@@ -898,8 +911,8 @@ async fn run_test_body(
     }
 
     // 7. Run test cleanup (fresh shell, best-effort)
-    if let Some(cleanup) = &cleanup_block {
-        rt_ctx.events.emit_cleanup("__cleanup");
+    if let Some((cleanup, cleanup_span)) = &cleanup_block {
+        rt_ctx.events.emit_cleanup("__cleanup", Some(cleanup_span));
         let shell_state = ShellState::new("__cleanup".to_string(), None);
         let ctx = ExecutionContext::new(
             scope.clone(),
@@ -913,9 +926,11 @@ async fn run_test_body(
         match Vm::new("__cleanup".to_string(), ctx, &cleanup_rt_ctx).await {
             Ok(mut cleanup_vm) => {
                 if let Err(failure) = cleanup_vm.exec_stmts(cleanup.body()).await {
-                    rt_ctx
-                        .events
-                        .emit_warning("__cleanup", "test cleanup failed");
+                    rt_ctx.events.emit_warning(
+                        "__cleanup",
+                        "test cleanup failed",
+                        Some(cleanup_span),
+                    );
                     warnings.push(Warning::CleanupFailed {
                         source: CleanupSource::Test,
                         failure,
@@ -924,9 +939,11 @@ async fn run_test_body(
                 cleanup_vm.shutdown().await;
             }
             Err(e) => {
-                rt_ctx
-                    .events
-                    .emit_warning("__cleanup", "failed to spawn cleanup shell");
+                rt_ctx.events.emit_warning(
+                    "__cleanup",
+                    "failed to spawn cleanup shell",
+                    Some(cleanup_span),
+                );
                 warnings.push(Warning::CleanupFailed {
                     source: CleanupSource::Test,
                     failure: Failure::Runtime {

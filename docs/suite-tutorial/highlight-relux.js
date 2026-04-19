@@ -23,7 +23,8 @@ hljs.registerLanguage("relux", function(hljs) {
 
   var DOCSTRING = {
     className: "string",
-    begin: '"""', end: '"""'
+    begin: '"""', end: '"""',
+    contains: []
   };
 
   var COMMENT = hljs.COMMENT("//", "$");

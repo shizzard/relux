@@ -91,12 +91,12 @@ impl Bif for Sleep {
         let duration = humantime::parse_duration(args[0].trim())
             .map_err(|_| runtime_error(format!("invalid duration: `{}`", args[0]), span))?;
         let shell = vm.current_name();
-        vm.events.emit_sleep_start(&shell, duration);
+        vm.events.emit_sleep_start(&shell, duration, Some(span));
         tokio::select! {
             _ = tokio::time::sleep(duration) => {}
             _ = vm.cancel.cancelled() => {
                 let shell = vm.current_name();
-                vm.events.emit_sleep_done(&shell);
+                vm.events.emit_sleep_done(&shell, Some(span));
                 return Err(Failure::Cancelled {
                     span: Some(span.clone()),
                     shell: Some(shell),
@@ -104,7 +104,7 @@ impl Bif for Sleep {
             }
         }
         let shell = vm.current_name();
-        vm.events.emit_sleep_done(&shell);
+        vm.events.emit_sleep_done(&shell, Some(span));
         Ok(String::new())
     }
 }
@@ -120,15 +120,10 @@ impl Bif for Annotate {
         1
     }
 
-    async fn call(
-        &self,
-        vm: &mut Vm,
-        args: Vec<String>,
-        _span: &IrSpan,
-    ) -> Result<String, Failure> {
+    async fn call(&self, vm: &mut Vm, args: Vec<String>, span: &IrSpan) -> Result<String, Failure> {
         let text = args[0].clone();
         let shell = vm.current_name();
-        vm.events.emit_annotate(&shell, &text);
+        vm.events.emit_annotate(&shell, &text, Some(span));
         Ok(text)
     }
 }
@@ -144,15 +139,10 @@ impl Bif for Log {
         1
     }
 
-    async fn call(
-        &self,
-        vm: &mut Vm,
-        args: Vec<String>,
-        _span: &IrSpan,
-    ) -> Result<String, Failure> {
+    async fn call(&self, vm: &mut Vm, args: Vec<String>, span: &IrSpan) -> Result<String, Failure> {
         let message = args[0].clone();
         let shell = vm.current_name();
-        vm.events.emit_log(&shell, &message);
+        vm.events.emit_log(&shell, &message, Some(span));
         Ok(message)
     }
 }

@@ -24,3 +24,4 @@ bytes           = { workspace = true }
 futures         = { workspace = true }
 terminal_size   = { workspace = true }
 humantime       = { workspace = true }
+flate2          = { workspace = true }

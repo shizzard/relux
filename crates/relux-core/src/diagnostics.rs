@@ -60,6 +60,12 @@ impl IrSpan {
     pub fn span(&self) -> &Span {
         &self.span
     }
+
+    /// Returns a zero-width span pointing to the end of this span.
+    pub fn at_end(&self) -> Self {
+        let end = self.span.end();
+        Self::new(self.file.clone(), Span::new(end, end))
+    }
 }
 
 // ─── FnId ───────────────────────────────────────────────────

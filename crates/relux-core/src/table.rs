@@ -104,6 +104,33 @@ impl FileId {
 pub struct SourceFile {
     pub path: PathBuf,
     pub source: String,
+    line_offsets: Vec<usize>,
+}
+
+impl SourceFile {
+    pub fn new(path: PathBuf, source: String) -> Self {
+        let line_offsets = build_line_offsets(&source);
+        Self {
+            path,
+            source,
+            line_offsets,
+        }
+    }
+
+    /// Returns the 1-based line number for a byte offset.
+    pub fn line_at(&self, byte_offset: usize) -> usize {
+        self.line_offsets.partition_point(|&off| off <= byte_offset)
+    }
+}
+
+fn build_line_offsets(source: &str) -> Vec<usize> {
+    let mut offsets = vec![0];
+    for (i, b) in source.bytes().enumerate() {
+        if b == b'\n' {
+            offsets.push(i + 1);
+        }
+    }
+    offsets
 }
 
 // ─── SourceTable ────────────────────────────────────────────
@@ -246,5 +273,31 @@ mod tests {
         let abs = FileId::new(PathBuf::from("/a/b"));
         let rel = FileId::new(PathBuf::from("a/b"));
         assert_ne!(abs, rel);
+    }
+
+    // ── SourceFile ─────────────────────────────────────────
+
+    #[test]
+    fn line_at_single_line() {
+        let sf = SourceFile::new(PathBuf::from("t.relux"), "hello".into());
+        assert_eq!(sf.line_at(0), 1);
+        assert_eq!(sf.line_at(4), 1);
+    }
+
+    #[test]
+    fn line_at_multiple_lines() {
+        // "ab\ncd\nef"
+        //  0123 456 78
+        let sf = SourceFile::new(PathBuf::from("t.relux"), "ab\ncd\nef".into());
+        assert_eq!(sf.line_at(0), 1); // 'a'
+        assert_eq!(sf.line_at(2), 1); // '\n'
+        assert_eq!(sf.line_at(3), 2); // 'c'
+        assert_eq!(sf.line_at(6), 3); // 'e'
+    }
+
+    #[test]
+    fn line_at_empty_source() {
+        let sf = SourceFile::new(PathBuf::from("t.relux"), String::new());
+        assert_eq!(sf.line_at(0), 1);
     }
 }

@@ -88,6 +88,7 @@ pub struct Vm {
     shell_prompt: String,
     pub(crate) cancel: CancellationToken,
     flaky_timeout_multiplier: f64,
+    exit_span: Option<IrSpan>,
 }
 
 impl Vm {
@@ -127,9 +128,10 @@ impl Vm {
             shell_prompt,
             cancel,
             flaky_timeout_multiplier: rt_ctx.flaky_timeout_multiplier,
+            exit_span: None,
         };
 
-        events.emit_shell_spawn(&shell_name, &shell_command);
+        events.emit_shell_spawn(&shell_name, &shell_command, None);
 
         vm.pty
             .init_prompt(
@@ -164,6 +166,10 @@ impl Vm {
         &self.shell_prompt
     }
 
+    pub fn set_exit_span(&mut self, span: IrSpan) {
+        self.exit_span = Some(span);
+    }
+
     pub async fn exec_stmts(&mut self, stmts: &[IrShellStmt]) -> Result<String, Failure> {
         let mut last = String::new();
         for stmt in stmts {
@@ -185,7 +191,12 @@ impl Vm {
         }
     }
 
-    async fn emit_interpolation(&mut self, expr: &IrInterpolation, result: &str) {
+    async fn emit_interpolation(
+        &mut self,
+        expr: &IrInterpolation,
+        result: &str,
+        span: Option<&IrSpan>,
+    ) {
         if has_interpolation(expr) {
             let mut bindings = Vec::new();
             for part in expr.parts() {
@@ -203,8 +214,13 @@ impl Vm {
                 }
             }
             let shell = self.ctx.current_name();
-            self.events
-                .emit_interpolation(&shell, interpolation_template(expr), result, &bindings);
+            self.events.emit_interpolation(
+                &shell,
+                interpolation_template(expr),
+                result,
+                &bindings,
+                span,
+            );
         }
     }
 
@@ -220,9 +236,9 @@ impl Vm {
                 span: ir_span,
             } => {
                 let pat = interpolate_ir(pattern, &self.ctx).await;
-                self.emit_interpolation(pattern, &pat).await;
+                self.emit_interpolation(pattern, &pat, Some(&span)).await;
                 let shell = self.ctx.current_name();
-                self.events.emit_fail_pattern_set(&shell, &pat);
+                self.events.emit_fail_pattern_set(&shell, &pat, Some(&span));
                 let re = RegexBuilder::new(&pat)
                     .multi_line(true)
                     .crlf(true)
@@ -239,9 +255,9 @@ impl Vm {
             }
             IrShellStmt::FailLiteral { pattern, .. } => {
                 let pat = interpolate_ir(pattern, &self.ctx).await;
-                self.emit_interpolation(pattern, &pat).await;
+                self.emit_interpolation(pattern, &pat, Some(&span)).await;
                 let shell = self.ctx.current_name();
-                self.events.emit_fail_pattern_set(&shell, &pat);
+                self.events.emit_fail_pattern_set(&shell, &pat, Some(&span));
                 let fp = Some(FailPattern::Literal(pat));
                 self.ctx.set_fail_pattern(fp);
                 self.check_fail(span).await?;
@@ -249,7 +265,7 @@ impl Vm {
             }
             IrShellStmt::ClearFailPattern { .. } => {
                 let shell = self.ctx.current_name();
-                self.events.emit_fail_pattern_cleared(&shell);
+                self.events.emit_fail_pattern_cleared(&shell, Some(&span));
                 self.ctx.set_fail_pattern(None);
                 Ok(String::new())
             }
@@ -259,7 +275,7 @@ impl Vm {
                 let new_timeout = format!("{:?}", self.ctx.timeout());
                 let shell = self.ctx.current_name();
                 self.events
-                    .emit_timeout_set(&shell, &new_timeout, &previous);
+                    .emit_timeout_set(&shell, &new_timeout, &previous, Some(&span));
                 Ok(String::new())
             }
             IrShellStmt::Let { stmt: let_stmt, .. } => {
@@ -270,7 +286,7 @@ impl Vm {
                 };
                 let shell = self.ctx.current_name();
                 self.events
-                    .emit_var_let(&shell, let_stmt.name().name(), &value);
+                    .emit_var_let(&shell, let_stmt.name().name(), &value, Some(&span));
                 self.ctx
                     .let_insert(let_stmt.name().name().to_string(), value.clone());
                 Ok(value)
@@ -290,25 +306,25 @@ impl Vm {
                 }
                 let shell = self.ctx.current_name();
                 self.events
-                    .emit_var_assign(&shell, assign.name().name(), &value);
+                    .emit_var_assign(&shell, assign.name().name(), &value, Some(&span));
                 Ok(value)
             }
             IrShellStmt::Expr { expr, .. } => self.eval_expr(expr).await,
             IrShellStmt::Send { payload, .. } => {
                 let data = interpolate_ir(payload, &self.ctx).await;
-                self.emit_interpolation(payload, &data).await;
+                self.emit_interpolation(payload, &data, Some(&span)).await;
                 self.send_bytes(format!("{data}\n").as_bytes(), span.clone())
                     .await?;
                 let shell = self.ctx.current_name();
-                self.events.emit_send(&shell, &data);
+                self.events.emit_send(&shell, &data, Some(&span));
                 Ok(data)
             }
             IrShellStmt::SendRaw { payload, .. } => {
                 let data = interpolate_ir(payload, &self.ctx).await;
-                self.emit_interpolation(payload, &data).await;
+                self.emit_interpolation(payload, &data, Some(&span)).await;
                 self.send_bytes(data.as_bytes(), span.clone()).await?;
                 let shell = self.ctx.current_name();
-                self.events.emit_send(&shell, &data);
+                self.events.emit_send(&shell, &data, Some(&span));
                 Ok(data)
             }
             IrShellStmt::MatchLiteral { pattern, .. } => {
@@ -317,11 +333,14 @@ impl Vm {
                     .timeout()
                     .adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
                 let pat = interpolate_ir(pattern, &self.ctx).await;
-                self.emit_interpolation(pattern, &pat).await;
+                self.emit_interpolation(pattern, &pat, Some(&span)).await;
                 let shell = self.ctx.current_name();
-                self.events.emit_match_start(&shell, &pat, false);
+                self.events
+                    .emit_match_start(&shell, &pat, false, Some(&span));
                 let match_start = Instant::now();
-                let (mat, snapshot) = self.wait_consume_literal(&pat, timeout, span).await?;
+                let (mat, snapshot) = self
+                    .wait_consume_literal(&pat, timeout, span.clone())
+                    .await?;
                 let shell = self.ctx.current_name();
                 self.events.emit_match_done(
                     &shell,
@@ -329,6 +348,7 @@ impl Vm {
                     match_start.elapsed(),
                     snapshot,
                     None,
+                    Some(&span),
                 );
                 Ok(pat)
             }
@@ -338,7 +358,7 @@ impl Vm {
                     .timeout()
                     .adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
                 let pat = interpolate_ir(pattern, &self.ctx).await;
-                self.emit_interpolation(pattern, &pat).await;
+                self.emit_interpolation(pattern, &pat, Some(&span)).await;
                 let re = RegexBuilder::new(&pat)
                     .multi_line(true)
                     .crlf(true)
@@ -349,7 +369,8 @@ impl Vm {
                         shell: Some(self.ctx.current_name().to_string()),
                     })?;
                 let shell = self.ctx.current_name();
-                self.events.emit_match_start(&shell, &pat, true);
+                self.events
+                    .emit_match_start(&shell, &pat, true, Some(&span));
                 let match_start = Instant::now();
                 let (mat, snapshot) = self
                     .wait_consume_regex(&pat, &re, timeout, span.clone())
@@ -363,6 +384,7 @@ impl Vm {
                     match_start.elapsed(),
                     snapshot,
                     Some(captures.clone()),
+                    Some(&span),
                 );
                 self.set_captures_from_map(captures);
                 Ok(full)
@@ -372,11 +394,12 @@ impl Vm {
             } => {
                 let dur = timeout.adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
                 let pat = interpolate_ir(pattern, &self.ctx).await;
-                self.emit_interpolation(pattern, &pat).await;
+                self.emit_interpolation(pattern, &pat, Some(&span)).await;
                 let shell = self.ctx.current_name();
-                self.events.emit_match_start(&shell, &pat, false);
+                self.events
+                    .emit_match_start(&shell, &pat, false, Some(&span));
                 let match_start = Instant::now();
-                let (mat, snapshot) = self.wait_consume_literal(&pat, dur, span).await?;
+                let (mat, snapshot) = self.wait_consume_literal(&pat, dur, span.clone()).await?;
                 let shell = self.ctx.current_name();
                 self.events.emit_match_done(
                     &shell,
@@ -384,6 +407,7 @@ impl Vm {
                     match_start.elapsed(),
                     snapshot,
                     None,
+                    Some(&span),
                 );
                 Ok(pat)
             }
@@ -392,7 +416,7 @@ impl Vm {
             } => {
                 let dur = timeout.adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
                 let pat = interpolate_ir(pattern, &self.ctx).await;
-                self.emit_interpolation(pattern, &pat).await;
+                self.emit_interpolation(pattern, &pat, Some(&span)).await;
                 let re = RegexBuilder::new(&pat)
                     .multi_line(true)
                     .crlf(true)
@@ -403,7 +427,8 @@ impl Vm {
                         shell: Some(self.ctx.current_name().to_string()),
                     })?;
                 let shell = self.ctx.current_name();
-                self.events.emit_match_start(&shell, &pat, true);
+                self.events
+                    .emit_match_start(&shell, &pat, true, Some(&span));
                 let match_start = Instant::now();
                 let (mat, snapshot) = self
                     .wait_consume_regex(&pat, &re, dur, span.clone())
@@ -417,6 +442,7 @@ impl Vm {
                     match_start.elapsed(),
                     snapshot,
                     Some(captures.clone()),
+                    Some(&span),
                 );
                 self.set_captures_from_map(captures);
                 Ok(full)
@@ -424,7 +450,7 @@ impl Vm {
             IrShellStmt::BufferReset { .. } => {
                 let snapshot = self.pty.output_buf.snapshot_tail(BUFFER_TAIL_LEN).await;
                 let shell = self.ctx.current_name();
-                self.events.emit_buffer_reset(&shell, snapshot);
+                self.events.emit_buffer_reset(&shell, snapshot, Some(&span));
                 self.pty.output_buf.clear().await;
                 Ok(String::new())
             }
@@ -447,9 +473,9 @@ impl Vm {
         match expr {
             IrExpr::String { value, .. } => {
                 let result = interpolate_ir(value, &self.ctx).await;
-                self.emit_interpolation(value, &result).await;
+                self.emit_interpolation(value, &result, Some(&span)).await;
                 let shell = self.ctx.current_name();
-                self.events.emit_string_eval(&shell, &result);
+                self.events.emit_string_eval(&shell, &result, Some(&span));
                 Ok(result)
             }
             IrExpr::Var { name, .. } => Ok(self.ctx.lookup(name).await.unwrap_or_default()),
@@ -485,7 +511,8 @@ impl Vm {
                         .map(|(p, v)| (p.name().to_string(), v.clone()))
                         .collect();
                     let shell = self.ctx.current_name();
-                    self.events.emit_fn_enter(&shell, &fn_name, &named_args);
+                    self.events
+                        .emit_fn_enter(&shell, &fn_name, &named_args, Some(span));
                     let pre_timeout = format!("{:?}", self.ctx.timeout());
                     let pre_fail = self.ctx.fail_pattern().map(|p| format!("{p:?}"));
                     self.ctx
@@ -518,6 +545,7 @@ impl Vm {
                         } else {
                             None
                         },
+                        Some(span),
                     );
                     return Ok(last);
                 }
@@ -531,7 +559,7 @@ impl Vm {
                             .collect();
                         let shell = self.ctx.current_name();
                         self.events
-                            .emit_fn_enter(&shell, &fn_name, &positional_args);
+                            .emit_fn_enter(&shell, &fn_name, &positional_args, Some(span));
                         let result = bif.call(self, evaluated_args, span).await;
                         let return_value = result.clone().unwrap_or_default();
                         let shell = self.ctx.current_name();
@@ -541,6 +569,7 @@ impl Vm {
                             &return_value,
                             None::<&str>,
                             None::<&str>,
+                            Some(span),
                         );
                         return result;
                     }
@@ -568,7 +597,8 @@ impl Vm {
                     .collect(),
             };
             let shell = self.ctx.current_name();
-            self.events.emit_fn_enter(&shell, &fn_name, &named_args);
+            self.events
+                .emit_fn_enter(&shell, &fn_name, &named_args, Some(span));
             let return_value = relux_ir::evaluator::eval_pure_fn(
                 ir_fn,
                 evaluated_args,
@@ -576,8 +606,14 @@ impl Vm {
                 &self.tables.pure_fns,
             );
             let shell = self.ctx.current_name();
-            self.events
-                .emit_fn_exit(&shell, &fn_name, &return_value, None::<&str>, None::<&str>);
+            self.events.emit_fn_exit(
+                &shell,
+                &fn_name,
+                &return_value,
+                None::<&str>,
+                None::<&str>,
+                Some(span),
+            );
             return Ok(return_value);
         }
 
@@ -596,7 +632,8 @@ impl Vm {
 
     pub async fn match_literal(&mut self, pattern: &str, span: &IrSpan) -> Result<String, Failure> {
         let shell = self.ctx.current_name();
-        self.events.emit_match_start(&shell, pattern, false);
+        self.events
+            .emit_match_start(&shell, pattern, false, Some(span));
         let match_start = Instant::now();
         let timeout = self
             .ctx
@@ -606,8 +643,14 @@ impl Vm {
             .wait_consume_literal(pattern, timeout, span.clone())
             .await?;
         let shell = self.ctx.current_name();
-        self.events
-            .emit_match_done(&shell, &mat.value.0, match_start.elapsed(), snapshot, None);
+        self.events.emit_match_done(
+            &shell,
+            &mat.value.0,
+            match_start.elapsed(),
+            snapshot,
+            None,
+            Some(span),
+        );
         Ok(pattern.to_string())
     }
 
@@ -615,7 +658,7 @@ impl Vm {
         self.send_bytes(format!("{line}\n").as_bytes(), span.clone())
             .await?;
         let shell = self.ctx.current_name();
-        self.events.emit_send(&shell, line);
+        self.events.emit_send(&shell, line, Some(span));
         Ok(())
     }
 
@@ -626,7 +669,7 @@ impl Vm {
             .map(|b| format!("\\x{b:02x}"))
             .collect::<String>();
         let shell = self.ctx.current_name();
-        self.events.emit_send(&shell, &display);
+        self.events.emit_send(&shell, &display, Some(span));
         Ok(())
     }
 
@@ -675,7 +718,8 @@ impl Vm {
             Err(_) => {
                 let shell = self.ctx.current_name();
                 let buffer = self.pty.output_buf.snapshot_tail(BUFFER_TAIL_LEN).await;
-                self.events.emit_timeout(&shell, pattern, buffer);
+                self.events
+                    .emit_timeout(&shell, pattern, buffer, Some(&span));
                 Err(Failure::MatchTimeout {
                     pattern: pattern.to_string(),
                     span,
@@ -729,7 +773,8 @@ impl Vm {
             Err(_) => {
                 let shell = self.ctx.current_name();
                 let buffer = self.pty.output_buf.snapshot_tail(BUFFER_TAIL_LEN).await;
-                self.events.emit_timeout(&shell, pattern, buffer);
+                self.events
+                    .emit_timeout(&shell, pattern, buffer, Some(&span));
                 Err(Failure::MatchTimeout {
                     pattern: pattern.to_string(),
                     span,
@@ -750,8 +795,13 @@ impl Vm {
     async fn make_fail_pattern_error(&self, hit: FailPatternHit, span: IrSpan) -> Failure {
         let shell = self.ctx.current_name();
         let buffer = self.pty.output_buf.snapshot_tail(BUFFER_TAIL_LEN).await;
-        self.events
-            .emit_fail_pattern_triggered(&shell, &hit.pattern, &hit.matched_text, buffer);
+        self.events.emit_fail_pattern_triggered(
+            &shell,
+            &hit.pattern,
+            &hit.matched_text,
+            buffer,
+            Some(&span),
+        );
         Failure::FailPatternMatched {
             pattern: hit.pattern,
             matched_line: hit.matched_text,
@@ -773,7 +823,8 @@ impl Vm {
 
     pub async fn shutdown(&mut self) {
         let shell = self.ctx.current_name();
-        self.events.emit_shell_terminate(&shell);
+        self.events
+            .emit_shell_terminate(&shell, self.exit_span.as_ref());
         self.pty.shutdown().await;
     }
 }

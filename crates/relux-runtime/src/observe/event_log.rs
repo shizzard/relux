@@ -2,10 +2,17 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
+pub struct SourceLocation {
+    pub file: String,
+    pub line: usize,
+}
+
+#[derive(Debug, Clone)]
 pub struct LogEvent {
     pub timestamp: Duration,
     pub shell: String,
     pub kind: LogEventKind,
+    pub location: Option<SourceLocation>,
 }
 
 #[derive(Debug, Clone)]

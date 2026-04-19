@@ -70,13 +70,7 @@ pub fn load_modules(
         let file_id = FileId::new(file_path.clone());
 
         // Store source
-        source_table.insert(
-            file_id.clone(),
-            SourceFile {
-                path: file_path,
-                source: source.clone(),
-            },
-        );
+        source_table.insert(file_id.clone(), SourceFile::new(file_path, source.clone()));
 
         // Parse
         match relux_parser::parse(&source) {

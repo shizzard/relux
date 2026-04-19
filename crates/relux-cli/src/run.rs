@@ -185,6 +185,13 @@ pub async fn cmd_run(matches: &clap::ArgMatches) {
     // HTML run summary (index.html)
     relux_runtime::report::html::generate_run_summary(&run_dir, &results);
 
+    // Source pages (copy + syntax-highlighted HTML)
+    relux_runtime::report::html::generate_source_pages(
+        &run_dir,
+        &suite.tables.sources,
+        &project_root,
+    );
+
     // Optional artifact formats
     let suite_name = cfg.name.as_deref().unwrap_or("relux");
     if matches.get_flag("tap") {

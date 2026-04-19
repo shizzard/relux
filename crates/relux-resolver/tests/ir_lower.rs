@@ -1361,10 +1361,7 @@ fn into_suite_transfers_source_table() {
     let fid = test_file_id();
     source_table.insert(
         fid.clone(),
-        SourceFile {
-            path: PathBuf::from("/test/file.relux"),
-            source: "// test".into(),
-        },
+        SourceFile::new(PathBuf::from("/test/file.relux"), "// test".into()),
     );
 
     let ctx = LoweringContext::new(

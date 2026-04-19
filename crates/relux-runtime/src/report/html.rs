@@ -4,6 +4,8 @@ use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
+use relux_core::table::SourceTable;
+
 use crate::observe::event_log::BufferSnapshot;
 use crate::observe::event_log::LogEvent;
 use crate::observe::event_log::LogEventKind;
@@ -49,6 +51,8 @@ table.log td.buf{width:80ch;min-width:80ch;max-width:80ch;white-space:pre-wrap;w
 .buf-box{padding:2px 6px;border:1px solid var(--tbl-border);border-radius:3px;display:block;
 width:100%;min-height:100%;box-sizing:border-box}
 .buf-skip{color:var(--muted)}.buf-match{color:var(--recv)}
+table.log td.loc{white-space:nowrap;color:var(--muted)}
+table.log td.loc a{color:var(--muted);text-decoration:underline}
 "#;
 
 fn fmt_duration(d: &Duration) -> String {
@@ -284,6 +288,24 @@ fn render_buffer(kind: &LogEventKind) -> String {
     format!("<span class=\"buf-box\">{inner}</span>")
 }
 
+fn render_loc_cell(event: &LogEvent, log_dir: &Path, run_dir: &Path) -> String {
+    let Some(loc) = &event.location else {
+        return "<td class=\"loc\"></td>".to_string();
+    };
+    // Compute relative path from log_dir to run_dir/source/{file}.html
+    let depth = log_dir
+        .strip_prefix(run_dir)
+        .map(|p| p.components().count())
+        .unwrap_or(0);
+    let up = "../".repeat(depth);
+    let href = format!("{up}source/{}.html#L{}", loc.file, loc.line);
+    format!(
+        "<td class=\"loc\"><a href=\"{}\">{}</a></td>",
+        html_escape(&href),
+        html_escape(&format!("{}:{}", loc.file, loc.line))
+    )
+}
+
 fn html_header(title: &str, extra_head: &str) -> String {
     format!(
         "<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\">\
@@ -376,10 +398,17 @@ pub fn generate_html_logs(log_dir: &Path, test_name: &str, events: &[LogEvent], 
     let shells = collect_shells(events);
     let shell_event_indices = build_shell_event_indices(events, &shells);
 
-    generate_test_event_log(log_dir, test_name, events, &shells, &shell_event_indices);
+    generate_test_event_log(
+        log_dir,
+        test_name,
+        events,
+        &shells,
+        &shell_event_indices,
+        _run_dir,
+    );
 
     for shell in &shells {
-        generate_shell_log(log_dir, shell, events, &shell_event_indices);
+        generate_shell_log(log_dir, shell, events, &shell_event_indices, _run_dir);
     }
 }
 
@@ -424,6 +453,7 @@ fn generate_test_event_log(
     events: &[LogEvent],
     _shells: &[String],
     shell_event_indices: &[usize],
+    run_dir: &Path,
 ) {
     let mut html = html_header(&format!("test: {test_name}"), "");
     let _ = writeln!(html, "<h1>Test: {}</h1>", html_escape(test_name));
@@ -464,10 +494,11 @@ fn generate_test_event_log(
 
         let buf_html = render_buffer(&event.kind);
         let buf_cell = format!("<td class=\"buf\">{buf_html}</td>");
+        let loc_cell = render_loc_cell(event, log_dir, run_dir);
 
         let _ = writeln!(
             html,
-            "<tr id=\"{anchor}\">{ts_cell}{shell_cell}\
+            "<tr id=\"{anchor}\">{ts_cell}{loc_cell}{shell_cell}\
              <td class=\"{kind_class}\">{type_label}</td>\
              <td class=\"{data_class}\">{data}</td>{buf_cell}</tr>"
         );
@@ -483,6 +514,7 @@ fn generate_shell_log(
     shell: &str,
     events: &[LogEvent],
     shell_event_indices: &[usize],
+    run_dir: &Path,
 ) {
     let mut html = html_header(&format!("shell: {shell}"), "");
     let _ = writeln!(html, "<h1>Shell: {}</h1>", html_escape(shell));
@@ -521,10 +553,11 @@ fn generate_shell_log(
 
         let buf_html = render_buffer(&event.kind);
         let buf_cell = format!("<td class=\"buf\">{buf_html}</td>");
+        let loc_cell = render_loc_cell(event, log_dir, run_dir);
 
         let _ = writeln!(
             html,
-            "<tr id=\"e{shell_idx}\">{ts_cell}\
+            "<tr id=\"e{shell_idx}\">{ts_cell}{loc_cell}\
              <td class=\"{kind_class}\">{type_label}</td>\
              <td class=\"{data_class}\">{data}</td>{buf_cell}</tr>"
         );
@@ -533,4 +566,129 @@ fn generate_shell_log(
     let _ = writeln!(html, "</table>");
     html.push_str(HTML_FOOTER);
     let _ = fs::write(log_dir.join(format!("{shell}.html")), html);
+}
+
+// ─── Source pages ──────────────────────────────────────────
+
+const SOURCE_CSS: &str = r#"
+:root{--bg:#fff;--fg:#222;--line-num:#999;--highlight:#fff3cd;--hl-border:#e0a800;
+--tbl-border:#ddd;--link:#1a6dcc;
+--kw:#1a6dcc;--str:#1a8a3f;--comment:#888;--type:#7e3fba;--num:#d97706;--subst:#cc2222;--meta:#697070;--op:#ab5656}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1a2e;--fg:#d4d4d4;--line-num:#555;
+--highlight:#3a3520;--hl-border:#b8860b;--tbl-border:#333;--link:#5cadff;
+--kw:#5cadff;--str:#4dd87a;--comment:#777;--type:#b87fff;--num:#f59e0b;--subst:#ff5555;--meta:#888;--op:#b87fff}}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:ui-monospace,"Cascadia Code","Fira Code",Menlo,Consolas,monospace;
+font-size:13px;line-height:1.5;background:var(--bg);color:var(--fg);padding:16px}
+h1{font-size:1.1em;margin-bottom:8px;text-align:center}
+a{color:var(--link);text-decoration:none}
+.copy-btn{background:none;border:1px solid var(--tbl-border);border-radius:3px;
+color:var(--muted,#888);cursor:pointer;font-size:0.9em;padding:2px 8px;margin-left:8px;
+font-family:inherit}
+.copy-btn:hover{color:var(--fg)}
+table.source{border-collapse:collapse;width:160ch;margin:0 auto}
+table.source td{padding:0 8px;vertical-align:top}
+table.source td.num{white-space:nowrap;text-align:right;color:var(--line-num);
+user-select:none;-webkit-user-select:none;padding-right:12px;border-right:1px solid var(--tbl-border)}
+table.source td.num a{color:var(--line-num);text-decoration:none}
+table.source td.code{white-space:pre;padding-left:12px}
+table.source tr:target{background:var(--highlight);outline:2px solid var(--hl-border);border-radius:3px}
+pre{margin:0}code{font-family:inherit}
+.hljs{background:transparent!important;padding:0!important}
+.hljs-keyword{color:var(--kw);font-weight:700}
+.hljs-string{color:var(--str)}
+.hljs-comment{color:var(--comment)}
+.hljs-type{color:var(--type)}
+.hljs-number{color:var(--num)}
+.hljs-subst{color:var(--subst)}
+.hljs-meta{color:var(--meta)}
+.hljs-built_in{color:var(--kw)}
+.hljs-symbol,.hljs-template-variable,.hljs-variable{color:var(--op)}
+.hljs-emphasis{font-style:italic}
+.hljs-strong{font-weight:700}
+"#;
+
+const HLJS_CORE_GZ: &[u8] = include_bytes!("../../../../vendor/highlight-11.11.1.min.js.gz");
+const HLJS_RELUX: &str = include_str!("../../../../docs/reference/highlight-relux.js");
+
+fn gunzip(data: &[u8]) -> String {
+    use flate2::read::GzDecoder;
+    use std::io::Read;
+    let mut decoder = GzDecoder::new(data);
+    let mut out = String::new();
+    decoder
+        .read_to_string(&mut out)
+        .expect("gzip decode failed");
+    out
+}
+
+/// Copy source files to `run_dir/source/` and generate syntax-highlighted HTML pages.
+pub fn generate_source_pages(run_dir: &Path, source_table: &SourceTable, project_root: &Path) {
+    let source_dir = run_dir.join("source");
+    let _ = fs::create_dir_all(&source_dir);
+
+    let hljs_core = gunzip(HLJS_CORE_GZ);
+
+    for (file_id, source_file) in source_table.as_vec() {
+        let rel_path = source_file
+            .path
+            .strip_prefix(project_root)
+            .unwrap_or(&source_file.path);
+
+        // Copy raw source file
+        let raw_dest = source_dir.join(rel_path);
+        if let Some(parent) = raw_dest.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let _ = fs::write(&raw_dest, &source_file.source);
+
+        // Generate HTML page
+        let html_dest = source_dir.join(format!("{}.html", rel_path.display()));
+        if let Some(parent) = html_dest.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+
+        let rel_display = rel_path.display().to_string();
+        let _ = file_id; // used only for iteration
+
+        let mut html = String::new();
+        let _ = write!(
+            html,
+            "<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\">\
+             <title>{}</title>\
+             <style>{SOURCE_CSS}</style>\
+             <script>{hljs_core}</script>\
+             <script>{HLJS_RELUX}</script>\
+             </head><body>\n",
+            html_escape(&rel_display)
+        );
+
+        let escaped = html_escape(&rel_display);
+        let js_path = rel_display.replace('\\', "\\\\").replace('\'', "\\'");
+        let _ = writeln!(
+            html,
+            "<h1>{escaped}<button class=\"copy-btn\" onclick=\"var l=location.hash.match(/^#L(\\d+)/);\
+             navigator.clipboard.writeText('{js_path}'+(l?':'+l[1]:''))\
+             .then(()=>{{this.textContent='copied'}}).catch(()=>{{}})\">copy path</button></h1>"
+        );
+        let _ = writeln!(html, "<table class=\"source\">");
+
+        for (i, line) in source_file.source.lines().enumerate() {
+            let n = i + 1;
+            let _ = writeln!(
+                html,
+                "<tr id=\"L{n}\"><td class=\"num\"><a href=\"#L{n}\">{n}</a></td>\
+                 <td class=\"code\"><code class=\"language-relux\">{}</code></td></tr>",
+                html_escape(line)
+            );
+        }
+
+        let _ = writeln!(html, "</table>");
+        let _ = writeln!(
+            html,
+            "<script>document.querySelectorAll('code.language-relux').forEach(el => hljs.highlightElement(el));</script>"
+        );
+        html.push_str(HTML_FOOTER);
+        let _ = fs::write(&html_dest, html);
+    }
 }

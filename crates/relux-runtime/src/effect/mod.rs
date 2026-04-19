@@ -25,6 +25,7 @@ use relux_core::pure::VarScope;
 use relux_ir::IrCleanupBlock;
 use relux_ir::IrEffectItem;
 use relux_ir::IrEffectStart;
+use relux_ir::IrNode;
 use relux_ir::IrPureLetStmt;
 
 // ─── Warning / CleanupSource ────────────────────────────────
@@ -150,7 +151,7 @@ impl EffectManager {
                     Ok(exposed)
                 }
                 Err(failure) => {
-                    self.rt_ctx.events.emit_error("", failure.summary());
+                    self.rt_ctx.events.emit_error("", failure.summary(), None);
                     *guard = EffectSlot::Failed(failure.clone());
                     Err(failure)
                 }
@@ -170,7 +171,7 @@ impl EffectManager {
         evaluated_overlay: Env,
     ) -> Result<EffectHandle, Failure> {
         let effect_name = start.effect().to_string();
-        self.rt_ctx.events.emit_effect_setup("", &effect_name);
+        self.rt_ctx.events.emit_effect_setup("", &effect_name, None);
 
         let effect_result = self
             .rt_ctx
@@ -258,12 +259,16 @@ impl EffectManager {
                 | IrEffectItem::Expose { .. }
                 | IrEffectItem::Let { .. } => continue,
                 IrEffectItem::Shell { block, .. } => {
+                    let switch_span = block.name().span();
+                    let exit_span = block.span().at_end();
                     if let Some(qualifier) = block.qualifier() {
                         // Qualified: alias.shell { ... }
                         let alias = qualifier.name();
                         let shell_name = block.name().name();
                         let display = format!("{alias}.{shell_name}");
-                        self.rt_ctx.events.emit_shell_switch(&display);
+                        self.rt_ctx
+                            .events
+                            .emit_shell_switch(&display, Some(switch_span));
                         let dep = dep_shells.get(alias).ok_or_else(|| Failure::Runtime {
                             message: format!("unknown effect alias `{alias}`"),
                             span: None,
@@ -277,12 +282,17 @@ impl EffectManager {
                             shell: None,
                         })?;
                         let mut vm = vm_arc.lock().await;
-                        self.rt_ctx.events.emit_shell_switch(vm.current_name());
+                        self.rt_ctx
+                            .events
+                            .emit_shell_switch(vm.current_name(), Some(switch_span));
                         vm.exec_stmts(block.body()).await?;
+                        vm.set_exit_span(exit_span);
                     } else {
                         // Unqualified: shell name { ... }
                         let name = block.name().name().to_string();
-                        self.rt_ctx.events.emit_shell_switch(&name);
+                        self.rt_ctx
+                            .events
+                            .emit_shell_switch(&name, Some(switch_span));
                         if !shells.contains_key(&name) {
                             let shell_state = ShellState::new(name.clone(), None);
                             let ctx = ExecutionContext::new(
@@ -297,8 +307,11 @@ impl EffectManager {
                         let vm_arc = shells.get(&name).expect("shell just inserted above");
                         let mut vm = vm_arc.lock().await;
                         let display_name = vm.current_name().to_string();
-                        self.rt_ctx.events.emit_shell_switch(&display_name);
+                        self.rt_ctx
+                            .events
+                            .emit_shell_switch(&display_name, Some(switch_span));
                         vm.exec_stmts(block.body()).await?;
+                        vm.set_exit_span(exit_span);
                     }
                 }
                 IrEffectItem::Cleanup { block, .. } => {
@@ -462,7 +475,9 @@ impl EffectManager {
                 if *refcount == 0 {
                     let effect_name = handle.scope.name().to_string();
 
-                    self.rt_ctx.events.emit_effect_teardown("", &effect_name);
+                    self.rt_ctx
+                        .events
+                        .emit_effect_teardown("", &effect_name, None);
 
                     // 1. Shut down all VMs (exposed and non-exposed, deduplicated)
                     let mut seen = HashSet::new();
@@ -475,13 +490,17 @@ impl EffectManager {
 
                     // 2. Run cleanup block in fresh shell (best-effort)
                     if let Some(cleanup_block) = &handle.cleanup {
-                        self.rt_ctx.events.emit_cleanup("__cleanup");
+                        let cleanup_span = cleanup_block.span();
+                        self.rt_ctx
+                            .events
+                            .emit_cleanup("__cleanup", Some(cleanup_span));
                         let cleanup_result =
                             self.run_cleanup_block(cleanup_block, &handle.scope).await;
                         if let Err(failure) = cleanup_result {
                             self.rt_ctx.events.emit_warning(
                                 "__cleanup",
                                 format!("effect {effect_name} cleanup failed"),
+                                Some(cleanup_span),
                             );
                             warnings.push(Warning::CleanupFailed {
                                 source: CleanupSource::Effect { name: effect_name },
