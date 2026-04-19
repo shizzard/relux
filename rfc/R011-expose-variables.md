@@ -6,7 +6,7 @@
 
 ## Abstract
 
-Extend effect `expose` declarations to support variables in addition to shells. Introduce enforced naming conventions across the DSL — SCREAMING_SNAKE_CASE for all variables, CamelCase for effects and effect aliases, snake_case for functions and shells — which allows the parser to unambiguously determine whether an `expose` target is a shell or a variable by its casing.
+Extend effect `expose` declarations to support variables in addition to shells. Introduce an explicit `shell`/`var` keyword in `expose` to disambiguate the target type. Enforce CamelCase for effect aliases (the `as` target in `start` declarations), aligning them with effect naming conventions.
 
 ## Motivation
 
@@ -29,91 +29,82 @@ effect CreateBucket {
 test "use bucket" {
     start CreateBucket as Bucket
     
-    let BUCKET_NAME
+    let bucket_name
 
     shell Bucket.service {
         # have to extract the bucket name from the shell that created it
-        > echo ${BUCKET_NAME}
+        > echo ${bucket_name}
         <= echo
         <? ^(.*)$
-        BUCKET_NAME = $1
+        bucket_name = $1
     }
 
     shell client {
-        > upload --bucket ${BUCKET_NAME} ...
+        > upload --bucket ${bucket_name} ...
     }
 }
 ```
 
 This is fragile: the effect must export the value into the shell's environment, and the test must switch into that shell, echo it out, capture it with a regex, and assign it to a local variable — all before the value can be used. And the value is only available after that extraction sequence, not from the moment the effect is started. What we want is for the effect to declare certain computed values as part of its public interface, just as it declares shells.
 
-### Ambiguous naming conventions
+### Ambiguous expose targets
 
-The DSL currently enforces CamelCase for effects and snake_case for functions, but variables accept any casing — `my_var`, `MyVar`, and `MY_VAR` are all valid. This permissiveness means that `expose something` cannot be parsed unambiguously: is `something` a shell or a variable?
-
-Establishing a strict three-way naming convention solves this and brings consistency to the language.
+The `expose` declaration currently accepts a bare identifier. When we extend it to support variables, `expose something` becomes ambiguous: is `something` a shell or a variable? Rather than restricting variable naming conventions (which would be a large, ergonomically costly breaking change), we solve this by requiring an explicit keyword.
 
 ### Effect alias casing
 
-Effect aliases (the name after `as` in `start Effect as alias`) currently use the permissive variable identifier rules. Since an alias names an effect instance — not a shell, function, or variable — it should follow the same convention as effects: CamelCase.
+Effect aliases (the name after `as` in `start Effect as Alias`) currently use the permissive variable identifier rules. Since an alias names an effect instance — not a shell, function, or variable — it should follow the same convention as effects: CamelCase.
 
 ## Proposal
 
-### Enforced naming conventions
+### Naming conventions
 
-All identifiers in the DSL must follow one of three naming conventions:
+The DSL enforces the following naming conventions:
 
 | Convention | Applies to | Examples |
 |---|---|---|
 | CamelCase | Effects, effect aliases | `Db`, `StartAuth`, `start Node as Primary` |
 | snake_case | Functions, shells | `curl()`, `http_request()`, `shell service` |
-| SCREAMING_SNAKE_CASE | Variables (`let`, `expect`, function parameters) | `let PORT`, `expect DB_HOST`, `fn curl(URL, METHOD)` |
+| Permissive | Variables (`let`, `expect`, function parameters) | `let port`, `let PORT`, `let db_host` |
 
-This is a breaking change. All existing `let` bindings, function parameters, and `expect` declarations must be updated to SCREAMING_SNAKE_CASE. All effect aliases must be updated to CamelCase.
+Variable identifiers remain permissive (any alphanumeric + underscore, starting with a letter or underscore), matching current behavior. The only naming change is that effect aliases must now be CamelCase.
 
-A side benefit: SCREAMING_SNAKE_CASE for variables places them in the same visual group as environment variables. Since environment variables form the bottom layer of the variable scope (the `LayeredEnv` chain), this makes the relationship transparent — `${DB_PORT}` looks the same whether it comes from a `let` binding, an `expect` declaration, or the process environment. The environment is a natural, invisible base layer of the scope rather than a separate naming world.
+### Keyword-disambiguated expose
 
-A trade-off: because `let` bindings and environment variables now share the same casing, the resolver cannot distinguish a typo in a variable name from an intentional read of a process environment variable. A static "undeclared variable" lint becomes impossible. However, this should still be a runtime warning — if a variable reference resolves to neither a `let` binding, an `expect` declaration, a function parameter, nor a set environment variable, the runtime can warn that the interpolation resolved to an empty string.
-
-### Exposing variables from effects
-
-The `expose` declaration is extended to support variables. The parser determines the type of the expose target by its casing:
-
-- **snake_case** target = shell
-- **SCREAMING_SNAKE_CASE** target = variable
+The `expose` declaration requires an explicit `shell` or `var` keyword to specify the target type:
 
 ```relux
 effect CreateBucket {
     expect REGION
-    let BUCKET_ID = uuid()
-    expose service
-    expose BUCKET_ID
+    let bucket_id = uuid()
+    expose shell service
+    expose var bucket_id
 
     shell service {
-        > create-bucket --id ${BUCKET_ID} --region ${REGION}
+        > create-bucket --id ${bucket_id} --region ${REGION}
         <? bucket ready
     }
 }
 ```
 
-`expose service` exposes the shell (snake_case). `expose BUCKET_ID` exposes the `let`-bound variable (SCREAMING_SNAKE_CASE). No additional syntax or keywords are needed — casing is the disambiguator.
+`expose shell service` exposes a shell. `expose var bucket_id` exposes a variable. The keyword removes all ambiguity without imposing naming restrictions on variables.
 
 ### Re-exposing from dependencies
 
-Both shells and variables can be re-exposed from dependencies using the existing dot-access and `as` syntax:
+Both shells and variables can be re-exposed from dependencies using the existing dot-access and `as` syntax, with the `shell`/`var` keyword:
 
 ```relux
 effect FullStack {
     start CreateBucket as Storage
     start StartApi as Api
 
-    expose Api.service as api
-    expose Storage.service as storage
-    expose Storage.BUCKET_ID as BUCKET_ID
+    expose shell Api.service as api
+    expose shell Storage.service as storage
+    expose var Storage.bucket_id as BUCKET_ID
 }
 ```
 
-The casing of the target after the dot determines the type: `Storage.service` (snake_case) is a shell, `Storage.BUCKET_ID` (SCREAMING) is a variable. The `as` alias must match the same convention as the target — shell aliases are snake_case, variable aliases are SCREAMING_SNAKE_CASE.
+The `as` alias must follow the convention of its type — shell aliases are snake_case, variable aliases are permissive.
 
 ### Accessing exposed variables from tests
 
@@ -124,21 +115,21 @@ test "upload to bucket" {
     start FullStack as Stack
 
     shell Stack.api {
-        > upload --bucket ${Stack.BUCKET_ID} file.txt
+        > upload --bucket ${Stack.bucket_id} file.txt
         <= uploaded
     }
 }
 ```
 
-`${Stack.BUCKET_ID}` reads the variable exposed by the `FullStack` effect instance aliased as `Stack`. The same dot-access syntax works in any interpolation context — send, match, let bindings:
+`${Stack.bucket_id}` reads the variable exposed by the `FullStack` effect instance aliased as `Stack`. The same dot-access syntax works in any interpolation context — send, match, let bindings:
 
 ```relux
-    let MY_BUCKET = Stack.BUCKET_ID
+    let my_bucket = Stack.bucket_id
 ```
 
 ### Immutability
 
-Exposed variables are read-only from the caller's perspective. A test or parent effect can read `${Alias.VAR}` but cannot assign to it. The value was computed during effect setup and is fixed for the lifetime of the effect instance.
+Exposed variables are read-only from the caller's perspective. A test or parent effect can read `${Alias.var}` but cannot assign to it. The value was computed during effect setup and is fixed for the lifetime of the effect instance.
 
 ## Examples
 
@@ -147,13 +138,13 @@ Exposed variables are read-only from the caller's perspective. A test or parent 
 ```relux
 effect StartDb {
     expect DB_NAME
-    let PORT = available_port()
-    expose db
-    expose PORT
+    let port = available_port()
+    expose shell db
+    expose var port
 
     shell db {
-        > start-db --port ${PORT} --name ${DB_NAME}
-        <~10s? listening on ${PORT}
+        > start-db --port ${port} --name ${DB_NAME}
+        <~10s? listening on ${port}
     }
 }
 
@@ -168,7 +159,7 @@ test "db health check" {
     }
 
     shell client {
-        > curl http://localhost:${Db.PORT}/status
+        > curl http://localhost:${Db.port}/status
         <? running
     }
 }
@@ -178,17 +169,17 @@ test "db health check" {
 
 ```relux
 effect StartAuth {
-    let AUTH_PORT = available_port()
+    let auth_port = available_port()
     start StartDb as Db {
         DB_NAME = "auth"
     }
-    expose auth
-    expose AUTH_PORT
-    expose Db.PORT as DB_PORT
+    expose shell auth
+    expose var auth_port
+    expose var Db.port as db_port
 
     shell auth {
-        > start-auth --port ${AUTH_PORT} --db-port ${Db.PORT}
-        <~10s? listening on ${AUTH_PORT}
+        > start-auth --port ${auth_port} --db-port ${Db.port}
+        <~10s? listening on ${auth_port}
     }
 }
 
@@ -196,22 +187,22 @@ test "auth uses correct db" {
     start StartAuth as Auth
 
     shell client {
-        > curl http://localhost:${Auth.AUTH_PORT}/config
-        <? db_port: ${Auth.DB_PORT}
+        > curl http://localhost:${Auth.auth_port}/config
+        <? db_port: ${Auth.db_port}
     }
 }
 ```
 
-### Function parameters in SCREAMING_SNAKE_CASE
+### Function parameters
 
 ```relux
-fn http_request(EXPECTED_CODE, URL, METHOD) {
-    > curl -s -o /tmp/response.json -w "%{http_code}" -X ${METHOD} ${URL}
-    <? ^${EXPECTED_CODE}$
+fn http_request(expected_code, url, method) {
+    > curl -s -o /tmp/response.json -w "%{http_code}" -X ${method} ${url}
+    <? ^${expected_code}$
 }
 
-pure fn url(PATH) {
-    "http://localhost:9000${PATH}"
+pure fn url(path) {
+    "http://localhost:9000${path}"
 }
 ```
 
@@ -219,36 +210,36 @@ pure fn url(PATH) {
 
 ```relux
 effect Cluster {
-    expect PORT_PRIMARY, PORT_SECONDARY
+    expect port_primary, port_secondary
 
     start Node as Primary {
-        NODE_PORT = PORT_PRIMARY
-        NODE_NAME = "primary"
+        node_port = port_primary
+        node_name = "primary"
     }
     start Node as Secondary {
-        NODE_PORT = PORT_SECONDARY
-        NODE_NAME = "secondary"
+        node_port = port_secondary
+        node_name = "secondary"
     }
 
-    expose Primary.node as primary
-    expose Secondary.node as secondary
-    expose Primary.NODE_ID as PRIMARY_ID
-    expose Secondary.NODE_ID as SECONDARY_ID
+    expose shell Primary.node as primary
+    expose shell Secondary.node as secondary
+    expose var Primary.node_id as primary_id
+    expose var Secondary.node_id as secondary_id
 }
 
 test "cluster status" {
-    let P1 = available_port()
-    let P2 = available_port()
+    let p1 = available_port()
+    let p2 = available_port()
 
     start Cluster as C {
-        PORT_PRIMARY = P1
-        PORT_SECONDARY = P2
+        port_primary = p1
+        port_secondary = p2
     }
 
     shell C.primary {
         > cluster-info
-        <? primary: ${C.PRIMARY_ID}
-        <? secondary: ${C.SECONDARY_ID}
+        <? primary: ${C.primary_id}
+        <? secondary: ${C.secondary_id}
     }
 }
 ```
@@ -257,8 +248,6 @@ test "cluster status" {
 
 ### Breaking changes
 
-1. **All variables must be SCREAMING_SNAKE_CASE.** Existing `let port`, `expect db_port`, `fn curl(url, method)` must become `let PORT`, `expect DB_PORT`, `fn curl(URL, METHOD)`.
+1. **`expose` requires `shell`/`var` keyword.** Existing `expose service` must become `expose shell service`.
 
 2. **Effect aliases must be CamelCase.** Existing `start Db as db` must become `start Db as Db` (or a more descriptive alias like `start Db as MyDb`).
-
-3. **Variable identifiers** (`is_var_ident` in the parser) must be restricted to SCREAMING_SNAKE_CASE. The current permissive rule (any alphanumeric + underscore) is replaced.
