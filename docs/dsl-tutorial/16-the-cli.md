@@ -4,12 +4,12 @@
 
 This is the final article in the tutorial series. You have come a long way — from your [first test](02-getting-started.md) through [send and match](03-send-match-and-logs.md), [variables](06-variables.md), [functions](08-functions.md), [effects](11-effects-and-dependencies.md), [modules](14-modules-and-imports.md), and [condition markers](15-condition-markers.md). You now know the entire Relux DSL. Congratulations — that is a real achievement.
 
-This article covers the tool that drives everything: the `relux` binary itself. You have already used `relux new`, `relux check`, and `relux run` throughout the series. Here we go deeper into every subcommand, every flag, and the workflows they enable.
+This article covers the tool that drives everything: the `relux` binary itself. You have already used `relux init`, `relux new`, `relux check`, and `relux run` throughout the series. Here we go deeper into every subcommand, every flag, and the workflows they enable.
 
 Here is a typical development cycle, end to end:
 
 ```text
-relux new                           # scaffold a project
+relux init                          # scaffold a project
 relux new --test smoke/login        # create a test module
 # ... write the test ...
 relux check                         # validate without running
@@ -20,12 +20,12 @@ relux history --flaky               # spot intermittent tests
 
 Each of these commands has options that give you precise control over what runs, how it runs, and what output you get.
 
-## `relux new`
+## `relux init`
 
-The `new` subcommand scaffolds projects and modules. Without any flags, it initializes a new Relux project in the current directory:
+The `init` subcommand initializes a new Relux project in the current directory:
 
 ```text
-relux new
+relux init
 ```
 
 This creates:
@@ -40,9 +40,11 @@ relux/
 
 The generated [`Relux.toml`](02-getting-started.md) has all values commented out, showing the defaults. The `.gitignore` excludes `out/` — the directory where test run output goes.
 
-Running `relux new` in a directory that already has a `Relux.toml` is an error. The command will not overwrite an existing project.
+Running `relux init` in a directory that already has a `Relux.toml` is an error. The command will not overwrite an existing project.
 
-### Scaffolding modules
+## `relux new`
+
+The `new` subcommand scaffolds modules. It requires exactly one of `--test`, `--effect`, or `--lib`.
 
 To create a test module:
 
@@ -60,9 +62,17 @@ relux new --effect services/database
 
 This creates `relux/lib/services/database.relux` with a skeleton effect definition. Effect modules go under `relux/lib/`, matching the [module resolution rules](14-modules-and-imports.md) you already know.
 
+To create a library module with function templates:
+
+```text
+relux new --lib utils/helpers
+```
+
+This creates `relux/lib/utils/helpers.relux` with skeleton pure and impure function definitions. Like effect modules, library modules go under `relux/lib/`.
+
 Module paths must follow snake_case rules: lowercase letters, digits, and underscores. Each segment must start with a letter or underscore. The `.relux` extension is added automatically — you do not need to include it.
 
-The `--test` and `--effect` flags are mutually exclusive. You can create one or the other per invocation.
+The `--test`, `--effect`, and `--lib` flags are mutually exclusive. You can create one per invocation.
 
 ## `relux check`
 

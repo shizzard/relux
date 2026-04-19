@@ -38,7 +38,7 @@ You will also need:
 Copy the services scripts into new directory: this will be out "monorepo". Now, from the project root:
 
 ```text
-relux new
+relux init
 ```
 
 This creates `Relux.toml` and the `relux/` directory structure:

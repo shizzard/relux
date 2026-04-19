@@ -7,7 +7,7 @@ Every Relux project requires a `Relux.toml` file at the project root. The `relux
 ### Scaffold a new project
 
 ```text
-relux new
+relux init
 ```
 
 Creates `Relux.toml` and the conventional directory structure in the current directory.
@@ -104,7 +104,7 @@ project-root/
 
 ## CLI reference
 
-### `relux new`
+### `relux init`
 
 Scaffolds a new project in the current directory. Errors if `Relux.toml` already exists.
 
@@ -123,6 +123,14 @@ Creates an effect module file from a template in `relux/lib/`. Same path rules a
 
 ```text
 relux new --effect network/tcp_server       # creates relux/lib/network/tcp_server.relux
+```
+
+### `relux new --lib <module_path>`
+
+Creates a library module file (pure and impure functions) from a template in `relux/lib/`. Same path rules as `--test`.
+
+```text
+relux new --lib utils/helpers               # creates relux/lib/utils/helpers.relux
 ```
 
 ### `relux run [flags]`

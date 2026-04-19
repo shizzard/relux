@@ -8,7 +8,7 @@ Let's go from an empty directory to a passing test. Let's create a new project a
 
 ```text
 mkdir my-project && cd my-project
-relux new
+relux init
 ```
 
 Now scaffold a test:
@@ -32,9 +32,9 @@ That's all it takes: three commands and you have a working test suite. Let's unp
 
 ## Scaffolding a project
 
-Unlike tools such as `cargo new` or `npm init` that create a new project directory, `relux new` works **in the current directory**. This is a deliberate choice — Relux is designed to add integration tests to an existing project, not to create a project from scratch.
+Unlike tools such as `cargo new` or `npm init` that create a new project directory, `relux init` works **in the current directory**. This is a deliberate choice — Relux is designed to add integration tests to an existing project, not to create a project from scratch.
 
-Running `relux new` creates exactly two things at the project root:
+Running `relux init` creates exactly two things at the project root:
 
 ```text
 my-project/
