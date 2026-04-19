@@ -5,6 +5,7 @@ async fn main() {
     let matches = relux::cli().get_matches();
 
     match matches.subcommand() {
+        Some(("init", _)) => relux::init::cmd_init(),
         Some(("new", sub)) => relux::new::cmd_new(sub),
         Some(("run", sub)) => relux::run::cmd_run(sub).await,
         Some(("check", sub)) => relux::check::cmd_check(sub),

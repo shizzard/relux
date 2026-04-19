@@ -3,6 +3,7 @@ pub mod completer;
 pub mod completions;
 pub mod dump;
 pub mod history;
+pub mod init;
 pub mod new;
 pub mod run;
 
@@ -25,6 +26,7 @@ use relux_resolver::discover_test_modules;
 pub enum ModuleKind {
     Test,
     Effect,
+    Lib,
 }
 
 pub fn cli() -> Command {
@@ -32,14 +34,21 @@ pub fn cli() -> Command {
         .about("Relux test runner")
         .subcommand_required(true)
         .subcommand(
+            Command::new("init").about("Initialize a new Relux project in the current directory"),
+        )
+        .subcommand(
             Command::new("new")
-                .about("Scaffold a new Relux project, test, or effect")
+                .about("Scaffold a new test, effect, or library module")
+                .group(
+                    clap::ArgGroup::new("kind")
+                        .args(["test", "effect", "lib"])
+                        .required(true),
+                )
                 .arg(
                     Arg::new("test")
                         .long("test")
                         .help("Create a test module (e.g. foo/bar/baz)")
                         .value_name("MODULE_PATH")
-                        .conflicts_with("effect")
                         .add(ArgValueCompleter::new(completer::complete_test_dirs)),
                 )
                 .arg(
@@ -47,8 +56,14 @@ pub fn cli() -> Command {
                         .long("effect")
                         .help("Create an effect module (e.g. foo/bar/baz)")
                         .value_name("MODULE_PATH")
-                        .conflicts_with("test")
                         .add(ArgValueCompleter::new(completer::complete_effect_dirs)),
+                )
+                .arg(
+                    Arg::new("lib")
+                        .long("lib")
+                        .help("Create a library module (e.g. utils/helpers)")
+                        .value_name("MODULE_PATH")
+                        .add(ArgValueCompleter::new(completer::complete_lib_dirs)),
                 ),
         )
         .subcommand(

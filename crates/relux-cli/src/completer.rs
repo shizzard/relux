@@ -100,6 +100,16 @@ pub fn complete_effect_dirs(_current: &OsStr) -> Vec<CompletionCandidate> {
         .collect()
 }
 
+pub fn complete_lib_dirs(_current: &OsStr) -> Vec<CompletionCandidate> {
+    let Ok((root, _)) = config::discover_project_root() else {
+        return vec![];
+    };
+    find_dirs(&config::lib_dir(&root))
+        .into_iter()
+        .map(|p| CompletionCandidate::new(p.to_string_lossy().into_owned()))
+        .collect()
+}
+
 pub fn complete_manifest(_current: &OsStr) -> Vec<CompletionCandidate> {
     let Ok(cwd) = std::env::current_dir() else {
         return vec![];
