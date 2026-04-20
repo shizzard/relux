@@ -44,7 +44,7 @@ fn preamble<'a>() -> impl Parser<
     let comment_item = leading_ws()
         .ignore_then(comment())
         .map(PreambleItem::Comment);
-    let blank = newline().to(PreambleItem::Blank);
+    let blank = ws().ignore_then(newline()).to(PreambleItem::Blank);
 
     choice((marker_item, comment_item, blank))
         .repeated()
@@ -94,7 +94,7 @@ fn body<'a>()
         .ignore_then(
             stmt()
                 // Fragile: SENTINEL comment must be filtered below — edit with caution.
-                .or(newline().map_with(|_, _| {
+                .or(ws().ignore_then(newline()).map_with(|_, _| {
                     Spanned::new(
                         AstStmt::Comment { text: String::new(), span: SENTINEL },
                         SENTINEL,

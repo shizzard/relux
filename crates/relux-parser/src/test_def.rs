@@ -38,7 +38,7 @@ fn test_preamble<'a>()
 {
     let marker_item = leading_ws().ignore_then(marker());
     let comment_item = leading_ws().ignore_then(comment()).to(());
-    let blank = newline().to(());
+    let blank = ws().ignore_then(newline()).to(());
 
     choice((marker_item.map(Some), comment_item.to(None), blank.to(None)))
         .repeated()
@@ -73,7 +73,7 @@ pub fn def_test<'a>()
     let doc_section = choice((
         doc_item.map(Some),
         doc_comment.map(Some),
-        newline().to(None),
+        ws().ignore_then(newline()).to(None),
     ))
     .repeated()
     .collect::<Vec<_>>()
@@ -92,7 +92,7 @@ pub fn def_test<'a>()
         start_item,
         start_comment,
         // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
-        newline().to(AstTestItem::Comment {
+        ws().ignore_then(newline()).to(AstTestItem::Comment {
             text: String::new(),
             span: SENTINEL,
         }),
@@ -118,7 +118,7 @@ pub fn def_test<'a>()
         let_item,
         let_comment,
         // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
-        newline().to(AstTestItem::Comment {
+        ws().ignore_then(newline()).to(AstTestItem::Comment {
             text: String::new(),
             span: SENTINEL,
         }),
@@ -153,7 +153,7 @@ pub fn def_test<'a>()
         qualified_shell_item,
         shell_comment,
         // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
-        newline().to(AstTestItem::Comment {
+        ws().ignore_then(newline()).to(AstTestItem::Comment {
             text: String::new(),
             span: SENTINEL,
         }),
@@ -177,7 +177,7 @@ pub fn def_test<'a>()
         cleanup_item,
         cleanup_comment,
         // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
-        newline().to(AstTestItem::Comment {
+        ws().ignore_then(newline()).to(AstTestItem::Comment {
             text: String::new(),
             span: SENTINEL,
         }),
@@ -540,6 +540,17 @@ test "my test" {
             .filter(|item| matches!(&item.node, AstTestItem::Comment { .. }))
             .count();
         assert!(comment_count >= 3);
+    }
+
+    #[test]
+    fn test_blank_lines_with_trailing_spaces() {
+        let t = parse_test("test \"my test\" {\n  shell main {\n    > echo hello\n  }\n  \n}\n");
+        let shells: Vec<_> = t
+            .body
+            .iter()
+            .filter(|item| matches!(&item.node, AstTestItem::Shell { .. }))
+            .collect();
+        assert_eq!(shells.len(), 1);
     }
 
     #[test]

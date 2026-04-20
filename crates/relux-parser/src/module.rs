@@ -13,6 +13,7 @@ use super::import::import;
 use super::test_def::def_test;
 use super::ws::leading_ws;
 use super::ws::newline;
+use super::ws::ws;
 use relux_ast::AstItem;
 use relux_ast::AstModule;
 
@@ -68,7 +69,7 @@ pub fn module<'a>()
 -> impl Parser<'a, ParserInput<'a>, AstModule, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     module_item()
         // Fragile: SENTINEL comment must be filtered below — edit with caution.
-        .or(newline().map_with(|_, _| {
+        .or(ws().ignore_then(newline()).map_with(|_, _| {
             Spanned::new(
                 AstItem::Comment { text: String::new(), span: SENTINEL },
                 SENTINEL,

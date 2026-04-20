@@ -41,7 +41,7 @@ fn effect_preamble<'a>()
 {
     let marker_item = leading_ws().ignore_then(marker());
     let comment_item = leading_ws().ignore_then(comment()).to(());
-    let blank = newline().to(());
+    let blank = ws().ignore_then(newline()).to(());
 
     choice((marker_item.map(Some), comment_item.to(None), blank.to(None)))
         .repeated()
@@ -100,7 +100,7 @@ pub fn def_effect<'a>()
         expect_item,
         expect_comment,
         // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
-        newline().to(AstEffectItem::Comment {
+        ws().ignore_then(newline()).to(AstEffectItem::Comment {
             text: String::new(),
             span: SENTINEL,
         }),
@@ -121,7 +121,7 @@ pub fn def_effect<'a>()
         start_item,
         start_comment,
         // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
-        newline().to(AstEffectItem::Comment {
+        ws().ignore_then(newline()).to(AstEffectItem::Comment {
             text: String::new(),
             span: SENTINEL,
         }),
@@ -146,7 +146,7 @@ pub fn def_effect<'a>()
         let_item,
         let_comment,
         // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
-        newline().to(AstEffectItem::Comment {
+        ws().ignore_then(newline()).to(AstEffectItem::Comment {
             text: String::new(),
             span: SENTINEL,
         }),
@@ -245,7 +245,7 @@ pub fn def_effect<'a>()
         expose_item,
         expose_comment,
         // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
-        newline().to(AstEffectItem::Comment {
+        ws().ignore_then(newline()).to(AstEffectItem::Comment {
             text: String::new(),
             span: SENTINEL,
         }),
@@ -280,7 +280,7 @@ pub fn def_effect<'a>()
         qualified_shell_item,
         shell_comment,
         // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
-        newline().to(AstEffectItem::Comment {
+        ws().ignore_then(newline()).to(AstEffectItem::Comment {
             text: String::new(),
             span: SENTINEL,
         }),
@@ -303,7 +303,7 @@ pub fn def_effect<'a>()
         cleanup_item,
         cleanup_comment,
         // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
-        newline().to(AstEffectItem::Comment {
+        ws().ignore_then(newline()).to(AstEffectItem::Comment {
             text: String::new(),
             span: SENTINEL,
         }),
@@ -706,6 +706,19 @@ effect Db {
         assert_eq!(expect.vars[0].node.name, "DB_PORT");
         assert_eq!(expect.vars[1].node.name, "DB_HOST");
         assert_eq!(expect.vars[2].node.name, "DB_NAME");
+    }
+
+    #[test]
+    fn effect_blank_lines_with_trailing_spaces() {
+        let e = parse_effect(
+            "effect Db {\n  expose shell db\n  \n  shell db {\n    > echo start\n  }\n}\n",
+        );
+        let shells: Vec<_> = e
+            .body
+            .iter()
+            .filter(|item| matches!(&item.node, AstEffectItem::Shell { .. }))
+            .collect();
+        assert_eq!(shells.len(), 1);
     }
 
     // ── Expose tests ────────────────────────────────────────

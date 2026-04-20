@@ -34,7 +34,7 @@ pub fn shell_block<'a>()
         .then(
             stmt()
                 // Fragile: SENTINEL comment must be filtered below — edit with caution.
-                .or(newline().map_with(|_, _| {
+                .or(ws().ignore_then(newline()).map_with(|_, _| {
                     Spanned::new(
                         AstStmt::Comment { text: String::new(), span: SENTINEL },
                         SENTINEL,
@@ -73,7 +73,7 @@ pub fn qualified_shell_block<'a>()
         .then(
             stmt()
                 // Fragile: SENTINEL comment must be filtered below — edit with caution.
-                .or(newline().map_with(|_, _| {
+                .or(ws().ignore_then(newline()).map_with(|_, _| {
                     Spanned::new(
                         AstStmt::Comment { text: String::new(), span: SENTINEL },
                         SENTINEL,
@@ -108,7 +108,7 @@ pub fn cleanup_block<'a>()
         .ignore_then(
             stmt()
                 // Fragile: SENTINEL comment must be filtered below — edit with caution.
-                .or(newline().map_with(|_, _| {
+                .or(ws().ignore_then(newline()).map_with(|_, _| {
                     Spanned::new(
                         AstStmt::Comment { text: String::new(), span: SENTINEL },
                         SENTINEL,
@@ -273,6 +273,14 @@ mod tests {
         );
         assert_eq!(sb.stmts.len(), 1);
         assert!(matches!(&sb.stmts[0].node, AstStmt::Send { .. }));
+    }
+
+    #[test]
+    fn shell_block_blank_lines_with_trailing_spaces() {
+        let sb = parse_shell("shell main {\n  > echo hello\n  \n  > echo world\n}");
+        assert_eq!(sb.stmts.len(), 2);
+        assert!(matches!(&sb.stmts[0].node, AstStmt::Send { .. }));
+        assert!(matches!(&sb.stmts[1].node, AstStmt::Send { .. }));
     }
 
     #[test]
