@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.5.0](https://github.com/shizzard/relux/compare/v0.4.2...v0.5.0) (2026-04-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* `expose` now requires `shell` or `var` keyword (`expose shell db`, `expose var port`). Bare `expose name` is a parse error. Effect aliases must be CamelCase (`start Db as MyDb`, not `start Db as db`). `var` is now a reserved keyword.
+* **cli:** `relux new` no longer initializes a project. Use `relux init` instead. The --test and --effect flags are now part of a required group alongside the new --lib flag.
+
+### Features
+
+* **cli:** split `relux new` into `relux init` and `relux new` ([76582c8](https://github.com/shizzard/relux/commit/76582c8da78734c426fe85d155378ccbf0c80d33))
+* implement R011 expose variables and naming conventions ([578c050](https://github.com/shizzard/relux/commit/578c0500f25c042d7244bee0bac3eecf3813dfa9))
+* **runtime:** add source locations and syntax-highlighted source pages to rich logs ([f99ff28](https://github.com/shizzard/relux/commit/f99ff2865470762e59aff4acb05278359e7ba210))
+
+
+### Bug Fixes
+
+* **ci:** sync workspace dependency versions in release-please ([cc08158](https://github.com/shizzard/relux/commit/cc08158af215f30457c4d099a7ccaa4e103a802c))
+* **parser:** handle blank lines with trailing spaces in all block bodies ([aca64c1](https://github.com/shizzard/relux/commit/aca64c17a9a93630e132f87939268133c84d0168))
+* **parser:** preserve error span for unexpected tokens ([e628566](https://github.com/shizzard/relux/commit/e6285660ba8e11395fd835c874a40358217117af))
+* update flake to Rust 1.95 and fix new clippy lint ([32b53da](https://github.com/shizzard/relux/commit/32b53da67dfae6f9b584341ef1c5095324379b82))
+
 ## [0.4.2](https://github.com/shizzard/relux/compare/v0.4.1...v0.4.2) (2026-04-15)
 
 
