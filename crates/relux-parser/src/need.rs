@@ -4,7 +4,7 @@ use relux_core::Spanned;
 use relux_lexer::Token;
 
 use super::ParserInput;
-use super::ident::ident_aliased_effect_shell;
+use super::ident::ident_aliased_effect;
 use super::overlay::overlay;
 use super::ws::newline;
 use super::ws::ws;
@@ -18,7 +18,7 @@ pub fn start_decl<'a>()
 {
     just(Token::Start)
         .ignore_then(ws())
-        .ignore_then(ident_aliased_effect_shell())
+        .ignore_then(ident_aliased_effect())
         .then(ws().ignore_then(overlay()).or_not())
         .map_with(|(aliased, overlay), e| {
             let span = crate::span_from_chumsky(e.span());
@@ -59,9 +59,9 @@ mod tests {
 
     #[test]
     fn start_with_alias() {
-        let n = parse_start("start Db as db\n");
+        let n = parse_start("start Db as MyDb\n");
         assert_eq!(n.effect.node.name, "Db");
-        assert_eq!(n.alias.as_ref().unwrap().node.name, "db");
+        assert_eq!(n.alias.as_ref().unwrap().node.name, "MyDb");
         assert!(n.overlay.is_empty());
     }
 
@@ -76,15 +76,15 @@ mod tests {
 
     #[test]
     fn start_with_alias_and_overlay() {
-        let n = parse_start("start Db as db { PORT = \"5433\" }\n");
+        let n = parse_start("start Db as MyDb { PORT = \"5433\" }\n");
         assert_eq!(n.effect.node.name, "Db");
-        assert_eq!(n.alias.as_ref().unwrap().node.name, "db");
+        assert_eq!(n.alias.as_ref().unwrap().node.name, "MyDb");
         assert_eq!(n.overlay.len(), 1);
     }
 
     #[test]
     fn start_with_trailing_comma_overlay() {
-        let n = parse_start("start Db as db { PORT = \"5433\", HOST = \"localhost\", }\n");
+        let n = parse_start("start Db as MyDb { PORT = \"5433\", HOST = \"localhost\", }\n");
         assert_eq!(n.overlay.len(), 2);
     }
 
@@ -111,22 +111,30 @@ mod tests {
 
     #[test]
     fn start_alias_with_digit() {
-        let n = parse_start("start Db as db2\n");
+        let n = parse_start("start Db as Db2\n");
         assert_eq!(n.effect.node.name, "Db");
-        assert_eq!(n.alias.as_ref().unwrap().node.name, "db2");
+        assert_eq!(n.alias.as_ref().unwrap().node.name, "Db2");
+    }
+
+    #[test]
+    fn start_rejects_snake_case_alias() {
+        let source = "start Db as db\n";
+        let pairs = lex_to_pairs(source);
+        let input = make_input(&pairs, source.len());
+        assert!(start_decl().parse(input).into_result().is_err());
     }
 
     #[test]
     fn start_with_shorthand_overlay() {
         let n = parse_start(
-            r#"start Node as n1 {
+            r#"start Node as N1 {
   NODE_PORT
   NODE_NAME = "node1"
 }
 "#,
         );
         assert_eq!(n.effect.node.name, "Node");
-        assert_eq!(n.alias.as_ref().unwrap().node.name, "n1");
+        assert_eq!(n.alias.as_ref().unwrap().node.name, "N1");
         assert_eq!(n.overlay.len(), 2);
         // First entry is shorthand: NODE_PORT desugared to NODE_PORT = NODE_PORT
         assert_eq!(n.overlay[0].node.key.node.name, "NODE_PORT");

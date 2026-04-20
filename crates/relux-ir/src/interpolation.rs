@@ -28,15 +28,32 @@ impl_ir_node_struct!(IrInterpolation);
 
 #[derive(Debug, Clone)]
 pub enum IrStringPart {
-    Literal { value: String, span: IrSpan },
-    Var { name: String, span: IrSpan },
-    CaptureRef { index: usize, span: IrSpan },
-    EscapedDollar { span: IrSpan },
+    Literal {
+        value: String,
+        span: IrSpan,
+    },
+    Var {
+        name: String,
+        span: IrSpan,
+    },
+    QualifiedVar {
+        qualifier: String,
+        name: String,
+        span: IrSpan,
+    },
+    CaptureRef {
+        index: usize,
+        span: IrSpan,
+    },
+    EscapedDollar {
+        span: IrSpan,
+    },
 }
 
 impl_ir_node_enum!(IrStringPart {
     Literal,
     Var,
+    QualifiedVar,
     CaptureRef,
     EscapedDollar
 });
@@ -54,6 +71,15 @@ impl IrNodeLowering for IrStringPart {
                 span: IrSpan::new(file.clone(), *span),
             },
             AstStringPart::VarRef { name, span } => IrStringPart::Var {
+                name: name.clone(),
+                span: IrSpan::new(file.clone(), *span),
+            },
+            AstStringPart::QualifiedVarRef {
+                qualifier,
+                name,
+                span,
+            } => IrStringPart::QualifiedVar {
+                qualifier: qualifier.clone(),
                 name: name.clone(),
                 span: IrSpan::new(file.clone(), *span),
             },

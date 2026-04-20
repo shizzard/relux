@@ -10,10 +10,14 @@ use tokio_util::sync::CancellationToken;
 use futures::future::join_all;
 
 use crate::RuntimeContext;
+use crate::effect::registry::AcquiredEffect;
 use crate::effect::registry::EffectHandle;
 use crate::effect::registry::EffectInstanceKey;
 use crate::effect::registry::EffectRegistry;
 use crate::effect::registry::EffectSlot;
+use crate::effect::registry::ExportedEffect;
+use crate::effect::registry::ShellMap;
+use crate::effect::registry::VarMap;
 use crate::report::result::Failure;
 use crate::vm::Vm;
 use crate::vm::context::ExecutionContext;
@@ -63,22 +67,13 @@ impl EffectManager {
     /// allowing overlay expressions to reference the caller's `let` bindings.
     /// `caller_env` is the layered environment visible to the caller.
     /// Returns (key, exported-shells-map) per start declaration.
-    #[allow(clippy::type_complexity)]
     pub fn instantiate<'a>(
         &'a self,
         starts: &'a [IrEffectStart],
         caller_vars: &'a VarScope,
         caller_env: &'a Arc<LayeredEnv>,
     ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<
-                    Output = Result<
-                        Vec<(EffectInstanceKey, HashMap<String, Arc<TokioMutex<Vm>>>)>,
-                        Failure,
-                    >,
-                > + Send
-                + 'a,
-        >,
+        Box<dyn std::future::Future<Output = Result<Vec<ExportedEffect>, Failure>> + Send + 'a>,
     > {
         Box::pin(async move {
             let mut results = Vec::with_capacity(starts.len());
@@ -101,10 +96,14 @@ impl EffectManager {
                     &evaluated,
                 );
 
-                let shells = self
+                let acquired = self
                     .acquire(&key, start, caller_vars, caller_env, evaluated)
                     .await?;
-                results.push((key, shells));
+                results.push(ExportedEffect {
+                    key,
+                    shells: acquired.shells,
+                    vars: acquired.vars,
+                });
             }
             Ok(results)
         })
@@ -128,14 +127,17 @@ impl EffectManager {
         caller_vars: &VarScope,
         caller_env: &Arc<LayeredEnv>,
         evaluated_overlay: Env,
-    ) -> Result<HashMap<String, Arc<TokioMutex<Vm>>>, Failure> {
+    ) -> Result<AcquiredEffect, Failure> {
         let slot = self.registry.slot(key);
         let mut guard = slot.lock().await;
 
         let result = match &mut *guard {
             EffectSlot::Ready { refcount, handle } => {
                 *refcount += 1;
-                Ok(handle.exposed_shells())
+                Ok(AcquiredEffect {
+                    shells: handle.exposed_shells(),
+                    vars: handle.exposed_vars.clone(),
+                })
             }
             EffectSlot::Failed(failure) => Err(failure.clone()),
             EffectSlot::Empty => match self
@@ -143,12 +145,15 @@ impl EffectManager {
                 .await
             {
                 Ok(handle) => {
-                    let exposed = handle.exposed_shells();
+                    let acquired = AcquiredEffect {
+                        shells: handle.exposed_shells(),
+                        vars: handle.exposed_vars.clone(),
+                    };
                     *guard = EffectSlot::Ready {
                         refcount: 1,
-                        handle,
+                        handle: Box::new(handle),
                     };
-                    Ok(exposed)
+                    Ok(acquired)
                 }
                 Err(failure) => {
                     self.rt_ctx.events.emit_error("", failure.summary(), None);
@@ -213,13 +218,15 @@ impl EffectManager {
             .instantiate(effect.starts(), &effect_vars, &effect_env)
             .await?;
 
-        // 5. Build dependency shells map (alias → exported shells) and collect dep keys
-        let mut dep_shells: HashMap<String, HashMap<String, Arc<TokioMutex<Vm>>>> = HashMap::new();
+        // 5. Build dependency shells/vars maps (alias → exported) and collect dep keys
+        let mut dep_shells: HashMap<String, ShellMap> = HashMap::new();
+        let mut dep_vars: HashMap<String, VarMap> = HashMap::new();
         let mut dep_keys: Vec<EffectInstanceKey> = Vec::new();
-        for (sub_start, (dep_key, exported)) in effect.starts().iter().zip(exported_deps) {
-            dep_keys.push(dep_key);
+        for (sub_start, exported) in effect.starts().iter().zip(exported_deps) {
+            dep_keys.push(exported.key);
             if let Some(alias) = sub_start.alias() {
-                dep_shells.insert(alias.to_string(), exported);
+                dep_shells.insert(alias.to_string(), exported.shells);
+                dep_vars.insert(alias.to_string(), exported.vars);
             }
         }
 
@@ -246,6 +253,17 @@ impl EffectManager {
                     .events
                     .emit_shell_alias(alias, vm_arc.lock().await.current_name());
                 shells.insert(alias.clone(), vm_arc);
+            }
+        }
+
+        // 5c. Inject dependency-exposed variables into the effect scope so
+        //      they're accessible via ${Alias.var_name} in shell blocks.
+        {
+            let mut vars = scope.vars().lock().await;
+            for (alias, var_map) in &dep_vars {
+                for (var_name, value) in var_map {
+                    vars.insert(format!("{alias}.{var_name}"), value.clone());
+                }
             }
         }
 
@@ -320,70 +338,91 @@ impl EffectManager {
             }
         }
 
-        // 7. Resolve expose declarations — mark which shells are exposed
+        // 7. Resolve expose declarations — mark which shells/vars are exposed
         let mut exposed: HashSet<String> = HashSet::new();
+        let mut exposed_vars: HashMap<String, String> = HashMap::new();
+
+        let effect_vars = scope.vars().lock().await;
         for expose in effect.exposes() {
             let exposed_name = expose.exposed_name().to_string();
-            if let Some(qualifier) = expose.qualifier() {
-                // Qualified: `expose alias.shell [as name]` — from dependency
-                let dep = dep_shells.get(qualifier).ok_or_else(|| Failure::Runtime {
-                    message: format!(
-                        "effect `{}` expose references unknown alias `{}`",
-                        effect.name().name(),
-                        qualifier,
-                    ),
-                    span: None,
-                    shell: None,
-                })?;
-                let vm_arc = dep.get(expose.shell()).ok_or_else(|| Failure::Runtime {
-                    message: format!(
-                        "effect `{}` expose references shell `{}` not exposed by `{}`",
-                        effect.name().name(),
-                        expose.shell(),
-                        qualifier,
-                    ),
-                    span: None,
-                    shell: None,
-                })?;
-                shells.insert(exposed_name.clone(), vm_arc.clone());
-                exposed.insert(exposed_name);
-            } else {
-                // Simple: `expose shell [as name]` — local shell
-                if !shells.contains_key(expose.shell()) {
-                    return Err(Failure::Runtime {
-                        message: format!(
-                            "effect `{}` expose references unknown shell `{}`",
-                            effect.name().name(),
-                            expose.shell(),
-                        ),
-                        span: None,
-                        shell: None,
-                    });
+            match expose.kind() {
+                relux_ir::IrExposeKind::Shell => {
+                    if let Some(qualifier) = expose.qualifier() {
+                        let dep = dep_shells.get(qualifier).ok_or_else(|| Failure::Runtime {
+                            message: format!(
+                                "effect `{}` expose references unknown alias `{}`",
+                                effect.name().name(),
+                                qualifier,
+                            ),
+                            span: None,
+                            shell: None,
+                        })?;
+                        let vm_arc = dep.get(expose.target()).ok_or_else(|| Failure::Runtime {
+                            message: format!(
+                                "effect `{}` expose references shell `{}` not exposed by `{}`",
+                                effect.name().name(),
+                                expose.target(),
+                                qualifier,
+                            ),
+                            span: None,
+                            shell: None,
+                        })?;
+                        shells.insert(exposed_name.clone(), vm_arc.clone());
+                        exposed.insert(exposed_name);
+                    } else {
+                        if !shells.contains_key(expose.target()) {
+                            return Err(Failure::Runtime {
+                                message: format!(
+                                    "effect `{}` expose references unknown shell `{}`",
+                                    effect.name().name(),
+                                    expose.target(),
+                                ),
+                                span: None,
+                                shell: None,
+                            });
+                        }
+                        if exposed_name != expose.target() {
+                            let vm_arc = shells.get(expose.target()).unwrap().clone();
+                            shells.insert(exposed_name.clone(), vm_arc);
+                        }
+                        exposed.insert(exposed_name);
+                    }
                 }
-                if exposed_name != expose.shell() {
-                    // Aliased expose: insert under the exposed name too
-                    let vm_arc = shells.get(expose.shell()).unwrap().clone();
-                    shells.insert(exposed_name.clone(), vm_arc);
+                relux_ir::IrExposeKind::Var => {
+                    if let Some(qualifier) = expose.qualifier() {
+                        // Re-expose a variable from a dependency
+                        let qualifier_vars =
+                            dep_vars.get(qualifier).ok_or_else(|| Failure::Runtime {
+                                message: format!(
+                                    "effect `{}` expose references unknown alias `{}`",
+                                    effect.name().name(),
+                                    qualifier,
+                                ),
+                                span: None,
+                                shell: None,
+                            })?;
+                        let value = qualifier_vars.get(expose.target()).ok_or_else(|| {
+                            Failure::Runtime {
+                                message: format!(
+                                    "effect `{}` expose references var `{}` not exposed by `{}`",
+                                    effect.name().name(),
+                                    expose.target(),
+                                    qualifier,
+                                ),
+                                span: None,
+                                shell: None,
+                            }
+                        })?;
+                        exposed_vars.insert(exposed_name, value.clone());
+                    } else {
+                        // Expose a local let-bound variable
+                        let value = effect_vars.get(expose.target()).unwrap_or("").to_string();
+                        exposed_vars.insert(exposed_name, value);
+                    }
                 }
-                exposed.insert(exposed_name);
             }
         }
-
-        // If no expose declarations, fall back to exposing the first local shell
-        // (backwards compatibility for effects without explicit expose)
-        if exposed.is_empty()
-            && !shells.is_empty()
-            && let Some(first_name) = effect.body().iter().find_map(|item| {
-                if let IrEffectItem::Shell { block, .. } = item {
-                    Some(block.name().name().to_string())
-                } else {
-                    None
-                }
-            })
-            && shells.contains_key(&first_name)
-        {
-            exposed.insert(first_name);
-        }
+        drop(effect_vars);
 
         // 8. Terminate non-exposed local shells (deduplicate by Arc pointer).
         //    Collect pointers of exposed VMs first — a non-exposed key may alias
@@ -412,6 +451,7 @@ impl EffectManager {
             scope,
             shells,
             exposed,
+            exposed_vars,
             dependencies: dep_keys,
             cleanup: cleanup_block,
         })

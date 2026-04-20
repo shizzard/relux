@@ -79,6 +79,9 @@ fn eval_interpolation(interp: &IrInterpolation, vars: &VarScope, env: &LayeredEn
         match part {
             IrStringPart::Literal { value, .. } => result.push_str(value),
             IrStringPart::Var { name, .. } => result.push_str(&resolve_var(name, vars, env)),
+            IrStringPart::QualifiedVar { .. } => {
+                unreachable!("QualifiedVar in pure interpolation context")
+            }
             IrStringPart::EscapedDollar { .. } => result.push('$'),
             IrStringPart::CaptureRef { .. } => {
                 unreachable!("CaptureRef in pure interpolation context")

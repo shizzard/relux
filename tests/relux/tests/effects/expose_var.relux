@@ -1,0 +1,85 @@
+effect StartDb {
+    let port = available_port()
+    expose shell db
+    expose var port
+    shell db {
+        > echo "db on ${port}"
+        <? ^db on \d+$
+        match_ok()
+    }
+}
+
+effect StartAuth {
+    let auth_port = available_port()
+    start StartDb as Db {
+    }
+    expose shell auth
+    expose var auth_port
+    expose var Db.port as db_port
+    shell auth {
+        > echo "auth on ${auth_port} db on ${Db.port}"
+        <? ^auth on \d+ db on \d+$
+        match_ok()
+    }
+}
+
+test "exposed var accessible via dot notation" {
+    """
+    Verify a simple exposed variable is accessible from the test
+    via ${Alias.var_name} interpolation.
+    """
+    start StartDb as Db
+    shell Db.db {
+        > echo "port=${Db.port}"
+        <? ^port=\d+$
+    }
+}
+
+test "re-exposed var from dependency" {
+    """
+    Verify that an effect can re-expose a dependency's variable
+    under a new name, and the test can access it.
+    """
+    start StartAuth as Auth
+    shell Auth.auth {
+        > echo "db_port=${Auth.db_port}"
+        <? ^db_port=\d+$
+    }
+}
+
+test "exposed var in send payload" {
+    """
+    Verify that exposed variables can be used in send operator
+    payloads via interpolation.
+    """
+    start StartDb as Db
+    shell client {
+        > echo "connecting to port ${Db.port}"
+        <? ^connecting to port \d+$
+    }
+}
+
+test "exposed var assignable in shell block" {
+    """
+    Verify that an exposed variable can be assigned to a shell-level
+    variable via `let x = Alias.var_name` inside a shell block.
+    """
+    start StartDb as Db
+    shell client {
+        let local_port = Db.port
+        > echo "port=${local_port}"
+        <? ^port=\d+$
+    }
+}
+
+test "multiple exposed vars from composed effect" {
+    """
+    Verify a composed effect can expose its own variables alongside
+    re-exposed dependency variables.
+    """
+    start StartAuth as Auth
+    shell client {
+        > echo "auth=${Auth.auth_port} db=${Auth.db_port}"
+        <? ^auth=\d+ db=\d+$
+    }
+}

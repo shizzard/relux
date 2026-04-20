@@ -810,9 +810,10 @@ async fn run_test_body(
     //    keyed by (alias, shell_name) for dot-access resolution.
     let mut shells: HashMap<String, Arc<TokioMutex<Vm>>> = HashMap::new();
     let mut effect_shells: HashMap<String, HashMap<String, Arc<TokioMutex<Vm>>>> = HashMap::new();
+    let mut effect_vars: HashMap<String, HashMap<String, String>> = HashMap::new();
     let mut reset_seen = HashSet::new();
-    for (start, (_key, exported_map)) in test.starts().iter().zip(exported) {
-        for vm_arc in exported_map.values() {
+    for (start, exported) in test.starts().iter().zip(exported) {
+        for vm_arc in exported.shells.values() {
             let ptr = Arc::as_ptr(vm_arc) as usize;
             if reset_seen.insert(ptr) {
                 vm_arc.lock().await.reset_for_export(scope.clone());
@@ -821,13 +822,27 @@ async fn run_test_body(
         if let Some(alias) = start.alias() {
             // For backwards compat: if effect exposes exactly one shell,
             // also insert it under the alias name directly
-            if exported_map.len() == 1 {
-                let vm_arc = exported_map.values().next().unwrap().clone();
+            if exported.shells.len() == 1 {
+                let vm_arc = exported.shells.values().next().unwrap().clone();
                 let source = vm_arc.lock().await.current_name();
                 rt_ctx.events.emit_shell_alias(alias, source);
                 shells.insert(alias.to_string(), vm_arc);
             }
-            effect_shells.insert(alias.to_string(), exported_map);
+            effect_shells.insert(alias.to_string(), exported.shells);
+            if !exported.vars.is_empty() {
+                effect_vars.insert(alias.to_string(), exported.vars);
+            }
+        }
+    }
+
+    // Inject effect-exposed variables into the test scope so they're
+    // accessible via ${Alias.var_name} in shell blocks.
+    {
+        let mut vars = scope.vars().lock().await;
+        for (alias, var_map) in &effect_vars {
+            for (var_name, value) in var_map {
+                vars.insert(format!("{alias}.{var_name}"), value.clone());
+            }
         }
     }
 

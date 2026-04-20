@@ -5,6 +5,7 @@ use relux_lexer::Token;
 
 use super::ParserInput;
 use super::ident::expr_numeric;
+use super::ident::ident_effect;
 use super::ident::ident_fn;
 use super::ident::ident_var;
 use super::interpolation::interp_literal;
@@ -111,6 +112,22 @@ pub fn expr<'a>()
             )
         });
 
+        // Qualified variable reference: `Alias.var_name`
+        let expr_qualified_var = ident_effect()
+            .then_ignore(just(Token::Dot))
+            .then(ident_var())
+            .map_with(|(qualifier, name), e| {
+                let span = crate::span_from_chumsky(e.span());
+                Spanned::new(
+                    AstExpr::QualifiedVar {
+                        qualifier: qualifier.node.name,
+                        name: name.node.name,
+                        span,
+                    },
+                    span,
+                )
+            });
+
         // Variable reference: `my_var`
         let expr_ident = ident_var().map_with(|name, e| {
             let span = crate::span_from_chumsky(e.span());
@@ -128,6 +145,7 @@ pub fn expr<'a>()
             expr_string,
             expr_capture_ref,
             expr_numeric_lit,
+            expr_qualified_var,
             expr_ident,
         ))
         .labelled("expression")
@@ -312,7 +330,7 @@ mod tests {
 
     #[test]
     fn function_call_mixed_arg_types() {
-        let e = parse_expr(r#"foo("str", var, 42, $1)"#);
+        let e = parse_expr(r#"foo("str", val, 42, $1)"#);
         match e {
             AstExpr::Call { call, .. } => {
                 assert_eq!(call.name.node.name, "foo");

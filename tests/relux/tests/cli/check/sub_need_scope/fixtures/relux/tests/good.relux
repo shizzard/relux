@@ -1,8 +1,8 @@
 import composite { Composite }
 
 test "sub-start resolves in effect home scope" {
-    start Composite as c
-    shell c {
+    start Composite as C
+    shell C.s {
         > echo test
     }
 }

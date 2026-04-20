@@ -11,6 +11,26 @@ use relux_core::diagnostics::EffectId as DiagEffectId;
 use relux_core::pure::Env;
 use relux_ir::IrCleanupBlock;
 
+// ─── Type Aliases ──────────────────────────────────────────
+
+pub type ShellMap = HashMap<String, Arc<TokioMutex<Vm>>>;
+pub type VarMap = HashMap<String, String>;
+
+// ─── ExportedEffect / AcquiredEffect ───────────────────────
+
+/// Result of instantiating a single effect: identity key + exposed shells and vars.
+pub struct ExportedEffect {
+    pub key: EffectInstanceKey,
+    pub shells: ShellMap,
+    pub vars: VarMap,
+}
+
+/// Result of acquiring a single effect instance: exposed shells and vars (no key).
+pub struct AcquiredEffect {
+    pub shells: ShellMap,
+    pub vars: VarMap,
+}
+
 // ─── EffectInstanceKey ──────────────────────────────────────
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -51,21 +71,28 @@ impl EffectInstanceKey {
 pub struct EffectHandle {
     pub scope: Scope,
     /// All shells owned by this effect (both exposed and internal).
-    pub shells: HashMap<String, Arc<TokioMutex<Vm>>>,
+    pub shells: ShellMap,
     /// Names of shells that are exposed to the caller.
     pub exposed: HashSet<String>,
+    /// Variables exposed to the caller (name → value).
+    pub exposed_vars: VarMap,
     pub dependencies: Vec<EffectInstanceKey>,
     pub cleanup: Option<IrCleanupBlock>,
 }
 
 impl EffectHandle {
     /// Return only the shells that are exposed to the caller.
-    pub fn exposed_shells(&self) -> HashMap<String, Arc<TokioMutex<Vm>>> {
+    pub fn exposed_shells(&self) -> ShellMap {
         self.shells
             .iter()
             .filter(|(name, _)| self.exposed.contains(name.as_str()))
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
+    }
+
+    /// Return the exposed variables.
+    pub fn exposed_vars(&self) -> &VarMap {
+        &self.exposed_vars
     }
 }
 
@@ -75,7 +102,7 @@ pub enum EffectSlot {
     Empty,
     Ready {
         refcount: usize,
-        handle: EffectHandle,
+        handle: Box<EffectHandle>,
     },
     Failed(Failure),
 }

@@ -139,19 +139,6 @@ pub fn ident_aliased_effect<'a>()
         .map(|(name, alias)| AliasedName { name, alias })
 }
 
-/// `ident_effect() [as ident_var()]` — used in need declarations.
-pub fn ident_aliased_effect_shell<'a>()
--> impl Parser<'a, ParserInput<'a>, AliasedName, extra::Err<Rich<'a, Token<'a>>>> + Clone {
-    ident_effect()
-        .then(
-            ws().ignore_then(just(Token::As))
-                .ignore_then(ws())
-                .ignore_then(ident_var())
-                .or_not(),
-        )
-        .map(|(name, alias)| AliasedName { name, alias })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,18 +248,6 @@ mod tests {
         let aliased = result.unwrap();
         assert_eq!(aliased.name.node.name, "greet");
         assert!(aliased.alias.is_none());
-    }
-
-    #[test]
-    fn aliased_effect_shell() {
-        let source = "Db as db";
-        let pairs = lex_to_pairs(source);
-        let input = make_input(&pairs, source.len());
-        let result = ident_aliased_effect_shell().parse(input).into_result();
-        assert!(result.is_ok());
-        let aliased = result.unwrap();
-        assert_eq!(aliased.name.node.name, "Db");
-        assert_eq!(aliased.alias.unwrap().node.name, "db");
     }
 
     #[test]

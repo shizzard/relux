@@ -343,7 +343,7 @@ Effects that start long-running services should set a fail pattern before the st
 
 ```relux
 effect Service {
-    expose service
+    expose shell service
 
     shell service {
         !? FATAL|ERROR|panic
@@ -362,8 +362,8 @@ Because deduplication means two aliases can point to the same shell, mutations t
 If you need truly independent instances, give them different overlay values — even a dummy key is enough to create separate identities:
 
 ```relux
-start MyEffect as a { INSTANCE = "1" }
-start MyEffect as b { INSTANCE = "2" }
+start MyEffect as A { INSTANCE = "1" }
+start MyEffect as B { INSTANCE = "2" }
 ```
 
 ## Cleanup

@@ -187,7 +187,7 @@ test "pure function in test-scope let" {
 
 ```relux
 effect Config {
-    expose service
+    expose shell service
 
     let label = tag("env", "production")
     shell service {
@@ -207,7 +207,7 @@ pure fn make_label(name) {
 
 effect Labeled {
     expect LABEL
-    expose service
+    expose shell service
 
     shell service {
         > echo $LABEL

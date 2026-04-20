@@ -32,7 +32,7 @@ Open `service/db.relux` -- we already have the `pure fn url` there. Add the effe
 import api/http
 
 effect Db {
-    expose service
+    expose shell service
 
     shell service {
         let db_root = "${__RELUX_TEST_ARTIFACTS}/database"
@@ -52,7 +52,7 @@ pure fn url(path) {
 }
 ```
 
-The `expose service` declaration means: the `service` shell is part of this effect's public interface. After the effect runs, tests that started it with an alias can interact with that shell via dot-access (e.g. `shell db.service { ... }`). If a test only needs the effect for its side effects (in this case, just for running the database), it can omit the alias and skip shell access entirely.
+The `expose shell service` declaration means: the `service` shell is part of this effect's public interface. After the effect runs, tests that started it with an alias can interact with that shell via dot-access (e.g. `shell db.service { ... }`). If a test only needs the effect for its side effects (in this case, just for running the database), it can omit the alias and skip shell access entirely.
 
 Co-locating the effect with the `url` function keeps everything about the database service in one module. Tests import both from the same place:
 
@@ -82,7 +82,7 @@ test "key-value CRUD" {
 }
 ```
 
-`start Db` tells relux: before this test runs, execute the `Db` effect. The setup block is gone -- replaced by a single line. If you would need to match log lines on the running database shell, you would use `start Db as db`. After that, `shell db.service { ... }` blocks would be executed on the shell that was exposed by the `Db` effect.
+`start Db` tells relux: before this test runs, execute the `Db` effect. The setup block is gone -- replaced by a single line. If you would need to match log lines on the running database shell, you would use `start Db as Db`. After that, `shell Db.service { ... }` blocks would be executed on the shell that was exposed by the `Db` effect.
 
 Do the same for `errors.relux`. The manual `shell db { ... }` block is replaced by `start Db` in both files.
 
@@ -101,7 +101,7 @@ import service/db { url as db_url, Db }
 
 effect Auth {
     start Db
-    expose service
+    expose shell service
 
     shell setup {
         log("create the auth database")
@@ -139,8 +139,8 @@ We can solve this with another effect that builds on `Auth`. Add `SeededAuth` to
 
 ```relux
 effect SeededAuth {
-    start Auth as auth
-    expose auth.service as service
+    start Auth as Dep
+    expose shell Dep.service as service
 
     shell seeder {
         log("create seed database users")
@@ -151,7 +151,7 @@ effect SeededAuth {
 }
 ```
 
-`SeededAuth` doesn't define its own service shell — the auth service is already running inside `Auth`. The `expose auth.service as service` declaration re-exposes the `service` shell from the `Auth` dependency (aliased `auth`) so that tests starting `SeededAuth` can access it the same way they would with `Auth`.
+`SeededAuth` doesn't define its own service shell — the auth service is already running inside `Auth`. The `expose shell Dep.service as service` declaration re-exposes the `service` shell from the `Auth` dependency (aliased `Dep`) so that tests starting `SeededAuth` can access it the same way they would with `Auth`.
 
 The chain grows:
 

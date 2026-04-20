@@ -546,7 +546,7 @@ test "my test" {
     fn test_start_with_alias() {
         let t = parse_test(
             r#"test "my test" {
-  start Db as db
+  start Db as MyDb
   shell main {
     > echo hello
   }
@@ -562,7 +562,7 @@ test "my test" {
             })
             .unwrap();
         assert_eq!(start.effect.node.name, "Db");
-        assert_eq!(start.alias.as_ref().unwrap().node.name, "db");
+        assert_eq!(start.alias.as_ref().unwrap().node.name, "MyDb");
     }
 
     #[test]
@@ -699,8 +699,8 @@ test "full" ~5s {
     fn test_with_qualified_shell_block() {
         let t = parse_test(
             r#"test "my test" {
-  start Db as db
-  shell db.main {
+  start Db as Db
+  shell Db.main {
     > echo hello
   }
 }
@@ -714,7 +714,7 @@ test "full" ~5s {
                 _ => None,
             })
             .unwrap();
-        assert_eq!(shell.qualifier.as_ref().unwrap().node.name, "db");
+        assert_eq!(shell.qualifier.as_ref().unwrap().node.name, "Db");
         assert_eq!(shell.name.node.name, "main");
     }
 
@@ -722,11 +722,11 @@ test "full" ~5s {
     fn test_with_mixed_shell_blocks() {
         let t = parse_test(
             r#"test "my test" {
-  start Db as db
+  start Db as Db
   shell local {
     > echo local
   }
-  shell db.main {
+  shell Db.main {
     > echo remote
   }
 }
@@ -744,7 +744,7 @@ test "full" ~5s {
         assert!(shells[0].qualifier.is_none());
         assert_eq!(shells[0].name.node.name, "local");
         assert!(shells[1].qualifier.is_some());
-        assert_eq!(shells[1].qualifier.as_ref().unwrap().node.name, "db");
+        assert_eq!(shells[1].qualifier.as_ref().unwrap().node.name, "Db");
         assert_eq!(shells[1].name.node.name, "main");
     }
 }

@@ -68,6 +68,11 @@ pub enum AstExpr {
         call: AstCallExpr,
         span: Span,
     },
+    QualifiedVar {
+        qualifier: String,
+        name: String,
+        span: Span,
+    },
     CaptureRef {
         index: usize,
         span: Span,
@@ -77,6 +82,7 @@ pub enum AstExpr {
 impl_ast_node_enum!(AstExpr {
     String,
     Var,
+    QualifiedVar,
     Call,
     CaptureRef
 });
@@ -89,15 +95,32 @@ pub struct AstInterpolation {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstStringPart {
-    Literal { value: String, span: Span },
-    VarRef { name: String, span: Span },
-    EscapedDollar { span: Span },
-    CaptureRef { index: usize, span: Span },
+    Literal {
+        value: String,
+        span: Span,
+    },
+    VarRef {
+        name: String,
+        span: Span,
+    },
+    QualifiedVarRef {
+        qualifier: String,
+        name: String,
+        span: Span,
+    },
+    EscapedDollar {
+        span: Span,
+    },
+    CaptureRef {
+        index: usize,
+        span: Span,
+    },
 }
 
 impl_ast_node_enum!(AstStringPart {
     Literal,
     VarRef,
+    QualifiedVarRef,
     EscapedDollar,
     CaptureRef
 });
@@ -320,9 +343,18 @@ pub struct AstExpectDecl {
 // ─── Expose ──────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum AstExposeKind {
+    Shell { span: Span },
+    Var { span: Span },
+}
+
+impl_ast_node_enum!(AstExposeKind { Shell, Var });
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstExposeDecl {
+    pub kind: AstExposeKind,
     pub qualifier: Option<Spanned<AstIdent>>,
-    pub shell: Spanned<AstIdent>,
+    pub target: Spanned<AstIdent>,
     pub alias: Option<Spanned<AstIdent>>,
     pub span: Span,
 }

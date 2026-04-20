@@ -2,8 +2,8 @@ test "always invalid" {
     """
     Fail at resolve time due to a non-existent effect dependency.
     """
-    start NonExistent as s
-    shell s {
+    start NonExistent as S
+    shell S.s {
         > echo unreachable
         <? ^unreachable$
         match_ok()

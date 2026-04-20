@@ -27,8 +27,8 @@ test "aliased effect import" {
     Verify an effect imported with an alias can be used with start
     via the alias name.
     """
-    start Svc as svc
-    shell svc {
+    start Svc as MySvc
+    shell MySvc.svc {
         > echo $$SVC_STATUS
         <? ^running$
     }

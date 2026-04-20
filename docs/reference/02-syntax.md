@@ -12,8 +12,9 @@
 
 Naming conventions are enforced at the syntactic level (parse error on violation):
 
-- **Effect names** must start with an uppercase letter (`CamelCase`): `StartDb`, `Effect1`, `MyService`
-- **Function names**, **variable names**, **shell names**, and **parameters** must start with a lowercase letter or underscore (`snake_case`): `start_server`, `_helper`, `my_shell`
+- **Effect names** and **effect aliases** must start with an uppercase letter (`CamelCase`): `StartDb`, `Effect1`, `start Db as MyDb`
+- **Function names** and **shell names** must be `snake_case`: `start_server`, `_helper`, `my_shell`
+- **Variable names** and **parameters** are permissive (any alphanumeric + underscore, starting with letter or `_`): `port`, `DB_HOST`, `_private`
 - **Import aliases** must preserve the casing kind of the original name: `foo as bar` (both lowercase), `StartDb as Db` (both uppercase)
 - **Overlay keys** accept either casing (environment variables are conventionally `UPPER_SNAKE_CASE`)
 
@@ -60,14 +61,15 @@ pure fn <name>(<param>, <param>) {
 effect <EffectName> {
     expect <VAR>, <VAR>, <VAR>
     start <EffectName>
-    start <EffectName> as <alias>
-    start <EffectName> as <alias> { KEY = expr, KEY }
+    start <EffectName> as <Alias>
+    start <EffectName> as <Alias> { KEY = expr, KEY }
     let <name> = <expr>
-    expose <shell_name>
-    expose <alias>.<shell_name>
-    expose <alias>.<shell_name> as <public_name>
+    expose shell <shell_name>
+    expose shell <Alias>.<shell_name> as <public_name>
+    expose var <var_name>
+    expose var <Alias>.<var_name> as <public_name>
     shell <name> { <body> }
-    shell <alias>.<shell_name> { <body> }
+    shell <Alias>.<shell_name> { <body> }
     cleanup { <body> }
 }
 ```
@@ -75,11 +77,14 @@ effect <EffectName> {
 - `expect` declares required environment variables (comma-separated)
 - `start` declares dependencies (one per line)
 - `start Effect` runs the dependency for side effects only — its shells are not accessible
-- `start Effect as alias` runs the dependency and makes its exposed shells available via dot-access
-- `start Effect as alias { KEY = expr }` provides an overlay; shorthand `KEY` is equivalent to `KEY = KEY`
-- `expose` declares which shells are part of the effect's public interface
-- `expose alias.shell as name` re-exports a dependency's shell under a new name
-- `shell alias.shell_name { ... }` — qualified shell block for operating on a dependency's exposed shell
+- `start Effect as Alias` runs the dependency and makes its exposed shells/variables available via dot-access
+- Effect aliases must be CamelCase
+- `start Effect as Alias { KEY = expr }` provides an overlay; shorthand `KEY` is equivalent to `KEY = KEY`
+- `expose shell` declares which shells are part of the effect's public interface
+- `expose var` declares which variables are part of the effect's public interface; these are `let`-bound values computed during setup
+- `expose shell Alias.shell as name` re-exports a dependency's shell under a new name
+- `expose var Alias.var as name` re-exports a dependency's variable under a new name
+- `shell Alias.shell_name { ... }` — qualified shell block for operating on a dependency's exposed shell
 - Internal shells not listed in `expose` are terminated after setup
 - `cleanup` block: only `>`, `=>`, `let`, variable reassignment allowed (no match operators)
 
@@ -94,10 +99,10 @@ test "<name>" {
     """
     let <name>
     start <EffectName>
-    start <EffectName> as <alias>
-    start <EffectName> as <alias> { KEY = expr, KEY }
+    start <EffectName> as <Alias>
+    start <EffectName> as <Alias> { KEY = expr, KEY }
     shell <name> { <body> }
-    shell <alias>.<shell_name> { <body> }
+    shell <Alias>.<shell_name> { <body> }
     cleanup { <body> }
 }
 ```
@@ -161,13 +166,13 @@ Examples:
 shell <name> {
     <statements>
 }
-shell <alias>.<shell_name> {
+shell <Alias>.<shell_name> {
     <statements>
 }
 ```
 
-- Unqualified form (`shell name`) creates or switches to a local shell
-- Qualified form (`shell alias.shell_name`) operates on a dependency's exposed shell
+- Unqualified form (`shell name`) creates or switches to a local shell; name must be snake_case
+- Qualified form (`shell Alias.shell_name`) operates on a dependency's exposed shell; qualifier is a CamelCase effect alias, name is snake_case
 - Valid inside `effect` and `test` blocks
 
 ## Variables

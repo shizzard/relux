@@ -28,6 +28,8 @@ pub enum Token<'a> {
     Expect,
     #[token("expose")]
     Expose,
+    #[token("var")]
+    Var,
     #[token("import")]
     Import,
     #[token("cleanup")]
@@ -111,6 +113,7 @@ impl fmt::Display for Token<'_> {
             Token::Start => write!(f, "start"),
             Token::Expect => write!(f, "expect"),
             Token::Expose => write!(f, "expose"),
+            Token::Var => write!(f, "var"),
             Token::Import => write!(f, "import"),
             Token::Cleanup => write!(f, "cleanup"),
             Token::As => write!(f, "as"),
@@ -436,7 +439,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn all_ten() {
+        fn all_keywords() {
             assert_eq!(tokens("fn"), vec![Token::Fn]);
             assert_eq!(tokens("pure"), vec![Token::Pure]);
             assert_eq!(tokens("effect"), vec![Token::Effect]);
@@ -446,6 +449,7 @@ mod tests {
             assert_eq!(tokens("start"), vec![Token::Start]);
             assert_eq!(tokens("expect"), vec![Token::Expect]);
             assert_eq!(tokens("expose"), vec![Token::Expose]);
+            assert_eq!(tokens("var"), vec![Token::Var]);
             assert_eq!(tokens("import"), vec![Token::Import]);
             assert_eq!(tokens("cleanup"), vec![Token::Cleanup]);
             assert_eq!(tokens("as"), vec![Token::As]);
@@ -474,6 +478,8 @@ mod tests {
             assert_eq!(tokens("Expect"), vec![Token::Text("Expect")]);
             assert_eq!(tokens("EXPOSE"), vec![Token::Text("EXPOSE")]);
             assert_eq!(tokens("Expose"), vec![Token::Text("Expose")]);
+            assert_eq!(tokens("VAR"), vec![Token::Text("VAR")]);
+            assert_eq!(tokens("Var"), vec![Token::Text("Var")]);
             assert_eq!(tokens("CLEANUP"), vec![Token::Text("CLEANUP")]);
             assert_eq!(tokens("Cleanup"), vec![Token::Text("Cleanup")]);
             assert_eq!(tokens("AS"), vec![Token::Text("AS")]);
@@ -491,6 +497,8 @@ mod tests {
             assert_eq!(tokens("effective"), vec![Token::Text("effective")]);
             assert_eq!(tokens("purely"), vec![Token::Text("purely")]);
             assert_eq!(tokens("shellcode"), vec![Token::Text("shellcode")]);
+            assert_eq!(tokens("variable"), vec![Token::Text("variable")]);
+            assert_eq!(tokens("variant"), vec![Token::Text("variant")]);
         }
 
         #[test]
@@ -499,6 +507,7 @@ mod tests {
             assert_eq!(tokens("as9"), vec![Token::Text("as9")]);
             assert_eq!(tokens("let1"), vec![Token::Text("let1")]);
             assert_eq!(tokens("import2"), vec![Token::Text("import2")]);
+            assert_eq!(tokens("var0"), vec![Token::Text("var0")]);
         }
 
         #[test]
@@ -1008,13 +1017,13 @@ mod tests {
         #[test]
         fn with_interpolation() {
             assert_eq!(
-                tokens(r#""prefix${var}suffix""#),
+                tokens(r#""prefix${name}suffix""#),
                 vec![
                     Token::Quote,
                     Token::Text("prefix"),
                     Token::Dollar,
                     Token::BraceOpen,
-                    Token::Text("var"),
+                    Token::Text("name"),
                     Token::BraceClose,
                     Token::Text("suffix"),
                     Token::Quote,
@@ -1984,13 +1993,13 @@ line2"""
         fn var_interpolation() {
             assert_eq!(
                 tokens(
-                    r#"${var}
+                    r#"${name}
 "#
                 ),
                 vec![
                     Token::Dollar,
                     Token::BraceOpen,
-                    Token::Text("var"),
+                    Token::Text("name"),
                     Token::BraceClose,
                     Token::Newline,
                 ]

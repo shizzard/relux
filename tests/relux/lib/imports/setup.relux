@@ -4,6 +4,7 @@ fn check_ready() {
 }
 
 effect StartService {
+    expose shell svc
     shell svc {
         > export SVC_STATUS=running
         match_ok()

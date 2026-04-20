@@ -27,6 +27,11 @@ pub enum IrExpr {
         name: String,
         span: IrSpan,
     },
+    QualifiedVar {
+        qualifier: String,
+        name: String,
+        span: IrSpan,
+    },
     Call {
         call: IrCallExpr,
         span: IrSpan,
@@ -40,6 +45,7 @@ pub enum IrExpr {
 impl_ir_node_enum!(IrExpr {
     String,
     Var,
+    QualifiedVar,
     Call,
     CaptureRef
 });
@@ -155,6 +161,15 @@ impl IrNodeLowering for IrExpr {
                 name: name.clone(),
                 span: IrSpan::new(file.clone(), *span),
             }),
+            AstExpr::QualifiedVar {
+                qualifier,
+                name,
+                span,
+            } => Ok(IrExpr::QualifiedVar {
+                qualifier: qualifier.clone(),
+                name: name.clone(),
+                span: IrSpan::new(file.clone(), *span),
+            }),
             AstExpr::CaptureRef { index, span } => Ok(IrExpr::CaptureRef {
                 index: *index,
                 span: IrSpan::new(file.clone(), *span),
@@ -181,12 +196,16 @@ impl IrNodeLowering for IrPureExpr {
     ) -> Result<Self, LoweringBail> {
         match ast {
             AstExpr::String { interp, span } => {
-                // Check for CaptureRef in interpolation parts
+                // Check for impure constructs in interpolation parts
                 for part in &interp.parts {
-                    if let AstStringPart::CaptureRef { span: cap_span, .. } = part {
-                        return Err(LoweringBail::invalid(InvalidReport::purity_violation(
-                            IrSpan::new(file.clone(), *cap_span),
-                        )));
+                    match part {
+                        AstStringPart::CaptureRef { span: s, .. }
+                        | AstStringPart::QualifiedVarRef { span: s, .. } => {
+                            return Err(LoweringBail::invalid(InvalidReport::purity_violation(
+                                IrSpan::new(file.clone(), *s),
+                            )));
+                        }
+                        _ => {}
                     }
                 }
                 let ir_interp = IrInterpolation::lower(interp, file, ctx)?;
@@ -199,6 +218,9 @@ impl IrNodeLowering for IrPureExpr {
                 name: name.clone(),
                 span: IrSpan::new(file.clone(), *span),
             }),
+            AstExpr::QualifiedVar { span, .. } => Err(LoweringBail::invalid(
+                InvalidReport::purity_violation(IrSpan::new(file.clone(), *span)),
+            )),
             AstExpr::CaptureRef { span, .. } => Err(LoweringBail::invalid(
                 InvalidReport::purity_violation(IrSpan::new(file.clone(), *span)),
             )),

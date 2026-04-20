@@ -15,8 +15,8 @@ test "selective import of effect" {
     """
     Verify a selectively imported effect can be used with start.
     """
-    start StartService as svc
-    shell svc {
+    start StartService as Svc
+    shell Svc.svc {
         > echo $$SVC_STATUS
         <? ^running$
     }
