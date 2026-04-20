@@ -1,6 +1,6 @@
 # R011: Expose Variables and Naming Conventions
 
-- **Status**: draft
+- **Status**: implemented
 - **Created**: 2026-04-18
 - **Depends on**: R008
 

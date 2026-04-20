@@ -32,4 +32,4 @@ Substantial changes to Relux are proposed and discussed through RFCs (Requests f
 | R008 | Effects Rework            | implemented                   |
 | R009 | Variable Match Operator   | draft                         |
 | R010 | TUI Debugger              | accepted                      |
-| R011 | Expose Variables and Naming Conventions | draft             |
+| R011 | Expose Variables and Naming Conventions | implemented       |
