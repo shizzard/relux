@@ -5,6 +5,7 @@ use relux_lexer::Token;
 
 use super::ParserInput;
 use super::ident::expr_numeric;
+use super::ident::ident_effect;
 use super::ident::ident_var;
 use relux_ast::AstInterpolation;
 use relux_ast::AstStringPart;
@@ -36,6 +37,22 @@ fn interp_escaped_dollar<'a>()
     just(Token::Dollar)
         .then(just(Token::Dollar))
         .map_with(|_, e| AstStringPart::EscapedDollar {
+            span: crate::span_from_chumsky(e.span()),
+        })
+}
+
+/// `${Qualifier.name}` → `AstStringPart::QualifiedVarRef(qualifier, name)`
+fn interp_qualified_var_ref<'a>()
+-> impl Parser<'a, ParserInput<'a>, AstStringPart, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+    just(Token::Dollar)
+        .ignore_then(just(Token::BraceOpen))
+        .ignore_then(ident_effect())
+        .then_ignore(just(Token::Dot))
+        .then(ident_var())
+        .then_ignore(just(Token::BraceClose))
+        .map_with(|(qualifier, name), e| AstStringPart::QualifiedVarRef {
+            qualifier: qualifier.node.name,
+            name: name.node.name,
             span: crate::span_from_chumsky(e.span()),
         })
 }
@@ -142,6 +159,7 @@ pub fn interp_literal<'a>(
 
     choice((
         interp_escaped_dollar(),
+        interp_qualified_var_ref(),
         interp_var_ref(),
         interp_capture_ref(),
         interp_escape_seq(),
@@ -179,6 +197,7 @@ pub fn interp_regex<'a>(
 
     choice((
         interp_escaped_dollar(),
+        interp_qualified_var_ref(),
         interp_var_ref(),
         interp_capture_ref(),
         interp_raw_escape_seq(),
@@ -238,6 +257,7 @@ mod tests {
             .map(|p| match p {
                 AstStringPart::Literal { value, .. } => value.as_str(),
                 AstStringPart::VarRef { name, .. } => name.as_str(),
+                AstStringPart::QualifiedVarRef { name, .. } => name.as_str(),
                 AstStringPart::EscapedDollar { .. } => "$$",
                 AstStringPart::CaptureRef { .. } => "$N",
             })
@@ -470,5 +490,40 @@ mod tests {
         let interp = parse_regex(r"\d+\s+\w+");
         assert_eq!(interp.parts.len(), 1);
         assert_eq!(part_values(&interp.parts), vec![r"\d+\s+\w+"]);
+    }
+
+    #[test]
+    fn qualified_var_ref() {
+        let interp = parse_literal("${Stack.port}");
+        assert_eq!(interp.parts.len(), 1);
+        assert!(matches!(
+            &interp.parts[0],
+            AstStringPart::QualifiedVarRef { qualifier, name, .. }
+            if qualifier == "Stack" && name == "port"
+        ));
+    }
+
+    #[test]
+    fn qualified_var_ref_in_context() {
+        let interp = parse_literal("http://localhost:${Db.port}/api");
+        assert_eq!(interp.parts.len(), 3);
+        assert!(is_literal(&interp.parts[0]));
+        assert!(matches!(
+            &interp.parts[1],
+            AstStringPart::QualifiedVarRef { qualifier, name, .. }
+            if qualifier == "Db" && name == "port"
+        ));
+        assert!(is_literal(&interp.parts[2]));
+    }
+
+    #[test]
+    fn qualified_var_ref_in_regex() {
+        let interp = parse_regex("^${Db.port}$");
+        assert!(interp.parts.len() >= 3);
+        assert!(matches!(
+            &interp.parts[1],
+            AstStringPart::QualifiedVarRef { qualifier, name, .. }
+            if qualifier == "Db" && name == "port"
+        ));
     }
 }

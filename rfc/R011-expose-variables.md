@@ -121,11 +121,16 @@ test "upload to bucket" {
 }
 ```
 
-`${Stack.bucket_id}` reads the variable exposed by the `FullStack` effect instance aliased as `Stack`. The same dot-access syntax works in any interpolation context — send, match, let bindings:
+`${Stack.bucket_id}` reads the variable exposed by the `FullStack` effect instance aliased as `Stack`. The same dot-access syntax works in any interpolation context — send, match, and shell-level `let` bindings:
 
 ```relux
-    let my_bucket = Stack.bucket_id
+    shell Stack.api {
+        let my_bucket = Stack.bucket_id
+        > upload --bucket ${my_bucket} file.txt
+    }
 ```
+
+Test-level and effect-level `let` bindings cannot reference exposed variables because they are evaluated at resolve time, before effects are started. Shell-level `let` works because it executes at runtime, when the effect instance and its exposed values are available.
 
 ### Immutability
 

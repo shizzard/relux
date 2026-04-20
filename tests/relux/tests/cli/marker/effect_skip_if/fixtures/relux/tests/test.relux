@@ -1,5 +1,6 @@
 # skip if SKIP_EFFECT
 effect Guarded {
+    expose shell s
     shell s {
         > echo "effect ran"
         <? ^effect ran$
@@ -10,8 +11,8 @@ test "depends on conditionally skipped effect" {
     """
     Depend on an effect with a conditional skip marker.
     """
-    start Guarded as s
-    shell s {
+    start Guarded as G
+    shell G.s {
         > echo "test body ran"
         <? ^test body ran$
     }

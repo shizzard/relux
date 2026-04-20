@@ -87,41 +87,54 @@ impl_ir_node_struct!(IrEffectStart);
 
 // ─── IrExposeDecl ───────────────────────────────────────────
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum IrExposeKind {
+    Shell,
+    Var,
+}
+
 #[derive(Debug, Clone)]
 pub struct IrExposeDecl {
+    kind: IrExposeKind,
     qualifier: Option<String>,
-    shell: String,
+    target: String,
     alias: Option<String>,
     span: IrSpan,
 }
 
 impl IrExposeDecl {
     pub fn new(
+        kind: IrExposeKind,
         qualifier: Option<String>,
-        shell: String,
+        target: String,
         alias: Option<String>,
         span: IrSpan,
     ) -> Self {
         Self {
+            kind,
             qualifier,
-            shell,
+            target,
             alias,
             span,
         }
+    }
+
+    pub fn kind(&self) -> &IrExposeKind {
+        &self.kind
     }
 
     pub fn qualifier(&self) -> Option<&str> {
         self.qualifier.as_deref()
     }
 
-    pub fn shell(&self) -> &str {
-        &self.shell
+    pub fn target(&self) -> &str {
+        &self.target
     }
 
-    /// The name callers use to refer to this exposed shell.
-    /// Falls back to the shell name if no alias is given.
+    /// The name callers use to refer to this exposed item.
+    /// Falls back to the target name if no alias is given.
     pub fn exposed_name(&self) -> &str {
-        self.alias.as_deref().unwrap_or(&self.shell)
+        self.alias.as_deref().unwrap_or(&self.target)
     }
 }
 
@@ -191,6 +204,18 @@ impl IrEffect {
 
     pub fn exposes(&self) -> &[IrExposeDecl] {
         &self.exposes
+    }
+
+    pub fn shell_exposes(&self) -> impl Iterator<Item = &IrExposeDecl> {
+        self.exposes
+            .iter()
+            .filter(|e| *e.kind() == IrExposeKind::Shell)
+    }
+
+    pub fn var_exposes(&self) -> impl Iterator<Item = &IrExposeDecl> {
+        self.exposes
+            .iter()
+            .filter(|e| *e.kind() == IrExposeKind::Var)
     }
 
     pub fn starts(&self) -> &[IrEffectStart] {
@@ -364,10 +389,14 @@ impl IrNodeLowering for IrEffectItem {
                 })
             }
             AstEffectItem::Expose { decl, span } => {
+                let kind = match &decl.kind {
+                    relux_ast::AstExposeKind::Shell { .. } => IrExposeKind::Shell,
+                    relux_ast::AstExposeKind::Var { .. } => IrExposeKind::Var,
+                };
                 let qualifier = decl.qualifier.as_ref().map(|q| q.node.name.clone());
-                let shell = decl.shell.node.name.clone();
+                let target = decl.target.node.name.clone();
                 let alias = decl.alias.as_ref().map(|a| a.node.name.clone());
-                let ir = IrExposeDecl::new(qualifier, shell, alias, s(span));
+                let ir = IrExposeDecl::new(kind, qualifier, target, alias, s(span));
                 Ok(IrEffectItem::Expose {
                     decl: ir,
                     span: s(span),
@@ -436,42 +465,65 @@ impl IrNodeLowering for IrEffect {
                 _ => None,
             })
             .collect();
-        // Build map from alias → set of shells exposed by that dependency
-        let mut dep_exposed: std::collections::HashMap<String, std::collections::HashSet<String>> =
-            std::collections::HashMap::new();
+        let let_names: Vec<String> = body_items
+            .iter()
+            .filter_map(|item| match item {
+                IrEffectItem::Let { stmt, .. } => Some(stmt.name().name().to_string()),
+                _ => None,
+            })
+            .collect();
+        // Build maps from alias → set of shells/vars exposed by that dependency
+        let mut dep_exposed_shells: std::collections::HashMap<
+            String,
+            std::collections::HashSet<String>,
+        > = std::collections::HashMap::new();
+        let mut dep_exposed_vars: std::collections::HashMap<
+            String,
+            std::collections::HashSet<String>,
+        > = std::collections::HashMap::new();
         for start in &starts {
-            if let Some(alias) = start.alias() {
-                let exposed_names: std::collections::HashSet<String> = ctx
-                    .effects()
-                    .get(start.effect())
-                    .and_then(|r| r.as_ref().ok())
-                    .map(|eff| {
-                        eff.exposes()
-                            .iter()
-                            .map(|e| e.exposed_name().to_string())
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                dep_exposed.insert(alias.to_string(), exposed_names);
+            if let Some(alias) = start.alias()
+                && let Some(Ok(eff)) = ctx.effects().get(start.effect()).map(|r| r.as_ref())
+            {
+                let shells: std::collections::HashSet<String> = eff
+                    .shell_exposes()
+                    .map(|e| e.exposed_name().to_string())
+                    .collect();
+                let vars: std::collections::HashSet<String> = eff
+                    .var_exposes()
+                    .map(|e| e.exposed_name().to_string())
+                    .collect();
+                dep_exposed_shells.insert(alias.to_string(), shells);
+                dep_exposed_vars.insert(alias.to_string(), vars);
             }
         }
 
         for expose in &exposes {
-            let valid = if let Some(qualifier) = expose.qualifier() {
-                // Qualified: `expose alias.shell as name` — alias must exist
-                // and the dependency must actually expose that shell
-                dep_exposed
-                    .get(qualifier)
-                    .is_some_and(|shells| shells.contains(expose.shell()))
-            } else {
-                // Simple: `expose shell` — shell must be a local shell
-                shell_names.contains(&expose.shell().to_string())
+            let valid = match expose.kind() {
+                IrExposeKind::Shell => {
+                    if let Some(qualifier) = expose.qualifier() {
+                        dep_exposed_shells
+                            .get(qualifier)
+                            .is_some_and(|shells| shells.contains(expose.target()))
+                    } else {
+                        shell_names.contains(&expose.target().to_string())
+                    }
+                }
+                IrExposeKind::Var => {
+                    if let Some(qualifier) = expose.qualifier() {
+                        dep_exposed_vars
+                            .get(qualifier)
+                            .is_some_and(|vars| vars.contains(expose.target()))
+                    } else {
+                        let_names.contains(&expose.target().to_string())
+                    }
+                }
             };
             if !valid {
                 let label = if let Some(q) = expose.qualifier() {
-                    format!("{}.{}", q, expose.shell())
+                    format!("{}.{}", q, expose.target())
                 } else {
-                    expose.shell().to_string()
+                    expose.target().to_string()
                 };
                 return Err(LoweringBail::invalid(InvalidReport::invalid_expose(
                     name.name().to_string(),

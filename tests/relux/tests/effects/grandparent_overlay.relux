@@ -16,7 +16,7 @@
 // Leaf reads PORT from its overlay and echoes it.
 effect Leaf {
     expect PORT
-    expose leaf
+    expose shell leaf
     shell leaf {
         > echo "leaf_port=${PORT}"
         <? ^leaf_port=9999$
@@ -29,15 +29,15 @@ effect Leaf {
 // It starts Leaf and tries to forward PORT via overlay.
 effect Bridge {
     expect LABEL
-    start Leaf as dep { PORT = PORT }
-    expose dep.leaf as out
+    start Leaf as Dep { PORT = PORT }
+    expose shell Dep.leaf as out
 }
 
 // Root passes both PORT and LABEL.
 effect Root {
     expect PORT, LABEL
-    start Bridge as dep { LABEL }
-    expose dep.out as out
+    start Bridge as Dep { LABEL }
+    expose shell Dep.out as out
 }
 
 test "overlay reads variable from grandparent env layer" {
@@ -47,8 +47,8 @@ test "overlay reads variable from grandparent env layer" {
     overlay. Root receives PORT, Bridge does not re-overlay PORT, but Bridge
     starts Leaf with PORT = PORT which should resolve from the chain.
     """
-    start Root as r { PORT = "9999", LABEL = "test" }
-    shell r.out {
+    start Root as R { PORT = "9999", LABEL = "test" }
+    shell R.out {
         > echo "done"
         <? ^done$
         match_ok()
@@ -60,7 +60,7 @@ test "overlay reads variable from grandparent env layer" {
 effect LetReader {
     expect LABEL
     let tag = "tag-${PORT}"
-    expose reader
+    expose shell reader
     shell reader {
         > echo "${tag}"
         <? ^tag-4242$
@@ -70,8 +70,8 @@ effect LetReader {
 
 effect LetHost {
     expect PORT, LABEL
-    start LetReader as dep { LABEL }
-    expose dep.reader as out
+    start LetReader as Dep { LABEL }
+    expose shell Dep.reader as out
 }
 
 test "effect let binding reads inherited env from parent layer" {
@@ -81,8 +81,8 @@ test "effect let binding reads inherited env from parent layer" {
     LetReader does not receive PORT in its overlay, but its let binding
     references PORT which should be visible through the chain.
     """
-    start LetHost as h { PORT = "4242", LABEL = "x" }
-    shell h.out {
+    start LetHost as H { PORT = "4242", LABEL = "x" }
+    shell H.out {
         > echo "done"
         <? ^done$
         match_ok()
@@ -93,7 +93,7 @@ test "effect let binding reads inherited env from parent layer" {
 
 effect ShellEnvLeaf {
     expect LABEL
-    expose leaf
+    expose shell leaf
     shell leaf {
         // $$PORT is a shell environment variable, read from the PTY process env.
         // PORT is in a parent layer of the LayeredEnv, not this effect's own overlay.
@@ -105,8 +105,8 @@ effect ShellEnvLeaf {
 
 effect ShellEnvHost {
     expect PORT, LABEL
-    start ShellEnvLeaf as dep { LABEL }
-    expose dep.leaf as out
+    start ShellEnvLeaf as Dep { LABEL }
+    expose shell Dep.leaf as out
 }
 
 test "pty process env includes parent layer variables" {
@@ -116,8 +116,8 @@ test "pty process env includes parent layer variables" {
     ShellEnvHost receives PORT, ShellEnvLeaf does not get PORT in its overlay,
     but the spawned PTY should still have PORT in its process environment.
     """
-    start ShellEnvHost as h { PORT = "7777", LABEL = "y" }
-    shell h.out {
+    start ShellEnvHost as H { PORT = "7777", LABEL = "y" }
+    shell H.out {
         > echo "done"
         <? ^done$
         match_ok()

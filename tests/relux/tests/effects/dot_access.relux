@@ -1,5 +1,5 @@
 effect Server {
-  expose srv
+  expose shell srv
   shell srv {
     > export SERVER_STATUS=running
     match_ok()
@@ -11,8 +11,8 @@ test "dot-access shell mixed with local shell" {
   Verify that dot-access effect shells and local shells can coexist
   in the same test body.
   """
-  start Server as s
-  shell s.srv {
+  start Server as S
+  shell S.srv {
     > echo $$SERVER_STATUS
     <? ^running$
     match_ok()
@@ -29,12 +29,12 @@ test "multiple dot-access blocks on same effect" {
   Verify that the same effect shell can be accessed via dot notation
   multiple times, with state persisting between blocks.
   """
-  start Server as s
-  shell s.srv {
+  start Server as S
+  shell S.srv {
     > export VISIT=first
     match_ok()
   }
-  shell s.srv {
+  shell S.srv {
     > echo $$VISIT
     <? ^first$
     match_ok()

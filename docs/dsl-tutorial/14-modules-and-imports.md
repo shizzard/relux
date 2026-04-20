@@ -22,7 +22,7 @@ fn farewell(name) {
 }
 
 effect Greeter {
-    expose service
+    expose shell service
 
     shell service {
         > export GREETER_STATUS=running
@@ -125,8 +125,8 @@ Now `hello` and `bye` are the callable names — the originals `greet` and `fare
 import utils/greeter { Greeter as Svc }
 
 test "aliased effect" {
-    start Svc as svc
-    shell svc.service {
+    start Svc as MySvc
+    shell MySvc.service {
         > echo $$GREETER_STATUS
         <? ^running$
     }

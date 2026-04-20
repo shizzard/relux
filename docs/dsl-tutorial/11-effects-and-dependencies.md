@@ -60,7 +60,7 @@ Effects solve this. An effect is a named, reusable piece of test infrastructure.
 
 ```relux
 effect Db {
-    expose service
+    expose shell service
 
     shell service {
         > start-db --data-dir /tmp/test-db
@@ -70,8 +70,8 @@ effect Db {
 }
 
 effect MigratedDb {
-    start Db as db
-    expose db.service as service
+    start Db as Dep
+    expose shell Dep.service as service
 
     shell migrations {
         > migrate --db localhost:5432
@@ -114,7 +114,7 @@ A particularly common pattern is monitoring: tail a log file with a fail pattern
 ```relux
 effect FailTail {
     expect FAILTAIL_TRIGGER, FAILTAIL_LOG
-    expose tail
+    expose shell tail
 
     shell tail {
         !? ${FAILTAIL_TRIGGER}
@@ -127,7 +127,7 @@ test "service handles load" {
         FAILTAIL_TRIGGER = "panic|error"
         FAILTAIL_LOG = "/var/log/service.log"
     }
-    start Service as svc
+    start Service as Svc
     shell client {
         > curl http://localhost:8080/heavy-endpoint
         <? 200 OK
@@ -140,11 +140,11 @@ The `FailTail` effect declares two required variables with `expect` and exposes 
 
 ## Defining an effect
 
-An effect definition starts with the `effect` keyword, followed by a CamelCase name and a body in braces. Inside, `expose` declares which shells are part of the effect's public interface:
+An effect definition starts with the `effect` keyword, followed by a CamelCase name and a body in braces. Inside, `expose shell` declares which shells are part of the effect's public interface:
 
 ```relux
 effect Service {
-    expose service
+    expose shell service
 
     shell service {
         > echo "service ready"
@@ -154,7 +154,7 @@ effect Service {
 }
 ```
 
-The name must be CamelCase — this is how Relux distinguishes effects from functions, which are always `snake_case`. The `expose service` declaration means the `service` shell is available to whoever starts this effect. The shell block inside the body runs the setup: whatever commands are needed to get the service into a ready state.
+The name must be CamelCase — this is how Relux distinguishes effects from functions, which are always `snake_case`. The `expose shell service` declaration means the `service` shell is available to whoever starts this effect. The shell block inside the body runs the setup: whatever commands are needed to get the service into a ready state.
 
 The exposed shell is the bridge between the effect and the test. When a test starts this effect with an alias, it can access the `service` shell via dot-access — the same PTY session, in the same state it was left after setup. Environment [variables](06-variables.md) set during setup, working directory changes, running processes — all persist into the test.
 
@@ -166,21 +166,21 @@ A test declares its infrastructure requirements with the `start` keyword:
 
 ```relux
 test "effect sets up shell before test runs" {
-    start Service as svc
-    shell svc.service {
+    start Service as Svc
+    shell Svc.service {
         > echo "test using effect shell"
         <? ^test using effect shell$
     }
 }
 ```
 
-The `start Service as svc` does two things: it ensures the `Service` effect runs before the test body, and it makes the effect's exposed shells available under the alias `svc`. Inside the test, `shell svc.service { ... }` accesses the shell that the effect exposed — the same PTY session that the effect's `shell service` block used during setup, with all the state from setup intact.
+The `start Service as Svc` does two things: it ensures the `Service` effect runs before the test body, and it makes the effect's exposed shells available under the alias `Svc`. Inside the test, `shell Svc.service { ... }` accesses the shell that the effect exposed — the same PTY session that the effect's `shell service` block used during setup, with all the state from setup intact.
 
-The `as` alias names the effect instance within your test. You access its exposed shells via dot-access: `shell alias.shell_name { ... }`. This is useful when you start multiple effects:
+The `as` alias names the effect instance within your test. You access its exposed shells via dot-access: `shell Alias.shell_name { ... }`. This is useful when you start multiple effects:
 
 ```relux
 effect ServiceA {
-    expose service
+    expose shell service
 
     shell service {
         > export SVC_ID=A
@@ -191,7 +191,7 @@ effect ServiceA {
 }
 
 effect ServiceB {
-    expose service
+    expose shell service
 
     shell service {
         > export SVC_ID=B
@@ -202,20 +202,20 @@ effect ServiceB {
 }
 
 test "two effects both accessible via alias" {
-    start ServiceA as a
-    start ServiceB as b
-    shell a.service {
+    start ServiceA as A
+    start ServiceB as B
+    shell A.service {
         > echo $$SVC_ID
         <? ^A$
     }
-    shell b.service {
+    shell B.service {
         > echo $$SVC_ID
         <? ^B$
     }
 }
 ```
 
-Both effects expose a shell called `service`, but the test accesses them through different aliases — `a.service` and `b.service`. The alias disambiguates which effect instance you mean.
+Both effects expose a shell called `service`, but the test accesses them through different aliases — `A.service` and `B.service`. The alias disambiguates which effect instance you mean.
 
 ## Bare `start`
 
@@ -223,7 +223,7 @@ Sometimes you need an effect for its side effects — creating files, setting up
 
 ```relux
 effect Scaffold {
-    expose setup
+    expose shell setup
 
     shell setup {
         > touch /tmp/side-effect-marker
@@ -248,7 +248,7 @@ Effects can depend on other effects using `start` inside the effect body. This l
 
 ```relux
 effect Db {
-    expose service
+    expose shell service
 
     shell service {
         > export DB_STATUS=started
@@ -257,8 +257,8 @@ effect Db {
 }
 
 effect MigratedDb {
-    start Db as db
-    expose db.service as service
+    start Db as Dep
+    expose shell Dep.service as service
 
     shell service {
         > export MIG_STATUS=applied
@@ -267,8 +267,8 @@ effect MigratedDb {
 }
 
 effect SeededDb {
-    start MigratedDb as db
-    expose db.service as service
+    start MigratedDb as Dep
+    expose shell Dep.service as service
 
     shell service {
         > export SEED_STATUS=seeded
@@ -280,15 +280,15 @@ effect SeededDb {
 This creates a dependency chain: `SeededDb` starts `MigratedDb`, which starts `Db`. When a test starts `SeededDb`, Relux resolves the full chain and executes in **topological order** — dependencies first:
 
 1. `Db` runs, exposes its `service` shell
-2. `MigratedDb` runs in that same shell (via `start Db as db`), adds migration state
+2. `MigratedDb` runs in that same shell (via `start Db as Dep`), adds migration state
 3. `SeededDb` runs in the same shell again, adds seed data
 
-Each effect re-exposes the `service` shell from its dependency using the qualified expose syntax `expose db.service as service`. This means whoever starts `SeededDb` can access the same shell that was built up through the entire chain.
+Each effect re-exposes the `service` shell from its dependency using the qualified expose syntax `expose shell Dep.service as service`. This means whoever starts `SeededDb` can access the same shell that was built up through the entire chain.
 
 ```relux
 test "transitive dependencies execute in order" {
-    start SeededDb as db
-    shell db.service {
+    start SeededDb as Db
+    shell Db.service {
         > echo $$DB_STATUS
         <? ^started$
         > echo $$MIG_STATUS
@@ -303,6 +303,68 @@ The test only says `start SeededDb` — it does not need to know about `Db` or `
 
 Circular dependencies are caught at check time. If effect A needs B and B needs A, `relux check` reports the cycle before any test runs.
 
+## Exposing variables
+
+Effects can expose computed values alongside shells. Use `expose var` to declare a variable as part of the effect's public interface:
+
+```relux
+effect StartDb {
+    let port = available_port()
+    expose shell db
+    expose var port
+
+    shell db {
+        > start-db --port ${port}
+        <? listening on ${port}
+    }
+}
+```
+
+The `port` variable is computed during setup (via `available_port()`) and exposed to callers. A test accesses it through the effect alias using dot notation in interpolation:
+
+```relux
+test "connect to dynamic port" {
+    start StartDb as Db
+    shell client {
+        > curl http://localhost:${Db.port}/status
+        <? running
+    }
+}
+```
+
+`${Db.port}` reads the value that was computed when the `StartDb` effect ran. The same syntax works in any runtime context — send payloads, match patterns, and shell-level `let` bindings:
+
+```relux
+    shell client {
+        let db_url = "http://localhost:${Db.port}"
+        > curl ${db_url}/status
+        <? running
+    }
+```
+
+Note that test-level and effect-level `let` bindings cannot reference exposed variables, because they are evaluated at resolve time before effects are started. Only shell-level code can access `${Alias.var_name}`.
+
+Composed effects can re-expose variables from their dependencies, just like shells:
+
+```relux
+effect StartAuth {
+    let auth_port = available_port()
+    start StartDb as Db
+    expose shell auth
+    expose var auth_port
+    expose var Db.port as db_port
+
+    shell auth {
+        > start-auth --port ${auth_port} --db-port ${Db.port}
+        <? listening on ${auth_port}
+    }
+}
+```
+
+`expose var Db.port as db_port` takes the `port` variable exposed by the `StartDb` dependency and re-exposes it under the name `db_port`. A test starting `StartAuth` can access both `${Auth.auth_port}` and `${Auth.db_port}` without knowing about the inner `StartDb` dependency.
+
+Exposed variables are read-only — they are fixed at the time the effect finishes setup and cannot be reassigned by the caller.
+
 ## Effect identity and deduplication
 
 What happens when two tests — or two `start` statements in the same test — request the same effect? Relux does not run it twice. It identifies each effect instance by its **identity** and deduplicates: if the identity matches, the effect runs once and all references share the same instance.
@@ -311,7 +373,7 @@ For effects without overlay variables (covered in the next section), the identit
 
 ```relux
 effect Counter {
-    expose counter
+    expose shell counter
 
     shell counter {
         > export COUNT=0
@@ -322,13 +384,13 @@ effect Counter {
 }
 
 test "same effect started twice shares one instance" {
-    start Counter as c1
-    start Counter as c2
-    shell c1.counter {
+    start Counter as C1
+    start Counter as C2
+    shell C1.counter {
         > echo $$COUNT
         <? ^1$
     }
-    shell c2.counter {
+    shell C2.counter {
         > echo $$COUNT
         <? ^1$
     }
@@ -344,7 +406,7 @@ So far, every effect has been a fixed recipe — the same setup every time. But 
 ```relux
 effect Labeled {
     expect LABEL
-    expose service
+    expose shell service
 
     shell service {
         > export SVC_LABEL=${LABEL}
@@ -353,17 +415,17 @@ effect Labeled {
 }
 
 test "different overlays create separate instances" {
-    start Labeled as a {
+    start Labeled as A {
         LABEL = "alpha"
     }
-    start Labeled as b {
+    start Labeled as B {
         LABEL = "beta"
     }
-    shell a.service {
+    shell A.service {
         > echo $$SVC_LABEL
         <? ^alpha$
     }
-    shell b.service {
+    shell B.service {
         > echo $$SVC_LABEL
         <? ^beta$
     }
@@ -374,13 +436,13 @@ The `Labeled` effect declares `expect LABEL` — a required variable that must b
 
 `expect` is a **contract**, not a sandbox. It declares which variables the effect *requires* — the ones the resolver validates. It does not prevent the effect from reading other variables. An effect always inherits the full parent environment: the base system environment, plus any variables set in the caller's scope. The overlay adds to or overrides specific entries in that inherited environment. This means most configuration flows through naturally, and only the values that vary per-instance need to be listed in `expect` and passed via overlays.
 
-This is where overlays connect to deduplication. The full identity of an effect instance is **(effect name, evaluated overlay values)**. Same name with same overlay = shared instance. Same name with different overlay = separate instances. Two `start Labeled as x { LABEL = "alpha" }` with the same overlay value would share one instance, regardless of the alias name.
+This is where overlays connect to deduplication. The full identity of an effect instance is **(effect name, evaluated overlay values)**. Same name with same overlay = shared instance. Same name with different overlay = separate instances. Two `start Labeled as X { LABEL = "alpha" }` with the same overlay value would share one instance, regardless of the alias name.
 
 When the overlay key and the variable being passed have the same name, you can use the shorthand syntax — a bare key without `= value`:
 
 ```relux
 let LABEL = "alpha"
-start Labeled as a { LABEL }   // desugars to LABEL = LABEL
+start Labeled as A { LABEL }   // desugars to LABEL = LABEL
 ```
 
 Overlay variables are the mechanism for reusing a single effect definition across different configurations — like the `FailTail` example from the introduction, where the trigger pattern and log path are passed in as overlays.
@@ -392,7 +454,7 @@ The parser enforces a fixed ordering of sections inside an effect body:
 1. `expect` — required overlay variables
 2. `let` — local bindings (can reference expected vars)
 3. `start` — sub-dependencies (overlay expressions can reference let-bound vars)
-4. `expose` — which shells are visible to callers
+4. `expose` — which shells and variables are visible to callers
 5. `shell` blocks — setup logic
 6. `cleanup` — teardown (optional, at most one)
 
@@ -408,7 +470,7 @@ Effects that start long-running services should set a fail pattern before the st
 
 ```relux
 effect Service {
-    expose service
+    expose shell service
 
     shell service {
         !? FATAL|ERROR|panic
@@ -427,8 +489,8 @@ Because deduplication means two aliases can point to the same shell, mutations t
 If you need truly independent instances, give them different overlay values — even a dummy key is enough to create separate identities:
 
 ```relux
-start MyEffect as a { INSTANCE = "1" }
-start MyEffect as b { INSTANCE = "2" }
+start MyEffect as A { INSTANCE = "1" }
+start MyEffect as B { INSTANCE = "2" }
 ```
 
 ## Try it yourself

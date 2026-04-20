@@ -312,7 +312,7 @@ Markers work on [effects](11-effects-and-dependencies.md) too. This is particula
 ```relux
 # skip if "${SKIP_EFFECT}"
 effect Guarded {
-    expose service
+    expose shell service
 
     shell service {
         > echo "effect ran"
@@ -321,8 +321,8 @@ effect Guarded {
 }
 
 test "depends on conditionally skipped effect" {
-    start Guarded as g
-    shell g.service {
+    start Guarded as G
+    shell G.service {
         > echo "test body ran"
         <? ^test body ran$
     }

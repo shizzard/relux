@@ -1,12 +1,12 @@
 effect Broken {
-    expose nonexistent
+    expose shell nonexistent
     shell actual {
         > echo hello
     }
 }
 
 test "bad expose" {
-    start Broken as b
+    start Broken as B
     shell s {
         > echo hello
     }

@@ -1,20 +1,20 @@
 effect A {
-    start B as dep
+    start B as Dep
     shell s {
         > echo a
     }
 }
 
 effect B {
-    start A as dep
+    start A as Dep
     shell s {
         > echo b
     }
 }
 
 test "cycle" {
-    start A as a
-    shell s {
+    start A as X
+    shell X.s {
         > echo hello
     }
 }

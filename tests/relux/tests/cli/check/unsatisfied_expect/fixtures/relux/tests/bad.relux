@@ -6,8 +6,8 @@ effect Db {
 }
 
 test "missing overlay" {
-    start Db as db
-    shell db {
+    start Db as D
+    shell D.db {
         > echo hello
     }
 }

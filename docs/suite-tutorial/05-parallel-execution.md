@@ -21,7 +21,7 @@ import api/http
 
 effect Db {
     expect DB_PORT
-    expose service
+    expose shell service
 
     shell service {
         let db_root = "${__RELUX_TEST_ARTIFACTS}/database"
@@ -58,7 +58,7 @@ import service/db { url as db_url, Db }
 effect Auth {
     expect DB_PORT, AUTH_PORT
     start Db
-    expose service
+    expose shell service
 
     shell setup {
         log("create the auth database")
@@ -75,8 +75,8 @@ effect Auth {
 
 effect SeededAuth {
     expect DB_PORT, AUTH_PORT
-    start Auth as auth
-    expose auth.service as service
+    start Auth as Dep
+    expose shell Dep.service as service
 
     shell seeder {
         log("create seed database users")
@@ -107,7 +107,7 @@ effect Tasks {
     expect DB_PORT, AUTH_PORT, TASKS_PORT
     start Db
     start SeededAuth
-    expose service
+    expose shell service
 
     shell setup {
         log("create the tasks database")
@@ -124,8 +124,8 @@ effect Tasks {
 
 effect SeededTasks {
     expect DB_PORT, AUTH_PORT, TASKS_PORT
-    start Tasks as tasks
-    expose tasks.service as service
+    start Tasks as Dep
+    expose shell Dep.service as service
 
     shell seeder {
         log("login as alice")

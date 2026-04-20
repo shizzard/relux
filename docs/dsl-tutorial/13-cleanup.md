@@ -12,7 +12,7 @@ Here is an effect that creates a temporary working directory during setup and re
 
 ```relux
 effect TempWorkspace {
-    expose workspace
+    expose shell workspace
 
     shell workspace {
         > mkdir -p /tmp/relux-${__RELUX_RUN_ID}
@@ -50,7 +50,7 @@ A cleanup block goes inside an effect or test definition, after the shell blocks
 
 ```relux
 effect WithCleanup {
-    expose service
+    expose shell service
 
     shell service {
         > touch /tmp/cleanup-test-marker
@@ -111,7 +111,7 @@ Consider a chain of effects where each layer creates files that later layers dep
 
 ```relux
 effect BuildApp {
-    expose artifact
+    expose shell artifact
 
     shell artifact {
         > mkdir -p /tmp/build && echo "compiled" > /tmp/build/app.bin
@@ -124,7 +124,7 @@ effect BuildApp {
 
 effect GenerateConfig {
     start BuildApp
-    expose configuration
+    expose shell configuration
 
     shell configuration {
         > echo "db=localhost" > /tmp/build/config.ini
@@ -137,7 +137,7 @@ effect GenerateConfig {
 
 effect DeployLocal {
     start GenerateConfig
-    expose deployment
+    expose shell deployment
 
     shell deployment {
         > cp /tmp/build/app.bin /tmp/deploy/ && cp /tmp/build/config.ini /tmp/deploy/
@@ -170,7 +170,7 @@ As described above, cleanup can see top-level `let` variables and environment va
 ```relux
 effect TempDir {
     expect DIR
-    expose workspace
+    expose shell workspace
 
     shell workspace {
         > mkdir -p ${DIR}

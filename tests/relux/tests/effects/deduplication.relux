@@ -1,4 +1,5 @@
 effect Counter {
+    expose shell ctr
     shell ctr {
         > export COUNT=0
         match_ok()
@@ -9,6 +10,7 @@ effect Counter {
 
 effect Parameterized {
     expect LABEL
+    expose shell svc
     shell svc {
         > export SVC_LABEL=${LABEL}
         match_ok()
@@ -20,13 +22,13 @@ test "same effect needed twice shares one instance" {
     Verify two needs for the same effect (same identity tuple) reuse
     a single instance — the counter is incremented once, not twice.
     """
-    start Counter as c1
-    start Counter as c2
-    shell c1 {
+    start Counter as C1
+    start Counter as C2
+    shell C1.ctr {
         > echo $$COUNT
         <? ^1$
     }
-    shell c2 {
+    shell C2.ctr {
         > echo $$COUNT
         <? ^1$
     }
@@ -37,6 +39,7 @@ pure fn tag() {
 }
 
 effect SetupOnce {
+    expose shell s
     shell s {
         > MARKER="${__RELUX_TEST_ARTIFACTS}/dedup-marker"
         match_ok()
@@ -54,13 +57,13 @@ test "call-expression overlays at different positions deduplicate" {
     instead of one, the second setup will find the marker file and
     print DUPLICATE, failing the FIRST match.
     """
-    start SetupOnce as s1 {
+    start SetupOnce as S1 {
         TAG = tag()
     }
-    start SetupOnce as s2 {
+    start SetupOnce as S2 {
         TAG = tag()
     }
-    shell s1 {
+    shell S1.s {
         > echo ok
         <? ^ok$
         match_ok()
@@ -72,17 +75,17 @@ test "different overlays create separate instances" {
     Verify two needs for the same effect with different overlay values
     create separate instances, each with their own shell and overlay.
     """
-    start Parameterized as a {
+    start Parameterized as A {
         LABEL = "alpha"
     }
-    start Parameterized as b {
+    start Parameterized as B {
         LABEL = "beta"
     }
-    shell a {
+    shell A.svc {
         > echo $$SVC_LABEL
         <? ^alpha$
     }
-    shell b {
+    shell B.svc {
         > echo $$SVC_LABEL
         <? ^beta$
     }

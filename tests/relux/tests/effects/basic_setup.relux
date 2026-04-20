@@ -1,4 +1,5 @@
 effect StartService {
+    expose shell svc
     shell svc {
         > echo "service ready"
         <? ^service ready$
@@ -6,6 +7,7 @@ effect StartService {
 }
 
 effect PrepareEnv {
+    expose shell env
     shell env {
         > export SETUP_VAR=initialized
         match_ok()
@@ -19,8 +21,8 @@ test "effect sets up shell before test runs" {
     Verify an effect's shell block executes and completes before
     the test body begins.
     """
-    start StartService as worker
-    shell worker {
+    start StartService as Worker
+    shell Worker.svc {
         > echo "test using effect shell"
         <? ^test using effect shell$
     }
@@ -31,8 +33,8 @@ test "effect shell retains state from setup" {
     Verify state established during effect setup (environment
     variables, working directory, etc.) persists into the test.
     """
-    start PrepareEnv as env
-    shell env {
+    start PrepareEnv as Env
+    shell Env.env {
         > echo $$SETUP_VAR
         <? ^initialized$
     }

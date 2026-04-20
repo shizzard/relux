@@ -30,7 +30,7 @@
 
 ## Functions
 
-- Function names must start with a lowercase letter or underscore (`snake_case`) — this is enforced at the syntactic level
+- Function and shell names must start with a lowercase letter or underscore (`snake_case`) — this is enforced at the syntactic level
 - Functions are reusable sequences of statements
 - A function executes in the caller's shell context — it has no shell of its own
 - Functions can only be called inside `shell` blocks (since shell operators require an active shell)
@@ -76,23 +76,27 @@
 ## Effects
 
 - Effect names must start with an uppercase letter (`CamelCase`) — this is enforced at the syntactic level, disambiguating effects from functions in imports
-- An effect is a reusable setup procedure that produces running shells
+- An effect is a reusable setup procedure that produces running shells and computed values
 - An effect has three explicit interface components:
   - **`expect`** — declares required environment variables the effect reads; the resolver validates these are satisfiable
-  - **`expose`** — declares which shells the effect makes available to callers; internal shells not listed in `expose` are terminated after setup
+  - **`expose`** — declares which shells and variables the effect makes available to callers; the `expose` keyword requires a `shell` or `var` discriminator (`expose shell db`, `expose var port`); internal shells not listed in `expose` are terminated after setup
   - **`start`** — declares dependency effects with optional env remapping via overlay
 - None of these declarations are mandatory: an effect may have no `expect`, no `start`, and no `expose`
 - `start Effect` runs the dependency for side effects only — its shells are not accessible
-- `start Effect as alias` runs the dependency and makes its exposed shells available via dot-access (`shell alias.shell_name`)
-- `start Effect as alias { KEY = expr }` provides an overlay that remaps the caller's environment into the dependency's environment
+- `start Effect as Alias` runs the dependency and makes its exposed shells/variables available via dot-access (`shell Alias.shell_name`, `${Alias.var_name}`)
+- Effect aliases (the name after `as`) must be CamelCase, matching effect naming conventions
+- `start Effect as Alias { KEY = expr }` provides an overlay that remaps the caller's environment into the dependency's environment
   - The shorthand form `KEY` (without `= expr`) is equivalent to `KEY = KEY`
 - Effects inherit the full parent environment — overlay entries override specific keys
 - Effect instance identity is determined by `(effect-name, evaluated overlay restricted to expect-declared vars)`:
   - Same identity tuple = same instance (deduplicated, reused)
   - Different identity tuple = separate instances
 - When a test or effect starts the same effect multiple times with the same evaluated overlay, only one instance is created
-- Exposed shells are accessed via dot notation: `shell alias.shell_name { ... }`
-- For composed effects, `expose` can re-export a dependency's shell: `expose dep.shell as public_name`
+- Exposed shells are accessed via dot notation: `shell Alias.shell_name { ... }`
+- Exposed variables are accessed via dot notation in interpolation: `${Alias.var_name}`
+- Exposed variables are only accessible in shell contexts (runtime); test-level and effect-level `let` bindings cannot reference them (purity violation — `let` is evaluated at resolve time, before effects are started)
+- Exposed variables are read-only from the caller's perspective
+- For composed effects, `expose` can re-export a dependency's shell or variable: `expose shell Dep.shell as public_name`, `expose var Dep.port as db_port`
 - Effects run before the test body; the dependency graph is resolved and executed in topological order
 - Circular effect dependencies are a parse error
 - If an effect fails (a match times out during setup), all tests depending on it are failed

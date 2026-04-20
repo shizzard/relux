@@ -24,7 +24,7 @@ import service/auth { Auth }
 effect Tasks {
     start Db
     start Auth
-    expose service
+    expose shell service
 
     shell setup {
         log("create the tasks database")

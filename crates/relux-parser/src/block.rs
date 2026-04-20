@@ -5,7 +5,8 @@ use relux_core::Spanned;
 use relux_lexer::Token;
 
 use super::ParserInput;
-use super::ident::ident_var;
+use super::ident::ident_effect;
+use super::ident::ident_fn;
 use super::punctuation::punctuation_brace_close;
 use super::punctuation::punctuation_brace_open;
 use super::stmt::stmt;
@@ -27,7 +28,7 @@ pub fn shell_block<'a>()
 {
     just(Token::Shell)
         .ignore_then(ws())
-        .ignore_then(ident_var())
+        .ignore_then(ident_fn())
         .then_ignore(ws())
         .then_ignore(punctuation_brace_open())
         .then(
@@ -64,9 +65,9 @@ pub fn qualified_shell_block<'a>()
 {
     just(Token::Shell)
         .ignore_then(ws())
-        .ignore_then(ident_var())
+        .ignore_then(ident_effect())
         .then_ignore(just(Token::Dot))
-        .then(ident_var())
+        .then(ident_fn())
         .then_ignore(ws())
         .then_ignore(punctuation_brace_open())
         .then(
@@ -316,11 +317,11 @@ mod tests {
     #[test]
     fn qualified_shell_block_basic() {
         let sb = parse_qualified(
-            r#"shell n.node {
+            r#"shell N.node {
   > echo hello
 }"#,
         );
-        assert_eq!(sb.qualifier.as_ref().unwrap().node.name, "n");
+        assert_eq!(sb.qualifier.as_ref().unwrap().node.name, "N");
         assert_eq!(sb.name.node.name, "node");
         assert_eq!(sb.stmts.len(), 1);
     }
@@ -328,10 +329,10 @@ mod tests {
     #[test]
     fn qualified_shell_block_empty() {
         let sb = parse_qualified(
-            r#"shell db.main {
+            r#"shell Db.main {
 }"#,
         );
-        assert_eq!(sb.qualifier.as_ref().unwrap().node.name, "db");
+        assert_eq!(sb.qualifier.as_ref().unwrap().node.name, "Db");
         assert_eq!(sb.name.node.name, "main");
         assert!(sb.stmts.is_empty());
     }

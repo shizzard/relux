@@ -4,6 +4,7 @@ fn helper() {
 }
 
 effect SetupWithHelper {
+    expose shell svc
     shell svc {
         helper()
     }

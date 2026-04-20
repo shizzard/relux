@@ -40,7 +40,9 @@ fn has_interpolation(expr: &IrInterpolation) -> bool {
     expr.parts().iter().any(|p| {
         matches!(
             p,
-            IrStringPart::Var { .. } | IrStringPart::CaptureRef { .. }
+            IrStringPart::Var { .. }
+                | IrStringPart::QualifiedVar { .. }
+                | IrStringPart::CaptureRef { .. }
         )
     })
 }
@@ -51,6 +53,9 @@ fn interpolation_template(expr: &IrInterpolation) -> String {
         .map(|p| match p {
             IrStringPart::Literal { value, .. } => value.clone(),
             IrStringPart::Var { name, .. } => format!("${{{name}}}"),
+            IrStringPart::QualifiedVar {
+                qualifier, name, ..
+            } => format!("${{{qualifier}.{name}}}"),
             IrStringPart::EscapedDollar { .. } => "$".to_string(),
             IrStringPart::CaptureRef { index, .. } => format!("${{{index}}}"),
         })
@@ -64,6 +69,14 @@ async fn interpolate_ir(expr: &IrInterpolation, ctx: &ExecutionContext) -> Strin
             IrStringPart::Literal { value, .. } => out.push_str(value),
             IrStringPart::Var { name, .. } => {
                 if let Some(v) = ctx.lookup(name).await {
+                    out.push_str(&v);
+                }
+            }
+            IrStringPart::QualifiedVar {
+                qualifier, name, ..
+            } => {
+                let qualified = format!("{qualifier}.{name}");
+                if let Some(v) = ctx.lookup(&qualified).await {
                     out.push_str(&v);
                 }
             }
@@ -204,6 +217,13 @@ impl Vm {
                     IrStringPart::Var { name, .. } => {
                         let value = self.ctx.lookup(name).await.unwrap_or_default();
                         bindings.push((name.clone(), value));
+                    }
+                    IrStringPart::QualifiedVar {
+                        qualifier, name, ..
+                    } => {
+                        let qualified = format!("{qualifier}.{name}");
+                        let value = self.ctx.lookup(&qualified).await.unwrap_or_default();
+                        bindings.push((qualified, value));
                     }
                     IrStringPart::CaptureRef { index, .. } => {
                         let name = index.to_string();
@@ -479,6 +499,12 @@ impl Vm {
                 Ok(result)
             }
             IrExpr::Var { name, .. } => Ok(self.ctx.lookup(name).await.unwrap_or_default()),
+            IrExpr::QualifiedVar {
+                qualifier, name, ..
+            } => {
+                let qualified = format!("{qualifier}.{name}");
+                Ok(self.ctx.lookup(&qualified).await.unwrap_or_default())
+            }
             IrExpr::CaptureRef { index, .. } => Ok(self.ctx.capture(*index).unwrap_or_default()),
             IrExpr::Call { call, .. } => self.eval_call(call, &span).await,
         }

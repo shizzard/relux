@@ -11,6 +11,7 @@ use super::block::cleanup_block;
 use super::block::qualified_shell_block;
 use super::block::shell_block;
 use super::ident::ident_effect;
+use super::ident::ident_fn;
 use super::ident::ident_var;
 use super::need::start_decl;
 use super::punctuation::punctuation_brace_close;
@@ -24,6 +25,7 @@ use relux_ast::AstEffectDef;
 use relux_ast::AstEffectItem;
 use relux_ast::AstExpectDecl;
 use relux_ast::AstExposeDecl;
+use relux_ast::AstExposeKind;
 use relux_ast::AstMarkerDecl;
 use relux_ast::AstNode;
 use relux_ast::AstStmt;
@@ -153,12 +155,66 @@ pub fn def_effect<'a>()
     .collect::<Vec<_>>();
 
     // ── Expose section ──────────────────────────────────────
-    // `expose shell` or `expose qualifier.shell as alias`
-    let expose_item = leading_ws()
+    // `expose shell [Qualifier.]target [as alias]`
+    // `expose var [Qualifier.]target [as alias]`
+    //
+    // For `expose shell`: unqualified target and alias are snake_case (ident_fn).
+    // For `expose var`: unqualified target and alias are permissive (ident_var).
+    // Qualifier (before dot) is always CamelCase (ident_effect) — it's an effect alias.
+
+    let expose_shell_item = leading_ws()
         .ignore_then(keyword(Token::Expose))
         .ignore_then(ws())
-        .ignore_then(ident_var())
-        .then(just(Token::Dot).ignore_then(ident_var()).or_not())
+        .ignore_then(just(Token::Shell).map_with(|_, e| AstExposeKind::Shell {
+            span: crate::span_from_chumsky(e.span()),
+        }))
+        .then_ignore(ws())
+        .then(
+            // Try qualified first: Qualifier.target
+            ident_effect()
+                .then_ignore(just(Token::Dot))
+                .then(ident_fn())
+                .map(|(q, t)| (Some(q), t))
+                // Fallback: unqualified target
+                .or(ident_fn().map(|t| (None, t))),
+        )
+        .then(
+            ws().ignore_then(just(Token::As))
+                .ignore_then(ws())
+                .ignore_then(ident_fn())
+                .or_not(),
+        )
+        .then_ignore(newline())
+        .map_with(|((kind, (qualifier, target)), alias), e| {
+            let span = crate::span_from_chumsky(e.span());
+            AstEffectItem::Expose {
+                decl: AstExposeDecl {
+                    kind,
+                    qualifier,
+                    target,
+                    alias,
+                    span,
+                },
+                span,
+            }
+        });
+
+    let expose_var_item = leading_ws()
+        .ignore_then(keyword(Token::Expose))
+        .ignore_then(ws())
+        .ignore_then(just(Token::Var).map_with(|_, e| AstExposeKind::Var {
+            span: crate::span_from_chumsky(e.span()),
+        }))
+        .then_ignore(ws())
+        .then(
+            // Try qualified first: Qualifier.target
+            ident_effect()
+                .then_ignore(just(Token::Dot))
+                .then(ident_var())
+                .map(|(q, t)| (Some(q), t))
+                // Fallback: unqualified target
+                .or(ident_var().map(|t| (None, t))),
+        )
         .then(
             ws().ignore_then(just(Token::As))
                 .ignore_then(ws())
@@ -166,22 +222,21 @@ pub fn def_effect<'a>()
                 .or_not(),
         )
         .then_ignore(newline())
-        .map_with(|((first, dot_second), alias), e| {
+        .map_with(|((kind, (qualifier, target)), alias), e| {
             let span = crate::span_from_chumsky(e.span());
-            let (qualifier, shell) = match dot_second {
-                Some(second) => (Some(first), second),
-                None => (None, first),
-            };
             AstEffectItem::Expose {
                 decl: AstExposeDecl {
+                    kind,
                     qualifier,
-                    shell,
+                    target,
                     alias,
                     span,
                 },
                 span,
             }
         });
+
+    let expose_item = choice((expose_shell_item, expose_var_item));
     let expose_comment = leading_ws().ignore_then(comment()).map_with(|c, e| {
         let span = crate::span_from_chumsky(e.span());
         AstEffectItem::Comment { text: c, span }
@@ -659,7 +714,7 @@ effect Db {
     fn effect_with_expose_simple() {
         let e = parse_effect(
             r#"effect Db {
-  expose db
+  expose shell db
   shell db {
     > echo start
   }
@@ -675,7 +730,7 @@ effect Db {
             })
             .expect("should have expose");
         assert!(expose.qualifier.is_none());
-        assert_eq!(expose.shell.node.name, "db");
+        assert_eq!(expose.target.node.name, "db");
         assert!(expose.alias.is_none());
     }
 
@@ -683,8 +738,8 @@ effect Db {
     fn effect_with_expose_qualified() {
         let e = parse_effect(
             r#"effect Cluster {
-  start Node as n1
-  expose n1.node as primary
+  start Node as N1
+  expose shell N1.node as primary
   shell setup {
     > echo setup
   }
@@ -699,8 +754,8 @@ effect Db {
                 _ => None,
             })
             .expect("should have expose");
-        assert_eq!(expose.qualifier.as_ref().unwrap().node.name, "n1");
-        assert_eq!(expose.shell.node.name, "node");
+        assert_eq!(expose.qualifier.as_ref().unwrap().node.name, "N1");
+        assert_eq!(expose.target.node.name, "node");
         assert_eq!(expose.alias.as_ref().unwrap().node.name, "primary");
     }
 
@@ -708,10 +763,10 @@ effect Db {
     fn effect_with_multiple_exposes() {
         let e = parse_effect(
             r#"effect Cluster {
-  start Node as n1
-  start Node as n2
-  expose n1.node as primary
-  expose n2.node as secondary
+  start Node as N1
+  start Node as N2
+  expose shell N1.node as primary
+  expose shell N2.node as secondary
   shell setup {
     > echo setup
   }
@@ -734,8 +789,8 @@ effect Db {
             r#"effect Node {
   expect NODE_PORT, NODE_NAME
   let data_dir = "${__RELUX_TEST_ARTIFACTS}/node"
-  start DependencyEffect as dep
-  expose node
+  start DependencyEffect as Dep
+  expose shell node
   shell node {
     > start-node --port ${NODE_PORT}
   }
@@ -782,7 +837,7 @@ effect Db {
     fn effect_with_expose_aliased_local() {
         let e = parse_effect(
             r#"effect Auth {
-  expose auth as svc
+  expose shell auth as svc
   shell auth {
     > echo start
   }
@@ -798,7 +853,7 @@ effect Db {
             })
             .expect("should have expose");
         assert!(expose.qualifier.is_none());
-        assert_eq!(expose.shell.node.name, "auth");
+        assert_eq!(expose.target.node.name, "auth");
         assert_eq!(expose.alias.as_ref().unwrap().node.name, "svc");
     }
 
@@ -824,8 +879,8 @@ effect Db {
     fn effect_expose_qualified_no_alias() {
         let e = parse_effect(
             r#"effect Wrapper {
-  start Base as b
-  expose b.shell_name
+  start Base as B
+  expose shell B.shell_name
   shell local {
     > echo setup
   }
@@ -840,8 +895,158 @@ effect Db {
                 _ => None,
             })
             .expect("should have expose");
-        assert_eq!(expose.qualifier.as_ref().unwrap().node.name, "b");
-        assert_eq!(expose.shell.node.name, "shell_name");
+        assert_eq!(expose.qualifier.as_ref().unwrap().node.name, "B");
+        assert_eq!(expose.target.node.name, "shell_name");
         assert!(expose.alias.is_none());
+    }
+
+    // ── Expose var tests ────────────────────────────────────
+
+    #[test]
+    fn effect_expose_var_simple() {
+        let e = parse_effect(
+            r#"effect Db {
+  let port = "5432"
+  expose var port
+  shell db {
+    > echo start
+  }
+}
+"#,
+        );
+        let expose = e
+            .body
+            .iter()
+            .find_map(|item| match &item.node {
+                AstEffectItem::Expose { decl, .. } => Some(decl),
+                _ => None,
+            })
+            .expect("should have expose");
+        assert!(matches!(expose.kind, AstExposeKind::Var { .. }));
+        assert!(expose.qualifier.is_none());
+        assert_eq!(expose.target.node.name, "port");
+        assert!(expose.alias.is_none());
+    }
+
+    #[test]
+    fn effect_expose_var_with_alias() {
+        let e = parse_effect(
+            r#"effect Db {
+  let port = "5432"
+  expose var port as DB_PORT
+  shell db {
+    > echo start
+  }
+}
+"#,
+        );
+        let expose = e
+            .body
+            .iter()
+            .find_map(|item| match &item.node {
+                AstEffectItem::Expose { decl, .. } => Some(decl),
+                _ => None,
+            })
+            .expect("should have expose");
+        assert!(matches!(expose.kind, AstExposeKind::Var { .. }));
+        assert!(expose.qualifier.is_none());
+        assert_eq!(expose.target.node.name, "port");
+        assert_eq!(expose.alias.as_ref().unwrap().node.name, "DB_PORT");
+    }
+
+    #[test]
+    fn effect_expose_var_qualified() {
+        let e = parse_effect(
+            r#"effect Stack {
+  start Db as Db
+  expose var Db.port as db_port
+  shell stack {
+    > echo start
+  }
+}
+"#,
+        );
+        let expose = e
+            .body
+            .iter()
+            .find_map(|item| match &item.node {
+                AstEffectItem::Expose { decl, .. } => Some(decl),
+                _ => None,
+            })
+            .expect("should have expose");
+        assert!(matches!(expose.kind, AstExposeKind::Var { .. }));
+        assert_eq!(expose.qualifier.as_ref().unwrap().node.name, "Db");
+        assert_eq!(expose.target.node.name, "port");
+        assert_eq!(expose.alias.as_ref().unwrap().node.name, "db_port");
+    }
+
+    #[test]
+    fn effect_expose_shell_kind() {
+        let e = parse_effect(
+            r#"effect Db {
+  expose shell db
+  shell db {
+    > echo start
+  }
+}
+"#,
+        );
+        let expose = e
+            .body
+            .iter()
+            .find_map(|item| match &item.node {
+                AstEffectItem::Expose { decl, .. } => Some(decl),
+                _ => None,
+            })
+            .expect("should have expose");
+        assert!(matches!(expose.kind, AstExposeKind::Shell { .. }));
+    }
+
+    #[test]
+    fn effect_expose_rejects_bare() {
+        // Bare expose without shell/var keyword should fail
+        let source = r#"effect Db {
+  expose db
+  shell db {
+    > echo start
+  }
+}
+"#;
+        let pairs = crate::lex_to_pairs(source);
+        let input = crate::make_input(&pairs, source.len());
+        let result = def_effect()
+            .then_ignore(any().repeated())
+            .parse(input)
+            .into_result();
+        assert!(
+            result.is_err(),
+            "bare expose without shell/var should be rejected"
+        );
+    }
+
+    #[test]
+    fn effect_mixed_expose_shell_and_var() {
+        let e = parse_effect(
+            r#"effect App {
+  let port = "8080"
+  expose shell app
+  expose var port
+  shell app {
+    > echo start
+  }
+}
+"#,
+        );
+        let exposes: Vec<_> = e
+            .body
+            .iter()
+            .filter_map(|item| match &item.node {
+                AstEffectItem::Expose { decl, .. } => Some(decl),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(exposes.len(), 2);
+        assert!(matches!(exposes[0].kind, AstExposeKind::Shell { .. }));
+        assert!(matches!(exposes[1].kind, AstExposeKind::Var { .. }));
     }
 }

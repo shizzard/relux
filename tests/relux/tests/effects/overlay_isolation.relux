@@ -8,7 +8,8 @@ effect Parent {
 }
 
 effect Child {
-    start Parent as p
+    start Parent as P
+    expose shell c
     shell c {
         > echo "parent_var='$$PARENT_VAR'"
         <? ^parent_var=''$
@@ -21,8 +22,8 @@ test "child effect does not inherit parent environment" {
     """
     Verify a child effect's shell does not inherit env vars from the parent effect shell.
     """
-    start Child as c
-    shell c {
+    start Child as C
+    shell C.c {
         > echo "test body"
         <? ^test body$
     }

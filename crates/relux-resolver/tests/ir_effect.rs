@@ -396,7 +396,7 @@ fn lower_effect_start_with_alias() {
   }
 }
 effect App {
-  start Db as mydb
+  start Db as MyDb
   shell app {
     > app
   }
@@ -409,7 +409,7 @@ effect App {
     };
     let result = ctx.resolve_effect(&effect_id).unwrap();
     let start = &result.starts()[0];
-    assert_eq!(start.alias(), Some("mydb"));
+    assert_eq!(start.alias(), Some("MyDb"));
 }
 
 #[test]
@@ -597,7 +597,7 @@ effect App {
 #[test]
 fn lower_effect_expose_valid_local_shell() {
     let source = r#"effect Db {
-  expose db
+  expose shell db
   shell db {
     > start
   }
@@ -616,7 +616,7 @@ fn lower_effect_expose_valid_local_shell() {
 #[test]
 fn lower_effect_expose_invalid_shell() {
     let source = r#"effect Db {
-  expose nonexistent
+  expose shell nonexistent
   shell db {
     > start
   }
@@ -634,14 +634,14 @@ fn lower_effect_expose_invalid_shell() {
 #[test]
 fn lower_effect_expose_qualified_valid() {
     let source = r#"effect Base {
-  expose sh
+  expose shell sh
   shell sh {
     > base
   }
 }
 effect Wrapper {
-  start Base as b
-  expose b.sh as base_shell
+  start Base as B
+  expose shell B.sh as base_shell
   shell wrapper {
     > wrapper
   }
@@ -662,14 +662,14 @@ effect Wrapper {
 #[test]
 fn lower_effect_expose_qualified_invalid_alias() {
     let source = r#"effect Base {
-  expose sh
+  expose shell sh
   shell sh {
     > base
   }
 }
 effect Wrapper {
-  start Base as b
-  expose nonexistent.sh
+  start Base as B
+  expose shell Nonexistent.sh
   shell wrapper {
     > wrapper
   }
@@ -690,7 +690,7 @@ fn lower_effect_expose_qualified_unexposed_shell() {
     // Wrapper tries to re-expose `b.internal` — this should fail
     // because Base does not expose `internal` to callers.
     let source = r#"effect Base {
-  expose sh
+  expose shell sh
   shell sh {
     > base
   }
@@ -699,8 +699,8 @@ fn lower_effect_expose_qualified_unexposed_shell() {
   }
 }
 effect Wrapper {
-  start Base as b
-  expose b.internal as leaked
+  start Base as B
+  expose shell B.internal as leaked
   shell wrapper {
     > wrapper
   }
@@ -724,15 +724,15 @@ fn lower_effect_expose_rejects_qualified_shell_name() {
     // shell — it does NOT create a local shell. `expose sh` (unqualified) should
     // fail because no local shell named `sh` exists.
     let source = r#"effect Base {
-  expose sh
+  expose shell sh
   shell sh {
     > base
   }
 }
 effect Wrapper {
-  start Base as b
-  expose sh
-  shell b.sh {
+  start Base as B
+  expose shell sh
+  shell B.sh {
     > use dep shell
   }
 }
@@ -753,7 +753,7 @@ effect Wrapper {
 fn lower_effect_expect_vars() {
     let source = r#"effect Db {
   expect DB_PORT, DB_NAME
-  expose db
+  expose shell db
   shell db {
     > start
   }
@@ -793,7 +793,7 @@ fn lower_effect_no_expose_is_valid() {
 #[test]
 fn lower_effect_expose_local_with_alias() {
     let source = r#"effect Auth {
-  expose auth as svc
+  expose shell auth as svc
   shell auth {
     > start
   }
@@ -814,7 +814,7 @@ fn lower_effect_expose_local_with_alias() {
 #[test]
 fn lower_effect_no_expect_is_valid() {
     let source = r#"effect Simple {
-  expose sh
+  expose shell sh
   shell sh {
     > start
   }

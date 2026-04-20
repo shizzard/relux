@@ -1,4 +1,5 @@
 effect ServiceA {
+    expose shell svc
     shell svc {
         > export SVC_ID=A
         match_ok()
@@ -8,6 +9,7 @@ effect ServiceA {
 }
 
 effect ServiceB {
+    expose shell svc
     shell svc {
         > export SVC_ID=B
         match_ok()
@@ -20,13 +22,13 @@ test "two effects with same export name both accessible via alias" {
     """
     Verify that needing two effects with explicit aliases works even if they export the same shell name.
     """
-    start ServiceA as a
-    start ServiceB as b
-    shell a {
+    start ServiceA as A
+    start ServiceB as B
+    shell A.svc {
         > echo $$SVC_ID
         <? ^A$
     }
-    shell b {
+    shell B.svc {
         > echo $$SVC_ID
         <? ^B$
     }

@@ -1,7 +1,8 @@
 import base { Base }
 
 effect Composite {
-    start Base as dep
+    start Base as Dep
+    expose shell s
     shell s {
         > echo composite
     }

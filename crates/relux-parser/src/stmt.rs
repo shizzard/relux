@@ -634,12 +634,12 @@ mod tests {
 
     #[test]
     fn send_raw_with_interpolation() {
-        let s = parse_stmt("=> ${var} data\n");
+        let s = parse_stmt("=> ${val} data\n");
         match s {
             AstStmt::SendRaw { payload, .. } => {
                 assert!(payload.parts.len() >= 2);
                 assert!(
-                    matches!(&payload.parts[0], AstStringPart::VarRef { name, .. } if name == "var")
+                    matches!(&payload.parts[0], AstStringPart::VarRef { name, .. } if name == "val")
                 );
             }
             _ => panic!("expected SendRaw, got {s:?}"),
@@ -778,12 +778,12 @@ mod tests {
 
     #[test]
     fn match_literal_only_var_ref() {
-        let s = parse_stmt("<= ${var}\n");
+        let s = parse_stmt("<= ${val}\n");
         match s {
             AstStmt::MatchLiteral { pattern, .. } => {
                 assert_eq!(pattern.parts.len(), 1);
                 assert!(
-                    matches!(&pattern.parts[0], AstStringPart::VarRef { name, .. } if name == "var")
+                    matches!(&pattern.parts[0], AstStringPart::VarRef { name, .. } if name == "val")
                 );
             }
             _ => panic!("expected MatchLiteral, got {s:?}"),
