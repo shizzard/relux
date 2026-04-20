@@ -374,9 +374,14 @@ pub enum InvalidReport {
         span: IrSpan,
     },
     UnsatisfiedExpect(Box<UnsatisfiedExpectData>),
-    InvalidExpose {
+    InvalidShellExpose {
         effect_name: String,
         shell_name: String,
+        span: IrSpan,
+    },
+    InvalidVarExpose {
+        effect_name: String,
+        var_name: String,
         span: IrSpan,
     },
 }
@@ -428,14 +433,24 @@ impl fmt::Display for InvalidReport {
                     data.effect_name, data.var_name
                 )
             }
-            InvalidReport::InvalidExpose {
+            InvalidReport::InvalidShellExpose {
                 effect_name,
                 shell_name,
                 ..
             } => {
                 write!(
                     f,
-                    "effect `{effect_name}` exposes `{shell_name}` which does not exist"
+                    "effect `{effect_name}` exposes shell `{shell_name}` which does not exist"
+                )
+            }
+            InvalidReport::InvalidVarExpose {
+                effect_name,
+                var_name,
+                ..
+            } => {
+                write!(
+                    f,
+                    "effect `{effect_name}` exposes var `{var_name}` which does not exist"
                 )
             }
         }
@@ -523,10 +538,18 @@ impl InvalidReport {
         }))
     }
 
-    pub fn invalid_expose(effect_name: String, shell_name: String, span: IrSpan) -> Self {
-        Self::InvalidExpose {
+    pub fn invalid_shell_expose(effect_name: String, shell_name: String, span: IrSpan) -> Self {
+        Self::InvalidShellExpose {
             effect_name,
             shell_name,
+            span,
+        }
+    }
+
+    pub fn invalid_var_expose(effect_name: String, var_name: String, span: IrSpan) -> Self {
+        Self::InvalidVarExpose {
+            effect_name,
+            var_name,
             span,
         }
     }
@@ -578,11 +601,16 @@ impl InvalidReport {
             InvalidReport::UnsatisfiedExpect(data) => {
                 CauseId::generate(&data.effect_name, &data.var_name, 0, "unsatisfied_expect")
             }
-            InvalidReport::InvalidExpose {
+            InvalidReport::InvalidShellExpose {
                 effect_name,
                 shell_name,
                 ..
-            } => CauseId::generate(effect_name, shell_name, 0, "invalid_expose"),
+            } => CauseId::generate(effect_name, shell_name, 0, "invalid_shell_expose"),
+            InvalidReport::InvalidVarExpose {
+                effect_name,
+                var_name,
+                ..
+            } => CauseId::generate(effect_name, var_name, 0, "invalid_var_expose"),
         }
     }
 }
@@ -915,15 +943,24 @@ impl From<&InvalidReport> for Diagnostic {
             )
             .with_label(data.expect_span.clone(), "required here")
             .with_label(data.start_span.clone(), "provide it in the overlay"),
-            InvalidReport::InvalidExpose {
+            InvalidReport::InvalidShellExpose {
                 effect_name,
                 shell_name,
                 span,
             } => Diagnostic::new(
                 Severity::Error,
-                format!("effect `{effect_name}` exposes `{shell_name}` which does not exist"),
+                format!("effect `{effect_name}` exposes shell `{shell_name}` which does not exist"),
             )
             .with_label(span.clone(), "no such shell"),
+            InvalidReport::InvalidVarExpose {
+                effect_name,
+                var_name,
+                span,
+            } => Diagnostic::new(
+                Severity::Error,
+                format!("effect `{effect_name}` exposes var `{var_name}` which does not exist"),
+            )
+            .with_label(span.clone(), "no such variable"),
         }
     }
 }

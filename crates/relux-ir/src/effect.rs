@@ -99,6 +99,7 @@ pub struct IrExposeDecl {
     qualifier: Option<String>,
     target: String,
     alias: Option<String>,
+    target_span: IrSpan,
     span: IrSpan,
 }
 
@@ -108,6 +109,7 @@ impl IrExposeDecl {
         qualifier: Option<String>,
         target: String,
         alias: Option<String>,
+        target_span: IrSpan,
         span: IrSpan,
     ) -> Self {
         Self {
@@ -115,8 +117,13 @@ impl IrExposeDecl {
             qualifier,
             target,
             alias,
+            target_span,
             span,
         }
+    }
+
+    pub fn target_span(&self) -> &IrSpan {
+        &self.target_span
     }
 
     pub fn kind(&self) -> &IrExposeKind {
@@ -395,8 +402,9 @@ impl IrNodeLowering for IrEffectItem {
                 };
                 let qualifier = decl.qualifier.as_ref().map(|q| q.node.name.clone());
                 let target = decl.target.node.name.clone();
+                let target_span = s(&decl.target.span);
                 let alias = decl.alias.as_ref().map(|a| a.node.name.clone());
-                let ir = IrExposeDecl::new(kind, qualifier, target, alias, s(span));
+                let ir = IrExposeDecl::new(kind, qualifier, target, alias, target_span, s(span));
                 Ok(IrEffectItem::Expose {
                     decl: ir,
                     span: s(span),
@@ -525,11 +533,19 @@ impl IrNodeLowering for IrEffect {
                 } else {
                     expose.target().to_string()
                 };
-                return Err(LoweringBail::invalid(InvalidReport::invalid_expose(
-                    name.name().to_string(),
-                    label,
-                    expose.span().clone(),
-                )));
+                let report = match expose.kind() {
+                    IrExposeKind::Shell => InvalidReport::invalid_shell_expose(
+                        name.name().to_string(),
+                        label,
+                        expose.target_span().clone(),
+                    ),
+                    IrExposeKind::Var => InvalidReport::invalid_var_expose(
+                        name.name().to_string(),
+                        label,
+                        expose.target_span().clone(),
+                    ),
+                };
+                return Err(LoweringBail::invalid(report));
             }
         }
 

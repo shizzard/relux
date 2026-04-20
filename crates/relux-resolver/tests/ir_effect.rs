@@ -632,6 +632,24 @@ fn lower_effect_expose_invalid_shell() {
 }
 
 #[test]
+fn lower_effect_expose_invalid_var() {
+    let source = r#"effect Db {
+  expose var nonexistent
+  shell db {
+    > start
+  }
+}
+"#;
+    let mut ctx = ctx_with_source(source);
+    let effect_id = EffectId {
+        module: ModulePath("tests/a".into()),
+        name: EffectName("Db".into()),
+    };
+    let result = ctx.resolve_effect(&effect_id);
+    assert!(matches!(result, Err(LoweringBail::Invalid(_))));
+}
+
+#[test]
 fn lower_effect_expose_qualified_valid() {
     let source = r#"effect Base {
   expose shell sh
