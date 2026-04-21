@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-12de170e.js";
+            window.path_to_searchindex_js = "searchindex-25814400.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-7e381e0d.js"></script>
@@ -205,7 +205,7 @@
 </ul>
 <h2 id="functions"><a class="header" href="#functions">Functions</a></h2>
 <ul>
-<li>Function names must start with a lowercase letter or underscore (<code>snake_case</code>) — this is enforced at the syntactic level</li>
+<li>Function and shell names must start with a lowercase letter or underscore (<code>snake_case</code>) — this is enforced at the syntactic level</li>
 <li>Functions are reusable sequences of statements</li>
 <li>A function executes in the caller’s shell context — it has no shell of its own</li>
 <li>Functions can only be called inside <code>shell</code> blocks (since shell operators require an active shell)</li>
@@ -260,18 +260,19 @@
 <h2 id="effects"><a class="header" href="#effects">Effects</a></h2>
 <ul>
 <li>Effect names must start with an uppercase letter (<code>CamelCase</code>) — this is enforced at the syntactic level, disambiguating effects from functions in imports</li>
-<li>An effect is a reusable setup procedure that produces running shells</li>
+<li>An effect is a reusable setup procedure that produces running shells and computed values</li>
 <li>An effect has three explicit interface components:
 <ul>
 <li><strong><code>expect</code></strong> — declares required environment variables the effect reads; the resolver validates these are satisfiable</li>
-<li><strong><code>expose</code></strong> — declares which shells the effect makes available to callers; internal shells not listed in <code>expose</code> are terminated after setup</li>
+<li><strong><code>expose</code></strong> — declares which shells and variables the effect makes available to callers; the <code>expose</code> keyword requires a <code>shell</code> or <code>var</code> discriminator (<code>expose shell db</code>, <code>expose var port</code>); internal shells not listed in <code>expose</code> are terminated after setup</li>
 <li><strong><code>start</code></strong> — declares dependency effects with optional env remapping via overlay</li>
 </ul>
 </li>
 <li>None of these declarations are mandatory: an effect may have no <code>expect</code>, no <code>start</code>, and no <code>expose</code></li>
 <li><code>start Effect</code> runs the dependency for side effects only — its shells are not accessible</li>
-<li><code>start Effect as alias</code> runs the dependency and makes its exposed shells available via dot-access (<code>shell alias.shell_name</code>)</li>
-<li><code>start Effect as alias { KEY = expr }</code> provides an overlay that remaps the caller’s environment into the dependency’s environment
+<li><code>start Effect as Alias</code> runs the dependency and makes its exposed shells/variables available via dot-access (<code>shell Alias.shell_name</code>, <code>${Alias.var_name}</code>)</li>
+<li>Effect aliases (the name after <code>as</code>) must be CamelCase, matching effect naming conventions</li>
+<li><code>start Effect as Alias { KEY = expr }</code> provides an overlay that remaps the caller’s environment into the dependency’s environment
 <ul>
 <li>The shorthand form <code>KEY</code> (without <code>= expr</code>) is equivalent to <code>KEY = KEY</code></li>
 </ul>
@@ -284,8 +285,11 @@
 </ul>
 </li>
 <li>When a test or effect starts the same effect multiple times with the same evaluated overlay, only one instance is created</li>
-<li>Exposed shells are accessed via dot notation: <code>shell alias.shell_name { ... }</code></li>
-<li>For composed effects, <code>expose</code> can re-export a dependency’s shell: <code>expose dep.shell as public_name</code></li>
+<li>Exposed shells are accessed via dot notation: <code>shell Alias.shell_name { ... }</code></li>
+<li>Exposed variables are accessed via dot notation in interpolation: <code>${Alias.var_name}</code></li>
+<li>Exposed variables are only accessible in shell contexts (runtime); test-level and effect-level <code>let</code> bindings cannot reference them (purity violation — <code>let</code> is evaluated at resolve time, before effects are started)</li>
+<li>Exposed variables are read-only from the caller’s perspective</li>
+<li>For composed effects, <code>expose</code> can re-export a dependency’s shell or variable: <code>expose shell Dep.shell as public_name</code>, <code>expose var Dep.port as db_port</code></li>
 <li>Effects run before the test body; the dependency graph is resolved and executed in topological order</li>
 <li>Circular effect dependencies are a parse error</li>
 <li>If an effect fails (a match times out during setup), all tests depending on it are failed</li>
@@ -428,7 +432,7 @@
         <script src="book-a0b12cfe.js"></script>
 
         <!-- Custom JS scripts -->
-        <script src="highlight-relux-8a60f327.js"></script>
+        <script src="highlight-relux-eeebd4f6.js"></script>
 
 
 

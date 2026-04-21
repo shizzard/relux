@@ -1,0 +1,39 @@
+import api/http
+import service/auth { url as auth_url, StartAuth, SeededAuth }
+
+# skip if SMOKE
+test "register duplicate user" {
+    """
+    Verify registering a user that already exists returns 409.
+    """
+    let db_port = available_port()
+    let auth_port = available_port()
+
+    need SeededAuth {
+        DB_PORT = db_port
+        AUTH_PORT = auth_port
+    }
+
+    shell client {
+        log("register alice again")
+        http_request(409, auth_url(auth_port, "/register"), "POST", "{\"login\": \"alice\", \"password\": \"other\"}")
+    }
+}
+
+# skip if SMOKE
+test "login unknown user" {
+    """
+    Verify logging in with a nonexistent user returns 404.
+    """
+    let db_port = available_port()
+    let auth_port = available_port()
+
+    need StartAuth {
+        DB_PORT = db_port
+        AUTH_PORT = auth_port
+    }
+
+    shell client {
+        http_request(404, auth_url(auth_port, "/login"), "POST", "{\"login\": \"nobody\", \"password\": \"whatever\"}")
+    }
+}

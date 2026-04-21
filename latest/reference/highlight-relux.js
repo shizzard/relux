@@ -23,7 +23,8 @@ hljs.registerLanguage("relux", function(hljs) {
 
   var DOCSTRING = {
     className: "string",
-    begin: '"""', end: '"""'
+    begin: '"""', end: '"""',
+    contains: []
   };
 
   var COMMENT = hljs.COMMENT("//", "$");
@@ -33,7 +34,7 @@ hljs.registerLanguage("relux", function(hljs) {
     aliases: ["relux"],
     case_insensitive: false,
     keywords: {
-      keyword: "test effect fn pure import shell let start expect expose as cleanup needs if unless",
+      keyword: "test effect fn pure import shell let start expect expose var as cleanup needs if unless",
       built_in: "match_prompt match_exit_code match_not_ok sleep log uuid ctrl_c ctrl_d ctrl_z env default which concat upper lower trim trim_start trim_end replace starts_with ends_with contains split_first split_last"
     },
     contains: [
