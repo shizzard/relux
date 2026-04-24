@@ -13,4 +13,7 @@ relux-runtime = { workspace = true }
 tokio         = { workspace = true }
 serde         = { workspace = true }
 serde_json    = { workspace = true }
-jsonrpsee     = { workspace = true }
+clap               = { workspace = true }
+jsonrpsee          = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }

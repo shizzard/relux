@@ -185,7 +185,8 @@ pub fn cli() -> Command {
                         .help("Override suite timeout (humantime string, e.g. '1h', '30m')")
                         .value_name("DURATION")
                         .add(ArgValueCompleter::new(completer::complete_suite_timeout)),
-                ),
+                )
+                .args(debug_args()),
         )
         .subcommand(
             Command::new("check")
@@ -328,6 +329,37 @@ pub fn cli() -> Command {
                     ),
                 ),
         )
+}
+
+// ---------------------------------------------------------------------------
+// Debug args (feature-gated)
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "interactive-debugger")]
+fn debug_args() -> Vec<Arg> {
+    vec![
+        Arg::new("debug")
+            .long("debug")
+            .help("Start interactive debugger instead of running tests")
+            .action(ArgAction::SetTrue),
+        Arg::new("port")
+            .long("port")
+            .help("WebSocket port for debug server")
+            .value_parser(value_parser!(u16))
+            .default_value("9377")
+            .requires("debug"),
+        Arg::new("log-level")
+            .long("log-level")
+            .help("Debug server log level")
+            .value_parser(clap::builder::EnumValueParser::<relux_debug::LogLevel>::new())
+            .default_value("info")
+            .requires("debug"),
+    ]
+}
+
+#[cfg(not(feature = "interactive-debugger"))]
+fn debug_args() -> Vec<Arg> {
+    vec![]
 }
 
 // ---------------------------------------------------------------------------

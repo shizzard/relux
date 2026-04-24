@@ -83,6 +83,17 @@ pub async fn cmd_run(matches: &clap::ArgMatches) {
             .retain(|plan| names.iter().any(|n| n == plan.meta().name()));
     }
 
+    #[cfg(feature = "interactive-debugger")]
+    if matches.get_flag("debug") {
+        let port = *matches.get_one::<u16>("port").expect("has default");
+        let log_level = *matches
+            .get_one::<relux_debug::LogLevel>("log-level")
+            .expect("has default");
+        let config = relux_debug::DebugConfig { port, log_level };
+        relux_debug::start_debug_session(&suite, config).await;
+        return;
+    }
+
     let strategy = match matches.get_one::<String>("strategy").map(|s| s.as_str()) {
         Some("fail-fast") => RunStrategy::FailFast,
         _ => RunStrategy::All,
