@@ -14,7 +14,12 @@ categories = ["development-tools::testing"]
 name = "relux"
 path = "bin/relux.rs"
 
+[features]
+default = ["interactive-debugger"]
+interactive-debugger = ["dep:relux-debug"]
+
 [dependencies]
+relux-debug = { workspace = true, optional = true }
 relux-core     = { workspace = true }
 relux-ast      = { workspace = true }
 relux-ir       = { workspace = true }

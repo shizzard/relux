@@ -1,0 +1,16 @@
+[package]
+name = "relux-debug"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Internal: interactive debugger for Relux. No semver guarantees."
+
+[dependencies]
+relux-core    = { workspace = true }
+relux-ir      = { workspace = true }
+relux-runtime = { workspace = true }
+tokio         = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+jsonrpsee     = { workspace = true }
