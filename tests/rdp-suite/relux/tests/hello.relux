@@ -1,0 +1,7 @@
+test "hello relux" {
+    shell myshell {
+        > echo hello-relux
+        <? ^hello-relux$
+        match_ok()
+    }
+}

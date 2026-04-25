@@ -4,7 +4,7 @@ The test is executing. The client renders the full debugger UI.
 
 ## State
 
-Delivered via `session/hello` state when the client connects during this stage.
+Delivered via `session/init` response when the client connects during this stage.
 
 ```json
 {

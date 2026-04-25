@@ -11,7 +11,7 @@ members = [
     "crates/relux-cli",
 ]
 resolver = "3"
-exclude = ["tests/relux-rdp-client"]
+exclude = ["tests/rdp-client"]
 
 [workspace.package]
 version = "0.5.0"

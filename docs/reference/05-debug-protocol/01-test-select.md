@@ -4,7 +4,7 @@ The server has resolved the project but no test has been selected yet. The clien
 
 ## State
 
-Delivered via `session/hello` state when the client connects during this stage.
+Delivered via `session/init` response when the client connects during this stage.
 
 ```json
 {

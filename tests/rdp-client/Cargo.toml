@@ -1,5 +1,5 @@
 [package]
-name = "relux-rdp-client"
+name = "rdp-client"
 version = "0.1.0"
 edition = "2024"
 publish = false

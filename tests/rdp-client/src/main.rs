@@ -51,17 +51,27 @@ enum Error {
         source: std::io::Error,
     },
 
+    #[error("failed to rename {from} to {to}: {source}")]
+    Rename {
+        from: PathBuf,
+        to: PathBuf,
+        source: std::io::Error,
+    },
+
     #[error("failed to send: {0}")]
     Send(tokio_tungstenite::tungstenite::Error),
 
     #[error("failed to read stdin: {0}")]
     Stdin(std::io::Error),
+
+    #[error("unknown method: {0}")]
+    UnknownMethod(String),
 }
 
 // ─── CLI ──────────────────────────────────────────────────
 
 #[derive(Parser)]
-#[command(name = "rdp-client", about = "Relux Debug Protocol test client")]
+#[command(name = "rdp-client", about = "Relux Debug Protocol test client", version = env!("RELUX_VERSION"))]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -80,6 +90,16 @@ enum Commands {
         port: u16,
 
         /// Working directory for message files (relative to cwd)
+        #[arg(long)]
+        dir: PathBuf,
+    },
+
+    /// Generate a JSON-RPC request file
+    Request {
+        /// Method name (e.g. session/init)
+        method: String,
+
+        /// Working directory to write the request file into
         #[arg(long)]
         dir: PathBuf,
     },
@@ -150,12 +170,38 @@ async fn main() {
 
     let result = match cli.command {
         Commands::Connect { host, port, dir } => cmd_connect(&host, port, &dir).await,
+        Commands::Request { method, dir } => cmd_request(&method, &dir),
     };
 
     if let Err(e) = result {
         eprintln!("error: {e}");
         std::process::exit(1);
     }
+}
+
+fn cmd_request(method: &str, dir: &Path) -> Result<(), Error> {
+    std::fs::create_dir_all(dir).map_err(|e| Error::CreateDir {
+        path: dir.to_path_buf(),
+        source: e,
+    })?;
+
+    let json = match method {
+        "session/init" => serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "session/init",
+            "params": {
+                "client": "rdp-client",
+                "version": env!("RELUX_VERSION"),
+            }
+        }),
+        _ => return Err(Error::UnknownMethod(method.to_string())),
+    };
+
+    let filename = format!("{}.json", sanitize_method(method));
+    write_message_file(dir, &filename, &json)?;
+    println!("file written: {filename}");
+    Ok(())
 }
 
 async fn cmd_connect(host: &str, port: u16, dir: &Path) -> Result<(), Error> {
@@ -251,7 +297,13 @@ async fn cmd_connect(host: &str, port: u16, dir: &Path) -> Result<(), Error> {
                         counter += 1;
                         let method = extract_method(&json).unwrap_or("unknown");
                         let out_filename = message_filename(counter, MessageType::Request, method);
-                        write_message_file(dir, &out_filename, &json)?;
+                        let new_path = dir.join(&out_filename);
+                        std::fs::rename(&path, &new_path).map_err(|e| Error::Rename {
+                            from: path,
+                            to: new_path,
+                            source: e,
+                        })?;
+                        eprintln!("{out_filename}");
 
                         ws_sink
                             .send(Message::Text(content.into()))

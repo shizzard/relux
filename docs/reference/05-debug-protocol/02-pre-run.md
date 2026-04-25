@@ -4,7 +4,7 @@ A test has been selected. The server has resolved the full module graph. The cli
 
 ## State
 
-Delivered via `session/hello` state when the client connects during this stage.
+Delivered via `session/init` response when the client connects during this stage.
 
 ```json
 {

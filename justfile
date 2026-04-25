@@ -44,9 +44,9 @@ run *ARGS:
     cargo run -p relux -- {{ARGS}}
 
 # Run e2e tests (check then run)
-e2e:
+e2e *ARGS:
     cargo run -p relux -- check --manifest tests/Relux.toml
-    cargo run -p relux -- run --manifest tests/Relux.toml
+    cargo run -p relux -- run --manifest tests/Relux.toml {{ARGS}}
 
 # Analyze run history
 history *ARGS:

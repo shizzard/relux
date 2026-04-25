@@ -27,7 +27,7 @@ Commands and events share the same namespace. They are distinguished by message 
 
 ## Session Stages
 
-The debug session progresses through four stages. A client may connect (or reconnect) at any stage — the `session/hello` event always delivers the full current state.
+The debug session progresses through four stages. A client may connect (or reconnect) at any stage — the `session/init` response always delivers the full current state.
 
 ```
   test-select ──► pre-run ──► run ──► post-run
@@ -46,9 +46,25 @@ Common data structures shared across stages are defined in [00-common.md](00-com
 
 ## Handshake
 
-On every WebSocket connection the server sends exactly one `session/hello` event. The client uses the `stage` field to determine which UI to render and the nested state object to reconstruct the full view.
+After connecting, the client sends a `session/init` command. The server validates the client version and responds with the current session state. The client uses the `stage` field to determine which UI to render and the nested state object to reconstruct the full view.
 
-### Event: `session/hello`
+### `session/init`
+
+Initialize the debug session. Valid in any stage.
+
+**Params:**
+
+```json
+{
+  "client": "rdp-client",
+  "version": "0.5.0"
+}
+```
+
+`client` — client name (free-form string).
+`version` — client version. Must match the server version exactly.
+
+**Result:**
 
 ```json
 {
@@ -63,6 +79,8 @@ On every WebSocket connection the server sends exactly one `session/hello` event
 `version` — server version (semver).
 `stage` — current session stage.
 `state` — stage-specific state snapshot (see stage docs).
+
+Returns error code `-6` if the client version does not match the server version.
 
 ## Cross-Stage Commands
 
@@ -88,7 +106,7 @@ The server has transitioned to a new stage. Sent after a stage-transitioning com
 ```
 
 `stage` — the new stage.
-`state` — full state snapshot for the new stage (same shape as in `session/hello`).
+`state` — full state snapshot for the new stage (same shape as in `session/init`).
 
 ## Error Codes
 
@@ -99,6 +117,7 @@ The server has transitioned to a new stage. Sent after a stage-transitioning com
 | -3   | Not stopped (inspection command sent while running) |
 | -4   | Not running (execution command sent while stopped, except during pre-run) |
 | -5   | Already in execution phase (second `execution/start` command) |
+| -6   | Version mismatch (client version does not match server version) |
 
 ## Design Notes
 

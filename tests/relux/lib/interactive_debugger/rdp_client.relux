@@ -1,0 +1,93 @@
+pure fn rdp_client() {
+    "${__RELUX_SUITE_ROOT}/rdp-client/target/debug/rdp-client"
+}
+
+pure fn rdp_suite_manifest() {
+    "${__RELUX_SUITE_ROOT}/rdp-suite/Relux.toml"
+}
+
+pure fn rdp_artifacts_dir() {
+    "${__RELUX_TEST_ARTIFACTS}/messages"
+}
+
+pure fn rdp_artifacts_file(filename) {
+    let artifacts_dir = rdp_artifacts_dir()
+    filename = trim(filename)
+    "${artifacts_dir}/${filename}"
+}
+
+fn rdp_request_session_init() {
+    let client = rdp_client()
+    let artifacts_dir = rdp_artifacts_dir()
+    > ${client} request session/init --dir ${artifacts_dir}
+    <? ^file written: (.*)$
+    let file = $1
+    match_ok()
+    file
+}
+
+fn rdp_match_prompt() {
+    <? ^rdp>
+}
+
+effect RdpClient {
+    expect RDP_SERVER_HOST, RDP_SERVER_PORT
+
+    let client = rdp_client()
+    let manifest = rdp_suite_manifest()
+    let artifacts = rdp_artifacts_dir()
+
+    expose shell client
+    expose shell request_builder
+    expose var client
+    expose var manifest
+    expose var artifacts
+
+    shell client {
+        !? ^error:
+        > ${client} connect --host ${RDP_SERVER_HOST} --port ${RDP_SERVER_PORT} --dir ${artifacts}
+        rdp_match_prompt()
+    }
+
+    shell request_builder {
+        > # expected artifacts directory: ${artifacts}
+    }
+}
+
+effect RdpServer {
+    expect RDP_SERVER_HOST, RDP_SERVER_PORT
+
+    let manifest = rdp_suite_manifest()
+
+    expose shell server
+    expose var manifest
+
+    shell server {
+        !? ^error:
+        > ${__RELUX} run --debug --manifest ${manifest} --port ${RDP_SERVER_PORT} 2>&1
+        <? server listening
+    }
+}
+
+effect RdpStack {
+    let server_host = "localhost"
+    let server_port = available_port()
+
+    start RdpServer as Server {
+        RDP_SERVER_HOST = server_host
+        RDP_SERVER_PORT = server_port
+    }
+    start RdpClient as Client {
+        RDP_SERVER_HOST = server_host
+        RDP_SERVER_PORT = server_port
+    }
+
+    expose shell Server.server
+    expose shell Client.client
+    expose shell Client.request_builder
+    expose var server_host
+    expose var server_port
+    expose var Server.manifest
+    expose var Client.client
+    expose var Client.artifacts
+}

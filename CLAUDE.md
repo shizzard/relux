@@ -25,7 +25,17 @@ just unit                       # Run all unit tests
 just unit lexer                 # Run tests matching "lexer"
 just run <args>                  # Run relux with arguments
 just e2e                        # Run e2e tests (check then run)
+just e2e -f <path>              # Run specific e2e test(s)
+just e2e-debug                  # Start relux in debug mode
+just rdp-client <args>          # Build and run the RDP test client
 just history                    # Analyze e2e run history
+```
+
+The `-f` flag for `just e2e` passes through to `relux run --file`. Paths are resolved from cwd and must fall under the `relux/` directory inside the suite root. From the repo root:
+
+```bash
+# Single test file
+just e2e -f tests/relux/tests/interactive_debugger/init/init.relux
 ```
 
 ### Fix
@@ -148,6 +158,7 @@ Published crate (`cargo install relux`). CLI subcommands and the `relux` binary.
 
 ## Conventions
 
+- **Always run `just fix` before committing** — this runs clippy autofix and nightly rustfmt. The pre-commit hook checks formatting, so skipping this will cause the commit to fail.
 - Rust 2024 edition idioms
 - Unit tests are colocated in each module via `#[cfg(test)] mod tests`; IR lowering tests are integration tests in `crates/relux-resolver/tests/`
 - Documentation as mdbooks in `docs/` — `reference/` (semantics, syntax, BIFs, CI), `dsl-tutorial/`, `suite-tutorial/`

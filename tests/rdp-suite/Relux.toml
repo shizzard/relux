@@ -1,0 +1,13 @@
+# name = "my-test-suite"
+
+# [shell]
+# command = "/bin/sh"
+# prompt = "relux> "
+
+# [timeout]
+# match = "5s"
+# test = "5m"
+# suite = "10m"
+
+# [run]
+# jobs = 1

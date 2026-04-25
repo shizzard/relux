@@ -1,0 +1,26 @@
+import interactive_debugger/rdp_client
+import interactive_debugger/jq
+
+test "session/init returns server version and stage" {
+    let session_init_request
+    let session_init_response
+
+    start RdpStack as Stack
+
+    shell Stack.request_builder {
+        session_init_request = rdp_request_session_init()
+    }
+
+    shell Stack.client {
+        > ${session_init_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        session_init_response = $1
+    }
+
+    shell reader {
+        let response_file = rdp_artifacts_file(session_init_response)
+        jq_match_query(response_file, ".result.server", "^relux$")
+        jq_match_query(response_file, ".result.stage", "^test-select$")
+    }
+}
