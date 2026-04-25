@@ -616,9 +616,10 @@ impl LoweringContext {
     }
 
     /// Consume the context and produce a Suite.
-    pub fn into_suite(self, plans: Vec<Plan>) -> Suite {
+    pub fn into_suite(self, name: String, plans: Vec<Plan>) -> Suite {
         Suite {
-            plans,
+            name,
+            plans: Arc::new(plans),
             env: self.env,
             causes: self.causes,
             warnings: self.warnings,

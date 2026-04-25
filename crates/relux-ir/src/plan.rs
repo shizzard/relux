@@ -105,9 +105,10 @@ impl Plan {
 
 // ─── Suite ───────────────────────────────────────────────────
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Suite {
-    pub plans: Vec<Plan>,
+    pub name: String,
+    pub plans: Arc<Vec<Plan>>,
     pub env: Arc<LayeredEnv>,
     pub causes: CauseTable,
     pub warnings: WarningTable,

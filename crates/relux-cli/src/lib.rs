@@ -32,7 +32,7 @@ pub enum ModuleKind {
 pub fn cli() -> Command {
     Command::new("relux")
         .about("Relux test runner")
-        .version(env!("RELUX_VERSION"))
+        .version(relux_core::VERSION)
         .subcommand_required(true)
         .subcommand(
             Command::new("init").about("Initialize a new Relux project in the current directory"),

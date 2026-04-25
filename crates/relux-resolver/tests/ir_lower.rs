@@ -1351,7 +1351,7 @@ fn into_suite_transfers_plans() {
         causes: vec![],
         warnings: vec![],
     };
-    let suite = ctx.into_suite(vec![plan]);
+    let suite = ctx.into_suite("test-suite-name-placeholder".to_string(), vec![plan]);
     assert_eq!(suite.plans.len(), 1);
 }
 
@@ -1372,7 +1372,7 @@ fn into_suite_transfers_source_table() {
         WarningTable::default(),
         1.0,
     );
-    let suite = ctx.into_suite(vec![]);
+    let suite = ctx.into_suite("test-suite-name-placeholder".to_string(), vec![]);
     assert!(suite.tables.sources.get(&fid).is_some());
 }
 
@@ -1389,7 +1389,7 @@ fn into_suite_transfers_env() {
         WarningTable::default(),
         1.0,
     );
-    let suite = ctx.into_suite(vec![]);
+    let suite = ctx.into_suite("test-suite-name-placeholder".to_string(), vec![]);
     assert_eq!(suite.env.get("MY_VAR"), Some("my_val"));
 }
 
@@ -1409,14 +1409,14 @@ fn into_suite_transfers_causes() {
         WarningTable::default(),
         1.0,
     );
-    let suite = ctx.into_suite(vec![]);
+    let suite = ctx.into_suite("test-suite-name-placeholder".to_string(), vec![]);
     assert!(suite.causes.get(&id).is_some());
 }
 
 #[test]
 fn into_suite_empty() {
     let ctx = make_context();
-    let suite = ctx.into_suite(vec![]);
+    let suite = ctx.into_suite("test-suite-name-placeholder".to_string(), vec![]);
     assert!(suite.plans.is_empty());
 }
 

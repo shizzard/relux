@@ -46,7 +46,7 @@ Common data structures shared across stages are defined in [00-common.md](00-com
 
 ## Handshake
 
-After connecting, the client sends a `session/init` command. The server validates the client version and responds with the current session state. The client uses the `stage` field to determine which UI to render and the nested state object to reconstruct the full view.
+After connecting, the client sends a `session/init` command. The server validates the client version and responds with the current session state. The `state` object carries its own `stage` discriminant, so the client reads `state.stage` to determine which UI to render and uses the remaining fields to reconstruct the full view.
 
 ### `session/init`
 
@@ -70,15 +70,16 @@ Initialize the debug session. Valid in any stage.
 {
   "server": "relux",
   "version": "0.5.0",
-  "stage": "<test-select | pre-run | run | post-run>",
-  "state": { ... }
+  "state": {
+    "stage": "<test-select | pre-run | run | post-run>",
+    ...
+  }
 }
 ```
 
 `server` — always `"relux"`.
 `version` — server version (semver).
-`stage` — current session stage.
-`state` — stage-specific state snapshot (see stage docs).
+`state` — stage-specific state snapshot. Contains a `stage` field indicating the current session stage, plus stage-specific fields (see stage docs).
 
 Returns error code `-6` if the client version does not match the server version.
 
@@ -100,13 +101,14 @@ The server has transitioned to a new stage. Sent after a stage-transitioning com
 
 ```json
 {
-  "stage": "<test-select | pre-run | run | post-run>",
-  "state": { ... }
+  "state": {
+    "stage": "<test-select | pre-run | run | post-run>",
+    ...
+  }
 }
 ```
 
-`stage` — the new stage.
-`state` — full state snapshot for the new stage (same shape as in `session/init`).
+`state` — full state snapshot for the new stage (same shape as in `session/init`). The `stage` field is embedded in the state object.
 
 ## Error Codes
 

@@ -16,10 +16,10 @@ pure fn rdp_artifacts_file(filename) {
     "${artifacts_dir}/${filename}"
 }
 
-fn rdp_request_session_init() {
+fn rdp_request_session_init(id) {
     let client = rdp_client()
     let artifacts_dir = rdp_artifacts_dir()
-    > ${client} request session/init --dir ${artifacts_dir}
+    > ${client} request session/init --id ${id} --dir ${artifacts_dir}
     <? ^file written: (.*)$
     let file = $1
     match_ok()

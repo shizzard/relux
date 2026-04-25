@@ -46,6 +46,7 @@ impl SourceLoader for FsSourceLoader {
 
 pub fn resolve(
     source_loader: &dyn SourceLoader,
+    name: String,
     test_paths: Vec<ModulePath>,
     env: Arc<LayeredEnv>,
     multiplier: f64,
@@ -61,5 +62,5 @@ pub fn resolve(
     ctx.register_bifs();
     let plans = build_all_plans(&mut ctx);
     ctx.print_diagnostics(Some(project_root));
-    ctx.into_suite(plans)
+    ctx.into_suite(name, plans)
 }

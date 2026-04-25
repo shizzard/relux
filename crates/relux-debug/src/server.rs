@@ -23,7 +23,10 @@ pub struct DebugServer {
 
 impl DebugServer {
     /// Bind to `addr`, build the jsonrpsee server, and start serving `module`.
-    pub fn start(addr: SocketAddr, module: RpcModule<()>) -> Result<Self, ServerError> {
+    pub fn start<C: Send + Sync + 'static>(
+        addr: SocketAddr,
+        module: RpcModule<C>,
+    ) -> Result<Self, ServerError> {
         let listener = std::net::TcpListener::bind(addr).map_err(ServerError::Bind)?;
         listener
             .set_nonblocking(true)

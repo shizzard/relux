@@ -75,11 +75,19 @@ pub async fn cmd_run(matches: &clap::ArgMatches) {
     let loader = build_source_loader(&project_root);
     let env = Arc::new(LayeredEnv::from(Env::capture()));
 
-    let mut suite = resolve(&*loader, test_paths, env, multiplier, &project_root);
+    let suite_name = cfg.name.clone().unwrap_or_default();
+    let mut suite = resolve(
+        &*loader,
+        suite_name,
+        test_paths,
+        env,
+        multiplier,
+        &project_root,
+    );
 
     if let Some(ref names) = test_names {
-        suite
-            .plans
+        Arc::get_mut(&mut suite.plans)
+            .expect("suite is not shared yet")
             .retain(|plan| names.iter().any(|n| n == plan.meta().name()));
     }
 
@@ -90,7 +98,7 @@ pub async fn cmd_run(matches: &clap::ArgMatches) {
             .get_one::<relux_debug::LogLevel>("log-level")
             .expect("has default");
         let config = relux_debug::DebugConfig { port, log_level };
-        relux_debug::start_debug_session(&suite, config).await;
+        relux_debug::start_debug_session(suite.clone(), config).await;
         return;
     }
 

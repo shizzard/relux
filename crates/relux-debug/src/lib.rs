@@ -6,7 +6,7 @@
 //! and live shell buffer inspection.
 
 mod log;
-mod protocol;
+pub mod protocol;
 mod server;
 
 pub use log::LogLevel;
@@ -30,11 +30,11 @@ pub struct DebugConfig {
 ///
 /// Initializes tracing, starts a WebSocket server, and blocks until
 /// the user sends Ctrl+C.
-pub async fn start_debug_session(suite: &Suite, config: DebugConfig) {
+pub async fn start_debug_session(suite: Suite, config: DebugConfig) {
     init_tracing(config.log_level);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], config.port));
-    let module = protocol::MethodRegistry::new().session(suite).build();
+    let module = protocol::MethodRegistry::new(suite).session().build();
 
     let server = match server::DebugServer::start(addr, module) {
         Ok(s) => {

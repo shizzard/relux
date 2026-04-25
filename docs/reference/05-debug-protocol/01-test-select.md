@@ -8,6 +8,7 @@ Delivered via `session/init` response when the client connects during this stage
 
 ```json
 {
+  "stage": "test-select",
   "project": "my-suite",
   "tests": [
     {

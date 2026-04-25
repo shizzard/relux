@@ -8,7 +8,7 @@ test "session/init returns server version and stage" {
     start RdpStack as Stack
 
     shell Stack.request_builder {
-        session_init_request = rdp_request_session_init()
+        session_init_request = rdp_request_session_init(1)
     }
 
     shell Stack.client {
@@ -21,7 +21,7 @@ test "session/init returns server version and stage" {
     shell reader {
         let response_file = rdp_artifacts_file(session_init_response)
         jq_match_query(response_file, ".result.server", "^relux$")
-        jq_match_query(response_file, ".result.stage", "^test-select$")
+        jq_match_query(response_file, ".result.state.stage", "^test-select$")
         jq_match_query(response_file, ".result.state.tests", "^1$")
     }
 }
@@ -34,7 +34,7 @@ test "session/init rejects mismatched version" {
     start RdpStack as Stack
 
     shell Stack.request_builder {
-        good_request = rdp_request_session_init()
+        good_request = rdp_request_session_init(1)
     }
 
     shell corrupter {

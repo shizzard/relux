@@ -12,12 +12,13 @@ use super::resolve_project;
 use super::resolve_test_paths;
 
 pub fn cmd_check(matches: &clap::ArgMatches) {
-    let (project_root, _config) = resolve_project(matches);
+    let (project_root, cfg) = resolve_project(matches);
     let test_paths = resolve_test_paths(matches, &project_root);
     let loader = build_source_loader(&project_root);
     let env = Arc::new(LayeredEnv::from(Env::capture()));
+    let suite_name = cfg.name.clone().unwrap_or_default();
 
-    let suite = resolve(&*loader, test_paths, env, 1.0, &project_root);
+    let suite = resolve(&*loader, suite_name, test_paths, env, 1.0, &project_root);
 
     // Diagnostics are already printed inside resolve().
     // Check if any plan is Invalid or any cause is Invalid → exit 1.

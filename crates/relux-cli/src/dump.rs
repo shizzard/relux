@@ -37,7 +37,7 @@ pub fn cmd_dump_ast(matches: &clap::ArgMatches) {
 }
 
 pub fn cmd_dump_ir(matches: &clap::ArgMatches) {
-    let (project_root, _config) = config::discover_project_root().unwrap_or_else(|e| {
+    let (project_root, cfg) = config::discover_project_root().unwrap_or_else(|e| {
         eprintln!("error: {e}");
         process::exit(1);
     });
@@ -67,10 +67,11 @@ pub fn cmd_dump_ir(matches: &clap::ArgMatches) {
 
     let loader = build_source_loader(&project_root);
     let env = Arc::new(LayeredEnv::from(Env::capture()));
-    let suite = resolve(&*loader, test_paths, env, 1.0, &project_root);
+    let suite_name = cfg.name.clone().unwrap_or_default();
+    let suite = resolve(&*loader, suite_name, test_paths, env, 1.0, &project_root);
 
     let mut first = true;
-    for plan in &suite.plans {
+    for plan in suite.plans.iter() {
         if let Plan::Runnable { test, .. } = plan {
             if !first {
                 println!("\n{}", "─".repeat(60));

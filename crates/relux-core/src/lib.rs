@@ -1,5 +1,8 @@
 use std::ops::Range;
 
+/// Relux version, read from `version.txt` at compile time.
+pub const VERSION: &str = env!("RELUX_VERSION");
+
 // ─── Span ────────────────────────────────────────────────────
 
 /// Source span represented as a byte-offset range.
