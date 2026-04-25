@@ -22,5 +22,38 @@ test "session/init returns server version and stage" {
         let response_file = rdp_artifacts_file(session_init_response)
         jq_match_query(response_file, ".result.server", "^relux$")
         jq_match_query(response_file, ".result.stage", "^test-select$")
+        jq_match_query(response_file, ".result.state.tests", "^1$")
+    }
+}
+
+test "session/init rejects mismatched version" {
+    let good_request
+    let bad_request_file = "bad-version.json"
+    let error_response
+
+    start RdpStack as Stack
+
+    shell Stack.request_builder {
+        good_request = rdp_request_session_init()
+    }
+
+    shell corrupter {
+        let src = rdp_artifacts_file(good_request)
+        let dst = rdp_artifacts_file(bad_request_file)
+        > jq '.params.version = "0.0.0-invalid"' ${src} > ${dst}
+        match_ok()
+    }
+
+    shell Stack.client {
+        > ${bad_request_file}
+        rdp_match_prompt()
+        <? ^(.*)$
+        error_response = $1
+    }
+
+    shell reader {
+        let response_file = rdp_artifacts_file(error_response)
+        jq_match_query(response_file, ".error.code", "^-6$")
+        jq_match_query(response_file, ".error.message", "^version mismatch:")
     }
 }

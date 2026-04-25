@@ -1,13 +1,13 @@
 # skip unless which("jq")
 fn jq_match_query(filename, query, pattern) {
-    > jq -r '${query}' ${filename}
+    > jq -rM '${query}' ${filename}
     <? ${pattern}
     match_ok()
 }
 
 # skip unless which("jq")
 fn jq_extract(filename, query) {
-    > jq -r '${query}' ${filename}
+    > jq -rM '${query}' ${filename}
     <? ^jq (.*)$
     <? ^(.+)$
     let value = $0
