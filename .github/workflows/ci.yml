@@ -133,6 +133,9 @@ jobs:
             ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-
             ${{ runner.os }}-cargo-build-dev-
 
+      - name: Build rdp-client
+        run: cargo build --manifest-path tests/rdp-client/Cargo.toml
+
       - name: E2E tests
         run: |
           cargo run -p relux -- check --manifest tests/Relux.toml
