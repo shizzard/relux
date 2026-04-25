@@ -18,6 +18,7 @@ public interface ReluxTokenTypes {
     IElementType EXPECT = new ReluxElementType("EXPECT");
     IElementType EXPOSE = new ReluxElementType("EXPOSE");
     IElementType AS = new ReluxElementType("AS");
+    IElementType VAR = new ReluxElementType("VAR");
     IElementType CLEANUP = new ReluxElementType("CLEANUP");
 
     // Condition marker keywords

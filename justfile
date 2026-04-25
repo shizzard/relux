@@ -56,6 +56,12 @@ history *ARGS:
 intellij:
     cd editors/intellij && gradle buildPlugin --info
 
+# Build the VS Code extension (.vsix)
+vscode:
+    mkdir -p editors/vscode/build
+    docker run --rm -v {{justfile_directory()}}/editors/vscode:/src -w /src node:lts-slim \
+        sh -c 'npx --yes @vscode/vsce package --out /src/build/relux.vsix'
+
 # Remove build artifacts
 clean:
     cargo clean

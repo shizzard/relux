@@ -38,7 +38,7 @@ MODULE_PATH = {LETTER}({LETTER}|{DIGIT})*(\/{LETTER}({LETTER}|{DIGIT})*)+
 DURATION = {DIGIT}+{LETTER}+({DIGIT}+{LETTER}+)*
 
 // String interpolation
-INTERPOLATION = \$\{{LETTER}({LETTER}|{DIGIT})*\}
+INTERPOLATION = \$\{{LETTER}({LETTER}|{DIGIT})*(\\.{LETTER}({LETTER}|{DIGIT})*)*\}
 CAPTURE_VAR = \${DIGIT}+
 
 // Condition operators
@@ -124,6 +124,7 @@ CONDITION_OP = [=?]
     "expect"                    { return ReluxTokenTypes.EXPECT; }
     "expose"                    { return ReluxTokenTypes.EXPOSE; }
     "as"                        { return ReluxTokenTypes.AS; }
+    "var"                       { return ReluxTokenTypes.VAR; }
     "cleanup"                   { return ReluxTokenTypes.CLEANUP; }
 }
 

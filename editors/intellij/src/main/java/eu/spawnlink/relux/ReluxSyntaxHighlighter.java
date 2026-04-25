@@ -103,6 +103,7 @@ public class ReluxSyntaxHighlighter extends SyntaxHighlighterBase {
             tokenType.equals(ReluxTokenTypes.EXPECT) ||
             tokenType.equals(ReluxTokenTypes.EXPOSE) ||
             tokenType.equals(ReluxTokenTypes.AS) ||
+            tokenType.equals(ReluxTokenTypes.VAR) ||
             tokenType.equals(ReluxTokenTypes.CLEANUP) ||
             tokenType.equals(ReluxTokenTypes.SKIP) ||
             tokenType.equals(ReluxTokenTypes.RUN) ||

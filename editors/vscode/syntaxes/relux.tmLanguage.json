@@ -224,7 +224,7 @@
     "payload-interpolation": {
       "patterns": [
         {
-          "match": "\\$\\{[a-zA-Z_0-9]+\\}",
+          "match": "\\$\\{[a-zA-Z_0-9]+(?:\\.[a-zA-Z_0-9]+)*\\}",
           "name": "variable.other.interpolation.relux"
         },
         {
@@ -247,7 +247,7 @@
     },
 
     "keywords": {
-      "match": "\\b(shell|let|start|expect|expose|as|cleanup)\\b",
+      "match": "\\b(shell|var|let|start|expect|expose|as|cleanup)\\b",
       "name": "keyword.control.relux"
     },
 
@@ -270,7 +270,7 @@
           "name": "constant.character.escape.relux"
         },
         {
-          "match": "\\$\\{[a-zA-Z_0-9]+\\}",
+          "match": "\\$\\{[a-zA-Z_0-9]+(?:\\.[a-zA-Z_0-9]+)*\\}",
           "name": "variable.other.interpolation.relux"
         }
       ]
@@ -279,7 +279,7 @@
     "interpolation": {
       "patterns": [
         {
-          "match": "\\$\\{[a-zA-Z_0-9]+\\}",
+          "match": "\\$\\{[a-zA-Z_0-9]+(?:\\.[a-zA-Z_0-9]+)*\\}",
           "name": "variable.other.relux"
         },
         {
