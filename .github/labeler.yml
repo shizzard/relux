@@ -30,6 +30,10 @@ cli:
   - changed-files:
       - any-glob-to-any-file: crates/relux-cli/**
 
+debug:
+  - changed-files:
+      - any-glob-to-any-file: crates/relux-debug/**
+
 docs:
   - changed-files:
       - any-glob-to-any-file: docs/**
