@@ -56,4 +56,7 @@ pub enum Error {
 
     #[error("unknown method: {0}")]
     UnknownMethod(String),
+
+    #[error("missing required argument --{arg} for method {method}")]
+    MissingArg { arg: &'static str, method: String },
 }

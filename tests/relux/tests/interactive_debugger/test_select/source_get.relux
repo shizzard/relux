@@ -1,0 +1,56 @@
+import interactive_debugger/rdp_client
+import interactive_debugger/jq
+
+test "source/get returns content for a known file" {
+    let source_request
+    let source_response
+
+    start RdpStackInitialized as Stack
+
+    shell Stack.request_builder {
+        source_request = rdp_request_source_get(2, "tests/hello.relux")
+    }
+
+    shell Stack.client {
+        > ${source_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        source_response = $1
+        rdp_match_prompt()
+    }
+
+    shell reader {
+        let response_file = rdp_artifacts_file(source_response)
+        jq_match_query(response_file, ".result.filename", "^tests/hello.relux$")
+        jq_match_query(response_file, ".result.content | length", "^[1-9][0-9]*$")
+        jq_match_query(response_file, ".result.content", "hello relux")
+    }
+}
+
+test "source/get returns -2 for unknown file" {
+    let init_request
+    let init_response
+    let source_request
+    let source_response
+
+    start RdpStack as Stack
+
+    shell Stack.request_builder {
+        init_request = rdp_request_session_init(1)
+        source_request = rdp_request_source_get(2, "tests/does/not/exist.relux")
+    }
+
+    shell Stack.client {
+        > ${source_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        source_response = $1
+        rdp_match_prompt()
+    }
+
+    shell reader {
+        let response_file = rdp_artifacts_file(source_response)
+        jq_match_query(response_file, ".error.code", "^-2$")
+        jq_match_query(response_file, ".error.message", "^file not found:")
+    }
+}

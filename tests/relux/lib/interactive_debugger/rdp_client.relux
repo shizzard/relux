@@ -1,21 +1,39 @@
+import interactive_debugger/jq
+
+// Absolute path to the rdp-client binary built by the workspace's
+// `tests/rdp-client` crate. Used by both the connect-mode shell (server
+// peer) and the request-builder shell (offline envelope generator).
 pure fn rdp_client() {
     "${__RELUX_SUITE_ROOT}/rdp-client/target/debug/rdp-client"
 }
 
+// Absolute path to the suite manifest the debug server introspects.
+// `tests/rdp-suite` is a fixture suite intentionally separate from this
+// e2e suite — the server resolves it, then exposes its tests/lib/effects
+// over the protocol.
 pure fn rdp_suite_manifest() {
     "${__RELUX_SUITE_ROOT}/rdp-suite/Relux.toml"
 }
 
+// Per-test directory where rdp-client writes outgoing request files and
+// stores incoming response/event files. Lives under the test's artifacts
+// dir so logs survive the run.
 pure fn rdp_artifacts_dir() {
     "${__RELUX_TEST_ARTIFACTS}/messages"
 }
 
+// Resolve a message filename (as printed by rdp-client) to its absolute
+// path. Trims surrounding whitespace, since `<? ^...$` captures may
+// include trailing carriage returns.
 pure fn rdp_artifacts_file(filename) {
     let artifacts_dir = rdp_artifacts_dir()
     filename = trim(filename)
     "${artifacts_dir}/${filename}"
 }
 
+// Generate a `session/init` request file via rdp-client and return the
+// filename for downstream piping into the connect shell. `id` is the
+// JSON-RPC request id; pick a unique value per request within a test.
 fn rdp_request_session_init(id) {
     let client = rdp_client()
     let artifacts_dir = rdp_artifacts_dir()
@@ -26,10 +44,34 @@ fn rdp_request_session_init(id) {
     file
 }
 
+// Generate a `source/get` request file via rdp-client. `filename` is the
+// path relative to the served suite's `relux/` directory (e.g.
+// `tests/hello.relux`). Returns the on-disk request filename.
+fn rdp_request_source_get(id, filename) {
+    let client = rdp_client()
+    let artifacts_dir = rdp_artifacts_dir()
+    > ${client} request source/get --id ${id} --filename ${filename} --dir ${artifacts_dir}
+    <? ^file written: (.*)$
+    let file = $1
+    match_ok()
+    file
+}
+
+// Wait for the rdp-client interactive prompt. The connect loop emits
+// `rdp> ` after every input line and every received message, so this
+// helper sits between sends and receives to keep the shell in sync.
 fn rdp_match_prompt() {
     <? ^rdp>
 }
 
+// Runs `rdp-client connect`, attaching to a server at the host/port the
+// caller injects via overlay. Exposes:
+//   - `client`: the WebSocket session — write request filenames into it
+//     (one per line) to send; the matching response filename appears on
+//     stdout.
+//   - `request_builder`: a sibling shell for offline envelope generation,
+//     so request files can be produced without disturbing the connect
+//     loop's input stream.
 effect RdpClient {
     expect RDP_SERVER_HOST, RDP_SERVER_PORT
 
@@ -54,6 +96,9 @@ effect RdpClient {
     }
 }
 
+// Runs `relux run --debug` against the fixture suite, listening on the
+// caller-provided host/port. The setup blocks until the server logs
+// `server listening`, so dependent effects can connect immediately.
 effect RdpServer {
     expect RDP_SERVER_HOST, RDP_SERVER_PORT
 
@@ -69,6 +114,9 @@ effect RdpServer {
     }
 }
 
+// Composition: picks an available port, starts the server and a client
+// pointing at it, and re-exposes both effects' useful surface so tests
+// can address them through one alias (e.g. `Stack.client`).
 effect RdpStack {
     let server_host = "localhost"
     let server_port = available_port()
@@ -90,4 +138,43 @@ effect RdpStack {
     expose var Server.manifest
     expose var Client.client
     expose var Client.artifacts
+}
+
+// `RdpStack` plus a completed `session/init` handshake. Tests covering
+// non-handshake methods (e.g. `source/get`) can start from this effect
+// and skip the handshake boilerplate. The session-init response
+// filename is exposed so tests can re-assert against it if needed.
+effect RdpStackInitialized {
+    let session_init_request
+    let session_init_response
+
+    start RdpStack as Stack
+
+    expose shell Stack.server
+    expose shell Stack.client
+    expose shell Stack.request_builder
+    expose var Stack.server_host
+    expose var Stack.server_port
+    expose var Stack.manifest
+    expose var Stack.client
+    expose var Stack.artifacts
+    expose var session_init_response
+
+    shell Stack.request_builder {
+        session_init_request = rdp_request_session_init(1)
+    }
+
+    shell Stack.client {
+        > ${session_init_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        session_init_response = $1
+        rdp_match_prompt()
+    }
+
+    shell reader {
+        let response_file = rdp_artifacts_file(session_init_response)
+        jq_match_query(response_file, ".result.state.stage", "^test-select$")
+        jq_match_query(response_file, ".result.state.files | length", "^[1-9][0-9]*$")
+    }
 }

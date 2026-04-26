@@ -36,5 +36,33 @@ pub enum SessionState {
 #[derive(Debug, Builder, Serialize)]
 pub struct TestSelectState {
     pub project: String,
-    pub tests: usize,
+    pub files: Vec<SourceFileEntry>,
+}
+
+/// A loaded source file with its definitions. `content` is `None` in the
+/// test-select stage — the client fetches it on demand via `source/get`.
+#[derive(Debug, Builder, Serialize)]
+pub struct SourceFileEntry {
+    pub filename: String,
+    pub content: Option<String>,
+    pub definitions: Vec<Definition>,
+}
+
+/// A typed, named span within a source file.
+#[derive(Debug, Builder, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Definition {
+    pub kind: DefinitionKind,
+    pub name: String,
+    pub start_line: usize,
+    pub end_line: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DefinitionKind {
+    Test,
+    Function,
+    PureFunction,
+    Effect,
 }

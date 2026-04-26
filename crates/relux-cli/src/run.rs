@@ -98,7 +98,8 @@ pub async fn cmd_run(matches: &clap::ArgMatches) {
             .get_one::<relux_debug::LogLevel>("log-level")
             .expect("has default");
         let config = relux_debug::DebugConfig { port, log_level };
-        relux_debug::start_debug_session(suite.clone(), config).await;
+        let relux_dir = project_root.join(relux_core::config::RELUX_DIR);
+        relux_debug::start_debug_session(suite.clone(), relux_dir, config).await;
         return;
     }
 

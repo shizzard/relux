@@ -10,9 +10,9 @@ Delivered via `session/init` response when the client connects during this stage
 {
   "stage": "test-select",
   "project": "my-suite",
-  "tests": [
+  "files": [
     {
-      "file": "tests/basic.relux",
+      "filename": "tests/basic.relux",
       "content": null,
       "definitions": [
         { "kind": "test", "name": "my first test", "startLine": 1, "endLine": 20 },
@@ -20,10 +20,18 @@ Delivered via `session/init` response when the client connects during this stage
       ]
     },
     {
-      "file": "tests/deploy/smoke.relux",
+      "filename": "lib/helpers.relux",
       "content": null,
       "definitions": [
-        { "kind": "test", "name": "deploy smoke test", "startLine": 1, "endLine": 42 }
+        { "kind": "function", "name": "check_status", "startLine": 1, "endLine": 8 },
+        { "kind": "pure_function", "name": "build_url", "startLine": 10, "endLine": 15 }
+      ]
+    },
+    {
+      "filename": "lib/effects/database.relux",
+      "content": null,
+      "definitions": [
+        { "kind": "effect", "name": "Database", "startLine": 1, "endLine": 30 }
       ]
     }
   ]
@@ -31,7 +39,7 @@ Delivered via `session/init` response when the client connects during this stage
 ```
 
 `project` — suite name from `Relux.toml` (or directory name).
-`tests` — all test files with their source and test definitions. Each entry is a [SourceFile](00-common.md#sourcefile) with `file`, `content`, and `definitions`. The client can use this for search, filtering, source preview, and rendering the test picker.
+`files` — every loaded source file (test files plus reachable lib/effect files), each a [SourceFile](00-common.md#sourcefile) with `filename`, `content` (always `null` here), and `definitions`. The client uses this for search, filtering, source preview, and rendering the test picker.
 
 ## Commands
 
@@ -43,7 +51,7 @@ Fetch source text for a file. Used when the client needs to display source for a
 
 ```json
 {
-  "file": "tests/basic.relux"
+  "filename": "tests/basic.relux"
 }
 ```
 
@@ -51,10 +59,12 @@ Fetch source text for a file. Used when the client needs to display source for a
 
 ```json
 {
-  "file": "tests/basic.relux",
+  "filename": "tests/basic.relux",
   "content": "test \"my first test\" {\n  ..."
 }
 ```
+
+Returns error code `-2` if the file is not in the loaded source table.
 
 ### `test/select`
 
@@ -64,7 +74,7 @@ Select a test to debug. The server resolves the module graph and transitions to 
 
 ```json
 {
-  "file": "tests/deploy/smoke.relux",
+  "filename": "tests/deploy/smoke.relux",
   "test": "deploy smoke test"
 }
 ```

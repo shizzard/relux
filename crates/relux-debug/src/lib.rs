@@ -13,6 +13,7 @@ pub use log::LogLevel;
 pub use log::init_tracing;
 
 use std::net::SocketAddr;
+use std::path::PathBuf;
 
 use relux_ir::Suite;
 
@@ -30,11 +31,14 @@ pub struct DebugConfig {
 ///
 /// Initializes tracing, starts a WebSocket server, and blocks until
 /// the user sends Ctrl+C.
-pub async fn start_debug_session(suite: Suite, config: DebugConfig) {
+pub async fn start_debug_session(suite: Suite, relux_dir: PathBuf, config: DebugConfig) {
     init_tracing(config.log_level);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], config.port));
-    let module = protocol::MethodRegistry::new(suite).session().build();
+    let module = protocol::MethodRegistry::new(suite, relux_dir)
+        .session()
+        .test_select()
+        .build();
 
     let server = match server::DebugServer::start(addr, module) {
         Ok(s) => {

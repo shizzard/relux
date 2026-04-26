@@ -42,6 +42,10 @@ enum Commands {
         #[arg(long)]
         id: u64,
 
+        /// File path (required for source/get)
+        #[arg(long)]
+        filename: Option<String>,
+
         /// Working directory to write the request file into
         #[arg(long)]
         dir: PathBuf,
@@ -56,7 +60,12 @@ async fn main() {
 
     let result = match cli.command {
         Commands::Connect { host, port, dir } => connect::cmd_connect(&host, port, &dir).await,
-        Commands::Request { method, id, dir } => request::cmd_request(&method, id, &dir),
+        Commands::Request {
+            method,
+            id,
+            filename,
+            dir,
+        } => request::cmd_request(&method, id, filename.as_deref(), &dir),
     };
 
     if let Err(e) = result {

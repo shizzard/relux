@@ -8,7 +8,7 @@ A file with its source text and a list of named definitions.
 
 ```json
 {
-  "file": "lib/helpers.relux",
+  "filename": "lib/helpers.relux",
   "content": "fn check_status() {\n  ...\n}\n\nfn build_url(host, port) {\n  ...\n}",
   "definitions": [
     { "kind": "function", "name": "check_status", "startLine": 1, "endLine": 8 },
@@ -17,8 +17,8 @@ A file with its source text and a list of named definitions.
 }
 ```
 
-`file` — path relative to the `relux/` directory.
-`content` — full source text of the file, or `null` if not yet loaded. The client can fetch it on demand via `getSource`.
+`filename` — path relative to the `relux/` directory.
+`content` — full source text of the file, or `null` if not yet loaded. The client can fetch it on demand via [`source/get`](01-test-select.md#sourceget).
 `definitions` — list of [Definition](#definition) objects in the file.
 
 ## Definition

@@ -16,13 +16,20 @@ test "session/init returns server version and stage" {
         rdp_match_prompt()
         <? ^(.*)$
         session_init_response = $1
+        rdp_match_prompt()
     }
 
     shell reader {
         let response_file = rdp_artifacts_file(session_init_response)
+        let hello_entry = "[.result.state.files[] | select(.filename == \"tests/hello.relux\")][0]"
         jq_match_query(response_file, ".result.server", "^relux$")
         jq_match_query(response_file, ".result.state.stage", "^test-select$")
-        jq_match_query(response_file, ".result.state.tests", "^1$")
+        jq_match_query(response_file, ".result.state.files | length", "^[1-9][0-9]*$")
+        jq_match_query(response_file, "${hello_entry}.filename", "^tests/hello.relux$")
+        jq_match_query(response_file, "${hello_entry}.content", "^null$")
+        jq_match_query(response_file, "${hello_entry}.definitions | length", "^1$")
+        jq_match_query(response_file, "${hello_entry}.definitions[0].kind", "^test$")
+        jq_match_query(response_file, "${hello_entry}.definitions[0].name", "^hello relux$")
     }
 }
 
@@ -49,6 +56,7 @@ test "session/init rejects mismatched version" {
         rdp_match_prompt()
         <? ^(.*)$
         error_response = $1
+        rdp_match_prompt()
     }
 
     shell reader {

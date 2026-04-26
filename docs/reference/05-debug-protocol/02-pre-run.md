@@ -10,7 +10,7 @@ Delivered via `session/init` response when the client connects during this stage
 {
   "source": {
     "test": {
-      "file": "tests/deploy/smoke.relux",
+      "filename": "tests/deploy/smoke.relux",
       "content": "test \"deploy smoke test\" {\n  shell s {\n    ...",
       "definitions": [
         { "kind": "test", "name": "deploy smoke test", "startLine": 1, "endLine": 42 }
@@ -18,7 +18,7 @@ Delivered via `session/init` response when the client connects during this stage
     },
     "functions": [
       {
-        "file": "lib/helpers.relux",
+        "filename": "lib/helpers.relux",
         "content": "fn check_status() {\n  ...\n}\n\nfn build_url(host, port) {\n  ...\n}",
         "definitions": [
           { "kind": "function", "name": "check_status", "startLine": 1, "endLine": 8 },
@@ -28,7 +28,7 @@ Delivered via `session/init` response when the client connects during this stage
     ],
     "effects": [
       {
-        "file": "lib/effects/database.relux",
+        "filename": "lib/effects/database.relux",
         "content": "effect Database -> shell db {\n  ...\n}",
         "definitions": [
           { "kind": "effect", "name": "Database", "startLine": 1, "endLine": 30 }
@@ -59,7 +59,7 @@ Delivered via `session/init` response when the client connects during this stage
 }
 ```
 
-`source` — the resolved source graph for this test. Each value is a `{ file, content, definitions }` object (or array of them), where each definition has `name`, `startLine`, `endLine`.
+`source` — the resolved source graph for this test. Each value is a `{ filename, content, definitions }` object (or array of them), where each definition has `name`, `startLine`, `endLine`.
 - `test` — single object for the file containing the selected test.
 - `functions` — array of files containing function definitions reachable from this test. Includes both pure and impure functions.
 - `effects` — array of files containing effect definitions reachable from this test.
