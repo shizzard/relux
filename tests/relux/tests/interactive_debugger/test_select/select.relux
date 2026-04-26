@@ -6,7 +6,9 @@ test "test/select transitions to pre-run with reachable definitions" {
     let select_response
     let stage_switch_event
 
-    start RdpStackInitialized as Stack
+    start RdpStackInitialized as Stack {
+        TEST_SELECT_ENV_MARKER = "test-select-env-marker"
+    }
 
     shell Stack.request_builder {
         select_request = rdp_request_test_select(3, "tests/hello.relux", "hello relux")
@@ -41,6 +43,18 @@ test "test/select transitions to pre-run with reachable definitions" {
 
         // Reachable effect `Greeter` lives in lib/util.relux.
         jq_match_query(stage_switch_event, ".params.result.state.source.effects[0].filename", "^lib/util\\.relux$")
+
+        // env carries process env + run-stable relux internals.
+        jq_match_query(stage_switch_event, ".params.result.state.env.TEST_SELECT_ENV_MARKER", "test-select-env-marker")
+        jq_match_query(stage_switch_event, ".params.result.state.env.PATH", ".+")
+        jq_match_query(stage_switch_event, ".params.result.state.env.__RELUX_SUITE_ROOT", ".+")
+        jq_match_query(stage_switch_event, ".params.result.state.env.__RELUX_SHELL_PROMPT", ".+")
+
+        // config carries shell, prompt, timeouts (humantime), and multiplier.
+        jq_match_query(stage_switch_event, ".params.result.state.config.shell", ".+")
+        jq_match_query(stage_switch_event, ".params.result.state.config.prompt", ".+")
+        jq_match_query(stage_switch_event, ".params.result.state.config.timeouts.test", "^[0-9]+(s|m|h)( [0-9]+(s|m|h))*$")
+        jq_match_query(stage_switch_event, ".params.result.state.config.timeoutMultiplier", "^[0-9]+(\\.[0-9]+)?$")
     }
 }
 

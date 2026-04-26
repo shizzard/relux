@@ -18,8 +18,10 @@ use relux_ir::reachable::reachable_from_test;
 use super::super::message::Definition;
 use super::super::message::DefinitionKind;
 use super::super::message::Event;
+use super::super::message::PreRunConfig;
 use super::super::message::PreRunSource;
 use super::super::message::PreRunState;
+use super::super::message::PreRunTimeouts;
 use super::super::message::SessionState;
 use super::super::message::SourceFileEntry;
 use super::super::message::TestSelectRequest;
@@ -64,8 +66,14 @@ pub async fn test_select(
 
     let reachable = reachable_from_test(test, &ctx.suite.tables);
     let source = build_pre_run_source(&ctx.suite, &ctx.relux_dir, plan, &file_id, &reachable);
-    let pre_run = PreRunState::builder().source(source).build();
+    let config = build_pre_run_config(&ctx.relux_config, ctx.multiplier);
+    let pre_run = PreRunState::builder()
+        .source(source)
+        .env(ctx.env.clone())
+        .config(config)
+        .build();
 
+    let pre_run = Box::new(pre_run);
     {
         let mut session = ctx.session.lock().await;
         *session = SessionStage::PreRun {
@@ -80,6 +88,21 @@ pub async fn test_select(
     });
 
     Ok(serde_json::to_value(TestSelectResponse::builder().build()).unwrap())
+}
+
+fn build_pre_run_config(cfg: &relux_core::config::ReluxConfig, multiplier: f64) -> PreRunConfig {
+    PreRunConfig::builder()
+        .shell(cfg.shell.command.clone())
+        .prompt(cfg.shell.prompt.clone())
+        .timeouts(
+            PreRunTimeouts::builder()
+                .match_timeout(humantime::format_duration(cfg.timeout.match_timeout).to_string())
+                .test(humantime::format_duration(cfg.timeout.test).to_string())
+                .suite(humantime::format_duration(cfg.timeout.suite).to_string())
+                .build(),
+        )
+        .timeout_multiplier(multiplier)
+        .build()
 }
 
 fn build_pre_run_source(

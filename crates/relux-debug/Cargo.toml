@@ -19,3 +19,4 @@ tracing            = { workspace = true }
 tracing-subscriber = { workspace = true }
 thiserror          = { workspace = true }
 bon                = { workspace = true }
+humantime          = { workspace = true }

@@ -36,18 +36,20 @@ Delivered via `session/init` response when the client connects during this stage
       }
     ]
   },
-  "env": [
-    { "name": "__RELUX_RUN_ID", "value": "abc123" },
-    { "name": "__RELUX_SHELL_PROMPT", "value": "relux> " },
-    { "name": "HOME", "value": "/home/user" }
-  ],
+  "env": {
+    "__RELUX_SHELL_PROMPT": "relux> ",
+    "__RELUX_SUITE_ROOT": "/home/user/projects/my-suite",
+    "__RELUX": "/usr/local/bin/relux",
+    "HOME": "/home/user",
+    "PATH": "/usr/bin:/bin"
+  },
   "config": {
     "shell": "/bin/sh",
     "prompt": "relux> ",
     "timeouts": {
-      "match": 5.0,
-      "test": 300.0,
-      "suite": 600.0
+      "match": "5s",
+      "test": "5m",
+      "suite": "10m"
     },
     "timeoutMultiplier": 10.0
   },
@@ -66,8 +68,8 @@ Delivered via `session/init` response when the client connects during this stage
 
 A file may appear in both `functions` and `effects` if it contains reachable definitions of both kinds.
 
-`env` — environment variables that will be visible to the test (relux internal vars + inherited process env). _Not yet emitted by the server — deferred._
-`config` — same as `test-select` plus the effective `timeoutMultiplier` for debug mode. _Not yet emitted by the server — deferred._
+`env` — JSON object mapping name → value, holding env vars visible to the test. Includes inherited process env plus the run-stable relux internals (`__RELUX_SHELL_PROMPT`, `__RELUX_SUITE_ROOT`, `__RELUX`). Per-run / per-test internals (`__RELUX_RUN_ID`, `__RELUX_RUN_ARTIFACTS`, `__RELUX_TEST_ROOT`, `__RELUX_TEST_ARTIFACTS`) materialize at the execution stage and are not present here.
+`config` — manifest-derived runtime configuration, plus the effective `timeoutMultiplier` for debug mode. Timeout values are humantime-format strings (e.g. `"5s"`, `"1m 30s"`). See [Config](00-common.md#config).
 `breakpoints` — currently set breakpoints, keyed by file. Empty object `{}` if none set. _Not yet emitted by the server — deferred._
 `frozen` — whether freeze mode is active. _Not yet emitted by the server — deferred._
 

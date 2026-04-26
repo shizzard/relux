@@ -1,10 +1,12 @@
 mod handler;
 pub mod message;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use jsonrpsee::RpcModule;
+use relux_core::config::ReluxConfig;
 use relux_ir::Suite;
 use tokio::sync::Mutex;
 use tokio::sync::broadcast;
@@ -30,7 +32,7 @@ const EVENTS_CHANNEL_CAPACITY: usize = 64;
 /// the `Context.session` mutex.
 pub enum SessionStage {
     TestSelect,
-    PreRun { state: PreRunState },
+    PreRun { state: Box<PreRunState> },
 }
 
 // ─── Context ───────────────────────────────────────────────
@@ -49,6 +51,17 @@ pub struct Context {
     /// call) consume from a fresh receiver; handlers emit by sending on
     /// this clone.
     pub events: broadcast::Sender<Event>,
+    /// Snapshot of env vars visible to tests. Built once at session
+    /// start: process env + run-stable relux internals (`__RELUX_*`
+    /// minus the per-run / per-test ones). Surfaced in pre-run state.
+    pub env: HashMap<String, String>,
+    /// Parsed `Relux.toml` config. Surfaced in pre-run state and used
+    /// elsewhere as the source of truth for shell command, prompt, and
+    /// timeouts.
+    pub relux_config: ReluxConfig,
+    /// Effective debug timeout multiplier (CLI `--timeout-multiplier`).
+    /// Surfaced in pre-run state's config block.
+    pub multiplier: f64,
 }
 
 // ─── MethodRegistry ────────────────────────────────────────
@@ -58,7 +71,13 @@ pub struct MethodRegistry {
 }
 
 impl MethodRegistry {
-    pub fn new(suite: Suite, relux_dir: PathBuf) -> Self {
+    pub fn new(
+        suite: Suite,
+        relux_dir: PathBuf,
+        env: HashMap<String, String>,
+        relux_config: ReluxConfig,
+        multiplier: f64,
+    ) -> Self {
         let (events, _rx) = broadcast::channel(EVENTS_CHANNEL_CAPACITY);
         Self {
             module: RpcModule::new(Context {
@@ -66,6 +85,9 @@ impl MethodRegistry {
                 relux_dir,
                 session: Arc::new(Mutex::new(SessionStage::TestSelect)),
                 events,
+                env,
+                relux_config,
+                multiplier,
             }),
         }
     }

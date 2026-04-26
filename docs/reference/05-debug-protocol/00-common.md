@@ -166,14 +166,14 @@ Manifest-derived configuration.
   "shell": "/bin/sh",
   "prompt": "relux> ",
   "timeouts": {
-    "match": 5.0,
-    "test": 300.0,
-    "suite": 600.0
+    "match": "5s",
+    "test": "5m",
+    "suite": "10m"
   }
 }
 ```
 
 `shell` — shell command.
 `prompt` — shell prompt string.
-`timeouts` — timeout values in seconds: `match`, `test`, `suite`.
+`timeouts` — humantime-format duration strings (e.g. `5s`, `1m 30s`, `10m`) for `match`, `test`, `suite`.
 `timeoutMultiplier` — (optional, present in `pre-run` and `run`) effective timeout multiplier for debug mode.

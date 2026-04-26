@@ -39,7 +39,7 @@ impl Default for FlakyConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct RunConfig {
     pub jobs: usize,
@@ -51,7 +51,7 @@ impl Default for RunConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct ReluxConfig {
     pub name: Option<String>,
     #[serde(default)]
@@ -64,7 +64,7 @@ pub struct ReluxConfig {
     pub run: RunConfig,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ShellConfig {
     #[serde(default = "default_shell_command")]
     pub command: String,
@@ -89,7 +89,7 @@ impl Default for ShellConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct TimeoutConfig {
     #[serde(rename = "match", deserialize_with = "deserialize_duration")]

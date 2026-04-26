@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use bon::Builder;
 use serde::Deserialize;
 use serde::Serialize;
@@ -30,7 +32,7 @@ pub struct SessionInitResponse {
 #[serde(tag = "stage", rename_all = "kebab-case")]
 pub enum SessionState {
     TestSelect(TestSelectState),
-    PreRun(PreRunState),
+    PreRun(Box<PreRunState>),
 }
 
 /// State for the `test-select` stage.
@@ -40,12 +42,41 @@ pub struct TestSelectState {
     pub files: Vec<SourceFileEntry>,
 }
 
-/// State for the `pre-run` stage. Only `source` is wired today; `env`,
-/// `config`, `breakpoints`, and `frozen` are deferred and will be added
-/// in follow-up PRs.
+/// State for the `pre-run` stage. `source`, `env`, and `config` are
+/// wired today; `breakpoints` and `frozen` are deferred and will be
+/// added in follow-up PRs.
 #[derive(Debug, Clone, Builder, Serialize)]
 pub struct PreRunState {
     pub source: PreRunSource,
+    /// All env vars visible to the test: process env (`Env::capture`)
+    /// plus the run-stable relux internals (`__RELUX_SHELL_PROMPT`,
+    /// `__RELUX_SUITE_ROOT`, `__RELUX`). Per-run / per-test internals
+    /// (`__RELUX_RUN_ID`, `__RELUX_RUN_ARTIFACTS`, `__RELUX_TEST_*`)
+    /// materialize at the execution stage and are not in this map.
+    pub env: HashMap<String, String>,
+    /// Manifest-derived runtime configuration plus the effective debug
+    /// timeout multiplier.
+    pub config: PreRunConfig,
+}
+
+/// Mirrors the `Config` block documented in `00-common.md`.
+#[derive(Debug, Clone, Builder, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreRunConfig {
+    pub shell: String,
+    pub prompt: String,
+    pub timeouts: PreRunTimeouts,
+    pub timeout_multiplier: f64,
+}
+
+/// Timeout values, serialized as humantime-format strings (e.g. `"5s"`,
+/// `"1m 40s"`, `"10m"`) — same shape the user wrote in `Relux.toml`.
+#[derive(Debug, Clone, Builder, Serialize)]
+pub struct PreRunTimeouts {
+    #[serde(rename = "match")]
+    pub match_timeout: String,
+    pub test: String,
+    pub suite: String,
 }
 
 /// The resolved source graph for the selected test: the test's own file,
