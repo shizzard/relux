@@ -20,17 +20,19 @@ use super::super::message::DefinitionKind;
 use super::super::message::Event;
 use super::super::message::PreRunConfig;
 use super::super::message::PreRunSource;
-use super::super::message::PreRunState;
 use super::super::message::PreRunTimeouts;
 use super::super::message::SessionState;
 use super::super::message::SourceFileEntry;
 use super::super::message::TestSelectRequest;
 use super::super::message::TestSelectResponse;
-use super::common::end_line;
-use super::common::start_line;
 use crate::protocol::Context;
-use crate::protocol::SessionStage;
 use crate::protocol::error_code;
+use crate::protocol::state;
+use crate::protocol::state::PreRunInner;
+use crate::protocol::state::SelectedTest;
+use crate::protocol::state::Stage;
+use crate::protocol::state::end_line;
+use crate::protocol::state::start_line;
 
 pub async fn test_select(
     params: Params<'static>,
@@ -67,24 +69,30 @@ pub async fn test_select(
     let reachable = reachable_from_test(test, &ctx.suite.tables);
     let source = build_pre_run_source(&ctx.suite, &ctx.relux_dir, plan, &file_id, &reachable);
     let config = build_pre_run_config(&ctx.relux_config, ctx.multiplier);
-    let pre_run = PreRunState::builder()
+    let pre_run_inner = PreRunInner::builder()
+        .selected(SelectedTest {
+            filename: req.filename.clone(),
+            test: req.test.clone(),
+        })
         .source(source)
-        .env(ctx.env.clone())
         .config(config)
         .build();
 
-    let pre_run = Box::new(pre_run);
+    // Lock order: stage before per-stage slot. Hold both while
+    // transitioning so observers never see the marker advanced ahead of
+    // its data.
     {
-        let mut session = ctx.session.lock().await;
-        *session = SessionStage::PreRun {
-            state: pre_run.clone(),
-        };
+        let mut stage = ctx.stage.lock().await;
+        let mut pre_run = ctx.pre_run.lock().await;
+        *pre_run = Some(Box::new(pre_run_inner.clone()));
+        *stage = Stage::PreRun;
     }
 
     // Subscribers may not exist yet (no events/subscribe). Drop the send
     // error in that case — the state is also reachable via `session/init`.
+    let projected = state::project_pre_run(&pre_run_inner, &ctx.env);
     let _ = ctx.events.send(Event::StageChange {
-        state: SessionState::PreRun(pre_run),
+        state: SessionState::PreRun(Box::new(projected)),
     });
 
     Ok(serde_json::to_value(TestSelectResponse::builder().build()).unwrap())

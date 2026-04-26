@@ -1,4 +1,3 @@
-mod common;
 mod session;
 mod source;
 mod test_select;
