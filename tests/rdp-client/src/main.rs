@@ -42,9 +42,13 @@ enum Commands {
         #[arg(long)]
         id: u64,
 
-        /// File path (required for source/get)
+        /// File path (required for source/get and test/select)
         #[arg(long)]
         filename: Option<String>,
+
+        /// Test name (required for test/select)
+        #[arg(long)]
+        test: Option<String>,
 
         /// Working directory to write the request file into
         #[arg(long)]
@@ -64,8 +68,9 @@ async fn main() {
             method,
             id,
             filename,
+            test,
             dir,
-        } => request::cmd_request(&method, id, filename.as_deref(), &dir),
+        } => request::cmd_request(&method, id, filename.as_deref(), test.as_deref(), &dir),
     };
 
     if let Err(e) = result {

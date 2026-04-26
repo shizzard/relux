@@ -57,6 +57,32 @@ fn rdp_request_source_get(id, filename) {
     file
 }
 
+// Generate a `test/select` request file via rdp-client. `filename` is
+// the suite-relative path; `test_name` is the test's name as it appears
+// in the `test "..." { ... }` declaration. Returns the on-disk filename.
+fn rdp_request_test_select(id, filename, test_name) {
+    let client = rdp_client()
+    let artifacts_dir = rdp_artifacts_dir()
+    > ${client} request test/select --id ${id} --filename ${filename} --test "${test_name}" --dir ${artifacts_dir}
+    <? ^file written: (.*)$
+    let file = $1
+    match_ok()
+    file
+}
+
+// Generate an `events/subscribe` request file. Tests call this once
+// before stage-transitioning commands so the subscription is active
+// when server-pushed events fire. Returns the on-disk filename.
+fn rdp_request_events_subscribe(id) {
+    let client = rdp_client()
+    let artifacts_dir = rdp_artifacts_dir()
+    > ${client} request events/subscribe --id ${id} --dir ${artifacts_dir}
+    <? ^file written: (.*)$
+    let file = $1
+    match_ok()
+    file
+}
+
 // Wait for the rdp-client interactive prompt. The connect loop emits
 // `rdp> ` after every input line and every received message, so this
 // helper sits between sends and receives to keep the shell in sync.
@@ -147,6 +173,8 @@ effect RdpStack {
 effect RdpStackInitialized {
     let session_init_request
     let session_init_response
+    let events_subscribe_request
+    let events_subscribe_response
 
     start RdpStack as Stack
 
@@ -169,6 +197,18 @@ effect RdpStackInitialized {
         rdp_match_prompt()
         <? ^(.*)$
         session_init_response = $1
+        rdp_match_prompt()
+    }
+
+    shell Stack.request_builder {
+        events_subscribe_request = rdp_request_events_subscribe(2)
+    }
+
+    shell Stack.client {
+        > ${events_subscribe_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        events_subscribe_response = $1
         rdp_match_prompt()
     }
 

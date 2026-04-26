@@ -2617,3 +2617,154 @@ test "t" {
     )]);
     assert!(is_runnable(&suite.plans[0]));
 }
+
+// ─── Reachability ────────────────────────────────────────────
+
+fn ir_test(plan: &Plan) -> &IrTest {
+    match plan {
+        Plan::Runnable { test, .. } => test,
+        _ => panic!("expected runnable plan"),
+    }
+}
+
+#[test]
+fn reachable_simple_test_calls_one_fn() {
+    let suite = resolve_source_no_env(&[(
+        "tests/a",
+        r#"fn helper() {
+  > echo helper
+}
+test "t" {
+  shell sh {
+    helper()
+  }
+}
+"#,
+    )]);
+    let test = ir_test(&suite.plans[0]);
+    let r = relux_ir::reachable::reachable_from_test(test, &suite.tables);
+    let user_fns: Vec<_> = r.fns.iter().filter(|id| id.name == "helper").collect();
+    assert_eq!(user_fns.len(), 1);
+    assert!(r.effects.is_empty());
+}
+
+#[test]
+fn reachable_chained_fn_calls() {
+    let suite = resolve_source_no_env(&[(
+        "tests/a",
+        r#"fn inner() {
+  > echo inner
+}
+fn outer() {
+  inner()
+}
+test "t" {
+  shell sh {
+    outer()
+  }
+}
+"#,
+    )]);
+    let test = ir_test(&suite.plans[0]);
+    let r = relux_ir::reachable::reachable_from_test(test, &suite.tables);
+    let names: std::collections::HashSet<&str> = r.fns.iter().map(|id| id.name.as_str()).collect();
+    assert!(names.contains("inner"));
+    assert!(names.contains("outer"));
+}
+
+#[test]
+fn reachable_pure_fn_in_let() {
+    let suite = resolve_source_no_env(&[(
+        "tests/a",
+        r#"pure fn greeting() {
+  "hi"
+}
+test "t" {
+  let g = greeting()
+  shell sh {
+    > echo ok
+  }
+}
+"#,
+    )]);
+    let test = ir_test(&suite.plans[0]);
+    let r = relux_ir::reachable::reachable_from_test(test, &suite.tables);
+    assert!(r.fns.iter().any(|id| id.name == "greeting"));
+}
+
+#[test]
+fn reachable_effect_via_start() {
+    let suite = resolve_source_no_env(&[(
+        "tests/a",
+        r#"effect Db {
+  shell d {
+    > start_db
+  }
+}
+test "t" {
+  start Db
+  shell sh {
+    > echo ok
+  }
+}
+"#,
+    )]);
+    let test = ir_test(&suite.plans[0]);
+    let r = relux_ir::reachable::reachable_from_test(test, &suite.tables);
+    assert!(r.effects.iter().any(|id| id.name.0 == "Db"));
+}
+
+#[test]
+fn reachable_nested_effect_starts() {
+    let suite = resolve_source_no_env(&[(
+        "tests/a",
+        r#"effect Inner {
+  shell i {
+    > inner
+  }
+}
+effect Outer {
+  start Inner
+  shell o {
+    > outer
+  }
+}
+test "t" {
+  start Outer
+  shell sh {
+    > echo ok
+  }
+}
+"#,
+    )]);
+    let test = ir_test(&suite.plans[0]);
+    let r = relux_ir::reachable::reachable_from_test(test, &suite.tables);
+    let names: std::collections::HashSet<&str> =
+        r.effects.iter().map(|id| id.name.0.as_str()).collect();
+    assert!(names.contains("Outer"));
+    assert!(names.contains("Inner"));
+}
+
+#[test]
+fn reachable_skips_unreached_fn() {
+    let suite = resolve_source_no_env(&[(
+        "tests/a",
+        r#"fn used() {
+  > echo used
+}
+fn unused() {
+  > echo unused
+}
+test "t" {
+  shell sh {
+    used()
+  }
+}
+"#,
+    )]);
+    let test = ir_test(&suite.plans[0]);
+    let r = relux_ir::reachable::reachable_from_test(test, &suite.tables);
+    let names: std::collections::HashSet<&str> = r.fns.iter().map(|id| id.name.as_str()).collect();
+    assert!(names.contains("used"));
+    assert!(!names.contains("unused"));
+}

@@ -26,22 +26,42 @@ pub struct SessionInitResponse {
 /// stage and state are always in sync.
 ///
 /// Used in `session/init` response and `stage/change` events.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "stage", rename_all = "kebab-case")]
 pub enum SessionState {
     TestSelect(TestSelectState),
+    PreRun(PreRunState),
 }
 
 /// State for the `test-select` stage.
-#[derive(Debug, Builder, Serialize)]
+#[derive(Debug, Clone, Builder, Serialize)]
 pub struct TestSelectState {
     pub project: String,
     pub files: Vec<SourceFileEntry>,
 }
 
+/// State for the `pre-run` stage. Only `source` is wired today; `env`,
+/// `config`, `breakpoints`, and `frozen` are deferred and will be added
+/// in follow-up PRs.
+#[derive(Debug, Clone, Builder, Serialize)]
+pub struct PreRunState {
+    pub source: PreRunSource,
+}
+
+/// The resolved source graph for the selected test: the test's own file,
+/// plus files containing reachable functions and effects. Files appear
+/// in the bucket(s) matching the kinds of reachable definitions they
+/// contain — a single file may appear in both `functions` and `effects`.
+#[derive(Debug, Clone, Builder, Serialize)]
+pub struct PreRunSource {
+    pub test: SourceFileEntry,
+    pub functions: Vec<SourceFileEntry>,
+    pub effects: Vec<SourceFileEntry>,
+}
+
 /// A loaded source file with its definitions. `content` is `None` in the
 /// test-select stage — the client fetches it on demand via `source/get`.
-#[derive(Debug, Builder, Serialize)]
+#[derive(Debug, Clone, Builder, Serialize)]
 pub struct SourceFileEntry {
     pub filename: String,
     pub content: Option<String>,
@@ -49,7 +69,7 @@ pub struct SourceFileEntry {
 }
 
 /// A typed, named span within a source file.
-#[derive(Debug, Builder, Serialize)]
+#[derive(Debug, Clone, Builder, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Definition {
     pub kind: DefinitionKind,
@@ -58,7 +78,7 @@ pub struct Definition {
     pub end_line: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DefinitionKind {
     Test,

@@ -60,14 +60,16 @@ Delivered via `session/init` response when the client connects during this stage
 ```
 
 `source` — the resolved source graph for this test. Each value is a `{ filename, content, definitions }` object (or array of them), where each definition has `name`, `startLine`, `endLine`.
-- `test` — single object for the file containing the selected test.
-- `functions` — array of files containing function definitions reachable from this test. Includes both pure and impure functions.
-- `effects` — array of files containing effect definitions reachable from this test.
+- `test` — single object for the file containing the selected test. Definitions list includes only the selected test (other tests in the same file are not included).
+- `functions` — array of files containing function definitions reachable from this test. Each file's `definitions` list contains only the actually-reachable functions (pure or impure). Files holding no reachable functions are omitted.
+- `effects` — array of files containing effect definitions reachable from this test. Each file's `definitions` list contains only the actually-reachable effects. Files holding no reachable effects are omitted.
 
-`env` — environment variables that will be visible to the test (relux internal vars + inherited process env).
-`config` — same as `test-select` plus the effective `timeoutMultiplier` for debug mode.
-`breakpoints` — currently set breakpoints, keyed by file. Empty object `{}` if none set.
-`frozen` — whether freeze mode is active.
+A file may appear in both `functions` and `effects` if it contains reachable definitions of both kinds.
+
+`env` — environment variables that will be visible to the test (relux internal vars + inherited process env). _Not yet emitted by the server — deferred._
+`config` — same as `test-select` plus the effective `timeoutMultiplier` for debug mode. _Not yet emitted by the server — deferred._
+`breakpoints` — currently set breakpoints, keyed by file. Empty object `{}` if none set. _Not yet emitted by the server — deferred._
+`frozen` — whether freeze mode is active. _Not yet emitted by the server — deferred._
 
 ## Commands
 

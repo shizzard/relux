@@ -1,6 +1,10 @@
+import util
+
 test "hello relux" {
+    let g = greeting()
+    start Greeter
     shell myshell {
-        > echo hello-relux
+        > echo ${g}
         <? ^hello-relux$
         match_ok()
     }

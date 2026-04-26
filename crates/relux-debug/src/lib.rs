@@ -38,6 +38,7 @@ pub async fn start_debug_session(suite: Suite, relux_dir: PathBuf, config: Debug
     let module = protocol::MethodRegistry::new(suite, relux_dir)
         .session()
         .test_select()
+        .events()
         .build();
 
     let server = match server::DebugServer::start(addr, module) {

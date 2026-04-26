@@ -85,6 +85,22 @@ Returns error code `-6` if the client version does not match the server version.
 
 ## Cross-Stage Commands
 
+### `events/subscribe`
+
+Open the server-pushed event stream. Valid in any stage. The client should call this once after `session/init`. All server-pushed events flow as notifications on this single subscription, distinguished by an inner `event` tag.
+
+**Params:** none
+
+**Result:** subscription id (string). The client retains it to issue `events/unsubscribe`; for filtering inbound events, the `event` tag is sufficient.
+
+### `events/unsubscribe`
+
+Close the event stream. Valid in any stage.
+
+**Params:** `[subscription_id]`
+
+**Result:** `true` on success.
+
 ### `session/disconnect`
 
 Terminate the debug session. Valid in any stage. The server kills all shells and exits.
@@ -95,12 +111,28 @@ Terminate the debug session. Valid in any stage. The server kills all shells and
 
 ## Cross-Stage Events
 
-### Event: `stage/change`
+All events are delivered as JSON-RPC notifications on the single `events/subscribe` subscription. Wire envelope:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "events/event",
+  "params": {
+    "subscription": "<subscription_id>",
+    "result": { "event": "<tag>", ...payload... }
+  }
+}
+```
+
+Event payloads are tagged objects — the inner `event` field selects which event family is being delivered.
+
+### Event: `stage-change`
 
 The server has transitioned to a new stage. Sent after a stage-transitioning command (e.g. `test/select`, `execution/start`) has been acknowledged. The client should switch its UI to the new stage using the provided state.
 
 ```json
 {
+  "event": "stage-change",
   "state": {
     "stage": "<test-select | pre-run | run | post-run>",
     ...
@@ -120,6 +152,7 @@ The server has transitioned to a new stage. Sent after a stage-transitioning com
 | -4   | Not running (execution command sent while stopped, except during pre-run) |
 | -5   | Already in execution phase (second `execution/start` command) |
 | -6   | Version mismatch (client version does not match server version) |
+| -7   | Test not runnable (test name does not resolve to a runnable plan) |
 
 ## Design Notes
 

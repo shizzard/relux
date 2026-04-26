@@ -1,0 +1,70 @@
+import interactive_debugger/rdp_client
+import interactive_debugger/jq
+
+test "test/select transitions to pre-run with reachable definitions" {
+    let select_request
+    let select_response
+    let stage_switch_event
+
+    start RdpStackInitialized as Stack
+
+    shell Stack.request_builder {
+        select_request = rdp_request_test_select(3, "tests/hello.relux", "hello relux")
+    }
+
+    shell Stack.client {
+        > ${select_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        select_response = $1
+        rdp_match_prompt()
+        <? ^(.*)$
+        stage_switch_event = $1
+        rdp_match_prompt()
+    }
+
+    shell reader {
+        let select_response = rdp_artifacts_file(select_response)
+        let stage_switch_event = rdp_artifacts_file(stage_switch_event)
+
+        // The response is a basic empty-object ack.
+        jq_match_query(select_response, ".result | length", "^0$")
+
+        // The event carries the new stage and source graph.
+        jq_match_query(stage_switch_event, ".params.result.event", "^stage-change$")
+        jq_match_query(stage_switch_event, ".params.result.state.stage", "^pre-run$")
+        jq_match_query(stage_switch_event, ".params.result.state.source.test.filename", "^tests/hello\\.relux$")
+        jq_match_query(stage_switch_event, ".params.result.state.source.test.definitions[0].name", "^hello relux$")
+
+        // Reachable pure fn `greeting` lives in lib/util.relux.
+        jq_match_query(stage_switch_event, ".params.result.state.source.functions[0].filename", "^lib/util\\.relux$")
+
+        // Reachable effect `Greeter` lives in lib/util.relux.
+        jq_match_query(stage_switch_event, ".params.result.state.source.effects[0].filename", "^lib/util\\.relux$")
+    }
+}
+
+test "test/select rejects unknown test name" {
+    let select_request
+    let error_response
+
+    start RdpStackInitialized as Stack
+
+    shell Stack.request_builder {
+        select_request = rdp_request_test_select(2, "tests/hello.relux", "no-such-test")
+    }
+
+    shell Stack.client {
+        > ${select_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        error_response = $1
+        rdp_match_prompt()
+    }
+
+    shell reader {
+        let response_file = rdp_artifacts_file(error_response)
+        jq_match_query(response_file, ".error.code", "^-7$")
+        jq_match_query(response_file, ".error.message", "^test not found:")
+    }
+}

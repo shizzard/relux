@@ -1,0 +1,10 @@
+pure fn greeting() {
+    "hello-relux"
+}
+
+effect Greeter {
+    shell g {
+        > echo greeter-ready
+        <? ^greeter-ready$
+    }
+}
