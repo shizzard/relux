@@ -147,15 +147,46 @@ Structured evaluation trace for a single executed statement.
 
 ## Breakpoint
 
-A verified or unverified breakpoint.
+A breakpoint at a specific line in a source file.
 
 ```json
-{ "line": 5, "verified": true }
+{ "line": 5 }
 ```
 
-`line` — line number.
-`verified` — `true` if the line is actionable, `false` otherwise.
-`message` — (optional) explanation when `verified` is `false`.
+`line` — 1-based line number.
+
+Kept as a typed object (not a bare integer) so future fields can be added additively without a wire-breaking change. Planned extensions: `condition` (string expression evaluated at hit time) for conditional breakpoints, `hitCount` for hit-count breakpoints.
+
+## Breakpointable lines
+
+A breakpoint is only valid at a line that carries a runtime statement. Setting a breakpoint elsewhere is rejected with `BREAKPOINT_INVALID` (-8). The wire does not currently carry a per-line breakpointable indicator; clients discover invalid placements by sending [`breakpoint/set`](02-pre-run.md#breakpointset) and observing the error response.
+
+Granularity is **statement-level**: a breakpoint pauses *between* statements. Expression evaluation (string interpolation, function call argument resolution) is atomic in both pure and impure contexts; you cannot step inside it.
+
+**Breakpointable** — every Relux DSL construct that the runtime steps as a discrete event:
+
+- Send: `> "cmd"`, `>> "raw"`
+- Match: `<? regex`, `<? "literal"`, timed variants
+- Fail-pattern set / clear: `!? pattern`, `!?`
+- Timeout change: `timeout 5s`
+- Buffer reset
+- BIF call: `match_ok()`, `sleep("1s")`, `match_prompt()`, …
+- User function call (impure)
+- `start E as A { … }` — both at test-level and inside an effect setup
+- `let x = …` — inside any runtime body (shell, cleanup, function, pure function), and also at test-level / effect-level
+- Variable assignment / bare expressions inside any runtime body
+- Pure function bodies are stepped statement-by-statement just like impure functions; their `let` / assign / bare-expression statements are first-class breakpointable
+
+**Not breakpointable**:
+
+- Comments and blank lines
+- Definition wrapper braces: `test "x" {`, `effect E {`, `fn f() {`, `pure fn f() {`, closing `}` lines
+- Container braces: `shell name {`, `cleanup {` (the *contents* are breakpointable; the brace line itself is not)
+- `import …` directives
+- `expect …`, `expose …` declarations
+- Annotations: `@flaky`, `@skip`, …
+- Overlay key/value lines inside `start E { K = "v" }` (they're bound to the start, not separate statements)
+- Pure-function calls' arguments and interpolation expressions (atomic during eval)
 
 ## Config
 

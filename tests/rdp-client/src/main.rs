@@ -42,13 +42,17 @@ enum Commands {
         #[arg(long)]
         id: u64,
 
-        /// File path (required for source/get and test/select)
+        /// File path (required for source/get, test/select, breakpoint/set, breakpoint/unset)
         #[arg(long)]
         filename: Option<String>,
 
         /// Test name (required for test/select)
         #[arg(long)]
         test: Option<String>,
+
+        /// Line number (required for breakpoint/set, breakpoint/unset)
+        #[arg(long)]
+        line: Option<usize>,
 
         /// Working directory to write the request file into
         #[arg(long)]
@@ -69,8 +73,16 @@ async fn main() {
             id,
             filename,
             test,
+            line,
             dir,
-        } => request::cmd_request(&method, id, filename.as_deref(), test.as_deref(), &dir),
+        } => request::cmd_request(
+            &method,
+            id,
+            filename.as_deref(),
+            test.as_deref(),
+            line,
+            &dir,
+        ),
     };
 
     if let Err(e) = result {

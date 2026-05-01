@@ -1,0 +1,96 @@
+import interactive_debugger/rdp_client
+import interactive_debugger/jq
+
+test "breakpoint/reset clears all breakpoints and is idempotent" {
+    let select_request
+    let set_a_request
+    let set_b_request
+    let reset_request
+    let reset_response
+    let list_request
+    let list_response
+    let reset_again_request
+    let reset_again_response
+
+    start RdpStackInitialized as Stack
+
+    shell Stack.request_builder {
+        select_request = rdp_request_test_select(3, "tests/hello.relux", "hello relux")
+    }
+    shell Stack.client {
+        > ${select_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    shell Stack.request_builder {
+        set_a_request = rdp_request_breakpoint_set(4, "tests/hello.relux", 7)
+    }
+    shell Stack.client {
+        > ${set_a_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    shell Stack.request_builder {
+        set_b_request = rdp_request_breakpoint_set(5, "lib/util.relux", 7)
+    }
+    shell Stack.client {
+        > ${set_b_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    shell Stack.request_builder {
+        reset_request = rdp_request_breakpoint_reset(6)
+    }
+    shell Stack.client {
+        > ${reset_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        reset_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        // reset returns an empty ack.
+        let f = rdp_artifacts_file(reset_response)
+        jq_match_query(f, ".result | length", "^0$")
+    }
+
+    shell Stack.request_builder {
+        list_request = rdp_request_breakpoint_list(7)
+    }
+    shell Stack.client {
+        > ${list_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        list_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        // list shows the map is empty.
+        let f = rdp_artifacts_file(list_response)
+        jq_match_query(f, ".result.breakpoints | length", "^0$")
+    }
+
+    shell Stack.request_builder {
+        reset_again_request = rdp_request_breakpoint_reset(8)
+    }
+    shell Stack.client {
+        > ${reset_again_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        reset_again_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        // reset on already-empty state still succeeds.
+        let f = rdp_artifacts_file(reset_again_response)
+        jq_match_query(f, ".result | length", "^0$")
+    }
+}

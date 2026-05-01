@@ -1,0 +1,70 @@
+import interactive_debugger/rdp_client
+import interactive_debugger/jq
+
+test "selecting a different test discards breakpoints" {
+    let select_hello_request
+    let set_request
+    let select_farewell_request
+    let stage_switch_event
+    let list_request
+    let list_response
+
+    start RdpStackInitialized as Stack
+
+    shell Stack.request_builder {
+        select_hello_request = rdp_request_test_select(3, "tests/hello.relux", "hello relux")
+    }
+    shell Stack.client {
+        > ${select_hello_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    shell Stack.request_builder {
+        set_request = rdp_request_breakpoint_set(4, "tests/hello.relux", 7)
+    }
+    shell Stack.client {
+        > ${set_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    // Different test — breakpoints should be wiped.
+    shell Stack.request_builder {
+        select_farewell_request = rdp_request_test_select(5, "tests/farewell.relux", "farewell relux")
+    }
+    shell Stack.client {
+        > ${select_farewell_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+        <? ^(.*)$
+        stage_switch_event = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        // The stage-change event for the new test carries an empty
+        // breakpoints map — confirms the projection wiring.
+        let f = rdp_artifacts_file(stage_switch_event)
+        jq_match_query(f, ".params.result.state.breakpoints | length", "^0$")
+    }
+
+    shell Stack.request_builder {
+        list_request = rdp_request_breakpoint_list(6)
+    }
+    shell Stack.client {
+        > ${list_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        list_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        let f = rdp_artifacts_file(list_response)
+        jq_match_query(f, ".result.breakpoints | length", "^0$")
+    }
+}

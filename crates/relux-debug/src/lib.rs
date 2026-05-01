@@ -54,6 +54,7 @@ pub async fn start_debug_session(
         protocol::MethodRegistry::new(suite, relux_dir, env_snapshot, relux_config, multiplier)
             .session()
             .test_select()
+            .pre_run()
             .events()
             .build();
 

@@ -26,6 +26,7 @@ use super::super::message::SourceFileEntry;
 use super::super::message::TestSelectRequest;
 use super::super::message::TestSelectResponse;
 use crate::protocol::Context;
+use crate::protocol::breakpointable::compute_breakpointable_lines;
 use crate::protocol::error_code;
 use crate::protocol::state;
 use crate::protocol::state::PreRunInner;
@@ -69,28 +70,43 @@ pub async fn test_select(
     let reachable = reachable_from_test(test, &ctx.suite.tables);
     let source = build_pre_run_source(&ctx.suite, &ctx.relux_dir, plan, &file_id, &reachable);
     let config = build_pre_run_config(&ctx.relux_config, ctx.multiplier);
-    let pre_run_inner = PreRunInner::builder()
-        .selected(SelectedTest {
-            filename: req.filename.clone(),
-            test: req.test.clone(),
-        })
-        .source(source)
-        .config(config)
-        .build();
+    let breakpointable_lines =
+        compute_breakpointable_lines(&ctx.suite, &ctx.relux_dir, &reachable, test);
+    let selected = SelectedTest {
+        filename: req.filename.clone(),
+        test: req.test.clone(),
+    };
 
     // Lock order: stage before per-stage slot. Hold both while
     // transitioning so observers never see the marker advanced ahead of
-    // its data.
-    {
+    // its data. Re-selecting the same `(filename, test)` preserves
+    // breakpoints; selecting a different test discards them.
+    let projected = {
         let mut stage = ctx.stage.lock().await;
         let mut pre_run = ctx.pre_run.lock().await;
-        *pre_run = Some(Box::new(pre_run_inner.clone()));
+
+        let preserved_breakpoints = pre_run
+            .as_ref()
+            .filter(|existing| existing.selected == selected)
+            .map(|existing| existing.breakpoints.clone())
+            .unwrap_or_default();
+
+        let next = PreRunInner::builder()
+            .selected(selected)
+            .source(source)
+            .config(config)
+            .breakpoints(preserved_breakpoints)
+            .breakpointable_lines(breakpointable_lines)
+            .build();
+
+        let projected = state::project_pre_run(&next, &ctx.env);
+        *pre_run = Some(Box::new(next));
         *stage = Stage::PreRun;
-    }
+        projected
+    };
 
     // Subscribers may not exist yet (no events/subscribe). Drop the send
     // error in that case — the state is also reachable via `session/init`.
-    let projected = state::project_pre_run(&pre_run_inner, &ctx.env);
     let _ = ctx.events.send(Event::StageChange {
         state: SessionState::PreRun(Box::new(projected)),
     });

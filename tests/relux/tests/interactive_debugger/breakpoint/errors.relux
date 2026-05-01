@@ -1,0 +1,119 @@
+import interactive_debugger/rdp_client
+import interactive_debugger/jq
+
+test "breakpoint/set without a selected test returns invalid request" {
+    let set_request
+    let error_response
+
+    start RdpStackInitialized as Stack
+
+    // No test/select issued — pre_run slot is empty.
+    shell Stack.request_builder {
+        set_request = rdp_request_breakpoint_set(3, "tests/hello.relux", 7)
+    }
+    shell Stack.client {
+        > ${set_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        error_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        let f = rdp_artifacts_file(error_response)
+        // JSON-RPC's standard `Invalid Request` (-32600).
+        jq_match_query(f, ".error.code", "^-32600$")
+        jq_match_query(f, ".error.message", "^no test selected")
+    }
+}
+
+test "breakpoint/set rejects a non-statement line" {
+    let select_request
+    let bad_import_request
+    let bad_import_response
+    let bad_wrapper_request
+    let bad_wrapper_response
+
+    start RdpStackInitialized as Stack
+
+    shell Stack.request_builder {
+        select_request = rdp_request_test_select(3, "tests/hello.relux", "hello relux")
+    }
+    shell Stack.client {
+        > ${select_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    // tests/hello.relux:1 is `import util` — not in IR at all.
+    shell Stack.request_builder {
+        bad_import_request = rdp_request_breakpoint_set(4, "tests/hello.relux", 1)
+    }
+    shell Stack.client {
+        > ${bad_import_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        bad_import_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        let f = rdp_artifacts_file(bad_import_response)
+        jq_match_query(f, ".error.code", "^-8$")
+        jq_match_query(f, ".error.message", "^breakpoint not allowed at")
+    }
+
+    // lib/util.relux:5 is `effect Greeter {` — wrapper line, not a statement.
+    shell Stack.request_builder {
+        bad_wrapper_request = rdp_request_breakpoint_set(5, "lib/util.relux", 5)
+    }
+    shell Stack.client {
+        > ${bad_wrapper_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        bad_wrapper_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        let f = rdp_artifacts_file(bad_wrapper_response)
+        jq_match_query(f, ".error.code", "^-8$")
+        jq_match_query(f, ".error.message", "^breakpoint not allowed at")
+    }
+}
+
+test "breakpoint/set rejects a file outside the pre-run source" {
+    let select_request
+    let bad_file_request
+    let bad_file_response
+
+    start RdpStackInitialized as Stack
+
+    shell Stack.request_builder {
+        select_request = rdp_request_test_select(3, "tests/hello.relux", "hello relux")
+    }
+    shell Stack.client {
+        > ${select_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    shell Stack.request_builder {
+        bad_file_request = rdp_request_breakpoint_set(4, "lib/nonexistent.relux", 1)
+    }
+    shell Stack.client {
+        > ${bad_file_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        bad_file_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        let f = rdp_artifacts_file(bad_file_response)
+        jq_match_query(f, ".error.code", "^-8$")
+        jq_match_query(f, ".error.message", "^breakpoint not allowed at")
+    }
+}

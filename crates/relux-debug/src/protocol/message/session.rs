@@ -42,9 +42,8 @@ pub struct TestSelectState {
     pub files: Vec<SourceFileEntry>,
 }
 
-/// State for the `pre-run` stage. `source`, `env`, and `config` are
-/// wired today; `breakpoints` and `frozen` are deferred and will be
-/// added in follow-up PRs.
+/// State for the `pre-run` stage. `frozen` is deferred and will be
+/// added with the freeze-mode work item.
 #[derive(Debug, Clone, Builder, Serialize)]
 pub struct PreRunState {
     pub source: PreRunSource,
@@ -57,6 +56,11 @@ pub struct PreRunState {
     /// Manifest-derived runtime configuration plus the effective debug
     /// timeout multiplier.
     pub config: PreRunConfig,
+    /// Currently set breakpoints, keyed by suite-relative filename.
+    /// Empty map if none. Populated by `breakpoint/set`; cleared by
+    /// `breakpoint/unset`/`breakpoint/reset` and by re-selecting a
+    /// different test.
+    pub breakpoints: HashMap<String, Vec<Breakpoint>>,
 }
 
 /// Mirrors the `Config` block documented in `00-common.md`.
@@ -116,4 +120,12 @@ pub enum DefinitionKind {
     Function,
     PureFunction,
     Effect,
+}
+
+/// A breakpoint at a specific line in a source file. Kept as a typed
+/// struct (not a bare integer) so future fields like `condition` for
+/// conditional breakpoints can be added without a wire-breaking change.
+#[derive(Debug, Clone, Builder, Serialize)]
+pub struct Breakpoint {
+    pub line: usize,
 }

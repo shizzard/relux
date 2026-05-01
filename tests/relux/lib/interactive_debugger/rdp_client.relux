@@ -83,6 +83,56 @@ fn rdp_request_events_subscribe(id) {
     file
 }
 
+// Generate a `breakpoint/set` request file. `filename` is the
+// suite-relative path; `line` is the 1-based line number to break on.
+// Returns the on-disk request filename.
+fn rdp_request_breakpoint_set(id, filename, line) {
+    let client = rdp_client()
+    let artifacts_dir = rdp_artifacts_dir()
+    > ${client} request breakpoint/set --id ${id} --filename ${filename} --line ${line} --dir ${artifacts_dir}
+    <? ^file written: (.*)$
+    let file = $1
+    match_ok()
+    file
+}
+
+// Generate a `breakpoint/unset` request file. Same args as `set`.
+// Idempotent on the server side — unsetting a non-existent breakpoint
+// is a no-op.
+fn rdp_request_breakpoint_unset(id, filename, line) {
+    let client = rdp_client()
+    let artifacts_dir = rdp_artifacts_dir()
+    > ${client} request breakpoint/unset --id ${id} --filename ${filename} --line ${line} --dir ${artifacts_dir}
+    <? ^file written: (.*)$
+    let file = $1
+    match_ok()
+    file
+}
+
+// Generate a `breakpoint/reset` request file. Clears all breakpoints
+// for the current pre-run.
+fn rdp_request_breakpoint_reset(id) {
+    let client = rdp_client()
+    let artifacts_dir = rdp_artifacts_dir()
+    > ${client} request breakpoint/reset --id ${id} --dir ${artifacts_dir}
+    <? ^file written: (.*)$
+    let file = $1
+    match_ok()
+    file
+}
+
+// Generate a `breakpoint/list` request file. Returns the on-disk
+// filename to send via the connect shell.
+fn rdp_request_breakpoint_list(id) {
+    let client = rdp_client()
+    let artifacts_dir = rdp_artifacts_dir()
+    > ${client} request breakpoint/list --id ${id} --dir ${artifacts_dir}
+    <? ^file written: (.*)$
+    let file = $1
+    match_ok()
+    file
+}
+
 // Wait for the rdp-client interactive prompt. The connect loop emits
 // `rdp> ` after every input line and every received message, so this
 // helper sits between sends and receives to keep the shell in sync.

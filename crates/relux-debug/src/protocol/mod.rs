@@ -1,3 +1,4 @@
+pub mod breakpointable;
 mod handler;
 pub mod message;
 pub mod state;
@@ -22,6 +23,9 @@ pub mod error_code {
     pub const FILE_NOT_FOUND: i32 = -2;
     pub const VERSION_MISMATCH: i32 = -6;
     pub const TEST_NOT_RUNNABLE: i32 = -7;
+    /// `(filename, line)` does not refer to a breakpointable position
+    /// in the current `pre_run.source`.
+    pub const BREAKPOINT_INVALID: i32 = -8;
 }
 
 /// Capacity of the events broadcast channel. Events are small JSON
@@ -114,6 +118,24 @@ impl MethodRegistry {
         self.module
             .register_async_method("test/select", handler::test_select)
             .expect("failed to register test/select");
+        self
+    }
+
+    /// Register pre-run stage methods (`breakpoint/set`,
+    /// `breakpoint/unset`, `breakpoint/reset`, `breakpoint/list`).
+    pub fn pre_run(mut self) -> Self {
+        self.module
+            .register_async_method("breakpoint/set", handler::breakpoint_set)
+            .expect("failed to register breakpoint/set");
+        self.module
+            .register_async_method("breakpoint/unset", handler::breakpoint_unset)
+            .expect("failed to register breakpoint/unset");
+        self.module
+            .register_async_method("breakpoint/reset", handler::breakpoint_reset)
+            .expect("failed to register breakpoint/reset");
+        self.module
+            .register_async_method("breakpoint/list", handler::breakpoint_list)
+            .expect("failed to register breakpoint/list");
         self
     }
 

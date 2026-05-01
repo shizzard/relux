@@ -1,0 +1,10 @@
+import util
+
+test "farewell relux" {
+    start Greeter
+    shell myshell {
+        > echo bye
+        <? ^bye$
+        match_ok()
+    }
+}

@@ -1,0 +1,119 @@
+import interactive_debugger/rdp_client
+import interactive_debugger/jq
+
+test "breakpoint/unset removes one line and is idempotent" {
+    let select_request
+    let set_7_request
+    let set_8_request
+    let unset_7_request
+    let list_after_unset_request
+    let list_after_unset_response
+    let unset_8_request
+    let list_empty_request
+    let list_empty_response
+    let unset_missing_request
+    let unset_missing_response
+
+    start RdpStackInitialized as Stack
+
+    shell Stack.request_builder {
+        select_request = rdp_request_test_select(3, "tests/hello.relux", "hello relux")
+    }
+    shell Stack.client {
+        > ${select_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    shell Stack.request_builder {
+        set_7_request = rdp_request_breakpoint_set(4, "tests/hello.relux", 7)
+    }
+    shell Stack.client {
+        > ${set_7_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    shell Stack.request_builder {
+        set_8_request = rdp_request_breakpoint_set(5, "tests/hello.relux", 8)
+    }
+    shell Stack.client {
+        > ${set_8_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    shell Stack.request_builder {
+        unset_7_request = rdp_request_breakpoint_unset(6, "tests/hello.relux", 7)
+    }
+    shell Stack.client {
+        > ${unset_7_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    shell Stack.request_builder {
+        list_after_unset_request = rdp_request_breakpoint_list(7)
+    }
+    shell Stack.client {
+        > ${list_after_unset_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        list_after_unset_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        // After unset of line 7, only line 8 remains.
+        let f = rdp_artifacts_file(list_after_unset_response)
+        jq_match_query(f, ".result.breakpoints[\"tests/hello.relux\"] | length", "^1$")
+        jq_match_query(f, ".result.breakpoints[\"tests/hello.relux\"][0].line", "^8$")
+    }
+
+    shell Stack.request_builder {
+        unset_8_request = rdp_request_breakpoint_unset(8, "tests/hello.relux", 8)
+    }
+    shell Stack.client {
+        > ${unset_8_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    shell Stack.request_builder {
+        list_empty_request = rdp_request_breakpoint_list(9)
+    }
+    shell Stack.client {
+        > ${list_empty_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        list_empty_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        // After unset of line 8, the filename key is gone (empty map).
+        let f = rdp_artifacts_file(list_empty_response)
+        jq_match_query(f, ".result.breakpoints | length", "^0$")
+    }
+
+    shell Stack.request_builder {
+        unset_missing_request = rdp_request_breakpoint_unset(10, "tests/hello.relux", 7)
+    }
+    shell Stack.client {
+        > ${unset_missing_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        unset_missing_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        // Unsetting an already-absent breakpoint is a no-op success.
+        let f = rdp_artifacts_file(unset_missing_response)
+        jq_match_query(f, ".result | length", "^0$")
+    }
+}

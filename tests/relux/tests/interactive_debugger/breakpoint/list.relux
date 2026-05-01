@@ -1,0 +1,96 @@
+import interactive_debugger/rdp_client
+import interactive_debugger/jq
+
+test "breakpoint/list returns groups by file with sorted lines" {
+    let select_request
+    let list_empty_request
+    let list_empty_response
+    let set_a_request
+    let set_b_request
+    let set_c_request
+    let list_full_request
+    let list_full_response
+
+    start RdpStackInitialized as Stack
+
+    shell Stack.request_builder {
+        select_request = rdp_request_test_select(3, "tests/hello.relux", "hello relux")
+    }
+    shell Stack.client {
+        > ${select_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    shell Stack.request_builder {
+        list_empty_request = rdp_request_breakpoint_list(4)
+    }
+    shell Stack.client {
+        > ${list_empty_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        list_empty_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        // Empty initially.
+        let f = rdp_artifacts_file(list_empty_response)
+        jq_match_query(f, ".result.breakpoints | length", "^0$")
+    }
+
+    // Set lines in reverse order to verify the projection sorts.
+    shell Stack.request_builder {
+        set_a_request = rdp_request_breakpoint_set(5, "tests/hello.relux", 8)
+    }
+    shell Stack.client {
+        > ${set_a_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    shell Stack.request_builder {
+        set_b_request = rdp_request_breakpoint_set(6, "tests/hello.relux", 7)
+    }
+    shell Stack.client {
+        > ${set_b_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    shell Stack.request_builder {
+        set_c_request = rdp_request_breakpoint_set(7, "lib/util.relux", 2)
+    }
+    shell Stack.client {
+        > ${set_c_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    shell Stack.request_builder {
+        list_full_request = rdp_request_breakpoint_list(8)
+    }
+    shell Stack.client {
+        > ${list_full_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        list_full_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        let f = rdp_artifacts_file(list_full_response)
+        // Two file keys after setting.
+        jq_match_query(f, ".result.breakpoints | length", "^2$")
+        // hello.relux has lines 7 and 8 in sorted order.
+        jq_match_query(f, ".result.breakpoints[\"tests/hello.relux\"] | length", "^2$")
+        jq_match_query(f, ".result.breakpoints[\"tests/hello.relux\"][0].line", "^7$")
+        jq_match_query(f, ".result.breakpoints[\"tests/hello.relux\"][1].line", "^8$")
+        // lib/util.relux has line 2.
+        jq_match_query(f, ".result.breakpoints[\"lib/util.relux\"][0].line", "^2$")
+    }
+}

@@ -1,0 +1,64 @@
+import interactive_debugger/rdp_client
+import interactive_debugger/jq
+
+test "re-selecting the same test preserves breakpoints" {
+    let select_request_1
+    let set_request
+    let select_request_2
+    let list_request
+    let list_response
+
+    start RdpStackInitialized as Stack
+
+    shell Stack.request_builder {
+        select_request_1 = rdp_request_test_select(3, "tests/hello.relux", "hello relux")
+    }
+    shell Stack.client {
+        > ${select_request_1}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    shell Stack.request_builder {
+        set_request = rdp_request_breakpoint_set(4, "tests/hello.relux", 7)
+    }
+    shell Stack.client {
+        > ${set_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    // Same (filename, test) — breakpoints should be preserved.
+    shell Stack.request_builder {
+        select_request_2 = rdp_request_test_select(5, "tests/hello.relux", "hello relux")
+    }
+    shell Stack.client {
+        > ${select_request_2}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    shell Stack.request_builder {
+        list_request = rdp_request_breakpoint_list(6)
+    }
+    shell Stack.client {
+        > ${list_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        list_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        // Line 7 still set after re-selecting the same test.
+        let f = rdp_artifacts_file(list_response)
+        jq_match_query(f, ".result.breakpoints[\"tests/hello.relux\"] | length", "^1$")
+        jq_match_query(f, ".result.breakpoints[\"tests/hello.relux\"][0].line", "^7$")
+    }
+}

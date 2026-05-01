@@ -1,0 +1,133 @@
+import interactive_debugger/rdp_client
+import interactive_debugger/jq
+
+test "breakpoint/set succeeds on a runtime statement line" {
+    let select_request
+    let select_response
+    let stage_switch_event
+    let set_request
+    let set_response
+    let list_request
+    let list_response
+
+    start RdpStackInitialized as Stack
+
+    shell Stack.request_builder {
+        select_request = rdp_request_test_select(3, "tests/hello.relux", "hello relux")
+    }
+    shell Stack.client {
+        > ${select_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        select_response = $1
+        rdp_match_prompt()
+        <? ^(.*)$
+        stage_switch_event = $1
+        rdp_match_prompt()
+    }
+
+    shell Stack.request_builder {
+        set_request = rdp_request_breakpoint_set(4, "tests/hello.relux", 7)
+    }
+    shell Stack.client {
+        > ${set_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        set_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        let f = rdp_artifacts_file(set_response)
+        jq_match_query(f, ".result.breakpoint.line", "^7$")
+    }
+
+    shell Stack.request_builder {
+        list_request = rdp_request_breakpoint_list(5)
+    }
+    shell Stack.client {
+        > ${list_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        list_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        let f = rdp_artifacts_file(list_response)
+        jq_match_query(f, ".result.breakpoints | length", "^1$")
+        jq_match_query(f, ".result.breakpoints[\"tests/hello.relux\"] | length", "^1$")
+        jq_match_query(f, ".result.breakpoints[\"tests/hello.relux\"][0].line", "^7$")
+    }
+}
+
+test "breakpoint/set accepts test-level let and pure-fn body lines" {
+    let select_request
+    let set_let_request
+    let set_let_response
+    let set_pure_request
+    let set_pure_response
+    let list_request
+    let list_response
+
+    start RdpStackInitialized as Stack
+
+    shell Stack.request_builder {
+        select_request = rdp_request_test_select(3, "tests/hello.relux", "hello relux")
+    }
+    shell Stack.client {
+        > ${select_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+        <? ^(.*)$
+        rdp_match_prompt()
+    }
+
+    // tests/hello.relux:4 is `let g = greeting()` — IrTestItem::Let.
+    shell Stack.request_builder {
+        set_let_request = rdp_request_breakpoint_set(4, "tests/hello.relux", 4)
+    }
+    shell Stack.client {
+        > ${set_let_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        set_let_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        let f = rdp_artifacts_file(set_let_response)
+        jq_match_query(f, ".result.breakpoint.line", "^4$")
+    }
+
+    // lib/util.relux:2 is the pure-fn body's only IrPureStmt::Expr.
+    shell Stack.request_builder {
+        set_pure_request = rdp_request_breakpoint_set(5, "lib/util.relux", 2)
+    }
+    shell Stack.client {
+        > ${set_pure_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        set_pure_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        let f = rdp_artifacts_file(set_pure_response)
+        jq_match_query(f, ".result.breakpoint.line", "^2$")
+    }
+
+    shell Stack.request_builder {
+        list_request = rdp_request_breakpoint_list(6)
+    }
+    shell Stack.client {
+        > ${list_request}
+        rdp_match_prompt()
+        <? ^(.*)$
+        list_response = $1
+        rdp_match_prompt()
+    }
+    shell reader {
+        let f = rdp_artifacts_file(list_response)
+        jq_match_query(f, ".result.breakpoints | length", "^2$")
+        jq_match_query(f, ".result.breakpoints[\"tests/hello.relux\"][0].line", "^4$")
+        jq_match_query(f, ".result.breakpoints[\"lib/util.relux\"][0].line", "^2$")
+    }
+}

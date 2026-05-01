@@ -12,6 +12,8 @@
 //!
 //! Lock order: `stage` before any per-stage slot.
 
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -22,6 +24,7 @@ use relux_ir::IrNode;
 use relux_ir::Plan;
 use relux_ir::Suite;
 
+use super::message::Breakpoint;
 use super::message::Definition;
 use super::message::DefinitionKind;
 use super::message::PreRunConfig;
@@ -48,13 +51,25 @@ pub struct TestSelectInner {
 
 /// Truth state for the pre-run stage. Built by `test/select` from the
 /// resolved test plan. Cross-stage state that conceptually belongs to
-/// pre-run (breakpoints, frozen flag) will be added here as fields,
-/// not as separate `Context` slots.
+/// pre-run (frozen flag) will be added here as fields, not as
+/// separate `Context` slots.
 #[derive(Debug, Clone, Builder)]
 pub struct PreRunInner {
     pub selected: SelectedTest,
     pub source: PreRunSource,
     pub config: PreRunConfig,
+    /// Currently set breakpoints, keyed by suite-relative filename.
+    /// `BTreeMap`/`BTreeSet` give deterministic ordering for the
+    /// projected wire form.
+    #[builder(default)]
+    pub breakpoints: BTreeMap<String, BTreeSet<usize>>,
+    /// Internal — never serialized. Filled at `test/select` time by
+    /// walking the reachable IR. Used by `breakpoint/set` to validate
+    /// that a `(filename, line)` corresponds to a runtime statement.
+    /// Keys are suite-relative filenames (matching the wire form on
+    /// `PreRunSource` entries) so validation is a string-keyed lookup.
+    #[builder(default)]
+    pub breakpointable_lines: HashMap<String, BTreeSet<usize>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,11 +86,33 @@ pub fn project_test_select(inner: &TestSelectInner) -> TestSelectState {
 }
 
 pub fn project_pre_run(inner: &PreRunInner, env: &HashMap<String, String>) -> PreRunState {
+    let breakpoints = inner
+        .breakpoints
+        .iter()
+        .map(|(filename, lines)| {
+            let bps = lines
+                .iter()
+                .map(|&line| Breakpoint::builder().line(line).build())
+                .collect();
+            (filename.clone(), bps)
+        })
+        .collect();
+
     PreRunState::builder()
         .source(inner.source.clone())
         .env(env.clone())
         .config(inner.config.clone())
+        .breakpoints(breakpoints)
         .build()
+}
+
+/// Returns true iff `line` is in the breakpointable-line set for the
+/// given filename in this pre-run.
+pub fn breakpointable(inner: &PreRunInner, filename: &str, line: usize) -> bool {
+    inner
+        .breakpointable_lines
+        .get(filename)
+        .is_some_and(|lines| lines.contains(&line))
 }
 
 /// Walk the suite's plans and emit one `SourceFileEntry` per file
