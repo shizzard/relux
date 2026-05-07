@@ -66,11 +66,13 @@ pub fn is_impure_bif(name: &str, arity: usize) -> bool {
     lookup_impure(name, arity).is_some()
 }
 
-fn runtime_error(message: String, span: &IrSpan) -> Failure {
+async fn runtime_error(vm: &Vm, message: String, span: &IrSpan) -> Failure {
+    let context = vm.capture_failure_context().await;
     Failure::Runtime {
         message,
         span: Some(span.clone()),
-        shell: None,
+        shell: Some(vm.current_name()),
+        context,
     }
 }
 
@@ -88,8 +90,14 @@ impl Bif for Sleep {
     }
 
     async fn call(&self, vm: &mut Vm, args: Vec<String>, span: &IrSpan) -> Result<String, Failure> {
-        let duration = humantime::parse_duration(args[0].trim())
-            .map_err(|_| runtime_error(format!("invalid duration: `{}`", args[0]), span))?;
+        let duration = match humantime::parse_duration(args[0].trim()) {
+            Ok(d) => d,
+            Err(_) => {
+                return Err(
+                    runtime_error(vm, format!("invalid duration: `{}`", args[0]), span).await,
+                );
+            }
+        };
         let span_id = vm.current_span();
         let shell = vm.current_name();
         vm.log.emit_sleep_start(span_id, &shell, duration);
@@ -98,9 +106,11 @@ impl Bif for Sleep {
             _ = vm.cancel.cancelled() => {
                 let shell = vm.current_name();
                 vm.log.emit_sleep_done(span_id, &shell);
+                let context = vm.capture_failure_context().await;
                 return Err(Failure::Cancelled {
                     span: Some(span.clone()),
                     shell: Some(shell),
+                    context,
                 });
             }
         }

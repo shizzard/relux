@@ -16,6 +16,12 @@ use crate::observe::structured::SpanId;
 use crate::observe::structured::SpanKind;
 use crate::observe::structured::StructuredLogBuilder;
 use crate::report::result::Failure;
+use crate::report::result::FailureContext;
+
+/// Size of the per-shell buffer tail snapshotted into a failure record.
+/// Tuned for "fits on one console screen, enough to see what arrived
+/// instead of the expected pattern".
+const BUFFER_TAIL_BYTES: usize = 4096;
 use crate::vm::buffer::FailPatternHit;
 use crate::vm::buffer::MatchContext;
 use crate::vm::buffer::regex_error_summary;
@@ -122,6 +128,7 @@ impl Vm {
             message: format!("failed to spawn shell: {e}"),
             span: None,
             shell: Some(shell_name.clone()),
+            context: FailureContext::default(),
         })?;
 
         let cancel = rt_ctx.cancel.clone();
@@ -151,6 +158,7 @@ impl Vm {
                 message: "shell did not produce prompt during init".to_string(),
                 span: None,
                 shell: Some(shell_name),
+                context: FailureContext::default(),
             })?;
 
         let ready_shell = vm.ctx.current_name();
@@ -183,9 +191,11 @@ impl Vm {
         let mut last = String::new();
         for stmt in stmts {
             if self.cancel.is_cancelled() {
+                let context = self.capture_failure_context().await;
                 return Err(Failure::Cancelled {
                     span: None,
                     shell: Some(self.ctx.current_name().to_string()),
+                    context,
                 });
             }
             last = self.exec_stmt(stmt).await?;
@@ -195,6 +205,22 @@ impl Vm {
 
     fn current_span(&self) -> SpanId {
         self.ctx.current_span()
+    }
+
+    /// Snapshot the diagnostic context for a `Failure` produced by this VM.
+    /// Captures the active span, the latest event seq, the resolved call
+    /// stack, the failing shell's buffer tail, and user-visible vars.
+    /// Must be called *at* the failure construction site — once the VM is
+    /// dropped the buffer is gone.
+    pub(crate) async fn capture_failure_context(&self) -> FailureContext {
+        let span = self.ctx.current_span();
+        FailureContext {
+            span: Some(span),
+            event_seq: Some(self.log.current_seq()),
+            call_stack: self.log.resolve_stack(span),
+            buffer_tail: self.pty.output_buf.snapshot_tail(BUFFER_TAIL_BYTES).await,
+            vars_in_scope: self.ctx.snapshot_user_vars().await,
+        }
     }
 
     async fn emit_interpolation(
@@ -252,15 +278,18 @@ impl Vm {
                 let shell = self.ctx.current_name();
                 self.log
                     .emit_fail_pattern_set(self.current_span(), &shell, &pat);
-                let re = RegexBuilder::new(&pat)
-                    .multi_line(true)
-                    .crlf(true)
-                    .build()
-                    .map_err(|e| Failure::Runtime {
-                        message: format!("invalid fail regex: {}", regex_error_summary(&e)),
-                        span: Some(ir_span.clone()),
-                        shell: Some(self.ctx.current_name().to_string()),
-                    })?;
+                let re = match RegexBuilder::new(&pat).multi_line(true).crlf(true).build() {
+                    Ok(re) => re,
+                    Err(e) => {
+                        let context = self.capture_failure_context().await;
+                        return Err(Failure::Runtime {
+                            message: format!("invalid fail regex: {}", regex_error_summary(&e)),
+                            span: Some(ir_span.clone()),
+                            shell: Some(self.ctx.current_name().to_string()),
+                            context,
+                        });
+                    }
+                };
                 let fp = Some(FailPattern::Regex(re));
                 self.ctx.set_fail_pattern(fp);
                 self.check_fail(span).await?;
@@ -310,6 +339,7 @@ impl Vm {
                 let value = self.eval_expr(assign.value()).await?;
                 let found = self.ctx.assign(assign.name().name(), value.clone()).await;
                 if !found {
+                    let context = self.capture_failure_context().await;
                     return Err(Failure::Runtime {
                         message: format!(
                             "assignment to undeclared variable `{}`",
@@ -317,6 +347,7 @@ impl Vm {
                         ),
                         span: Some(assign.name().span().clone()),
                         shell: Some(self.ctx.current_name().to_string()),
+                        context,
                     });
                 }
                 let shell = self.ctx.current_name();
@@ -375,15 +406,18 @@ impl Vm {
                     .adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
                 let pat = interpolate_ir(pattern, &self.ctx).await;
                 self.emit_interpolation(pattern, &pat, Some(&span)).await;
-                let re = RegexBuilder::new(&pat)
-                    .multi_line(true)
-                    .crlf(true)
-                    .build()
-                    .map_err(|e| Failure::Runtime {
-                        message: format!("invalid regex: {}", regex_error_summary(&e)),
-                        span: Some(pattern.span().clone()),
-                        shell: Some(self.ctx.current_name().to_string()),
-                    })?;
+                let re = match RegexBuilder::new(&pat).multi_line(true).crlf(true).build() {
+                    Ok(re) => re,
+                    Err(e) => {
+                        let context = self.capture_failure_context().await;
+                        return Err(Failure::Runtime {
+                            message: format!("invalid regex: {}", regex_error_summary(&e)),
+                            span: Some(pattern.span().clone()),
+                            shell: Some(self.ctx.current_name().to_string()),
+                            context,
+                        });
+                    }
+                };
                 let shell = self.ctx.current_name();
                 self.log
                     .emit_match_start(self.current_span(), &shell, &pat, true);
@@ -436,15 +470,18 @@ impl Vm {
                 let dur = timeout.adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
                 let pat = interpolate_ir(pattern, &self.ctx).await;
                 self.emit_interpolation(pattern, &pat, Some(&span)).await;
-                let re = RegexBuilder::new(&pat)
-                    .multi_line(true)
-                    .crlf(true)
-                    .build()
-                    .map_err(|e| Failure::Runtime {
-                        message: format!("invalid regex: {}", regex_error_summary(&e)),
-                        span: Some(pattern.span().clone()),
-                        shell: Some(self.ctx.current_name().to_string()),
-                    })?;
+                let re = match RegexBuilder::new(&pat).multi_line(true).crlf(true).build() {
+                    Ok(re) => re,
+                    Err(e) => {
+                        let context = self.capture_failure_context().await;
+                        return Err(Failure::Runtime {
+                            message: format!("invalid regex: {}", regex_error_summary(&e)),
+                            span: Some(pattern.span().clone()),
+                            shell: Some(self.ctx.current_name().to_string()),
+                            context,
+                        });
+                    }
+                };
                 let shell = self.ctx.current_name();
                 self.log
                     .emit_match_start(self.current_span(), &shell, &pat, true);
@@ -522,11 +559,18 @@ impl Vm {
 
         // Try user-defined function
         if let Some(result) = self.tables.fns.get(&fn_id) {
-            let ir_fn = result.as_ref().map_err(|e| Failure::Runtime {
-                message: format!("function resolution failed: {e:?}"),
-                span: Some(span.clone()),
-                shell: Some(self.ctx.current_name().to_string()),
-            })?;
+            let ir_fn = match result.as_ref() {
+                Ok(f) => f,
+                Err(e) => {
+                    let context = self.capture_failure_context().await;
+                    return Err(Failure::Runtime {
+                        message: format!("function resolution failed: {e:?}"),
+                        span: Some(span.clone()),
+                        shell: Some(self.ctx.current_name().to_string()),
+                        context,
+                    });
+                }
+            };
             match ir_fn {
                 IrFn::UserDefined { params, body, .. } => {
                     let params = params.clone();
@@ -591,11 +635,18 @@ impl Vm {
 
         // Try pure function
         if let Some(result) = self.tables.pure_fns.get(&fn_id) {
-            let ir_fn = result.as_ref().map_err(|e| Failure::Runtime {
-                message: format!("pure function resolution failed: {e:?}"),
-                span: Some(span.clone()),
-                shell: Some(self.ctx.current_name().to_string()),
-            })?;
+            let ir_fn = match result.as_ref() {
+                Ok(f) => f,
+                Err(e) => {
+                    let context = self.capture_failure_context().await;
+                    return Err(Failure::Runtime {
+                        message: format!("pure function resolution failed: {e:?}"),
+                        span: Some(span.clone()),
+                        shell: Some(self.ctx.current_name().to_string()),
+                        context,
+                    });
+                }
+            };
             let named_args: Vec<(String, String)> = match ir_fn {
                 IrPureFn::UserDefined { params, .. } => params
                     .iter()
@@ -628,6 +679,7 @@ impl Vm {
             return Ok(return_value);
         }
 
+        let context = self.capture_failure_context().await;
         Err(Failure::Runtime {
             message: format!(
                 "undefined function `{}` with arity {}",
@@ -636,6 +688,7 @@ impl Vm {
             ),
             span: Some(span.clone()),
             shell: Some(self.ctx.current_name().to_string()),
+            context,
         })
     }
 
@@ -716,9 +769,11 @@ impl Vm {
                 tokio::select! {
                     _ = notified => {}
                     _ = self.cancel.cancelled() => {
+                        let context = self.capture_failure_context().await;
                         return Err(Failure::Cancelled {
                             span: Some(span.clone()),
                             shell: Some(self.ctx.current_name().to_string()),
+                            context,
                         });
                     }
                 }
@@ -730,10 +785,12 @@ impl Vm {
             Err(_) => {
                 let shell = self.ctx.current_name();
                 self.log.emit_timeout(self.current_span(), &shell, pattern);
+                let context = self.capture_failure_context().await;
                 Err(Failure::MatchTimeout {
                     pattern: pattern.to_string(),
                     span,
                     shell: self.ctx.current_name().to_string(),
+                    context,
                 })
             }
         }
@@ -769,9 +826,11 @@ impl Vm {
                 tokio::select! {
                     _ = notified => {}
                     _ = self.cancel.cancelled() => {
+                        let context = self.capture_failure_context().await;
                         return Err(Failure::Cancelled {
                             span: Some(span.clone()),
                             shell: Some(self.ctx.current_name().to_string()),
+                            context,
                         });
                     }
                 }
@@ -783,10 +842,12 @@ impl Vm {
             Err(_) => {
                 let shell = self.ctx.current_name();
                 self.log.emit_timeout(self.current_span(), &shell, pattern);
+                let context = self.capture_failure_context().await;
                 Err(Failure::MatchTimeout {
                     pattern: pattern.to_string(),
                     span,
                     shell: self.ctx.current_name().to_string(),
+                    context,
                 })
             }
         }
@@ -808,23 +869,29 @@ impl Vm {
             &hit.pattern,
             &hit.matched_text,
         );
+        let context = self.capture_failure_context().await;
         Failure::FailPatternMatched {
             pattern: hit.pattern,
             matched_line: hit.matched_text,
             span,
             shell: self.ctx.current_name().to_string(),
+            context,
         }
     }
 
     async fn send_bytes(&mut self, data: &[u8], span: IrSpan) -> Result<(), Failure> {
-        self.pty
-            .send_bytes(data)
-            .await
-            .map_err(|e| Failure::ShellExited {
-                shell: self.ctx.current_name().to_string(),
-                exit_code: e.raw_os_error(),
-                span,
-            })
+        match self.pty.send_bytes(data).await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                let context = self.capture_failure_context().await;
+                Err(Failure::ShellExited {
+                    shell: self.ctx.current_name().to_string(),
+                    exit_code: e.raw_os_error(),
+                    span,
+                    context,
+                })
+            }
+        }
     }
 
     pub async fn shutdown(&mut self) {

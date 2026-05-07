@@ -337,6 +337,30 @@ impl ExecutionContext {
         !self.call_stack.is_empty()
     }
 
+    /// Snapshot user-visible variables at the current point of execution,
+    /// for failure diagnostics. Excludes the layered process env (already in
+    /// `events.json :: env.bootstrap`) and matcher captures. Sorted by key
+    /// for stable JSON output.
+    pub async fn snapshot_user_vars(&self) -> Vec<(String, String)> {
+        let mut out: Vec<(String, String)> = Vec::new();
+        if let Some(frame) = self.call_stack.last() {
+            for (k, v) in frame.vars.iter() {
+                out.push((k.to_string(), v.to_string()));
+            }
+        } else {
+            for (k, v) in self.shell.vars.iter() {
+                out.push((k.to_string(), v.to_string()));
+            }
+            let scope_vars = self.scope.vars().lock().await;
+            for (k, v) in scope_vars.iter() {
+                out.push((k.to_string(), v.to_string()));
+            }
+        }
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out.dedup_by(|a, b| a.0 == b.0);
+        out
+    }
+
     /// Build the environment variables map for spawning a shell process.
     /// For effects, the effect env already inherits the base env via LayeredEnv
     /// parent chain, so only the effect env is needed.
@@ -768,6 +792,42 @@ mod tests {
             Some(&"5432".to_string()),
             "process_env must include variables from parent LayeredEnv layers"
         );
+    }
+
+    // ─── snapshot_user_vars ─────────────────────────────────
+
+    #[tokio::test]
+    async fn snapshot_user_vars_in_shell_scope() {
+        let mut ctx = test_ctx();
+        ctx.shell.vars.insert("a".into(), "1".into());
+        ctx.scope.vars().lock().await.insert("b".into(), "2".into());
+        let snap = ctx.snapshot_user_vars().await;
+        assert_eq!(
+            snap,
+            vec![("a".into(), "1".into()), ("b".into(), "2".into())]
+        );
+    }
+
+    #[tokio::test]
+    async fn snapshot_user_vars_in_call_frame_only() {
+        let mut ctx = test_ctx();
+        ctx.shell.vars.insert("outer".into(), "v".into());
+        ctx.push_call("fn".into(), vec![("arg".into(), "av".into())]);
+        ctx.let_insert("local".into(), "lv".into());
+        let snap = ctx.snapshot_user_vars().await;
+        // Only the innermost call frame's vars are visible (matches lookup barrier).
+        assert_eq!(
+            snap,
+            vec![("arg".into(), "av".into()), ("local".into(), "lv".into()),]
+        );
+    }
+
+    #[tokio::test]
+    async fn snapshot_user_vars_excludes_env() {
+        let ctx = test_ctx();
+        let snap = ctx.snapshot_user_vars().await;
+        // PATH is in the layered env, not in scope/shell vars — must be excluded.
+        assert!(snap.iter().all(|(k, _)| k != "PATH"));
     }
 
     // ─── Captures unit tests ────────────────────────────────

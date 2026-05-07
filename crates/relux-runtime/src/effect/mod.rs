@@ -21,6 +21,7 @@ use crate::effect::registry::VarMap;
 use crate::observe::structured::SpanId;
 use crate::observe::structured::SpanKind;
 use crate::report::result::Failure;
+use crate::report::result::FailureContext;
 use crate::vm::Vm;
 use crate::vm::context::ExecutionContext;
 use crate::vm::context::Scope;
@@ -211,11 +212,13 @@ impl EffectManager {
                 message: format!("effect {:?} not found in table", start.effect()),
                 span: None,
                 shell: None,
+                context: FailureContext::default(),
             })?;
         let effect = effect_result.as_ref().map_err(|e| Failure::Runtime {
             message: format!("effect resolution failed: {e:?}"),
             span: None,
             shell: None,
+            context: FailureContext::default(),
         })?;
         let setup_span_id = setup_span.id();
 
@@ -322,6 +325,7 @@ impl EffectManager {
                             message: format!("unknown effect alias `{alias}`"),
                             span: None,
                             shell: None,
+                            context: FailureContext::default(),
                         })?;
                         let vm_arc = dep.get(shell_name).ok_or_else(|| Failure::Runtime {
                             message: format!(
@@ -329,6 +333,7 @@ impl EffectManager {
                             ),
                             span: None,
                             shell: None,
+                            context: FailureContext::default(),
                         })?;
                         let mut vm = vm_arc.lock().await;
                         let vm_name = vm.current_name();
@@ -395,6 +400,7 @@ impl EffectManager {
                             ),
                             span: None,
                             shell: None,
+                            context: FailureContext::default(),
                         })?;
                         let vm_arc = dep.get(expose.target()).ok_or_else(|| Failure::Runtime {
                             message: format!(
@@ -405,6 +411,7 @@ impl EffectManager {
                             ),
                             span: None,
                             shell: None,
+                            context: FailureContext::default(),
                         })?;
                         shells.insert(exposed_name.clone(), vm_arc.clone());
                         exposed.insert(exposed_name);
@@ -418,6 +425,7 @@ impl EffectManager {
                                 ),
                                 span: None,
                                 shell: None,
+                                context: FailureContext::default(),
                             });
                         }
                         if exposed_name != expose.target() {
@@ -439,6 +447,7 @@ impl EffectManager {
                                 ),
                                 span: None,
                                 shell: None,
+                                context: FailureContext::default(),
                             })?;
                         let value = qualifier_vars.get(expose.target()).ok_or_else(|| {
                             Failure::Runtime {
@@ -450,6 +459,7 @@ impl EffectManager {
                                 ),
                                 span: None,
                                 shell: None,
+                                context: FailureContext::default(),
                             }
                         })?;
                         exposed_vars.insert(exposed_name, value.clone());

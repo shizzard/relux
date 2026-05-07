@@ -18,6 +18,7 @@ use super::event::Event;
 use super::event::EventKind;
 use super::event::EventSeq;
 use super::failure::FailureRecord;
+use super::failure::StackFrame;
 use super::shell::ShellRecord;
 use super::span::Span;
 use super::span::SpanId;
@@ -164,6 +165,39 @@ impl StructuredLogBuilder {
         if let Some(span) = inner.spans.get_mut(&id) {
             span.end_ts = Some(end_ts);
         }
+    }
+
+    /// Walk parent pointers from `leaf` back to a root span and return the
+    /// frames in root-to-leaf order. Used at failure-construction time to
+    /// snapshot the active call chain.
+    pub fn resolve_stack(&self, leaf: SpanId) -> Vec<StackFrame> {
+        let inner = self.inner.lock().unwrap();
+        let mut chain: Vec<StackFrame> = Vec::new();
+        let mut next = Some(leaf);
+        while let Some(id) = next {
+            let Some(span) = inner.spans.get(&id) else {
+                break;
+            };
+            let (name, args) = span.kind.frame_data();
+            chain.push(StackFrame {
+                span: id,
+                kind: span.kind.kind_str().to_string(),
+                name,
+                args,
+                location: span.location.clone(),
+            });
+            next = span.parent;
+        }
+        chain.reverse();
+        chain
+    }
+
+    /// Latest emitted seq, or `0` if no event has fired yet. Failures use
+    /// this to point the structured-log artifact at the most recent event
+    /// (typically a `Timeout` or `FailPatternTriggered`).
+    pub fn current_seq(&self) -> EventSeq {
+        let inner = self.inner.lock().unwrap();
+        inner.next_seq.saturating_sub(1)
     }
 
     // ─── Raw event/buffer-event push ──────────────────────────────
@@ -752,6 +786,52 @@ mod tests {
             EventKind::MatchDone { buffer_seq, .. } => assert_eq!(*buffer_seq, buf_seq),
             _ => panic!("expected MatchDone"),
         }
+    }
+
+    #[test]
+    fn resolve_stack_walks_parent_chain_root_to_leaf() {
+        let (b, _rx) = make_builder();
+        let test_span = b.open_span(SpanKind::Test, None, None);
+        let test_id = test_span.id();
+        let block_span = b.open_span(
+            SpanKind::ShellBlock { shell: "sh".into() },
+            Some(test_id),
+            None,
+        );
+        let block_id = block_span.id();
+        let fn_span = b.open_span(
+            SpanKind::FnCall {
+                name: "do_thing".into(),
+                args: vec![("x".into(), "1".into())],
+            },
+            Some(block_id),
+            None,
+        );
+        let fn_id = fn_span.id();
+
+        let frames = b.resolve_stack(fn_id);
+        assert_eq!(frames.len(), 3);
+        assert_eq!(frames[0].span, test_id);
+        assert_eq!(frames[0].kind, "test");
+        assert!(frames[0].name.is_none());
+        assert_eq!(frames[1].span, block_id);
+        assert_eq!(frames[1].kind, "shell-block");
+        assert_eq!(frames[1].name.as_deref(), Some("sh"));
+        assert_eq!(frames[2].span, fn_id);
+        assert_eq!(frames[2].kind, "fn-call");
+        assert_eq!(frames[2].name.as_deref(), Some("do_thing"));
+        assert_eq!(frames[2].args, vec![("x".into(), "1".into())]);
+    }
+
+    #[test]
+    fn current_seq_reflects_latest_emission() {
+        let (b, _rx) = make_builder();
+        assert_eq!(b.current_seq(), 0);
+        let span = b.open_span(SpanKind::Test, None, None);
+        b.push_event(span.id(), Some("sh"), EventKind::Send { data: "a".into() });
+        assert_eq!(b.current_seq(), 0);
+        b.push_buffer_event("sh", BufferEventKind::Grew { data: "b".into() });
+        assert_eq!(b.current_seq(), 1);
     }
 
     #[test]

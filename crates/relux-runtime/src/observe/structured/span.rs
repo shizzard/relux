@@ -29,6 +29,34 @@ pub enum SpanKind {
     },
 }
 
+impl SpanKind {
+    /// Discriminator string matching the `serde(tag = "kind")` representation.
+    /// Used by stack-frame rendering so that consumers see the same string
+    /// they'd see in the JSON `spans` glossary.
+    pub fn kind_str(&self) -> &'static str {
+        match self {
+            SpanKind::Test => "test",
+            SpanKind::EffectSetup { .. } => "effect-setup",
+            SpanKind::EffectCleanup { .. } => "effect-cleanup",
+            SpanKind::ShellBlock { .. } => "shell-block",
+            SpanKind::CleanupBlock => "cleanup-block",
+            SpanKind::FnCall { .. } => "fn-call",
+        }
+    }
+
+    /// Frame name and args used in stack-frame rendering. `name` is the
+    /// effect or function name; `args` is the call args or effect overlay.
+    pub fn frame_data(&self) -> (Option<String>, Vec<(String, String)>) {
+        match self {
+            SpanKind::Test | SpanKind::CleanupBlock => (None, Vec::new()),
+            SpanKind::EffectSetup { effect, overlay } => (Some(effect.clone()), overlay.clone()),
+            SpanKind::EffectCleanup { effect } => (Some(effect.clone()), Vec::new()),
+            SpanKind::ShellBlock { shell } => (Some(shell.clone()), Vec::new()),
+            SpanKind::FnCall { name, args } => (Some(name.clone()), args.clone()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct Span {
     pub id: SpanId,

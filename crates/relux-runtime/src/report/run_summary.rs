@@ -145,6 +145,7 @@ mod tests {
                     pattern: "/ready/".into(),
                     shell: "default".into(),
                     span: IrSpan::synthetic(),
+                    context: Default::default(),
                 }),
             ),
             make_result(
@@ -187,6 +188,7 @@ mod tests {
                     message: "boom".into(),
                     span: None,
                     shell: None,
+                    context: Default::default(),
                 }),
             ),
             make_result(
@@ -196,6 +198,7 @@ mod tests {
                     message: "boom2".into(),
                     span: None,
                     shell: None,
+                    context: Default::default(),
                 }),
             ),
             make_result(

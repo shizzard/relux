@@ -44,6 +44,10 @@ impl VarScope {
             false
         }
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.vars.iter().map(|(k, v)| (k.as_str(), v.as_str()))
+    }
 }
 
 // ─── Env ─────────────────────────────────────────────────────

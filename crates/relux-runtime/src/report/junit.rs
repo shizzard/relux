@@ -82,6 +82,7 @@ fn format_failure_detail(failure: &Failure, source_table: &SourceTable) -> Strin
             pattern,
             span,
             shell,
+            ..
         } => {
             let loc = source_location(span, source_table);
             format!("shell: {shell}\npattern: {pattern}\n{loc}")
@@ -91,6 +92,7 @@ fn format_failure_detail(failure: &Failure, source_table: &SourceTable) -> Strin
             matched_line,
             span,
             shell,
+            ..
         } => {
             let loc = source_location(span, source_table);
             format!("shell: {shell}\npattern: {pattern}\nmatched: {matched_line}\n{loc}")
@@ -99,6 +101,7 @@ fn format_failure_detail(failure: &Failure, source_table: &SourceTable) -> Strin
             shell,
             exit_code,
             span,
+            ..
         } => {
             let loc = source_location(span, source_table);
             let code_str = match exit_code {
@@ -111,6 +114,7 @@ fn format_failure_detail(failure: &Failure, source_table: &SourceTable) -> Strin
             message,
             span,
             shell,
+            ..
         } => {
             let shell_line = match shell {
                 Some(s) => format!("shell: {s}\n"),
@@ -122,7 +126,7 @@ fn format_failure_detail(failure: &Failure, source_table: &SourceTable) -> Strin
             };
             format!("{shell_line}message: {message}{loc_line}")
         }
-        Failure::Cancelled { span, shell } => {
+        Failure::Cancelled { span, shell, .. } => {
             let shell_line = match shell {
                 Some(s) => format!("shell: {s}\n"),
                 None => String::new(),
@@ -235,6 +239,7 @@ mod tests {
             pattern: "/ready/".to_string(),
             span: test_span(12, 17),
             shell: "default".to_string(),
+            context: Default::default(),
         };
         let results = vec![make_result(
             "timeout test",

@@ -28,6 +28,7 @@ use crate::observe::structured::SpanKind;
 use crate::observe::structured::StructuredLogBuilder;
 use crate::observe::structured::TestInfo;
 use crate::report::result::Failure;
+use crate::report::result::FailureContext;
 use crate::report::result::Outcome;
 use crate::report::result::TestResult;
 use crate::vm::Vm;
@@ -427,7 +428,7 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                 let (progress_oneshot_tx, progress_oneshot_rx) = tokio::sync::oneshot::channel();
                 let result_line = format_result_line(&display_id, &result, &tags);
                 let failure = match &result.outcome {
-                    Outcome::Fail(f) => Some((f.clone(), result.log_dir.clone())),
+                    Outcome::Fail(f) => Some(Box::new((f.clone(), result.log_dir.clone()))),
                     _ => None,
                 };
                 let _ = ctx.tui_tx.send(observe::tui::TuiEvent::TestFinished {
@@ -633,10 +634,17 @@ async fn run_test_cancellable(
         && !cancel.is_cancelled()
         && matches!(result.outcome, Outcome::Fail(Failure::Cancelled { .. }))
     {
+        // Preserve any captured context from the original Cancelled.
+        let context = if let Outcome::Fail(Failure::Cancelled { context, .. }) = &result.outcome {
+            context.clone()
+        } else {
+            FailureContext::default()
+        };
         result.outcome = Outcome::Fail(Failure::Runtime {
             message: format!("test timeout ({effective_timeout:?}) exceeded"),
             span: None,
             shell: None,
+            context,
         });
     }
 
@@ -776,7 +784,7 @@ async fn run_test(
             duration_ms: duration.as_millis() as u64,
         },
         EnvInfo { bootstrap },
-        outcome.as_ref().err().map(failure_record_stub),
+        outcome.as_ref().err().map(failure_record),
     );
 
     let events_json_path = log_dir.join("events.json");
@@ -823,59 +831,76 @@ async fn run_test(
     }
 }
 
-/// Translate a runtime `Failure` into a stub `FailureRecord` with empty
-/// convenience fields. Commit 4 fills `call_stack`, `buffer_tail`, and
-/// `vars_in_scope` for real.
-fn failure_record_stub(failure: &Failure) -> FailureRecord {
+/// Translate a runtime `Failure` into a `FailureRecord`, lifting the
+/// `FailureContext` captured at failure-construction time into the
+/// structured log artifact. Sites that don't have a VM (effect-resolution
+/// errors, pre-VM init) supply `FailureContext::default()`, which lands as
+/// `span: 0` / `event_seq: 0` / empty stack — the artifact is still
+/// well-formed but lacks call-stack detail for those cases.
+fn failure_record(failure: &Failure) -> FailureRecord {
     match failure {
-        Failure::MatchTimeout { pattern, shell, .. } => FailureRecord::MatchTimeout {
-            span: 0,
-            event_seq: 0,
+        Failure::MatchTimeout {
+            pattern,
+            shell,
+            context,
+            ..
+        } => FailureRecord::MatchTimeout {
+            span: context.span.unwrap_or(0),
+            event_seq: context.event_seq.unwrap_or(0),
             shell: shell.clone(),
             pattern: pattern.clone(),
-            call_stack: Vec::new(),
-            buffer_tail: String::new(),
-            vars_in_scope: Vec::new(),
+            call_stack: context.call_stack.clone(),
+            buffer_tail: context.buffer_tail.clone(),
+            vars_in_scope: context.vars_in_scope.clone(),
         },
         Failure::FailPatternMatched {
             pattern,
             matched_line,
             shell,
+            context,
             ..
         } => FailureRecord::FailPatternMatched {
-            span: 0,
-            event_seq: 0,
+            span: context.span.unwrap_or(0),
+            event_seq: context.event_seq.unwrap_or(0),
             shell: shell.clone(),
             pattern: pattern.clone(),
             matched_line: matched_line.clone(),
-            call_stack: Vec::new(),
-            buffer_tail: String::new(),
-            vars_in_scope: Vec::new(),
+            call_stack: context.call_stack.clone(),
+            buffer_tail: context.buffer_tail.clone(),
+            vars_in_scope: context.vars_in_scope.clone(),
         },
         Failure::ShellExited {
-            shell, exit_code, ..
+            shell,
+            exit_code,
+            context,
+            ..
         } => FailureRecord::ShellExited {
-            span: 0,
-            event_seq: 0,
+            span: context.span.unwrap_or(0),
+            event_seq: context.event_seq.unwrap_or(0),
             shell: shell.clone(),
             exit_code: *exit_code,
-            call_stack: Vec::new(),
-            buffer_tail: String::new(),
-            vars_in_scope: Vec::new(),
+            call_stack: context.call_stack.clone(),
+            buffer_tail: context.buffer_tail.clone(),
+            vars_in_scope: context.vars_in_scope.clone(),
         },
-        Failure::Runtime { message, shell, .. } => FailureRecord::Runtime {
-            span: None,
-            event_seq: None,
+        Failure::Runtime {
+            message,
+            shell,
+            context,
+            ..
+        } => FailureRecord::Runtime {
+            span: context.span,
+            event_seq: context.event_seq,
             shell: shell.clone(),
             message: message.clone(),
-            call_stack: Vec::new(),
-            vars_in_scope: Vec::new(),
+            call_stack: context.call_stack.clone(),
+            vars_in_scope: context.vars_in_scope.clone(),
         },
-        Failure::Cancelled { shell, .. } => FailureRecord::Cancelled {
-            span: None,
-            event_seq: None,
+        Failure::Cancelled { shell, context, .. } => FailureRecord::Cancelled {
+            span: context.span,
+            event_seq: context.event_seq,
             shell: shell.clone(),
-            call_stack: Vec::new(),
+            call_stack: context.call_stack.clone(),
         },
     }
 }
@@ -994,6 +1019,7 @@ async fn run_test_body(
                             message: format!("unknown effect alias `{alias}`"),
                             span: None,
                             shell: None,
+                            context: FailureContext::default(),
                         })?;
                         let vm_arc = dep.get(shell_name).ok_or_else(|| Failure::Runtime {
                             message: format!(
@@ -1001,6 +1027,7 @@ async fn run_test_body(
                             ),
                             span: None,
                             shell: None,
+                            context: FailureContext::default(),
                         })?;
                         let mut vm = vm_arc.lock().await;
                         let vm_name = vm.current_name();
@@ -1102,6 +1129,7 @@ async fn run_test_body(
                         message: format!("failed to spawn cleanup shell: {e:?}"),
                         span: None,
                         shell: None,
+                        context: FailureContext::default(),
                     },
                 });
             }

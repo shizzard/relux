@@ -28,7 +28,7 @@ pub enum TuiEvent {
     TestFinished {
         slot: usize,
         result_line: String,
-        failure: Option<(Failure, Option<PathBuf>)>,
+        failure: Option<Box<(Failure, Option<PathBuf>)>>,
         progress_tx: tokio::sync::oneshot::Sender<String>,
     },
     /// A test was skipped/invalid (not running, just report).
@@ -218,7 +218,8 @@ async fn run_plain_renderer(
                 progress_tx,
             } => {
                 eprintln!("{result_line}");
-                if let Some((f, log_dir)) = &failure {
+                if let Some(boxed) = &failure {
+                    let (f, log_dir) = boxed.as_ref();
                     eprint_failure(f, log_dir.as_deref(), source_table, project_root);
                 }
                 let _ = progress_tx.send(String::new());
@@ -329,7 +330,8 @@ async fn run_tty_renderer(
                 slots[slot] = None;
                 clear_active(active_lines);
                 eprintln!("{result_line}");
-                if let Some((f, log_dir)) = &failure {
+                if let Some(boxed) = &failure {
+                    let (f, log_dir) = boxed.as_ref();
                     eprint_failure(f, log_dir.as_deref(), source_table, project_root);
                 }
                 active_lines = redraw_active(&slots, 0, name_width, progress_width);

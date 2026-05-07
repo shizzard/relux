@@ -7,32 +7,55 @@ use colored::Colorize;
 
 use relux_core::diagnostics::IrSpan;
 
+use crate::observe::structured::EventSeq;
+use crate::observe::structured::SpanId;
+use crate::observe::structured::StackFrame;
+
+/// Diagnostic context captured at failure-construction time. Travels with
+/// every `Failure` so that downstream consumers (structured-log artifact,
+/// console error renderer) can render the call site, what arrived in the
+/// shell, and which user vars were live — without needing to reach back
+/// into a VM that is about to be dropped.
+#[derive(Debug, Clone, Default)]
+pub struct FailureContext {
+    pub span: Option<SpanId>,
+    pub event_seq: Option<EventSeq>,
+    pub call_stack: Vec<StackFrame>,
+    pub buffer_tail: String,
+    pub vars_in_scope: Vec<(String, String)>,
+}
+
 #[derive(Debug, Clone)]
 pub enum Failure {
     MatchTimeout {
         pattern: String,
         span: IrSpan,
         shell: String,
+        context: FailureContext,
     },
     FailPatternMatched {
         pattern: String,
         matched_line: String,
         span: IrSpan,
         shell: String,
+        context: FailureContext,
     },
     ShellExited {
         shell: String,
         exit_code: Option<i32>,
         span: IrSpan,
+        context: FailureContext,
     },
     Runtime {
         message: String,
         span: Option<IrSpan>,
         shell: Option<String>,
+        context: FailureContext,
     },
     Cancelled {
         span: Option<IrSpan>,
         shell: Option<String>,
+        context: FailureContext,
     },
 }
 
@@ -109,6 +132,7 @@ impl From<&Failure> for relux_core::error::DiagnosticReport {
                 pattern,
                 span,
                 shell,
+                ..
             } => DiagnosticReport {
                 severity: Severity::Error,
                 message: format!("match timeout in shell `{shell}`"),
@@ -121,6 +145,7 @@ impl From<&Failure> for relux_core::error::DiagnosticReport {
                 matched_line,
                 span,
                 shell,
+                ..
             } => DiagnosticReport {
                 severity: Severity::Error,
                 message: format!("fail pattern matched in shell `{shell}`"),
@@ -132,6 +157,7 @@ impl From<&Failure> for relux_core::error::DiagnosticReport {
                 shell,
                 exit_code,
                 span,
+                ..
             } => {
                 let code_msg = match exit_code {
                     Some(c) => format!("with exit code {c}"),
@@ -149,6 +175,7 @@ impl From<&Failure> for relux_core::error::DiagnosticReport {
                 message,
                 span,
                 shell,
+                ..
             } => {
                 let msg = match shell {
                     Some(s) => format!("runtime error in shell `{s}`"),
@@ -181,7 +208,7 @@ impl From<&Failure> for relux_core::error::DiagnosticReport {
                     },
                 }
             }
-            Failure::Cancelled { span, shell } => {
+            Failure::Cancelled { span, shell, .. } => {
                 let msg = match shell {
                     Some(s) => format!("cancelled in shell `{s}`"),
                     None => "cancelled".to_string(),
@@ -330,6 +357,7 @@ mod tests {
             pattern: "/ready/".into(),
             shell: "default".into(),
             span: dummy_span(),
+            context: FailureContext::default(),
         };
         assert_eq!(
             f.summary(),
@@ -344,6 +372,7 @@ mod tests {
             matched_line: "error: connection refused".into(),
             shell: "default".into(),
             span: dummy_span(),
+            context: FailureContext::default(),
         };
         assert_eq!(
             f.summary(),
@@ -357,6 +386,7 @@ mod tests {
             shell: "default".into(),
             exit_code: Some(1),
             span: dummy_span(),
+            context: FailureContext::default(),
         };
         assert_eq!(
             f.summary(),
@@ -370,6 +400,7 @@ mod tests {
             shell: "default".into(),
             exit_code: None,
             span: dummy_span(),
+            context: FailureContext::default(),
         };
         assert_eq!(
             f.summary(),
@@ -383,6 +414,7 @@ mod tests {
             message: "something broke".into(),
             shell: Some("default".into()),
             span: None,
+            context: FailureContext::default(),
         };
         assert_eq!(
             f.summary(),
@@ -396,6 +428,7 @@ mod tests {
             message: "something broke".into(),
             shell: None,
             span: None,
+            context: FailureContext::default(),
         };
         assert_eq!(f.summary(), "runtime error: something broke");
     }
