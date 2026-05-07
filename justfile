@@ -2,18 +2,23 @@
 default:
     @just --list
 
-# Build in debug mode (chains viewer bundle build)
-build: viewer-build
+# Build in debug mode
+build:
     cargo build
 
-# Generate TypeScript bindings for the structured-log schema
-viewer-types:
+# Regenerate the vendored Svelte viewer bundle (vendor/relux-viewer.js.gz).
+# Drives ts-rs schema export → docker npm build → copy to vendor/. The
+# pre-commit hook (.githooks/pre-commit) and CI verify the vendored bytes
+# stay in sync with viewer/ sources.
+viewer-build:
     cargo test -p relux-runtime --features ts-export 'export_bindings_'
-
-# Build the Svelte viewer bundle (regenerates TS types first)
-viewer-build: viewer-types
     docker run --rm -v {{justfile_directory()}}/viewer:/src -w /src node:lts-slim \
-        sh -c 'npm install && npm run build'
+        sh -c 'npm ci && npm run build'
+    cp viewer/dist/relux-viewer.js.gz vendor/relux-viewer.js.gz
+
+# Configure git to use the repo-local hooks directory (.githooks/).
+install-hooks:
+    git config core.hooksPath .githooks
 
 # Build in release mode
 release:

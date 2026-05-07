@@ -20,7 +20,6 @@ pub struct Event {
     #[ts(as = "f64")]
     pub ts: Duration,
     pub span: SpanId,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub shell: Option<String>,
     #[serde(flatten)]
     pub kind: EventKind,

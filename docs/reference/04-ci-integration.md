@@ -20,9 +20,9 @@ Each per-test directory under `logs/` also contains an `events.json` — the
 canonical structured artifact of the run (spans, events, buffer events,
 failure record). The schema is stable and consumable by external tooling. A
 browser viewer that renders this JSON ships in a follow-up commit; until
-then `events.json` is the source of truth for post-mortem analysis. To
-regenerate the TypeScript bindings used by the viewer, run
-`just viewer-types`.
+then `events.json` is the source of truth for post-mortem analysis. The
+viewer bundle is committed at `vendor/relux-viewer.js.gz`; regenerate it
+(and the TypeScript schema bindings) with `just viewer-build`.
 
 ---
 

@@ -44,6 +44,18 @@ jobs:
       - name: Format check
         run: rustup run nightly rustfmt --edition 2024 --check $(find crates -name '*.rs')
 
+      - name: Generate viewer TS bindings
+        run: cargo test -p relux-runtime --features ts-export 'export_bindings_'
+
+      - name: Build viewer bundle and refresh vendored copy
+        run: |
+          docker run --rm -v "$PWD/viewer":/src -w /src node:lts-slim \
+              sh -c 'npm ci && npm run build'
+          cp viewer/dist/relux-viewer.js.gz vendor/relux-viewer.js.gz
+
+      - name: Verify vendored bundle is in sync
+        run: git diff --exit-code -- vendor/relux-viewer.js.gz
+
   test:
     name: Unit Tests
     runs-on: ubuntu-latest

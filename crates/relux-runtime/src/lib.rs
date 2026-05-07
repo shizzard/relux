@@ -54,6 +54,7 @@ pub mod effect;
 pub mod observe;
 pub mod report;
 pub mod runtime_context;
+pub mod viewer;
 pub mod vm;
 
 pub use runtime_context::RuntimeContext;
