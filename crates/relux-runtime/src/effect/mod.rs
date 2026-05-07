@@ -18,6 +18,8 @@ use crate::effect::registry::EffectSlot;
 use crate::effect::registry::ExportedEffect;
 use crate::effect::registry::ShellMap;
 use crate::effect::registry::VarMap;
+use crate::observe::structured::SpanId;
+use crate::observe::structured::SpanKind;
 use crate::report::result::Failure;
 use crate::vm::Vm;
 use crate::vm::context::ExecutionContext;
@@ -72,6 +74,7 @@ impl EffectManager {
         starts: &'a [IrEffectStart],
         caller_vars: &'a VarScope,
         caller_env: &'a Arc<LayeredEnv>,
+        parent_span: SpanId,
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = Result<Vec<ExportedEffect>, Failure>> + Send + 'a>,
     > {
@@ -97,7 +100,7 @@ impl EffectManager {
                 );
 
                 let acquired = self
-                    .acquire(&key, start, caller_vars, caller_env, evaluated)
+                    .acquire(&key, start, caller_vars, caller_env, evaluated, parent_span)
                     .await?;
                 results.push(ExportedEffect {
                     key,
@@ -127,6 +130,7 @@ impl EffectManager {
         caller_vars: &VarScope,
         caller_env: &Arc<LayeredEnv>,
         evaluated_overlay: Env,
+        parent_span: SpanId,
     ) -> Result<AcquiredEffect, Failure> {
         let slot = self.registry.slot(key);
         let mut guard = slot.lock().await;
@@ -141,7 +145,13 @@ impl EffectManager {
             }
             EffectSlot::Failed(failure) => Err(failure.clone()),
             EffectSlot::Empty => match self
-                .bootstrap_effect(start, caller_vars, caller_env, evaluated_overlay)
+                .bootstrap_effect(
+                    start,
+                    caller_vars,
+                    caller_env,
+                    evaluated_overlay,
+                    parent_span,
+                )
                 .await
             {
                 Ok(handle) => {
@@ -156,7 +166,9 @@ impl EffectManager {
                     Ok(acquired)
                 }
                 Err(failure) => {
-                    self.rt_ctx.events.emit_error("", failure.summary(), None);
+                    self.rt_ctx
+                        .log
+                        .emit_error(parent_span, "", &failure.summary());
                     *guard = EffectSlot::Failed(failure.clone());
                     Err(failure)
                 }
@@ -174,9 +186,21 @@ impl EffectManager {
         _caller_vars: &VarScope,
         caller_env: &Arc<LayeredEnv>,
         evaluated_overlay: Env,
+        parent_span: SpanId,
     ) -> Result<EffectHandle, Failure> {
         let effect_name = start.effect().to_string();
-        self.rt_ctx.events.emit_effect_setup("", &effect_name, None);
+        let overlay_pairs: Vec<(String, String)> = evaluated_overlay
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        let setup_span = self.rt_ctx.log.open_span(
+            SpanKind::EffectSetup {
+                effect: effect_name.clone(),
+                overlay: overlay_pairs,
+            },
+            Some(parent_span),
+            None,
+        );
 
         let effect_result = self
             .rt_ctx
@@ -215,7 +239,7 @@ impl EffectManager {
         // 4. Recursively instantiate sub-dependencies (effect's vars available to sub-overlays)
         let effect_vars = scope.vars().lock().await.clone();
         let exported_deps = self
-            .instantiate(effect.starts(), &effect_vars, &effect_env)
+            .instantiate(effect.starts(), &effect_vars, &effect_env, setup_span)
             .await?;
 
         // 5. Build dependency shells/vars maps (alias → exported) and collect dep keys
@@ -249,9 +273,8 @@ impl EffectManager {
         for (alias, dep_exported) in &dep_shells {
             if dep_exported.len() == 1 {
                 let vm_arc = dep_exported.values().next().unwrap().clone();
-                self.rt_ctx
-                    .events
-                    .emit_shell_alias(alias, vm_arc.lock().await.current_name());
+                let source = vm_arc.lock().await.current_name();
+                self.rt_ctx.log.emit_shell_alias(setup_span, alias, &source);
                 shells.insert(alias.clone(), vm_arc);
             }
         }
@@ -284,33 +307,51 @@ impl EffectManager {
                         let alias = qualifier.name();
                         let shell_name = block.name().name();
                         let display = format!("{alias}.{shell_name}");
-                        self.rt_ctx
-                            .events
-                            .emit_shell_switch(&display, Some(switch_span));
-                        let dep = dep_shells.get(alias).ok_or_else(|| Failure::Runtime {
-                            message: format!("unknown effect alias `{alias}`"),
-                            span: None,
-                            shell: None,
+                        let block_span = self.rt_ctx.log.open_span(
+                            SpanKind::ShellBlock {
+                                shell: display.clone(),
+                            },
+                            Some(setup_span),
+                            Some(switch_span),
+                        );
+                        self.rt_ctx.log.emit_shell_switch(block_span, &display);
+                        let dep = dep_shells.get(alias).ok_or_else(|| {
+                            self.rt_ctx.log.close_span(block_span);
+                            Failure::Runtime {
+                                message: format!("unknown effect alias `{alias}`"),
+                                span: None,
+                                shell: None,
+                            }
                         })?;
-                        let vm_arc = dep.get(shell_name).ok_or_else(|| Failure::Runtime {
-                            message: format!(
-                                "effect alias `{alias}` does not expose shell `{shell_name}`"
-                            ),
-                            span: None,
-                            shell: None,
+                        let vm_arc = dep.get(shell_name).ok_or_else(|| {
+                            self.rt_ctx.log.close_span(block_span);
+                            Failure::Runtime {
+                                message: format!(
+                                    "effect alias `{alias}` does not expose shell `{shell_name}`"
+                                ),
+                                span: None,
+                                shell: None,
+                            }
                         })?;
                         let mut vm = vm_arc.lock().await;
-                        self.rt_ctx
-                            .events
-                            .emit_shell_switch(vm.current_name(), Some(switch_span));
-                        vm.exec_stmts(block.body()).await?;
+                        let vm_name = vm.current_name();
+                        self.rt_ctx.log.emit_shell_switch(block_span, &vm_name);
+                        vm.set_block_span(block_span);
+                        let result = vm.exec_stmts(block.body()).await;
                         vm.set_exit_span(exit_span);
+                        self.rt_ctx.log.close_span(block_span);
+                        result?;
                     } else {
                         // Unqualified: shell name { ... }
                         let name = block.name().name().to_string();
-                        self.rt_ctx
-                            .events
-                            .emit_shell_switch(&name, Some(switch_span));
+                        let block_span = self.rt_ctx.log.open_span(
+                            SpanKind::ShellBlock {
+                                shell: name.clone(),
+                            },
+                            Some(setup_span),
+                            Some(switch_span),
+                        );
+                        self.rt_ctx.log.emit_shell_switch(block_span, &name);
                         if !shells.contains_key(&name) {
                             let shell_state = ShellState::new(name.clone(), None);
                             let ctx = ExecutionContext::new(
@@ -318,18 +359,26 @@ impl EffectManager {
                                 shell_state,
                                 self.rt_ctx.shell.default_timeout.clone(),
                                 self.rt_ctx.env.clone(),
+                                block_span,
                             );
-                            let vm = Vm::new(name.clone(), ctx, &self.rt_ctx).await?;
+                            let vm = match Vm::new(name.clone(), ctx, &self.rt_ctx).await {
+                                Ok(v) => v,
+                                Err(e) => {
+                                    self.rt_ctx.log.close_span(block_span);
+                                    return Err(e);
+                                }
+                            };
                             shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
                         }
                         let vm_arc = shells.get(&name).expect("shell just inserted above");
                         let mut vm = vm_arc.lock().await;
-                        let display_name = vm.current_name().to_string();
-                        self.rt_ctx
-                            .events
-                            .emit_shell_switch(&display_name, Some(switch_span));
-                        vm.exec_stmts(block.body()).await?;
+                        let display_name = vm.current_name();
+                        self.rt_ctx.log.emit_shell_switch(block_span, &display_name);
+                        vm.set_block_span(block_span);
+                        let result = vm.exec_stmts(block.body()).await;
                         vm.set_exit_span(exit_span);
+                        self.rt_ctx.log.close_span(block_span);
+                        result?;
                     }
                 }
                 IrEffectItem::Cleanup { block, .. } => {
@@ -447,6 +496,8 @@ impl EffectManager {
             }
         }
 
+        self.rt_ctx.log.close_span(setup_span);
+
         Ok(EffectHandle {
             scope,
             shells,
@@ -454,6 +505,7 @@ impl EffectManager {
             exposed_vars,
             dependencies: dep_keys,
             cleanup: cleanup_block,
+            parent_span,
         })
     }
 
@@ -514,10 +566,15 @@ impl EffectManager {
 
                 if *refcount == 0 {
                     let effect_name = handle.scope.name().to_string();
+                    let parent_span = handle.parent_span;
 
-                    self.rt_ctx
-                        .events
-                        .emit_effect_teardown("", &effect_name, None);
+                    let cleanup_span = self.rt_ctx.log.open_span(
+                        SpanKind::EffectCleanup {
+                            effect: effect_name.clone(),
+                        },
+                        Some(parent_span),
+                        None,
+                    );
 
                     // 1. Shut down all VMs (exposed and non-exposed, deduplicated)
                     let mut seen = HashSet::new();
@@ -530,24 +587,32 @@ impl EffectManager {
 
                     // 2. Run cleanup block in fresh shell (best-effort)
                     if let Some(cleanup_block) = &handle.cleanup {
-                        let cleanup_span = cleanup_block.span();
-                        self.rt_ctx
-                            .events
-                            .emit_cleanup("__cleanup", Some(cleanup_span));
-                        let cleanup_result =
-                            self.run_cleanup_block(cleanup_block, &handle.scope).await;
+                        let block_loc = cleanup_block.span();
+                        let block_span = self.rt_ctx.log.open_span(
+                            SpanKind::CleanupBlock,
+                            Some(cleanup_span),
+                            Some(block_loc),
+                        );
+                        let cleanup_result = self
+                            .run_cleanup_block(cleanup_block, &handle.scope, block_span)
+                            .await;
                         if let Err(failure) = cleanup_result {
-                            self.rt_ctx.events.emit_warning(
+                            self.rt_ctx.log.emit_warning(
+                                block_span,
                                 "__cleanup",
-                                format!("effect {effect_name} cleanup failed"),
-                                Some(cleanup_span),
+                                &format!("effect {effect_name} cleanup failed"),
                             );
                             warnings.push(Warning::CleanupFailed {
-                                source: CleanupSource::Effect { name: effect_name },
+                                source: CleanupSource::Effect {
+                                    name: effect_name.clone(),
+                                },
                                 failure,
                             });
                         }
+                        self.rt_ctx.log.close_span(block_span);
                     }
+
+                    self.rt_ctx.log.close_span(cleanup_span);
 
                     let deps = handle.dependencies.clone();
                     *guard = EffectSlot::Empty;
@@ -574,6 +639,7 @@ impl EffectManager {
         &self,
         cleanup_block: &IrCleanupBlock,
         scope: &Scope,
+        block_span: SpanId,
     ) -> Result<(), Failure> {
         let shell_state = ShellState::new("__cleanup".to_string(), None);
         let ctx = ExecutionContext::new(
@@ -581,6 +647,7 @@ impl EffectManager {
             shell_state,
             self.rt_ctx.shell.default_timeout.clone(),
             self.rt_ctx.env.clone(),
+            block_span,
         );
         // Cleanup uses its own uncancellable token
         let mut cleanup_rt_ctx = self.rt_ctx.clone();

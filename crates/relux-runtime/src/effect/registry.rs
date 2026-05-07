@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use tokio::sync::Mutex as TokioMutex;
 
+use crate::observe::structured::SpanId;
 use crate::report::result::Failure;
 use crate::vm::Vm;
 use crate::vm::context::Scope;
@@ -78,6 +79,11 @@ pub struct EffectHandle {
     pub exposed_vars: VarMap,
     pub dependencies: Vec<EffectInstanceKey>,
     pub cleanup: Option<IrCleanupBlock>,
+    /// Parent span used when opening this effect's `EffectCleanup` span at
+    /// teardown — same parent as the `EffectSetup` span at bootstrap, so
+    /// setup/cleanup are siblings under the test span (or under the parent
+    /// effect's setup span, for nested effects).
+    pub parent_span: SpanId,
 }
 
 impl EffectHandle {

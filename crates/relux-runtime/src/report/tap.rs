@@ -236,7 +236,7 @@ mod tests {
         assert_eq!(lines[2], "ok 1 - login-test");
         assert_eq!(lines[3], "  ---");
         assert_eq!(lines[4], "  duration_ms: 1230");
-        assert_eq!(lines[5], "  log: logs/auth/login-test/event.html");
+        assert_eq!(lines[5], "  log: logs/auth/login-test/events.json");
         assert_eq!(lines[6], "  ...");
     }
 
@@ -277,7 +277,7 @@ mod tests {
         assert_eq!(lines[7], "  file: tests/auth/login.relux");
         assert_eq!(lines[8], "  line: 3");
         assert_eq!(lines[9], "  duration_ms: 5000");
-        assert_eq!(lines[10], "  log: logs/auth/timeout-test/event.html");
+        assert_eq!(lines[10], "  log: logs/auth/timeout-test/events.json");
         assert_eq!(lines[11], "  ...");
     }
 

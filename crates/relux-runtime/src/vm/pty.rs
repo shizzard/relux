@@ -8,21 +8,23 @@ use tokio::process::Child;
 use tokio::sync::Mutex;
 
 use super::buffer::OutputBuffer;
-use crate::observe::shell_log::ShellLogger;
+use crate::observe::structured::BufferEventKind;
+use crate::observe::structured::StructuredLogBuilder;
+use crate::observe::structured::Utf8Stream;
 
 pub(crate) struct PtyShell {
     writer: pty_process::OwnedWritePty,
     child: Child,
     pub(crate) output_buf: OutputBuffer,
     read_task: tokio::task::JoinHandle<()>,
-    shell_log: Arc<Mutex<ShellLogger>>,
 }
 
 impl PtyShell {
     pub fn spawn(
         shell_command: &str,
         env: impl IntoIterator<Item = (String, String)>,
-        shell_log: Arc<Mutex<ShellLogger>>,
+        log: StructuredLogBuilder,
+        shell_name: String,
     ) -> Result<Self, pty_process::Error> {
         let (pty, pts) = pty_process::open()?;
         pty.resize(pty_process::Size::new(24, u16::MAX))?;
@@ -34,15 +36,28 @@ impl PtyShell {
         let (reader, writer) = pty.into_split();
         let output_buf = OutputBuffer::new();
         let output_for_reader = output_buf.clone();
-        let shell_log_reader = shell_log.clone();
         let mut reader = tokio::io::BufReader::new(reader);
+        let utf8 = Arc::new(Mutex::new(Utf8Stream::new()));
         let read_task = tokio::spawn(async move {
             let mut buf = vec![0u8; 4096];
             loop {
                 match reader.read(&mut buf).await {
                     Ok(0) => break,
                     Ok(n) => {
-                        shell_log_reader.lock().await.log_stdout(&buf[..n]);
+                        // Emit a `Grew` buffer event with the decoded text.
+                        // The streaming UTF-8 decoder holds back any partial
+                        // sequence so multi-byte codepoints split across reads
+                        // arrive intact.
+                        let decoded = utf8.lock().await.feed(&buf[..n]);
+                        if !decoded.is_empty() {
+                            log.push_buffer_event(
+                                &shell_name,
+                                BufferEventKind::Grew { data: decoded },
+                            );
+                        }
+                        // Append the raw bytes to the matching buffer. Matching
+                        // does its own lossy decoding on the entire buffer, so
+                        // raw bytes are correct here.
                         output_for_reader.append(&buf[..n]).await;
                     }
                     Err(_) => break,
@@ -55,7 +70,6 @@ impl PtyShell {
             child,
             output_buf,
             read_task,
-            shell_log,
         })
     }
 
@@ -110,7 +124,6 @@ impl PtyShell {
 
     pub async fn send_bytes(&mut self, data: &[u8]) -> Result<(), std::io::Error> {
         self.writer.write_all(data).await?;
-        self.shell_log.lock().await.log_stdin(data);
         Ok(())
     }
 

@@ -19,6 +19,8 @@ async-trait     = { workspace = true }
 colored         = { workspace = true }
 quick-junit     = { workspace = true }
 serde           = { workspace = true }
+serde_json      = { workspace = true }
+ts-rs           = { workspace = true }
 toml            = { workspace = true }
 bytes           = { workspace = true }
 futures         = { workspace = true }

@@ -210,7 +210,7 @@ impl From<&Failure> for relux_core::error::DiagnosticReport {
 pub fn log_link(run_dir: &Path, result: &TestResult) -> Option<String> {
     let log_dir = result.log_dir.as_ref()?;
     let relative = log_dir.strip_prefix(run_dir).ok()?;
-    Some(format!("{}/event.html", relative.display()))
+    Some(format!("{}/events.json", relative.display()))
 }
 
 #[derive(Debug, Clone)]
@@ -416,7 +416,7 @@ mod tests {
         };
         assert_eq!(
             log_link(run_dir, &result),
-            Some("my_test/event.html".to_string())
+            Some("my_test/events.json".to_string())
         );
     }
 

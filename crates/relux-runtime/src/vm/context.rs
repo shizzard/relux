@@ -8,6 +8,8 @@ use relux_core::pure::LayeredEnv;
 use relux_core::pure::VarScope;
 use relux_ir::IrTimeout;
 
+use crate::observe::structured::SpanId;
+
 // ─── FailPattern ────────────────────────────────────────────
 
 #[derive(Clone, Debug)]
@@ -127,6 +129,7 @@ pub struct ExecutionContext {
     pub scope: Scope,
     pub shell: ShellState,
     call_stack: Vec<CallFrame>,
+    span_stack: Vec<SpanId>,
     pub default_timeout: IrTimeout,
     pub env: Arc<LayeredEnv>,
 }
@@ -137,14 +140,44 @@ impl ExecutionContext {
         shell: ShellState,
         default_timeout: IrTimeout,
         env: Arc<LayeredEnv>,
+        parent_span: SpanId,
     ) -> Self {
         Self {
             scope,
             shell,
             call_stack: Vec::new(),
+            span_stack: vec![parent_span],
             default_timeout,
             env,
         }
+    }
+
+    /// The id of the innermost span currently active in this context. Used
+    /// by every emission site so events reference the span they fired in.
+    pub fn current_span(&self) -> SpanId {
+        *self
+            .span_stack
+            .last()
+            .expect("span_stack always has at least one entry")
+    }
+
+    pub fn push_span(&mut self, id: SpanId) {
+        self.span_stack.push(id);
+    }
+
+    pub fn pop_span(&mut self) {
+        // Never pop the bottom of the stack (the root passed to `new`).
+        if self.span_stack.len() > 1 {
+            self.span_stack.pop();
+        }
+    }
+
+    /// Reset the span stack so emissions are parented on `span`. Used when a
+    /// shell is reused across shell blocks: each block opens a fresh
+    /// ShellBlock span and the VM's events should reference that one rather
+    /// than the span from the shell's original construction.
+    pub fn set_block_span(&mut self, span: SpanId) {
+        self.span_stack = vec![span];
     }
 
     /// Look up a variable by name. Follows the lookup chain per RFC R005.
@@ -354,6 +387,7 @@ mod tests {
             test_shell("sh"),
             IrTimeout::tolerance(Duration::from_secs(5)),
             test_env(),
+            0,
         )
     }
 
@@ -661,6 +695,7 @@ mod tests {
             shell,
             IrTimeout::tolerance(Duration::from_secs(5)),
             test_env(),
+            0,
         );
         assert_eq!(ctx.lookup("PORT").await, Some("5432".into()));
     }
@@ -691,6 +726,7 @@ mod tests {
             shell,
             IrTimeout::tolerance(Duration::from_secs(5)),
             test_env(),
+            0,
         );
         // lookup walks the chain — this works correctly
         assert_eq!(ctx.lookup("BASE_PORT").await, Some("5432".into()));
@@ -721,6 +757,7 @@ mod tests {
             shell,
             IrTimeout::tolerance(Duration::from_secs(5)),
             test_env(),
+            0,
         );
         let penv: HashMap<String, String> = ctx.process_env().into_iter().collect();
         // Child's own overlay should be present
