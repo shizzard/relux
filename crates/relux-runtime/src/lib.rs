@@ -755,9 +755,9 @@ async fn run_test(
 
     test_span.close();
 
-    // Build the structured log. Failure record is `None` for now — commit 4
+    // Build the structured log. Failure record is a stub for now — commit 4
     // populates it from the outcome with call-stack / buffer-tail / vars.
-    let _structured = log.build(
+    let structured = log.build(
         TestInfo {
             name: meta.name().to_string(),
             path: test_path.to_string(),
@@ -770,8 +770,26 @@ async fn run_test(
         EnvInfo::default(),
         outcome.as_ref().err().map(failure_record_stub),
     );
-    // The structured log lives in memory only for this commit; commit 2
-    // serializes it to `events.json` next to the test's log_dir.
+
+    let events_json_path = log_dir.join("events.json");
+    match serde_json::to_vec_pretty(&structured) {
+        Ok(bytes) => {
+            if let Err(e) = std::fs::write(&events_json_path, &bytes) {
+                eprintln!(
+                    "warning: failed to write {}: {}",
+                    events_json_path.display(),
+                    e
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "warning: failed to serialize structured log for {}: {}",
+                events_json_path.display(),
+                e
+            );
+        }
+    }
 
     match outcome {
         Ok(()) => TestResult {

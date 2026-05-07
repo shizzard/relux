@@ -196,7 +196,7 @@ fn eprint_failure(
     if let Some(log_dir) = log_dir {
         eprintln!(
             "  Event log: file://{}",
-            log_dir.join("event.html").display()
+            log_dir.join("events.json").display()
         );
     }
 }
