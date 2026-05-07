@@ -755,6 +755,14 @@ async fn run_test(
 
     test_span.close();
 
+    // Snapshot the bootstrap env (root layer of `base_env`) for the artifact.
+    // Sorted for deterministic JSON output across runs.
+    let mut bootstrap: Vec<(String, String)> = base_env
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    bootstrap.sort_by(|a, b| a.0.cmp(&b.0));
+
     // Build the structured log. Failure record is a stub for now — commit 4
     // populates it from the outcome with call-stack / buffer-tail / vars.
     let structured = log.build(
@@ -767,7 +775,7 @@ async fn run_test(
             },
             duration_ms: duration.as_millis() as u64,
         },
-        EnvInfo::default(),
+        EnvInfo { bootstrap },
         outcome.as_ref().err().map(failure_record_stub),
     );
 
