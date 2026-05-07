@@ -210,7 +210,7 @@ fn eprint_failure(
         eprintln!();
         eprintln!(
             "  Event log: file://{}",
-            log_dir.join("events.json").display()
+            log_dir.join("event.html").display()
         );
     }
 }

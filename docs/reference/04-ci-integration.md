@@ -16,12 +16,17 @@ files. The JUnit XML references log files via relative paths, and CI systems
 that support attachments (Jenkins, GitLab) can link directly to per-test
 `event.html` logs when the directory structure is preserved.
 
-Each per-test directory under `logs/` also contains an `events.json` — the
-canonical structured artifact of the run (spans, events, buffer events,
-failure record). The schema is stable and consumable by external tooling. A
-browser viewer that renders this JSON ships in a follow-up commit; until
-then `events.json` is the source of truth for post-mortem analysis. The
-viewer bundle is committed at `vendor/relux-viewer.js.gz`; regenerate it
+Each per-test directory under `logs/` contains two artifacts:
+
+- `events.json` — canonical structured payload (spans, events, buffer events,
+  failure record). Stable schema, consumable by external tooling.
+- `event.html` — self-contained Svelte SPA viewer with the JSON inlined as
+  `window.RELUX_DATA` and the gzipped bundle decompressed into a `<script>`
+  tag. Opens directly via `file://`; no server required. This is the
+  recommended human entry point and the link target used by the run-summary
+  `index.html`, JUnit `[[ATTACHMENT|...]]` markers, and TAP `log:` fields.
+
+The viewer bundle is committed at `vendor/relux-viewer.js.gz`; regenerate it
 (and the TypeScript schema bindings) with `just viewer-build`.
 
 ---

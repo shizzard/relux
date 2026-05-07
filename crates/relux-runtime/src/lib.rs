@@ -814,6 +814,14 @@ async fn run_test(
         }
     }
 
+    if let Err(e) = crate::report::event_html::write(&log_dir, &structured) {
+        eprintln!(
+            "warning: failed to write {}: {}",
+            log_dir.join("event.html").display(),
+            e
+        );
+    }
+
     match outcome {
         Ok(()) => TestResult {
             test_name: meta.name().to_string(),

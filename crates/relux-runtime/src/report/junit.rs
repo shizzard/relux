@@ -225,8 +225,8 @@ mod tests {
         assert!(xml.contains("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
         assert!(xml.contains("name=\"login test\""));
         assert!(xml.contains("classname=\"tests/auth/login\""));
-        assert!(xml.contains("[[ATTACHMENT|login-test/events.json]]"));
-        assert!(xml.contains("<property name=\"log\" value=\"login-test/events.json\""));
+        assert!(xml.contains("[[ATTACHMENT|login-test/event.html]]"));
+        assert!(xml.contains("<property name=\"log\" value=\"login-test/event.html\""));
         assert!(!xml.contains("<failure"));
         assert!(!xml.contains("<skipped"));
     }
@@ -258,7 +258,7 @@ mod tests {
         assert!(xml.contains("pattern: /ready/"));
         assert!(xml.contains("file: tests/auth/login.relux"));
         assert!(xml.contains("line: 3"));
-        assert!(xml.contains("[[ATTACHMENT|timeout-test/events.json]]"));
+        assert!(xml.contains("[[ATTACHMENT|timeout-test/event.html]]"));
     }
 
     #[test]

@@ -2,7 +2,7 @@
 
 Svelte SPA that renders a Relux test report (`events.json` produced by `relux-runtime`).
 
-This is a scaffold; the full timeline UI is built across follow-up commits. The current placeholder loads the schema-typed JSON and shows a summary plus a raw dump.
+The runtime inlines this bundle into per-test `event.html` files alongside the schema-typed `window.RELUX_DATA` payload, so reports open directly via `file://` with no server. The current SPA renders a summary placeholder and a raw-JSON dump; the full timeline UI lands in follow-up commits.
 
 ## Build
 

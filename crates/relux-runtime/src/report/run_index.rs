@@ -114,7 +114,7 @@ pub fn generate(run_dir: &Path, results: &[TestResult]) {
         let link = if let Some(log_dir) = &result.log_dir {
             let rel = log_dir.strip_prefix(run_dir).unwrap_or(log_dir);
             format!(
-                "<a href=\"{}/\">{}</a>",
+                "<a href=\"{}/event.html\">{}</a>",
                 rel.display(),
                 html_escape(&result.test_name)
             )

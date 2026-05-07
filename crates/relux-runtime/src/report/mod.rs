@@ -1,4 +1,5 @@
 pub mod console;
+pub mod event_html;
 pub mod junit;
 pub mod result;
 pub mod run_index;
