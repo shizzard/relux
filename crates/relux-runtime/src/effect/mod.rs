@@ -189,18 +189,18 @@ impl EffectManager {
         evaluated_overlay: Env,
         parent_span: SpanId,
     ) -> Result<EffectHandle, Failure> {
-        let effect_name = start.effect().to_string();
         let overlay_pairs: Vec<(String, String)> = evaluated_overlay
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
         let setup_span = self.rt_ctx.log.open_span(
             SpanKind::EffectSetup {
-                effect: effect_name.clone(),
+                effect: start.effect().name.to_string(),
                 overlay: overlay_pairs,
+                alias: start.alias().map(String::from),
             },
             Some(parent_span),
-            None,
+            Some(start.span()),
         );
 
         let effect_result = self

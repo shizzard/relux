@@ -184,6 +184,7 @@ impl StructuredLogBuilder {
                 kind: span.kind.kind_str().to_string(),
                 name,
                 args,
+                alias: span.kind.frame_alias(),
                 location: span.location.clone(),
             });
             next = span.parent;
@@ -641,7 +642,7 @@ mod tests {
     #[test]
     fn seq_is_monotonic_across_event_and_buffer_pushes() {
         let (b, _rx) = make_builder();
-        let test_span = b.open_span(SpanKind::Test, None, None);
+        let test_span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
         let id = test_span.id();
         let s1 = b.push_event(id, Some("sh"), EventKind::Send { data: "a".into() });
         let s2 = b.push_buffer_event("sh", BufferEventKind::Grew { data: "b".into() });
@@ -654,7 +655,7 @@ mod tests {
     #[test]
     fn open_close_span_round_trips() {
         let (b, _rx) = make_builder();
-        let span = b.open_span(SpanKind::Test, None, None);
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
         let id = span.id();
         span.close();
         let inner = b.inner.lock().unwrap();
@@ -667,7 +668,7 @@ mod tests {
     fn span_guard_closes_on_drop() {
         let (b, _rx) = make_builder();
         let id = {
-            let span = b.open_span(SpanKind::Test, None, None);
+            let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
             span.id()
             // span drops at end of this block
         };
@@ -678,7 +679,7 @@ mod tests {
     #[test]
     fn span_guard_explicit_close_then_drop_is_noop() {
         let (b, _rx) = make_builder();
-        let span = b.open_span(SpanKind::Test, None, None);
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
         let id = span.id();
         span.close();
         let end_after_close = b.inner.lock().unwrap().spans.get(&id).unwrap().end_ts;
@@ -693,7 +694,7 @@ mod tests {
     #[test]
     fn span_ids_are_unique_and_parent_preserved() {
         let (b, _rx) = make_builder();
-        let parent = b.open_span(SpanKind::Test, None, None);
+        let parent = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
         let parent_id = parent.id();
         let child = b.open_span(
             SpanKind::ShellBlock { shell: "sh".into() },
@@ -721,7 +722,7 @@ mod tests {
     fn clone_shares_storage() {
         let (b, _rx) = make_builder();
         let b2 = b.clone();
-        let span = b.open_span(SpanKind::Test, None, None);
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
         b2.push_event(span.id(), Some("sh"), EventKind::Send { data: "x".into() });
         let inner = b.inner.lock().unwrap();
         assert_eq!(inner.events.len(), 1);
@@ -730,7 +731,7 @@ mod tests {
     #[test]
     fn build_consumes_builder_and_yields_log() {
         let (b, _rx) = make_builder();
-        let span = b.open_span(SpanKind::Test, None, None);
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
         let id = span.id();
         b.push_event(id, Some("sh"), EventKind::Send { data: "x".into() });
         b.push_buffer_event("sh", BufferEventKind::Grew { data: "y".into() });
@@ -754,7 +755,7 @@ mod tests {
     #[test]
     fn emit_send_pushes_event_and_progress() {
         let (b, mut rx) = make_builder();
-        let span = b.open_span(SpanKind::Test, None, None);
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
         b.emit_send(span.id(), "sh", "hello");
         let inner = b.inner.lock().unwrap();
         assert!(matches!(
@@ -768,7 +769,7 @@ mod tests {
     #[test]
     fn emit_match_done_pushes_buffer_event_and_referencing_event() {
         let (b, _rx) = make_builder();
-        let span = b.open_span(SpanKind::Test, None, None);
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
         b.emit_match_done(
             span.id(),
             "sh",
@@ -791,7 +792,7 @@ mod tests {
     #[test]
     fn resolve_stack_walks_parent_chain_root_to_leaf() {
         let (b, _rx) = make_builder();
-        let test_span = b.open_span(SpanKind::Test, None, None);
+        let test_span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
         let test_id = test_span.id();
         let block_span = b.open_span(
             SpanKind::ShellBlock { shell: "sh".into() },
@@ -813,7 +814,7 @@ mod tests {
         assert_eq!(frames.len(), 3);
         assert_eq!(frames[0].span, test_id);
         assert_eq!(frames[0].kind, "test");
-        assert!(frames[0].name.is_none());
+        assert_eq!(frames[0].name.as_deref(), Some("t"));
         assert_eq!(frames[1].span, block_id);
         assert_eq!(frames[1].kind, "shell-block");
         assert_eq!(frames[1].name.as_deref(), Some("sh"));
@@ -827,7 +828,7 @@ mod tests {
     fn current_seq_reflects_latest_emission() {
         let (b, _rx) = make_builder();
         assert_eq!(b.current_seq(), 0);
-        let span = b.open_span(SpanKind::Test, None, None);
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
         b.push_event(span.id(), Some("sh"), EventKind::Send { data: "a".into() });
         assert_eq!(b.current_seq(), 0);
         b.push_buffer_event("sh", BufferEventKind::Grew { data: "b".into() });
@@ -837,7 +838,7 @@ mod tests {
     #[test]
     fn round_trip_serde_json() {
         let (b, _rx) = make_builder();
-        let span = b.open_span(SpanKind::Test, None, None);
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
         b.emit_match_done(
             span.id(),
             "sh",

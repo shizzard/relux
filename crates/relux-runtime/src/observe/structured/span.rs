@@ -11,10 +11,13 @@ pub type SpanId = u64;
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum SpanKind {
-    Test,
+    Test {
+        name: String,
+    },
     EffectSetup {
         effect: String,
         overlay: Vec<(String, String)>,
+        alias: Option<String>,
     },
     EffectCleanup {
         effect: String,
@@ -35,7 +38,7 @@ impl SpanKind {
     /// they'd see in the JSON `spans` glossary.
     pub fn kind_str(&self) -> &'static str {
         match self {
-            SpanKind::Test => "test",
+            SpanKind::Test { .. } => "test",
             SpanKind::EffectSetup { .. } => "effect-setup",
             SpanKind::EffectCleanup { .. } => "effect-cleanup",
             SpanKind::ShellBlock { .. } => "shell-block",
@@ -45,14 +48,26 @@ impl SpanKind {
     }
 
     /// Frame name and args used in stack-frame rendering. `name` is the
-    /// effect or function name; `args` is the call args or effect overlay.
+    /// test, effect, or function name; `args` is the call args or effect overlay.
     pub fn frame_data(&self) -> (Option<String>, Vec<(String, String)>) {
         match self {
-            SpanKind::Test | SpanKind::CleanupBlock => (None, Vec::new()),
-            SpanKind::EffectSetup { effect, overlay } => (Some(effect.clone()), overlay.clone()),
+            SpanKind::CleanupBlock => (None, Vec::new()),
+            SpanKind::Test { name } => (Some(name.clone()), Vec::new()),
+            SpanKind::EffectSetup {
+                effect, overlay, ..
+            } => (Some(effect.clone()), overlay.clone()),
             SpanKind::EffectCleanup { effect } => (Some(effect.clone()), Vec::new()),
             SpanKind::ShellBlock { shell } => (Some(shell.clone()), Vec::new()),
             SpanKind::FnCall { name, args } => (Some(name.clone()), args.clone()),
+        }
+    }
+
+    /// User-supplied alias bound at start time, if any (`start FX as Alias`).
+    /// Only effect-setup frames carry one today.
+    pub fn frame_alias(&self) -> Option<String> {
+        match self {
+            SpanKind::EffectSetup { alias, .. } => alias.clone(),
+            _ => None,
         }
     }
 }

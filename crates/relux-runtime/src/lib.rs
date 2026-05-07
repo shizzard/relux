@@ -720,7 +720,13 @@ async fn run_test(
 
     // Open the root span for this test. Every emission inside the test body
     // (effect setup, shell block, fn call, cleanup block) is parented on this.
-    let test_span = log.open_span(SpanKind::Test, None, Some(meta.span()));
+    let test_span = log.open_span(
+        SpanKind::Test {
+            name: meta.name().to_string(),
+        },
+        None,
+        Some(meta.span()),
+    );
     let test_span_id = test_span.id();
 
     let rt_ctx = RuntimeContext {

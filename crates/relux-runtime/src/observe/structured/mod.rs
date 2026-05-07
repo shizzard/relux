@@ -46,6 +46,12 @@ pub struct SourceLocation {
     pub line: usize,
 }
 
+impl std::fmt::Display for SourceLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.file, self.line)
+    }
+}
+
 /// Top-level structured log for a single test run. Produced by
 /// `StructuredLogBuilder::build`.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

@@ -5,9 +5,12 @@ use std::path::PathBuf;
 use tokio::sync::mpsc;
 
 use crate::observe::progress::ProgressEvent;
+use crate::report::console;
 use crate::report::result::Failure;
 use relux_core::error::DiagnosticReport;
 use relux_core::table::SourceTable;
+
+const BUFFER_TAIL_LINES: usize = 12;
 
 // ─── TuiEvent ───────────────────────────────────────────────
 
@@ -193,7 +196,18 @@ fn eprint_failure(
     project_root: &Path,
 ) {
     DiagnosticReport::from(failure).eprint(source_table, Some(project_root));
+    let ctx = failure.context();
+    let blocks = [
+        console::format_call_stack(&ctx.call_stack),
+        console::format_buffer_tail(&ctx.buffer_tail, BUFFER_TAIL_LINES),
+        console::format_vars_in_scope(&ctx.vars_in_scope),
+    ];
+    for block in blocks.into_iter().flatten() {
+        eprintln!();
+        eprintln!("{block}");
+    }
     if let Some(log_dir) = log_dir {
+        eprintln!();
         eprintln!(
             "  Event log: file://{}",
             log_dir.join("events.json").display()

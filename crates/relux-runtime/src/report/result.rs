@@ -121,6 +121,16 @@ impl Failure {
             Failure::Cancelled { .. } => "Cancelled",
         }
     }
+
+    pub fn context(&self) -> &FailureContext {
+        match self {
+            Failure::MatchTimeout { context, .. }
+            | Failure::FailPatternMatched { context, .. }
+            | Failure::ShellExited { context, .. }
+            | Failure::Runtime { context, .. }
+            | Failure::Cancelled { context, .. } => context,
+        }
+    }
 }
 
 impl From<&Failure> for relux_core::error::DiagnosticReport {

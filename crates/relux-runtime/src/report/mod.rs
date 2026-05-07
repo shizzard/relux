@@ -1,3 +1,4 @@
+pub mod console;
 pub mod junit;
 pub mod result;
 pub mod run_index;

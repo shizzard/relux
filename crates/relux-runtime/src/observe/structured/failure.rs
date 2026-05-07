@@ -14,6 +14,9 @@ pub struct StackFrame {
     /// Function name or effect name, when applicable.
     pub name: Option<String>,
     pub args: Vec<(String, String)>,
+    /// User-supplied alias bound at start time (`start FX as Alias`).
+    /// Only effect-setup frames carry one today.
+    pub alias: Option<String>,
     pub location: Option<SourceLocation>,
 }
 
