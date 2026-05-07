@@ -713,6 +713,7 @@ async fn run_test(
     // Open the root span for this test. Every emission inside the test body
     // (effect setup, shell block, fn call, cleanup block) is parented on this.
     let test_span = log.open_span(SpanKind::Test, None, Some(meta.span()));
+    let test_span_id = test_span.id();
 
     let rt_ctx = RuntimeContext {
         log: log.clone(),
@@ -728,7 +729,15 @@ async fn run_test(
     // Create a per-test EffectManager
     let test_manager = EffectManager::new(Arc::new(EffectRegistry::new()), rt_ctx.clone());
 
-    let outcome = run_test_body(meta, test, &test_manager, &mut warnings, &rt_ctx, test_span).await;
+    let outcome = run_test_body(
+        meta,
+        test,
+        &test_manager,
+        &mut warnings,
+        &rt_ctx,
+        test_span_id,
+    )
+    .await;
 
     if outcome.is_err() {
         log.emit_failure_progress();
@@ -744,7 +753,7 @@ async fn run_test(
     drop(progress_tx);
     let duration = test_start.elapsed();
 
-    log.close_span(test_span);
+    test_span.close();
 
     // Build the structured log. Failure record is `None` for now — commit 4
     // populates it from the outcome with call-stack / buffer-tail / vars.
@@ -941,7 +950,6 @@ async fn run_test_body(
                 IrTestItem::Let { .. } => continue,
                 IrTestItem::Shell { block, .. } => {
                     let switch_span = block.name().span();
-                    let exit_span = block.span().at_end();
                     if let Some(qualifier) = block.qualifier() {
                         // Qualified shell block: alias.shell { ... }
                         let alias = qualifier.name();
@@ -954,33 +962,26 @@ async fn run_test_body(
                             Some(test_span),
                             Some(switch_span),
                         );
-                        rt_ctx.log.emit_shell_switch(block_span, &display);
-                        let dep = effect_shells.get(alias).ok_or_else(|| {
-                            rt_ctx.log.close_span(block_span);
-                            Failure::Runtime {
-                                message: format!("unknown effect alias `{alias}`"),
-                                span: None,
-                                shell: None,
-                            }
+                        let block_span_id = block_span.id();
+                        rt_ctx.log.emit_shell_switch(block_span_id, &display);
+                        let dep = effect_shells.get(alias).ok_or_else(|| Failure::Runtime {
+                            message: format!("unknown effect alias `{alias}`"),
+                            span: None,
+                            shell: None,
                         })?;
-                        let vm_arc = dep.get(shell_name).ok_or_else(|| {
-                            rt_ctx.log.close_span(block_span);
-                            Failure::Runtime {
-                                message: format!(
-                                    "effect alias `{alias}` does not expose shell `{shell_name}`"
-                                ),
-                                span: None,
-                                shell: None,
-                            }
+                        let vm_arc = dep.get(shell_name).ok_or_else(|| Failure::Runtime {
+                            message: format!(
+                                "effect alias `{alias}` does not expose shell `{shell_name}`"
+                            ),
+                            span: None,
+                            shell: None,
                         })?;
                         let mut vm = vm_arc.lock().await;
                         let vm_name = vm.current_name();
-                        rt_ctx.log.emit_shell_switch(block_span, &vm_name);
-                        vm.set_block_span(block_span);
-                        let result = vm.exec_stmts(block.body()).await;
-                        vm.set_exit_span(exit_span);
-                        rt_ctx.log.close_span(block_span);
-                        result?;
+                        rt_ctx.log.emit_shell_switch(block_span_id, &vm_name);
+                        vm.set_block_span(block_span_id);
+                        vm.exec_stmts(block.body()).await?;
+                        // block_span drops here, closing the span.
                     } else {
                         // Unqualified shell block: shell name { ... }
                         let name = block.name().name().to_string();
@@ -991,7 +992,8 @@ async fn run_test_body(
                             Some(test_span),
                             Some(switch_span),
                         );
-                        rt_ctx.log.emit_shell_switch(block_span, &name);
+                        let block_span_id = block_span.id();
+                        rt_ctx.log.emit_shell_switch(block_span_id, &name);
                         if !shells.contains_key(&name) {
                             let shell_state = ShellState::new(name.clone(), None);
                             let ctx = ExecutionContext::new(
@@ -999,26 +1001,18 @@ async fn run_test_body(
                                 shell_state,
                                 rt_ctx.shell.default_timeout.clone(),
                                 rt_ctx.env.clone(),
-                                block_span,
+                                block_span_id,
                             );
-                            let vm = match Vm::new(name.clone(), ctx, rt_ctx).await {
-                                Ok(v) => v,
-                                Err(e) => {
-                                    rt_ctx.log.close_span(block_span);
-                                    return Err(e);
-                                }
-                            };
+                            let vm = Vm::new(name.clone(), ctx, rt_ctx).await?;
                             shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
                         }
                         let vm_arc = shells.get(&name).expect("shell just inserted above");
                         let mut vm = vm_arc.lock().await;
                         let display_name = vm.current_name();
-                        rt_ctx.log.emit_shell_switch(block_span, &display_name);
-                        vm.set_block_span(block_span);
-                        let result = vm.exec_stmts(block.body()).await;
-                        vm.set_exit_span(exit_span);
-                        rt_ctx.log.close_span(block_span);
-                        result?;
+                        rt_ctx.log.emit_shell_switch(block_span_id, &display_name);
+                        vm.set_block_span(block_span_id);
+                        vm.exec_stmts(block.body()).await?;
+                        // block_span drops here, closing the span.
                     }
                 }
                 IrTestItem::Cleanup { .. } => continue,
@@ -1043,13 +1037,14 @@ async fn run_test_body(
             rt_ctx
                 .log
                 .open_span(SpanKind::CleanupBlock, Some(test_span), Some(cleanup_span));
+        let cleanup_block_span_id = cleanup_block_span.id();
         let shell_state = ShellState::new("__cleanup".to_string(), None);
         let ctx = ExecutionContext::new(
             scope.clone(),
             shell_state,
             rt_ctx.shell.default_timeout.clone(),
             rt_ctx.env.clone(),
-            cleanup_block_span,
+            cleanup_block_span_id,
         );
         // Cleanup uses its own uncancellable token
         let mut cleanup_rt_ctx = rt_ctx.clone();
@@ -1057,9 +1052,11 @@ async fn run_test_body(
         match Vm::new("__cleanup".to_string(), ctx, &cleanup_rt_ctx).await {
             Ok(mut cleanup_vm) => {
                 if let Err(failure) = cleanup_vm.exec_stmts(cleanup.body()).await {
-                    rt_ctx
-                        .log
-                        .emit_warning(cleanup_block_span, "__cleanup", "test cleanup failed");
+                    rt_ctx.log.emit_warning(
+                        cleanup_block_span_id,
+                        "__cleanup",
+                        "test cleanup failed",
+                    );
                     warnings.push(Warning::CleanupFailed {
                         source: CleanupSource::Test,
                         failure,
@@ -1069,7 +1066,7 @@ async fn run_test_body(
             }
             Err(e) => {
                 rt_ctx.log.emit_warning(
-                    cleanup_block_span,
+                    cleanup_block_span_id,
                     "__cleanup",
                     "failed to spawn cleanup shell",
                 );
@@ -1083,7 +1080,7 @@ async fn run_test_body(
                 });
             }
         }
-        rt_ctx.log.close_span(cleanup_block_span);
+        // cleanup_block_span drops here, closing the span.
     }
 
     body_result

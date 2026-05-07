@@ -6,7 +6,6 @@ use regex::Regex;
 use tokio::sync::Mutex;
 use tokio::sync::Notify;
 
-use crate::observe::structured::Utf8Stream;
 use crate::vm::context::FailPattern;
 
 // ─── FailPatternHit ─────────────────────────────────────────────
@@ -109,12 +108,6 @@ struct BufferInner {
 pub struct OutputBuffer {
     inner: Arc<Mutex<BufferInner>>,
     pub(crate) notify: Arc<Notify>,
-    /// Pending bytes the next `drain_recv` should return as decoded text. Kept
-    /// separate from `inner.data` so matching never has to wait on the recv
-    /// stream and vice versa. Decoding goes through `Utf8Stream` so multi-byte
-    /// codepoints split across PTY reads are handled correctly.
-    recv_pending: Arc<Mutex<BytesMut>>,
-    recv_stream: Arc<Mutex<Utf8Stream>>,
 }
 
 impl Default for OutputBuffer {
@@ -131,30 +124,12 @@ impl OutputBuffer {
                 base: 0,
             })),
             notify: Arc::new(Notify::new()),
-            recv_pending: Arc::new(Mutex::new(BytesMut::new())),
-            recv_stream: Arc::new(Mutex::new(Utf8Stream::new())),
         }
     }
 
     pub async fn append(&self, bytes: &[u8]) {
         self.inner.lock().await.data.extend_from_slice(bytes);
-        self.recv_pending.lock().await.extend_from_slice(bytes);
         self.notify.notify_waiters();
-    }
-
-    pub async fn drain_recv(&self) -> Option<String> {
-        let mut pending = self.recv_pending.lock().await;
-        if pending.is_empty() {
-            return None;
-        }
-        let bytes = pending.split();
-        let mut stream = self.recv_stream.lock().await;
-        let decoded = stream.feed(&bytes);
-        if decoded.is_empty() {
-            None
-        } else {
-            Some(decoded)
-        }
     }
 
     /// Find literal, extract truncated context, drain via split_to. One lock.
@@ -652,20 +627,6 @@ mod tests {
         buf.append(b"hi").await;
         let tail = buf.snapshot_tail(80).await;
         assert_eq!(tail, "hi");
-    }
-
-    // ── drain_recv with utf8 stream ─────────────────────────────────
-
-    #[tokio::test]
-    async fn drain_recv_handles_codepoint_split_across_appends() {
-        let buf = OutputBuffer::new();
-        // U+1F389 PARTY POPPER, encoded as F0 9F 8E 89.
-        buf.append(&[0xF0, 0x9F]).await;
-        // First half is a partial sequence — drain_recv should hold it back.
-        assert_eq!(buf.drain_recv().await, None);
-        buf.append(&[0x8E, 0x89]).await;
-        // Now both halves are present — full codepoint emerges intact.
-        assert_eq!(buf.drain_recv().await, Some("\u{1F389}".to_string()));
     }
 
     // ── check_fail_in_buffer ────────────────────────────────────────

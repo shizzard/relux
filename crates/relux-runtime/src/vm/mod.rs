@@ -100,7 +100,6 @@ pub struct Vm {
     shell_prompt: String,
     pub(crate) cancel: CancellationToken,
     flaky_timeout_multiplier: f64,
-    exit_span: Option<IrSpan>,
 }
 
 impl Vm {
@@ -136,7 +135,6 @@ impl Vm {
             shell_prompt,
             cancel,
             flaky_timeout_multiplier: rt_ctx.flaky_timeout_multiplier,
-            exit_span: None,
         };
 
         log.emit_shell_spawn(span, &shell_name, &shell_command);
@@ -175,10 +173,6 @@ impl Vm {
         &self.shell_prompt
     }
 
-    pub fn set_exit_span(&mut self, span: IrSpan) {
-        self.exit_span = Some(span);
-    }
-
     /// Re-parent all subsequent VM emissions onto the given block span.
     /// Called when a shell is reused across shell blocks.
     pub fn set_block_span(&mut self, span: SpanId) {
@@ -196,14 +190,7 @@ impl Vm {
             }
             last = self.exec_stmt(stmt).await?;
         }
-        self.drain_recv_event().await;
         Ok(last)
-    }
-
-    async fn drain_recv_event(&mut self) {
-        if let Some(_data) = self.pty.output_buf.drain_recv().await {
-            // self.events.emit_recv(&self.ctx.current_name(), &data);
-        }
     }
 
     fn current_span(&self) -> SpanId {
@@ -253,7 +240,6 @@ impl Vm {
     pub async fn exec_stmt(&mut self, stmt: &IrShellStmt) -> Result<String, Failure> {
         use relux_ir::IrNode;
         let span = stmt.span().clone();
-        self.drain_recv_event().await;
         self.check_fail(span.clone()).await?;
         match stmt {
             IrShellStmt::Comment { .. } => Ok(String::new()),
@@ -551,7 +537,7 @@ impl Vm {
                         .map(|(p, v)| (p.name().to_string(), v.clone()))
                         .collect();
                     let parent_span = self.current_span();
-                    let fn_span = self.log.open_span(
+                    let fn_guard = self.log.open_span(
                         SpanKind::FnCall {
                             name: fn_name.clone(),
                             args: named_args.clone(),
@@ -559,7 +545,7 @@ impl Vm {
                         Some(parent_span),
                         Some(span),
                     );
-                    self.ctx.push_span(fn_span);
+                    self.ctx.push_span(fn_guard.id());
                     self.ctx
                         .push_call(fn_name.clone(), named_args.into_iter().collect());
                     let mut last = String::new();
@@ -569,14 +555,12 @@ impl Vm {
                             Err(e) => {
                                 self.ctx.pop_call();
                                 self.ctx.pop_span();
-                                self.log.close_span(fn_span);
                                 return Err(e);
                             }
                         }
                     }
                     self.ctx.pop_call();
                     self.ctx.pop_span();
-                    self.log.close_span(fn_span);
                     return Ok(last);
                 }
                 IrFn::Builtin { name, arity } => {
@@ -588,7 +572,7 @@ impl Vm {
                             .map(|(i, v)| (format!("${i}"), v.clone()))
                             .collect();
                         let parent_span = self.current_span();
-                        let fn_span = self.log.open_span(
+                        let fn_guard = self.log.open_span(
                             SpanKind::FnCall {
                                 name: fn_name.clone(),
                                 args: positional_args,
@@ -596,10 +580,9 @@ impl Vm {
                             Some(parent_span),
                             Some(span),
                         );
-                        self.ctx.push_span(fn_span);
+                        self.ctx.push_span(fn_guard.id());
                         let result = bif.call(self, evaluated_args, span).await;
                         self.ctx.pop_span();
-                        self.log.close_span(fn_span);
                         return result;
                     }
                 }
@@ -626,7 +609,7 @@ impl Vm {
                     .collect(),
             };
             let parent_span = self.current_span();
-            let fn_span = self.log.open_span(
+            let fn_guard = self.log.open_span(
                 SpanKind::FnCall {
                     name: fn_name.clone(),
                     args: named_args,
@@ -634,7 +617,7 @@ impl Vm {
                 Some(parent_span),
                 Some(span),
             );
-            self.ctx.push_span(fn_span);
+            self.ctx.push_span(fn_guard.id());
             let return_value = relux_ir::evaluator::eval_pure_fn(
                 ir_fn,
                 evaluated_args,
@@ -642,7 +625,6 @@ impl Vm {
                 &self.tables.pure_fns,
             );
             self.ctx.pop_span();
-            self.log.close_span(fn_span);
             return Ok(return_value);
         }
 

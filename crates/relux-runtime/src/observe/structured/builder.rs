@@ -37,6 +37,36 @@ pub struct StructuredLogBuilder {
     progress_tx: ProgressTx,
 }
 
+/// RAII handle for a span. `Drop` calls `close_span_inner` on the underlying
+/// builder, so `?` early-returns are safe — the span always gets an `end_ts`.
+/// Use `id()` to obtain the `SpanId` for emissions and as a parent of
+/// child spans. Use `close()` to close explicitly (gives a tighter `end_ts`
+/// than waiting for drop, useful right before `build()`).
+pub struct SpanGuard {
+    id: Option<SpanId>,
+    log: StructuredLogBuilder,
+}
+
+impl SpanGuard {
+    pub fn id(&self) -> SpanId {
+        self.id.expect("span guard already closed")
+    }
+
+    pub fn close(mut self) {
+        if let Some(id) = self.id.take() {
+            self.log.close_span_inner(id);
+        }
+    }
+}
+
+impl Drop for SpanGuard {
+    fn drop(&mut self) {
+        if let Some(id) = self.id.take() {
+            self.log.close_span_inner(id);
+        }
+    }
+}
+
 struct BuilderInner {
     next_seq: EventSeq,
     next_span_id: SpanId,
@@ -93,32 +123,42 @@ impl StructuredLogBuilder {
 
     // ─── Span lifecycle ───────────────────────────────────────────
 
+    /// Open a span and return a guard that closes it on drop. The caller
+    /// must keep the guard alive for the span's lifetime; passing the id
+    /// (`guard.id()`) to children is fine. Drop on `?` propagation closes
+    /// cleanly; for a tighter `end_ts`, use `SpanGuard::close()` explicitly.
     pub fn open_span(
         &self,
         kind: SpanKind,
         parent: Option<SpanId>,
         location: Option<&IrSpan>,
-    ) -> SpanId {
+    ) -> SpanGuard {
         let location = location.and_then(|s| self.resolve_location(s));
         let start_ts = self.now();
-        let mut inner = self.inner.lock().unwrap();
-        let id = inner.next_span_id;
-        inner.next_span_id += 1;
-        inner.spans.insert(
-            id,
-            Span {
+        let id = {
+            let mut inner = self.inner.lock().unwrap();
+            let id = inner.next_span_id;
+            inner.next_span_id += 1;
+            inner.spans.insert(
                 id,
-                kind,
-                parent,
-                start_ts,
-                end_ts: None,
-                location,
-            },
-        );
-        id
+                Span {
+                    id,
+                    kind,
+                    parent,
+                    start_ts,
+                    end_ts: None,
+                    location,
+                },
+            );
+            id
+        };
+        SpanGuard {
+            id: Some(id),
+            log: self.clone(),
+        }
     }
 
-    pub fn close_span(&self, id: SpanId) {
+    fn close_span_inner(&self, id: SpanId) {
         let end_ts = self.now();
         let mut inner = self.inner.lock().unwrap();
         if let Some(span) = inner.spans.get_mut(&id) {
@@ -568,9 +608,10 @@ mod tests {
     fn seq_is_monotonic_across_event_and_buffer_pushes() {
         let (b, _rx) = make_builder();
         let test_span = b.open_span(SpanKind::Test, None, None);
-        let s1 = b.push_event(test_span, Some("sh"), EventKind::Send { data: "a".into() });
+        let id = test_span.id();
+        let s1 = b.push_event(id, Some("sh"), EventKind::Send { data: "a".into() });
         let s2 = b.push_buffer_event("sh", BufferEventKind::Grew { data: "b".into() });
-        let s3 = b.push_event(test_span, Some("sh"), EventKind::Recv { data: "c".into() });
+        let s3 = b.push_event(id, Some("sh"), EventKind::Recv { data: "c".into() });
         assert_eq!(s1, 0);
         assert_eq!(s2, 1);
         assert_eq!(s3, 2);
@@ -579,26 +620,56 @@ mod tests {
     #[test]
     fn open_close_span_round_trips() {
         let (b, _rx) = make_builder();
-        let id = b.open_span(SpanKind::Test, None, None);
-        b.close_span(id);
+        let span = b.open_span(SpanKind::Test, None, None);
+        let id = span.id();
+        span.close();
         let inner = b.inner.lock().unwrap();
-        let span = inner.spans.get(&id).unwrap();
-        assert!(span.end_ts.is_some());
-        assert!(span.parent.is_none());
+        let stored = inner.spans.get(&id).unwrap();
+        assert!(stored.end_ts.is_some());
+        assert!(stored.parent.is_none());
+    }
+
+    #[test]
+    fn span_guard_closes_on_drop() {
+        let (b, _rx) = make_builder();
+        let id = {
+            let span = b.open_span(SpanKind::Test, None, None);
+            span.id()
+            // span drops at end of this block
+        };
+        let inner = b.inner.lock().unwrap();
+        assert!(inner.spans.get(&id).unwrap().end_ts.is_some());
+    }
+
+    #[test]
+    fn span_guard_explicit_close_then_drop_is_noop() {
+        let (b, _rx) = make_builder();
+        let span = b.open_span(SpanKind::Test, None, None);
+        let id = span.id();
+        span.close();
+        let end_after_close = b.inner.lock().unwrap().spans.get(&id).unwrap().end_ts;
+        assert!(end_after_close.is_some());
+        // Drop happened inside `close()` (Option taken). A subsequent peek
+        // should show the same end_ts — the guard's drop didn't re-touch it
+        // because there's no guard left.
+        let end_later = b.inner.lock().unwrap().spans.get(&id).unwrap().end_ts;
+        assert_eq!(end_after_close, end_later);
     }
 
     #[test]
     fn span_ids_are_unique_and_parent_preserved() {
         let (b, _rx) = make_builder();
         let parent = b.open_span(SpanKind::Test, None, None);
+        let parent_id = parent.id();
         let child = b.open_span(
             SpanKind::ShellBlock { shell: "sh".into() },
-            Some(parent),
+            Some(parent_id),
             None,
         );
-        assert_ne!(parent, child);
+        let child_id = child.id();
+        assert_ne!(parent_id, child_id);
         let inner = b.inner.lock().unwrap();
-        assert_eq!(inner.spans.get(&child).unwrap().parent, Some(parent));
+        assert_eq!(inner.spans.get(&child_id).unwrap().parent, Some(parent_id));
     }
 
     #[test]
@@ -617,7 +688,7 @@ mod tests {
         let (b, _rx) = make_builder();
         let b2 = b.clone();
         let span = b.open_span(SpanKind::Test, None, None);
-        b2.push_event(span, Some("sh"), EventKind::Send { data: "x".into() });
+        b2.push_event(span.id(), Some("sh"), EventKind::Send { data: "x".into() });
         let inner = b.inner.lock().unwrap();
         assert_eq!(inner.events.len(), 1);
     }
@@ -626,9 +697,10 @@ mod tests {
     fn build_consumes_builder_and_yields_log() {
         let (b, _rx) = make_builder();
         let span = b.open_span(SpanKind::Test, None, None);
-        b.push_event(span, Some("sh"), EventKind::Send { data: "x".into() });
+        let id = span.id();
+        b.push_event(id, Some("sh"), EventKind::Send { data: "x".into() });
         b.push_buffer_event("sh", BufferEventKind::Grew { data: "y".into() });
-        b.close_span(span);
+        span.close();
         let log = b.build(
             TestInfo {
                 name: "t".into(),
@@ -649,7 +721,7 @@ mod tests {
     fn emit_send_pushes_event_and_progress() {
         let (b, mut rx) = make_builder();
         let span = b.open_span(SpanKind::Test, None, None);
-        b.emit_send(span, "sh", "hello");
+        b.emit_send(span.id(), "sh", "hello");
         let inner = b.inner.lock().unwrap();
         assert!(matches!(
             &inner.events.last().unwrap().kind,
@@ -664,7 +736,7 @@ mod tests {
         let (b, _rx) = make_builder();
         let span = b.open_span(SpanKind::Test, None, None);
         b.emit_match_done(
-            span,
+            span.id(),
             "sh",
             "ok",
             Duration::from_millis(5),
@@ -686,8 +758,16 @@ mod tests {
     fn round_trip_serde_json() {
         let (b, _rx) = make_builder();
         let span = b.open_span(SpanKind::Test, None, None);
-        b.emit_match_done(span, "sh", "ok", Duration::from_millis(1), None, "", "");
-        b.close_span(span);
+        b.emit_match_done(
+            span.id(),
+            "sh",
+            "ok",
+            Duration::from_millis(1),
+            None,
+            "",
+            "",
+        );
+        span.close();
         let log = b.build(
             TestInfo {
                 name: "t".into(),
