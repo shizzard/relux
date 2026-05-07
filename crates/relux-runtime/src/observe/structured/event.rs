@@ -10,6 +10,10 @@ use super::span::SpanId;
 pub type EventSeq = u64;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
 pub struct Event {
     pub seq: EventSeq,
     #[serde(with = "super::ts_duration_ms")]
@@ -23,6 +27,10 @@ pub struct Event {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum EventKind {
     // Shell lifecycle

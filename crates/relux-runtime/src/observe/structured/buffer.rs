@@ -7,6 +7,10 @@ use ts_rs::TS;
 use super::event::EventSeq;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
 pub struct BufferEvent {
     pub seq: EventSeq,
     #[serde(with = "super::ts_duration_ms")]
@@ -18,6 +22,10 @@ pub struct BufferEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum BufferEventKind {
     Grew {

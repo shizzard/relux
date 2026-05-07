@@ -6,9 +6,9 @@
 //! type derives `serde` (JSON-on-disk) and `ts-rs` (TypeScript declarations
 //! consumed by the SPA viewer).
 //!
-//! ts-rs derives are present but the export step is wired up in a later
-//! commit (when the `viewer/` directory exists). Until then the derives
-//! are dormant.
+//! TypeScript bindings are produced by enabling the `ts-export` cargo
+//! feature on this crate and running the auto-injected
+//! `export_bindings_*` tests; `just viewer-types` drives both.
 
 pub mod buffer;
 pub mod builder;
@@ -41,6 +41,10 @@ pub use utf8_stream::Utf8Stream;
 /// Source-file location resolved from an `IrSpan`. Lives on spans and stack
 /// frames; events resolve against their span if needed.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
 pub struct SourceLocation {
     pub file: String,
     pub line: usize,
@@ -55,6 +59,10 @@ impl std::fmt::Display for SourceLocation {
 /// Top-level structured log for a single test run. Produced by
 /// `StructuredLogBuilder::build`.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
 pub struct StructuredLog {
     pub test: TestInfo,
     pub env: EnvInfo,
@@ -66,6 +74,10 @@ pub struct StructuredLog {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
 pub struct TestInfo {
     pub name: String,
     pub path: String,
@@ -74,6 +86,10 @@ pub struct TestInfo {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
 pub struct EnvInfo {
     pub bootstrap: Vec<(String, String)>,
 }

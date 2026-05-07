@@ -7,6 +7,10 @@ use super::event::EventSeq;
 use super::span::SpanId;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
 pub struct StackFrame {
     pub span: SpanId,
     /// Span-kind discriminator name (e.g. `"fn-call"`, `"shell-block"`).
@@ -25,6 +29,10 @@ pub struct StackFrame {
 /// that mirror the umbrella design — these convenience fields are populated
 /// in a later commit; for now they are emitted empty.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum FailureRecord {
     MatchTimeout {

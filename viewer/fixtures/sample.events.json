@@ -1,0 +1,305 @@
+{
+  "test": {
+    "name": "regex fail pattern does not trigger on clean output",
+    "path": "operators/fail_pattern.relux",
+    "outcome": "pass",
+    "duration_ms": 37
+  },
+  "env": {
+    "bootstrap": []
+  },
+  "shells": {
+    "s": {
+      "spawn_ts": 1.674958,
+      "terminate_ts": 29.927833,
+      "command": "/bin/sh",
+      "alias_of": null
+    }
+  },
+  "spans": {
+    "0": {
+      "id": 0,
+      "kind": "test",
+      "parent": null,
+      "start_ts": 0.125333,
+      "end_ts": 37.308916999999994,
+      "location": {
+        "file": "relux/tests/operators/fail_pattern.relux",
+        "line": 1
+      }
+    },
+    "1": {
+      "id": 1,
+      "kind": "shell-block",
+      "shell": "s",
+      "parent": 0,
+      "start_ts": 0.13341699999999998,
+      "end_ts": 29.925625,
+      "location": {
+        "file": "relux/tests/operators/fail_pattern.relux",
+        "line": 5
+      }
+    }
+  },
+  "events": [
+    {
+      "seq": 0,
+      "ts": 0.13379200000000002,
+      "span": 1,
+      "shell": "s",
+      "kind": "shell-switch",
+      "name": "s"
+    },
+    {
+      "seq": 1,
+      "ts": 1.6782080000000001,
+      "span": 1,
+      "shell": "s",
+      "kind": "shell-spawn",
+      "name": "s",
+      "command": "/bin/sh"
+    },
+    {
+      "seq": 22,
+      "ts": 25.120542,
+      "span": 1,
+      "shell": "s",
+      "kind": "shell-ready",
+      "name": "s"
+    },
+    {
+      "seq": 23,
+      "ts": 25.124792,
+      "span": 1,
+      "shell": "s",
+      "kind": "shell-switch",
+      "name": "s"
+    },
+    {
+      "seq": 24,
+      "ts": 25.130291999999997,
+      "span": 1,
+      "shell": "s",
+      "kind": "fail-pattern-set",
+      "pattern": "ERROR"
+    },
+    {
+      "seq": 25,
+      "ts": 25.152542,
+      "span": 1,
+      "shell": "s",
+      "kind": "send",
+      "data": "echo \"all good\""
+    },
+    {
+      "seq": 28,
+      "ts": 25.201749999999997,
+      "span": 1,
+      "shell": "s",
+      "kind": "match-start",
+      "pattern": "^all good$",
+      "is_regex": true
+    },
+    {
+      "seq": 32,
+      "ts": 29.920292,
+      "span": 1,
+      "shell": "s",
+      "kind": "match-done",
+      "matched": "all good",
+      "elapsed": 4.71525,
+      "captures": {
+        "0": "all good"
+      },
+      "buffer_seq": 31
+    },
+    {
+      "seq": 33,
+      "ts": 29.928375,
+      "span": 1,
+      "shell": "s",
+      "kind": "shell-terminate",
+      "name": "s"
+    }
+  ],
+  "buffer_events": [
+    {
+      "seq": 2,
+      "ts": 5.040667,
+      "shell": "s",
+      "kind": "grew",
+      "data": "\u001b[?1034hsh-3.2$ "
+    },
+    {
+      "seq": 3,
+      "ts": 16.108333,
+      "shell": "s",
+      "kind": "grew",
+      "data": "expor"
+    },
+    {
+      "seq": 4,
+      "ts": 16.113125,
+      "shell": "s",
+      "kind": "grew",
+      "data": "t PS"
+    },
+    {
+      "seq": 5,
+      "ts": 16.114875,
+      "shell": "s",
+      "kind": "grew",
+      "data": "1"
+    },
+    {
+      "seq": 6,
+      "ts": 16.116875,
+      "shell": "s",
+      "kind": "grew",
+      "data": "="
+    },
+    {
+      "seq": 7,
+      "ts": 16.121541999999998,
+      "shell": "s",
+      "kind": "grew",
+      "data": "'r"
+    },
+    {
+      "seq": 8,
+      "ts": 16.124333,
+      "shell": "s",
+      "kind": "grew",
+      "data": "e"
+    },
+    {
+      "seq": 9,
+      "ts": 16.126667,
+      "shell": "s",
+      "kind": "grew",
+      "data": "l"
+    },
+    {
+      "seq": 10,
+      "ts": 16.139416999999998,
+      "shell": "s",
+      "kind": "grew",
+      "data": "ux> '"
+    },
+    {
+      "seq": 11,
+      "ts": 16.163083,
+      "shell": "s",
+      "kind": "grew",
+      "data": " PS2='' "
+    },
+    {
+      "seq": 12,
+      "ts": 16.16525,
+      "shell": "s",
+      "kind": "grew",
+      "data": "P"
+    },
+    {
+      "seq": 13,
+      "ts": 16.173667,
+      "shell": "s",
+      "kind": "grew",
+      "data": "ROM"
+    },
+    {
+      "seq": 14,
+      "ts": 16.176541999999998,
+      "shell": "s",
+      "kind": "grew",
+      "data": "P"
+    },
+    {
+      "seq": 15,
+      "ts": 16.196458,
+      "shell": "s",
+      "kind": "grew",
+      "data": "T_COMMA"
+    },
+    {
+      "seq": 16,
+      "ts": 16.199417,
+      "shell": "s",
+      "kind": "grew",
+      "data": "N"
+    },
+    {
+      "seq": 17,
+      "ts": 16.205542,
+      "shell": "s",
+      "kind": "grew",
+      "data": "D"
+    },
+    {
+      "seq": 18,
+      "ts": 16.207458000000003,
+      "shell": "s",
+      "kind": "grew",
+      "data": "="
+    },
+    {
+      "seq": 19,
+      "ts": 16.209583,
+      "shell": "s",
+      "kind": "grew",
+      "data": "'"
+    },
+    {
+      "seq": 20,
+      "ts": 16.228042000000002,
+      "shell": "s",
+      "kind": "grew",
+      "data": "'\r\n"
+    },
+    {
+      "seq": 21,
+      "ts": 16.294708,
+      "shell": "s",
+      "kind": "grew",
+      "data": "relux> "
+    },
+    {
+      "seq": 26,
+      "ts": 25.190458,
+      "shell": "s",
+      "kind": "grew",
+      "data": "echo \"all go"
+    },
+    {
+      "seq": 27,
+      "ts": 25.199583,
+      "shell": "s",
+      "kind": "grew",
+      "data": "od\"\r\n"
+    },
+    {
+      "seq": 29,
+      "ts": 25.226833,
+      "shell": "s",
+      "kind": "grew",
+      "data": "all good\r\n"
+    },
+    {
+      "seq": 30,
+      "ts": 25.247292,
+      "shell": "s",
+      "kind": "grew",
+      "data": "relux> "
+    },
+    {
+      "seq": 31,
+      "ts": 29.919999999999998,
+      "shell": "s",
+      "kind": "matched",
+      "before": "echo \"all good\"\r\n",
+      "matched": "all good",
+      "after": "\r\nrelux> "
+    }
+  ],
+  "failure": null
+}

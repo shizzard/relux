@@ -6,6 +6,12 @@ license.workspace = true
 repository.workspace = true
 description = "Internal: runtime for Relux. No semver guarantees."
 
+[features]
+# Enable ts-rs `#[ts(export)]` attributes; activates auto-injected
+# `export_bindings_<TypeName>` tests that write `.ts` files into
+# `viewer/src/types/`. Driven by `just viewer-types`.
+ts-export = []
+
 [dependencies]
 relux-core      = { workspace = true }
 relux-ir        = { workspace = true }

@@ -5,6 +5,10 @@ use serde::Serialize;
 use ts_rs::TS;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
 pub struct ShellRecord {
     #[serde(with = "super::ts_duration_ms")]
     #[ts(as = "f64")]

@@ -2,9 +2,18 @@
 default:
     @just --list
 
-# Build in debug mode
-build:
+# Build in debug mode (chains viewer bundle build)
+build: viewer-build
     cargo build
+
+# Generate TypeScript bindings for the structured-log schema
+viewer-types:
+    cargo test -p relux-runtime --features ts-export 'export_bindings_'
+
+# Build the Svelte viewer bundle (regenerates TS types first)
+viewer-build: viewer-types
+    docker run --rm -v {{justfile_directory()}}/viewer:/src -w /src node:lts-slim \
+        sh -c 'npm install && npm run build'
 
 # Build in release mode
 release:

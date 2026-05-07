@@ -9,6 +9,10 @@ use super::SourceLocation;
 pub type SpanId = u64;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum SpanKind {
     Test {
@@ -73,6 +77,10 @@ impl SpanKind {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
 pub struct Span {
     pub id: SpanId,
     #[serde(flatten)]
