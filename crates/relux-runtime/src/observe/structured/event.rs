@@ -46,9 +46,27 @@ pub enum EventKind {
     ShellTerminate {
         name: String,
     },
-    ShellAlias {
+
+    // Effect exposes — emitted at the end of effect setup, one per
+    // expose decl. Hidden from the viewer timeline; surfaced as inline
+    // props on the owning effect-setup span.
+    EffectExposeShell {
+        /// Caller-visible name (the rename target, or the source name
+        /// when no `as <name>`).
         name: String,
-        source: String,
+        /// Source name in the local scope: a local shell key, or an
+        /// imported dep's exposed-shell key.
+        target: String,
+        /// `Some(alias)` when re-exposing from a dependency
+        /// (`expose shell <alias>.<target> as <name>`).
+        qualifier: Option<String>,
+    },
+    EffectExposeVar {
+        name: String,
+        target: String,
+        qualifier: Option<String>,
+        /// Resolved value at expose time.
+        value: String,
     },
 
     // I/O

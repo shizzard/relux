@@ -970,10 +970,17 @@ async fn run_test_body(
     let mut effect_vars: HashMap<String, HashMap<String, String>> = HashMap::new();
     let mut reset_seen = HashSet::new();
     for (start, exported) in test.starts().iter().zip(exported) {
-        for vm_arc in exported.shells.values() {
+        let source_effect_name = start.effect().name.0.clone();
+        let alias = start.alias().map(str::to_string);
+        for (shell_local_name, vm_arc) in exported.shells.iter() {
             let ptr = Arc::as_ptr(vm_arc) as usize;
             if reset_seen.insert(ptr) {
-                vm_arc.lock().await.reset_for_export(scope.clone());
+                vm_arc.lock().await.reset_for_export(
+                    scope.clone(),
+                    alias.clone(),
+                    Some(source_effect_name.clone()),
+                    shell_local_name.clone(),
+                );
             }
         }
         if let Some(alias) = start.alias() {
@@ -981,8 +988,6 @@ async fn run_test_body(
             // also insert it under the alias name directly
             if exported.shells.len() == 1 {
                 let vm_arc = exported.shells.values().next().unwrap().clone();
-                let source = vm_arc.lock().await.current_name();
-                rt_ctx.log.emit_shell_alias(test_span, alias, &source);
                 shells.insert(alias.to_string(), vm_arc);
             }
             effect_shells.insert(alias.to_string(), exported.shells);
@@ -1029,7 +1034,6 @@ async fn run_test_body(
                             Some(switch_span),
                         );
                         let block_span_id = block_span.id();
-                        rt_ctx.log.emit_shell_switch(block_span_id, &display);
                         let dep = effect_shells.get(alias).ok_or_else(|| Failure::Runtime {
                             message: format!("unknown effect alias `{alias}`"),
                             span: None,
@@ -1061,9 +1065,8 @@ async fn run_test_body(
                             Some(switch_span),
                         );
                         let block_span_id = block_span.id();
-                        rt_ctx.log.emit_shell_switch(block_span_id, &name);
                         if !shells.contains_key(&name) {
-                            let shell_state = ShellState::new(name.clone(), None);
+                            let shell_state = ShellState::new(name.clone());
                             let ctx = ExecutionContext::new(
                                 scope.clone(),
                                 shell_state,
@@ -1106,7 +1109,7 @@ async fn run_test_body(
                 .log
                 .open_span(SpanKind::CleanupBlock, Some(test_span), Some(cleanup_span));
         let cleanup_block_span_id = cleanup_block_span.id();
-        let shell_state = ShellState::new("__cleanup".to_string(), None);
+        let shell_state = ShellState::new("__cleanup".to_string());
         let ctx = ExecutionContext::new(
             scope.clone(),
             shell_state,

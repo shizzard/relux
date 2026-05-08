@@ -1,4 +1,5 @@
 import type { Event } from '../types/Event';
+import type { Span } from '../types/Span';
 
 export function formatTimestamp(ms: number): string {
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
@@ -34,7 +35,6 @@ const KIND_GLYPHS: Record<string, string> = {
   'shell-ready': '\u{2713}',
   'shell-switch': '\u{21C4}',
   'shell-terminate': '\u{2715}',
-  'shell-alias': '\u{2261}',
   send: '\u{2192}',
   recv: '\u{2190}',
   'match-start': '\u{003F}',
@@ -63,4 +63,76 @@ export function kindGlyph(kind: Event['kind']): string {
 export function truncate(s: string, n: number): string {
   if (s.length <= n) return s;
   return s.slice(0, n - 1) + '\u{2026}';
+}
+
+const SUMMARY_MAX = 80;
+
+export function eventSummary(event: Event): string {
+  switch (event.kind) {
+    case 'send':
+    case 'recv':
+      return truncate(escapeBytes(event.data), SUMMARY_MAX);
+    case 'match-start':
+      return `${event.is_regex ? 'regex' : 'literal'} ${truncate(event.pattern, SUMMARY_MAX)}`;
+    case 'match-done':
+      return `${formatDuration(event.elapsed)} ${truncate(escapeBytes(event.matched), SUMMARY_MAX)}`;
+    case 'timeout':
+      return truncate(event.pattern, SUMMARY_MAX);
+    case 'fail-pattern-set':
+      return truncate(event.pattern, SUMMARY_MAX);
+    case 'fail-pattern-cleared':
+      return '';
+    case 'fail-pattern-triggered':
+      return truncate(event.pattern, SUMMARY_MAX);
+    case 'sleep-start':
+      return formatDuration(event.duration);
+    case 'sleep-done':
+      return '';
+    case 'timeout-set':
+      return `${event.previous} \u{2192} ${event.timeout}`;
+    case 'var-let':
+    case 'var-assign':
+      return `${event.name} = ${truncate(escapeBytes(event.value), SUMMARY_MAX)}`;
+    case 'string-eval':
+      return truncate(escapeBytes(event.result), SUMMARY_MAX);
+    case 'interpolation':
+      return truncate(escapeBytes(event.result), SUMMARY_MAX);
+    case 'annotate':
+      return truncate(event.text, SUMMARY_MAX);
+    case 'log':
+    case 'warning':
+    case 'error':
+      return truncate(event.message, SUMMARY_MAX);
+    case 'shell-spawn':
+      return `${event.name}: ${truncate(event.command, SUMMARY_MAX)}`;
+    case 'shell-ready':
+    case 'shell-switch':
+    case 'shell-terminate':
+      return event.name;
+    case 'effect-expose-shell':
+      return event.qualifier !== null
+        ? `${event.name} \u{2190} ${event.qualifier}.${event.target}`
+        : event.name;
+    case 'effect-expose-var':
+      return `${event.name} = ${truncate(escapeBytes(event.value), SUMMARY_MAX)}`;
+  }
+}
+
+export function spanTitle(span: Span): string {
+  switch (span.kind) {
+    case 'test':
+      return span.name;
+    case 'effect-setup':
+      return span.alias ? `${span.effect} as ${span.alias}` : span.effect;
+    case 'effect-cleanup':
+      return span.effect;
+    case 'shell-block':
+      return span.shell;
+    case 'cleanup-block':
+      return 'cleanup';
+    case 'fn-call': {
+      const args = span.args.map(([k, v]) => `${k}=${truncate(v, 24)}`).join(', ');
+      return `${span.name}(${args})`;
+    }
+  }
 }

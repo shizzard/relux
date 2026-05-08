@@ -256,20 +256,6 @@ impl StructuredLogBuilder {
         }
     }
 
-    pub fn record_shell_alias(&self, alias: &str, source: &str) {
-        let spawn_ts = self.now();
-        let mut inner = self.inner.lock().unwrap();
-        inner.shells.insert(
-            alias.to_string(),
-            ShellRecord {
-                spawn_ts,
-                terminate_ts: None,
-                command: String::new(),
-                alias_of: Some(source.to_string()),
-            },
-        );
-    }
-
     // ─── Convenience emitters (mirror EventSink shape) ────────────
 
     // Shell lifecycle ---------------------------------------------------
@@ -319,14 +305,42 @@ impl StructuredLogBuilder {
         );
     }
 
-    pub fn emit_shell_alias(&self, span: SpanId, alias: &str, source: &str) {
-        self.record_shell_alias(alias, source);
+    // Effect exposes ----------------------------------------------------
+
+    pub fn emit_effect_expose_shell(
+        &self,
+        span: SpanId,
+        name: &str,
+        target: &str,
+        qualifier: Option<&str>,
+    ) {
         self.push_event(
             span,
-            Some(alias),
-            EventKind::ShellAlias {
-                name: alias.to_string(),
-                source: source.to_string(),
+            None,
+            EventKind::EffectExposeShell {
+                name: name.to_string(),
+                target: target.to_string(),
+                qualifier: qualifier.map(String::from),
+            },
+        );
+    }
+
+    pub fn emit_effect_expose_var(
+        &self,
+        span: SpanId,
+        name: &str,
+        target: &str,
+        qualifier: Option<&str>,
+        value: &str,
+    ) {
+        self.push_event(
+            span,
+            None,
+            EventKind::EffectExposeVar {
+                name: name.to_string(),
+                target: target.to_string(),
+                qualifier: qualifier.map(String::from),
+                value: value.to_string(),
             },
         );
     }

@@ -246,25 +246,35 @@ impl EffectManager {
             .instantiate(effect.starts(), &effect_vars, &effect_env, setup_span_id)
             .await?;
 
-        // 5. Build dependency shells/vars maps (alias → exported) and collect dep keys
+        // 5. Build dependency shells/vars maps (alias → exported) and collect dep keys.
+        //    Also remember each alias's source effect name so the export-reset step
+        //    can stamp the parent's POV onto the imported shells.
         let mut dep_shells: HashMap<String, ShellMap> = HashMap::new();
         let mut dep_vars: HashMap<String, VarMap> = HashMap::new();
         let mut dep_keys: Vec<EffectInstanceKey> = Vec::new();
+        let mut alias_to_effect_name: HashMap<String, String> = HashMap::new();
         for (sub_start, exported) in effect.starts().iter().zip(exported_deps) {
             dep_keys.push(exported.key);
             if let Some(alias) = sub_start.alias() {
                 dep_shells.insert(alias.to_string(), exported.shells);
                 dep_vars.insert(alias.to_string(), exported.vars);
+                alias_to_effect_name.insert(alias.to_string(), sub_start.effect().name.0.clone());
             }
         }
 
-        // 5b. Reset imported VMs
+        // 5b. Reset imported VMs into this scope's POV.
         let mut reset_seen = HashSet::new();
-        for shells_map in dep_shells.values() {
-            for vm_arc in shells_map.values() {
+        for (alias, shells_map) in &dep_shells {
+            let source_effect_name = alias_to_effect_name.get(alias).cloned();
+            for (shell_local_name, vm_arc) in shells_map.iter() {
                 let ptr = Arc::as_ptr(vm_arc) as usize;
                 if reset_seen.insert(ptr) {
-                    vm_arc.lock().await.reset_for_export(scope.clone());
+                    vm_arc.lock().await.reset_for_export(
+                        scope.clone(),
+                        Some(alias.clone()),
+                        source_effect_name.clone(),
+                        shell_local_name.clone(),
+                    );
                 }
             }
         }
@@ -277,10 +287,6 @@ impl EffectManager {
         for (alias, dep_exported) in &dep_shells {
             if dep_exported.len() == 1 {
                 let vm_arc = dep_exported.values().next().unwrap().clone();
-                let source = vm_arc.lock().await.current_name();
-                self.rt_ctx
-                    .log
-                    .emit_shell_alias(setup_span_id, alias, &source);
                 shells.insert(alias.clone(), vm_arc);
             }
         }
@@ -320,7 +326,6 @@ impl EffectManager {
                             Some(switch_span),
                         );
                         let block_span_id = block_span.id();
-                        self.rt_ctx.log.emit_shell_switch(block_span_id, &display);
                         let dep = dep_shells.get(alias).ok_or_else(|| Failure::Runtime {
                             message: format!("unknown effect alias `{alias}`"),
                             span: None,
@@ -352,9 +357,8 @@ impl EffectManager {
                             Some(switch_span),
                         );
                         let block_span_id = block_span.id();
-                        self.rt_ctx.log.emit_shell_switch(block_span_id, &name);
                         if !shells.contains_key(&name) {
-                            let shell_state = ShellState::new(name.clone(), None);
+                            let shell_state = ShellState::new(name.clone());
                             let ctx = ExecutionContext::new(
                                 scope.clone(),
                                 shell_state,
@@ -414,7 +418,7 @@ impl EffectManager {
                             context: FailureContext::default(),
                         })?;
                         shells.insert(exposed_name.clone(), vm_arc.clone());
-                        exposed.insert(exposed_name);
+                        exposed.insert(exposed_name.clone());
                     } else {
                         if !shells.contains_key(expose.target()) {
                             return Err(Failure::Runtime {
@@ -432,11 +436,17 @@ impl EffectManager {
                             let vm_arc = shells.get(expose.target()).unwrap().clone();
                             shells.insert(exposed_name.clone(), vm_arc);
                         }
-                        exposed.insert(exposed_name);
+                        exposed.insert(exposed_name.clone());
                     }
+                    self.rt_ctx.log.emit_effect_expose_shell(
+                        setup_span_id,
+                        &exposed_name,
+                        expose.target(),
+                        expose.qualifier(),
+                    );
                 }
                 relux_ir::IrExposeKind::Var => {
-                    if let Some(qualifier) = expose.qualifier() {
+                    let value = if let Some(qualifier) = expose.qualifier() {
                         // Re-expose a variable from a dependency
                         let qualifier_vars =
                             dep_vars.get(qualifier).ok_or_else(|| Failure::Runtime {
@@ -449,8 +459,9 @@ impl EffectManager {
                                 shell: None,
                                 context: FailureContext::default(),
                             })?;
-                        let value = qualifier_vars.get(expose.target()).ok_or_else(|| {
-                            Failure::Runtime {
+                        qualifier_vars
+                            .get(expose.target())
+                            .ok_or_else(|| Failure::Runtime {
                                 message: format!(
                                     "effect `{}` expose references var `{}` not exposed by `{}`",
                                     effect.name().name(),
@@ -460,14 +471,20 @@ impl EffectManager {
                                 span: None,
                                 shell: None,
                                 context: FailureContext::default(),
-                            }
-                        })?;
-                        exposed_vars.insert(exposed_name, value.clone());
+                            })?
+                            .clone()
                     } else {
                         // Expose a local let-bound variable
-                        let value = effect_vars.get(expose.target()).unwrap_or("").to_string();
-                        exposed_vars.insert(exposed_name, value);
-                    }
+                        effect_vars.get(expose.target()).unwrap_or("").to_string()
+                    };
+                    exposed_vars.insert(exposed_name.clone(), value.clone());
+                    self.rt_ctx.log.emit_effect_expose_var(
+                        setup_span_id,
+                        &exposed_name,
+                        expose.target(),
+                        expose.qualifier(),
+                        &value,
+                    );
                 }
             }
         }
@@ -642,7 +659,7 @@ impl EffectManager {
         scope: &Scope,
         block_span: SpanId,
     ) -> Result<(), Failure> {
-        let shell_state = ShellState::new("__cleanup".to_string(), None);
+        let shell_state = ShellState::new("__cleanup".to_string());
         let ctx = ExecutionContext::new(
             scope.clone(),
             shell_state,

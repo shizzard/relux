@@ -176,4 +176,79 @@ export function replayShellCtxAtSeq(
   return { failPatterns, timeout, activeShell };
 }
 
+export interface EffectShellExpose {
+  name: string;
+  target: string;
+  qualifier: string | null;
+}
+
+export interface EffectVarExpose {
+  name: string;
+  target: string;
+  qualifier: string | null;
+  value: string;
+}
+
+export interface EffectSetupProps {
+  overlay: Array<[string, string]>;
+  shellExposes: EffectShellExpose[];
+  varExposes: EffectVarExpose[];
+}
+
+export function effectSetupProps(
+  data: StructuredLog,
+  spanId: SpanId,
+): EffectSetupProps | null {
+  const span = spanById(data, spanId);
+  if (!span || span.kind !== 'effect-setup') return null;
+  const shellExposes: EffectShellExpose[] = [];
+  const varExposes: EffectVarExpose[] = [];
+  for (const ev of data.events) {
+    if (n(ev.span) !== spanId) continue;
+    if (ev.kind === 'effect-expose-shell') {
+      shellExposes.push({
+        name: ev.name,
+        target: ev.target,
+        qualifier: ev.qualifier,
+      });
+    } else if (ev.kind === 'effect-expose-var') {
+      varExposes.push({
+        name: ev.name,
+        target: ev.target,
+        qualifier: ev.qualifier,
+        value: ev.value,
+      });
+    }
+  }
+  return { overlay: span.overlay, shellExposes, varExposes };
+}
+
+export interface ShellBlockProps {
+  command: string;
+  startupMs: number | null;
+}
+
+export function shellBlockProps(
+  data: StructuredLog,
+  spanId: SpanId,
+): ShellBlockProps | null {
+  let command: string | null = null;
+  let spawnTs: number | null = null;
+  let readyTs: number | null = null;
+  for (const ev of data.events) {
+    if (n(ev.span) !== spanId) continue;
+    if (ev.kind === 'shell-spawn') {
+      command = ev.command;
+      spawnTs = ev.ts;
+    } else if (ev.kind === 'shell-ready') {
+      readyTs = ev.ts;
+    }
+  }
+  if (command === null || spawnTs === null) return null;
+  return {
+    command,
+    startupMs: readyTs !== null ? readyTs - spawnTs : null,
+  };
+}
+
 export { n as toNumber };

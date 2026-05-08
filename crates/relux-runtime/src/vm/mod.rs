@@ -106,6 +106,7 @@ pub struct Vm {
     shell_prompt: String,
     pub(crate) cancel: CancellationToken,
     flaky_timeout_multiplier: f64,
+    terminated: bool,
 }
 
 impl Vm {
@@ -142,6 +143,7 @@ impl Vm {
             shell_prompt,
             cancel,
             flaky_timeout_multiplier: rt_ctx.flaky_timeout_multiplier,
+            terminated: false,
         };
 
         log.emit_shell_spawn(span, &shell_name, &shell_command);
@@ -173,8 +175,19 @@ impl Vm {
     }
 
     /// Reset the execution context for shell export (effect → test/parent effect).
-    pub fn reset_for_export(&mut self, new_scope: context::Scope) {
-        self.ctx.reset_for_export(new_scope);
+    pub fn reset_for_export(
+        &mut self,
+        new_scope: context::Scope,
+        parent_alias: Option<String>,
+        parent_effect_name: Option<String>,
+        shell_local_name: String,
+    ) {
+        self.ctx.reset_for_export(
+            new_scope,
+            parent_alias,
+            parent_effect_name,
+            shell_local_name,
+        );
     }
 
     pub fn shell_prompt(&self) -> &str {
@@ -895,6 +908,15 @@ impl Vm {
     }
 
     pub async fn shutdown(&mut self) {
+        // Idempotent: the same VM Arc is reachable from multiple cleanup
+        // paths (test-level shells map, owning effect's handle, and
+        // recursively from the dependency effect's handle), and each path
+        // dedups by Arc pointer only within itself. Without this guard the
+        // same shell would emit shell-terminate up to N times.
+        if self.terminated {
+            return;
+        }
+        self.terminated = true;
         let shell = self.ctx.current_name();
         self.log.emit_shell_terminate(self.current_span(), &shell);
         self.pty.shutdown().await;

@@ -88,11 +88,22 @@ impl Scope {
 // ─── ShellState ─────────────────────────────────────────────
 
 pub struct ShellState {
+    /// Local name of the shell within its current owning scope. At spawn
+    /// time this is the shell's declaration name; each `reset_for_export`
+    /// rewrites it to the key under which the source effect exposed the
+    /// shell to the parent.
     pub name: String,
-    pub alias: Option<String>,
-    /// Accumulated name path from effect export chain.
-    /// Each export pushes `"EffectName.shell_name"` onto this prefix.
-    pub name_prefix: Vec<String>,
+
+    /// User-supplied alias from the parent caller's `start <Effect> as
+    /// <Alias>`. `None` when the caller did not alias, or when the shell
+    /// is in its own (origin) scope and no parent has imported it yet.
+    pub effect_alias: Option<String>,
+
+    /// Original effect-type name of the parent effect that owns this
+    /// shell from the current scope's POV. `None` symmetrically with
+    /// `effect_alias` (no parent → no name).
+    pub effect_name: Option<String>,
+
     pub vars: VarScope,
     pub captures: Captures,
     pub timeout: Option<IrTimeout>,
@@ -100,11 +111,11 @@ pub struct ShellState {
 }
 
 impl ShellState {
-    pub fn new(name: String, alias: Option<String>) -> Self {
+    pub fn new(name: String) -> Self {
         Self {
             name,
-            alias,
-            name_prefix: Vec::new(),
+            effect_alias: None,
+            effect_name: None,
             vars: VarScope::new(),
             captures: Captures::new(),
             timeout: None,
@@ -299,24 +310,37 @@ impl ExecutionContext {
         }
     }
 
-    /// Current display name for logging.
-    /// Builds the full qualified name from the effect export chain:
-    /// e.g. `SetupDb.db.Db.db.mydb` for a 2-level effect chain with alias `mydb`.
+    /// Current display name for logging. Reflects the *current scope's*
+    /// view of the shell only — no chain accumulation across exports.
+    ///
+    /// Format:
+    /// - `<name>` when no parent effect imported this shell (origin scope or
+    ///   directly at test scope without aliasing through an effect).
+    /// - `<Effect>.<name>` when the parent imported the source effect without
+    ///   aliasing it.
+    /// - `<Alias>(<Effect>).<name>` when the parent used `start Effect as Alias`.
     pub fn current_name(&self) -> String {
-        let tail = self.shell.alias.as_deref().unwrap_or(&self.shell.name);
-        if self.shell.name_prefix.is_empty() {
-            tail.to_string()
-        } else {
-            format!("{}.{}", self.shell.name_prefix.join("."), tail)
+        match (&self.shell.effect_name, &self.shell.effect_alias) {
+            (None, _) => self.shell.name.clone(),
+            (Some(eff), None) => format!("{eff}.{}", self.shell.name),
+            (Some(eff), Some(ali)) => format!("{ali}({eff}).{}", self.shell.name),
         }
     }
 
-    /// Reset for shell export (effect → test/parent effect).
-    /// Accumulates the current scope+shell name into the name prefix chain.
-    pub fn reset_for_export(&mut self, new_scope: Scope) {
-        // Push "EffectName.shell_name" onto the prefix before switching scope
-        let segment = format!("{}.{}", self.scope.name(), self.shell.name);
-        self.shell.name_prefix.push(segment);
+    /// Reset for shell export (effect → test/parent effect). Replaces the
+    /// shell's view with how the new (parent) scope sees it: the parent's
+    /// alias for the source effect, the source effect's original name, and
+    /// the local key under which it was exposed.
+    pub fn reset_for_export(
+        &mut self,
+        new_scope: Scope,
+        parent_alias: Option<String>,
+        parent_effect_name: Option<String>,
+        shell_local_name: String,
+    ) {
+        self.shell.effect_alias = parent_alias;
+        self.shell.effect_name = parent_effect_name;
+        self.shell.name = shell_local_name;
         self.scope = new_scope;
         self.shell.vars = VarScope::new();
         self.shell.captures = Captures::new();
@@ -402,7 +426,7 @@ mod tests {
     }
 
     fn test_shell(name: &str) -> ShellState {
-        ShellState::new(name.into(), None)
+        ShellState::new(name.into())
     }
 
     fn test_ctx() -> ExecutionContext {
@@ -594,56 +618,54 @@ mod tests {
     // ─── Name resolution ─────────────────────────────────────
 
     #[test]
-    fn current_name_shell() {
+    fn current_name_bare() {
         let ctx = test_ctx();
         assert_eq!(ctx.current_name(), "sh");
     }
 
     #[test]
-    fn current_name_alias() {
+    fn current_name_effect_no_alias() {
         let mut ctx = test_ctx();
-        ctx.shell.alias = Some("mydb".into());
-        assert_eq!(ctx.current_name(), "mydb");
+        ctx.shell.effect_name = Some("Setup".into());
+        ctx.shell.name = "psql".into();
+        assert_eq!(ctx.current_name(), "Setup.psql");
     }
 
     #[test]
-    fn current_name_with_prefix() {
+    fn current_name_effect_with_alias() {
         let mut ctx = test_ctx();
-        ctx.shell.name_prefix = vec!["SetupDb.db".into(), "Db.db".into()];
-        ctx.shell.alias = Some("mydb".into());
-        assert_eq!(ctx.current_name(), "SetupDb.db.Db.db.mydb");
+        ctx.shell.effect_name = Some("Setup".into());
+        ctx.shell.effect_alias = Some("Db".into());
+        ctx.shell.name = "psql".into();
+        assert_eq!(ctx.current_name(), "Db(Setup).psql");
     }
 
     #[test]
-    fn current_name_with_prefix_no_alias() {
+    fn current_name_replaced_by_export_chain() {
+        // Each export step replaces the view; nothing accumulates.
         let mut ctx = test_ctx();
-        ctx.shell.name_prefix = vec!["Db.db".into()];
-        assert_eq!(ctx.current_name(), "Db.db.sh");
-    }
-
-    #[test]
-    fn current_name_accumulated_via_export() {
-        let mut ctx = test_ctx();
-        ctx.scope = Scope::Effect {
-            name: "Db".into(),
-            vars: Arc::new(Mutex::new(VarScope::new())),
-            _timeout: None,
-            env: Arc::new(LayeredEnv::root(Env::new())),
-        };
-        ctx.shell.name = "db".into();
-        // First export: Db.db → SetupDb
-        ctx.reset_for_export(Scope::Effect {
-            name: "SetupDb".into(),
-            vars: Arc::new(Mutex::new(VarScope::new())),
-            _timeout: None,
-            env: Arc::new(LayeredEnv::root(Env::new())),
-        });
-        assert_eq!(ctx.shell.name_prefix, vec!["Db.db"]);
-        // Second export: SetupDb.db → test
-        ctx.reset_for_export(test_scope("my test"));
-        assert_eq!(ctx.shell.name_prefix, vec!["Db.db", "SetupDb.db"]);
-        ctx.shell.alias = Some("mydb".into());
-        assert_eq!(ctx.current_name(), "Db.db.SetupDb.db.mydb");
+        ctx.shell.name = "inner".into();
+        // First export: Inner → Outer (Outer's `start Inner as Dep`).
+        ctx.reset_for_export(
+            Scope::Effect {
+                name: "Outer".into(),
+                vars: Arc::new(Mutex::new(VarScope::new())),
+                _timeout: None,
+                env: Arc::new(LayeredEnv::root(Env::new())),
+            },
+            Some("Dep".into()),
+            Some("Inner".into()),
+            "inner".into(),
+        );
+        assert_eq!(ctx.current_name(), "Dep(Inner).inner");
+        // Second export: Outer → test (test's `start Outer as O`, exposed-as `wrapped`).
+        ctx.reset_for_export(
+            test_scope("my test"),
+            Some("O".into()),
+            Some("Outer".into()),
+            "wrapped".into(),
+        );
+        assert_eq!(ctx.current_name(), "O(Outer).wrapped");
     }
 
     // ─── Captures ────────────────────────────────────────────
@@ -688,7 +710,7 @@ mod tests {
         ctx.shell.timeout = Some(IrTimeout::tolerance(Duration::from_secs(99)));
 
         let new_scope = test_scope("new test");
-        ctx.reset_for_export(new_scope);
+        ctx.reset_for_export(new_scope, None, None, "sh".into());
 
         assert_eq!(ctx.lookup("x").await, None);
         assert_eq!(ctx.capture(1), None);
@@ -713,7 +735,7 @@ mod tests {
             _timeout: None,
             env: Arc::new(LayeredEnv::root(Env::from_map(overlay_map))),
         };
-        let shell = ShellState::new("db".into(), None);
+        let shell = ShellState::new("db".into());
         let ctx = ExecutionContext::new(
             scope,
             shell,
@@ -744,7 +766,7 @@ mod tests {
             _timeout: None,
             env: child_env,
         };
-        let shell = ShellState::new("s".into(), None);
+        let shell = ShellState::new("s".into());
         let ctx = ExecutionContext::new(
             scope,
             shell,
@@ -775,7 +797,7 @@ mod tests {
             _timeout: None,
             env: child_env,
         };
-        let shell = ShellState::new("s".into(), None);
+        let shell = ShellState::new("s".into());
         let ctx = ExecutionContext::new(
             scope,
             shell,
