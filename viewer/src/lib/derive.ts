@@ -130,6 +130,55 @@ export interface BufferRegions {
 // invariant fails (it shouldn't if grew/matched events are consistent),
 // we still fall back to `before + matched + after` for the new tail
 // segment so the user sees coherent regions.
+// For a `shell-block` or `fn-call` span, returns the shell name to render
+// in the buffer pane: the span's own `shell` for shell-block, or the
+// nearest shell-block ancestor's shell for fn-call (functions execute in
+// the caller's shell context, so the closest enclosing shell-block is
+// canonical). Returns null for other span kinds or when no ancestor
+// shell-block exists.
+export function spanBufferShell(data: StructuredLog, span: Span): string | null {
+  if (span.kind === 'shell-block') return span.shell;
+  if (span.kind === 'fn-call') {
+    let cursor: Span | null = span;
+    while (cursor) {
+      if (cursor.kind === 'shell-block') return cursor.shell;
+      if (cursor.parent === null) return null;
+      cursor = spanById(data, n(cursor.parent));
+    }
+    return null;
+  }
+  return null;
+}
+
+// Buffer-replay cutoff seq for span selection. For shell-block: the seq
+// of the next `shell-switch` event after the span closes (visualizing
+// "where the shell hands off"). For fn-call: the next event of any kind
+// after the call returns. Falls back to the last event's seq when no
+// matching event exists (the span was the last thing in the test).
+// Returns null for unclosed spans or kinds without buffer relevance.
+export function spanBufferCutoffSeq(data: StructuredLog, span: Span): number | null {
+  if (span.end_ts === null) return null;
+  const endTs = span.end_ts;
+
+  if (span.kind === 'shell-block') {
+    for (const ev of data.events) {
+      if (ev.ts >= endTs && ev.kind === 'shell-switch') return n(ev.seq);
+    }
+    const last = data.events[data.events.length - 1];
+    return last ? n(last.seq) : null;
+  }
+
+  if (span.kind === 'fn-call') {
+    for (const ev of data.events) {
+      if (ev.ts >= endTs) return n(ev.seq);
+    }
+    const last = data.events[data.events.length - 1];
+    return last ? n(last.seq) : null;
+  }
+
+  return null;
+}
+
 export function replayBufferRegionsAtSeq(
   data: StructuredLog,
   seq: number,

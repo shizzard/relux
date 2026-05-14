@@ -19,14 +19,23 @@
 </script>
 
 <li class="span-row" class:selected data-span-id={id}>
-  <button class="row" type="button" onclick={() => state.toggleSpanFull(id)}>
+  <div class="row">
     {#each rails as i (i)}<span class="rail" aria-hidden="true"></span>{/each}
-    <span class="chevron" aria-hidden="true">
-      {expanded ? '\u25BE' : '\u25B8'}
-    </span>
-    <span class="kind">{span.kind}</span>
-    <span class="title">{title}</span>
-  </button>
+    <button
+      class="chevron-btn"
+      type="button"
+      aria-label={expanded ? 'collapse' : 'expand'}
+      onclick={() => state.toggleSpan(id)}
+    >
+      <span class="chevron" aria-hidden="true">
+        {expanded ? '\u25BE' : '\u25B8'}
+      </span>
+    </button>
+    <button class="select-btn" type="button" onclick={() => state.selectSpan(id)}>
+      <span class="kind">{span.kind}</span>
+      <span class="title">{title}</span>
+    </button>
+  </div>
   {#if selected}
     <div class="card-slot" style:padding-left="{(depth + 1) * 24 + 20}px">
       <StyleBCard {state} mode={{ kind: 'span', span }} />
@@ -41,21 +50,10 @@
     padding: 0;
   }
   .row {
-    appearance: none;
-    background: transparent;
-    border: none;
-    color: inherit;
-    font: inherit;
-    text-align: left;
     display: flex;
-    align-items: center;
+    align-items: stretch;
     width: 100%;
     min-height: 26px;
-    cursor: pointer;
-    padding: 0;
-  }
-  .row:hover {
-    background: color-mix(in srgb, var(--accent) 8%, transparent);
   }
   .selected > .row {
     background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -69,15 +67,38 @@
     border-right: 1px solid var(--border);
     align-self: stretch;
   }
-  .chevron {
+  .chevron-btn,
+  .select-btn {
+    appearance: none;
+    background: transparent;
+    border: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+  }
+  .chevron-btn {
     width: 20px;
+    flex: 0 0 auto;
+    justify-content: center;
+  }
+  .chevron-btn:hover .chevron {
+    color: var(--accent);
+  }
+  .select-btn {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .select-btn:hover {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+  .chevron {
     color: var(--ink-dim);
     font-family: var(--font-mono);
-    flex: 0 0 auto;
     text-align: center;
-  }
-  .row:hover .chevron {
-    color: var(--accent);
   }
   .kind {
     font-family: var(--font-mono);

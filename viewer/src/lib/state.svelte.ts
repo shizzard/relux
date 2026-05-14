@@ -1,4 +1,5 @@
 import type { Event } from '../types/Event';
+import type { Span } from '../types/Span';
 import type { StructuredLog } from '../types/StructuredLog';
 import {
   ancestors,
@@ -9,6 +10,9 @@ import {
   replayCapturesAtSeq,
   replayShellCtxAtSeq,
   replayVarsAtSeq,
+  spanBufferCutoffSeq,
+  spanBufferShell,
+  spanById,
   toNumber as n,
   type BufferRegions,
   type LiveShell,
@@ -41,9 +45,15 @@ export class ViewerState {
     this.selectedEventSeq === null ? null : eventBySeq(this.data, this.selectedEventSeq),
   );
 
+  selectedSpan = $derived<Span | null>(
+    this.selectedSpanId === null ? null : spanById(this.data, this.selectedSpanId),
+  );
+
   callStack = $derived(this.selected ? buildCallStack(this.data, this.selected) : []);
 
   bufferRegionsAt = $derived<Map<string, BufferRegions>>(this.computeBufferRegions());
+
+  bufferShell = $derived<string | null>(this.computeBufferShell());
 
   varsAt = $derived<Map<string, string>>(
     this.selected ? replayVarsAtSeq(this.data, n(this.selected.seq)) : new Map(),
@@ -109,24 +119,6 @@ export class ViewerState {
     this.expandedSpans = next;
   }
 
-  // Span rows behave as a single unit: selection (which shows the
-  // details card) and expansion (which reveals child rows) toggle in
-  // lockstep, so there is no state where one is visible without the
-  // other.
-  toggleSpanFull(id: SpanId): void {
-    const wasSelected = this.selectedSpanId === id;
-    const next = new Set(this.expandedSpans);
-    if (wasSelected) {
-      this.selectedSpanId = null;
-      next.delete(id);
-    } else {
-      this.selectedSpanId = id;
-      this.selectedEventSeq = null;
-      next.add(id);
-    }
-    this.expandedSpans = next;
-  }
-
   toggleExpandedValueRow(key: string): void {
     const next = new Set(this.expandedValueRows);
     if (next.has(key)) next.delete(key);
@@ -156,39 +148,51 @@ export class ViewerState {
   }
 
   private computeBufferRegions(): Map<string, BufferRegions> {
-    if (!this.selected) return new Map();
-    const events = this.data.events;
-    const selectedSeq = n(this.selected.seq);
-
-    // The selected lead may open a fold (match-start, sleep-start, shell-
-    // spawn). Treat E1 as the close half of that fold so the cutoff
-    // reflects "after the match completed / sleep returned / shell came
-    // up", not the moment the operation began. From E1, peek one more
-    // event in the same shell — that becomes the actual replay cutoff so
-    // any bytes that arrived between the close and the next operation
-    // also show up. If the next event switches shells (or there is no
-    // next event), the cutoff stays at E1.
-    let idx = -1;
-    for (let i = 0; i < events.length; i++) {
-      if (n(events[i]!.seq) === selectedSeq) {
-        idx = i;
-        break;
-      }
-    }
-    if (idx < 0) return new Map();
-
-    idx = foldCloseIndex(events, idx);
-    const close = events[idx]!;
-    let targetSeq = n(close.seq);
-    const next = events[idx + 1];
-    if (next && next.shell === close.shell) {
-      targetSeq = n(next.seq);
-    }
+    const targetSeq = this.computeBufferTargetSeq();
+    if (targetSeq === null) return new Map();
 
     const out = new Map<string, BufferRegions>();
     for (const name of Object.keys(this.data.shells)) {
       out.set(name, replayBufferRegionsAtSeq(this.data, targetSeq, name));
     }
     return out;
+  }
+
+  private computeBufferTargetSeq(): number | null {
+    if (this.selected) {
+      // The selected lead may open a fold (match-start, sleep-start,
+      // shell-spawn). Walk to the close of that fold so the cutoff
+      // reflects "after the match completed / sleep returned / shell
+      // came up", not the moment the operation began. From there, peek
+      // one more event in the same shell so bytes that arrived between
+      // the close and the next operation are also visible.
+      const events = this.data.events;
+      const selectedSeq = n(this.selected.seq);
+      let idx = -1;
+      for (let i = 0; i < events.length; i++) {
+        if (n(events[i]!.seq) === selectedSeq) {
+          idx = i;
+          break;
+        }
+      }
+      if (idx < 0) return null;
+      idx = foldCloseIndex(events, idx);
+      const close = events[idx]!;
+      const next = events[idx + 1];
+      if (next && next.shell === close.shell) return n(next.seq);
+      return n(close.seq);
+    }
+
+    if (this.selectedSpan) {
+      return spanBufferCutoffSeq(this.data, this.selectedSpan);
+    }
+
+    return null;
+  }
+
+  private computeBufferShell(): string | null {
+    if (this.selected) return this.selected.shell;
+    if (this.selectedSpan) return spanBufferShell(this.data, this.selectedSpan);
+    return null;
   }
 }

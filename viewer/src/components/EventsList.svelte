@@ -84,7 +84,7 @@
     if (state.selectedEventSeq !== null) {
       state.selectedEventSeq = null;
     } else if (state.selectedSpanId !== null) {
-      state.toggleSpanFull(state.selectedSpanId);
+      state.selectSpan(state.selectedSpanId);
     }
   }
 

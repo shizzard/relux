@@ -6,7 +6,7 @@
 
   let { state }: { state: ViewerState } = $props();
 
-  const activeShell = $derived(state.selected?.shell ?? null);
+  const activeShell = $derived(state.bufferShell);
   const regions = $derived(
     activeShell !== null ? (state.bufferRegionsAt.get(activeShell) ?? null) : null,
   );
@@ -18,18 +18,27 @@
   const hint = $derived(buildHint());
 
   function buildHint(): string {
-    if (!state.selected) return 'no event selected';
-    const parts: string[] = [`@ t = ${formatDuration(state.selected.ts)}`];
-    if (regions?.matched) parts.push('matched \u2713');
-    else if (regions === null || activeShell === null) parts.push('no shell');
-    else parts.push('idle');
-    if (ctx?.timeout !== null && ctx?.timeout !== undefined) {
-      parts.push(`timeout ${formatTimeout(ctx.timeout)}`);
+    if (state.selected) {
+      const parts: string[] = [`@ t = ${formatDuration(state.selected.ts)}`];
+      if (regions?.matched) parts.push('matched \u2713');
+      else if (regions === null || activeShell === null) parts.push('no shell');
+      else parts.push('idle');
+      if (ctx?.timeout !== null && ctx?.timeout !== undefined) {
+        parts.push(`timeout ${formatTimeout(ctx.timeout)}`);
+      }
+      if (ctx && ctx.failPatterns.length > 0) {
+        parts.push(`${ctx.failPatterns.length} fail-patterns armed`);
+      }
+      return parts.join(' \u00b7 ');
     }
-    if (ctx && ctx.failPatterns.length > 0) {
-      parts.push(`${ctx.failPatterns.length} fail-patterns armed`);
+    if (state.selectedSpan) {
+      const span = state.selectedSpan;
+      if (span.kind === 'shell-block' || span.kind === 'fn-call') {
+        return `@ end of ${span.kind}`;
+      }
+      return 'no shell context';
     }
-    return parts.join(' \u00b7 ');
+    return 'no event selected';
   }
 </script>
 
