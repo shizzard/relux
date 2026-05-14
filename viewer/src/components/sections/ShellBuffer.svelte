@@ -33,7 +33,11 @@
     }
     if (state.selectedSpan) {
       const span = state.selectedSpan;
-      if (span.kind === 'shell-block' || span.kind === 'fn-call') {
+      if (
+        span.kind === 'shell-block' ||
+        span.kind === 'cleanup-block' ||
+        span.kind === 'fn-call'
+      ) {
         return `@ end of ${span.kind}`;
       }
       return 'no shell context';

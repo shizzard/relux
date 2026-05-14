@@ -130,37 +130,44 @@ export interface BufferRegions {
 // invariant fails (it shouldn't if grew/matched events are consistent),
 // we still fall back to `before + matched + after` for the new tail
 // segment so the user sees coherent regions.
-// For a `shell-block` or `fn-call` span, returns the shell name to render
-// in the buffer pane: the span's own `shell` for shell-block, or the
-// nearest shell-block ancestor's shell for fn-call (functions execute in
-// the caller's shell context, so the closest enclosing shell-block is
-// canonical). Returns null for other span kinds or when no ancestor
-// shell-block exists.
+// Returns the shell name to render in the buffer pane for a span.
+//   shell-block   -> span.shell (carried on the span)
+//   cleanup-block -> the shell of the first event inside the span; the
+//                    runtime always spins a fresh implicit shell named
+//                    `__cleanup`, but we discover it via events rather
+//                    than hardcoding, since the span itself has no
+//                    `shell` field
+//   fn-call       -> first event inside the span subtree (the function
+//                    executes in its caller's shell, whichever that is)
+// Returns null for kinds without a shell context (test, effect-setup,
+// effect-cleanup) or when no event inside the subtree carries a shell.
 export function spanBufferShell(data: StructuredLog, span: Span): string | null {
   if (span.kind === 'shell-block') return span.shell;
-  if (span.kind === 'fn-call') {
-    let cursor: Span | null = span;
-    while (cursor) {
-      if (cursor.kind === 'shell-block') return cursor.shell;
-      if (cursor.parent === null) return null;
-      cursor = spanById(data, n(cursor.parent));
-    }
-    return null;
+  if (span.kind !== 'cleanup-block' && span.kind !== 'fn-call') return null;
+  const subtree = new Set<SpanId>([n(span.id), ...descendants(data, n(span.id))]);
+  for (const ev of data.events) {
+    if (subtree.has(n(ev.span)) && ev.shell !== null) return ev.shell;
   }
   return null;
 }
 
-// Buffer-replay cutoff seq for span selection. For shell-block: the seq
-// of the next `shell-switch` event after the span closes (visualizing
-// "where the shell hands off"). For fn-call: the next event of any kind
-// after the call returns. Falls back to the last event's seq when no
-// matching event exists (the span was the last thing in the test).
-// Returns null for unclosed spans or kinds without buffer relevance.
+// Buffer-replay cutoff seq for span selection.
+//   shell-block, cleanup-block -> seq of the next `shell-switch` event
+//                                 after the span closes (where the shell
+//                                 hands off; cleanup-block has its own
+//                                 implicit shell that terminates rather
+//                                 than switching, so the fallback below
+//                                 carries it).
+//   fn-call                    -> seq of the next event of any kind
+//                                 after the call returns.
+// Falls back to the last event's seq when no matching event exists (the
+// span was the last thing in the test). Returns null for unclosed spans
+// or kinds without buffer relevance.
 export function spanBufferCutoffSeq(data: StructuredLog, span: Span): number | null {
   if (span.end_ts === null) return null;
   const endTs = span.end_ts;
 
-  if (span.kind === 'shell-block') {
+  if (span.kind === 'shell-block' || span.kind === 'cleanup-block') {
     for (const ev of data.events) {
       if (ev.ts >= endTs && ev.kind === 'shell-switch') return n(ev.seq);
     }
