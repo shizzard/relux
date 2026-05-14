@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { ViewerState } from '../lib/state.svelte';
-  import { formatBytes } from '../lib/format';
+  import { copy } from '../lib/clipboard';
   import Modal from './Modal.svelte';
+  import ValueCell from './ValueCell.svelte';
 
   let { state }: { state: ViewerState } = $props();
 
@@ -17,6 +18,8 @@
     'large-blobs': 'large blobs',
     other: 'other',
   };
+  // Threshold used purely for grouping in the modal; rendering itself is
+  // uniform across all sizes thanks to ValueCell's CSS-driven truncation.
   const LARGE_BLOB = 1024;
 
   function groupOf(key: string, byteLen: number): GroupKey {
@@ -95,34 +98,6 @@
     }));
   }
 
-  async function copy(value: string): Promise<void> {
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(value);
-        return;
-      }
-    } catch {
-      // fall through
-    }
-    const el = document.createElement('textarea');
-    el.value = value;
-    el.style.position = 'fixed';
-    el.style.opacity = '0';
-    document.body.appendChild(el);
-    el.select();
-    try {
-      document.execCommand('copy');
-    } catch {
-      // best-effort
-    }
-    document.body.removeChild(el);
-  }
-
-  function highlight(text: string, query: string): string {
-    if (query.length === 0) return text;
-    return text; // mark element handled inline below via split
-  }
-
   function handleKeydown(event: KeyboardEvent): void {
     if (event.key === 'Enter') {
       const sel = state.envSelectedKey;
@@ -150,10 +125,6 @@
     if (sel === null) return '\u2014 select a row \u2014';
     const row = rows.find((r) => r.key === sel);
     return row ? `${row.key}=${row.value}` : '\u2014';
-  }
-
-  function toggleBlob(key: string): void {
-    state.toggleEnvExpandedBlob(key);
   }
 </script>
 
@@ -193,8 +164,6 @@
         {#each grouped as group (group.group)}
           <div class="group-header">&mdash; {GROUP_LABEL[group.group]} ({group.rows.length})</div>
           {#each group.rows as row (row.key)}
-            {@const isLarge = row.group === 'large-blobs'}
-            {@const open = state.envExpandedBlobs.has(row.key)}
             <div
               class="env-row"
               class:selected={state.envSelectedKey === row.key}
@@ -211,34 +180,8 @@
             >
               <span class="k">{row.key}</span>
               <span class="v">
-                {#if isLarge && !open}
-                  <span class="size-badge">({formatBytes(row.size)} \u00b7 click to expand)</span>
-                {:else}
-                  <code>{row.value}</code>
-                {/if}
+                <ValueCell value={row.value} {state} expandKey={`env:${row.key}`} />
               </span>
-              {#if isLarge}
-                <button
-                  class="blob-toggle"
-                  type="button"
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    toggleBlob(row.key);
-                  }}
-                >
-                  {open ? 'collapse' : 'expand'}
-                </button>
-              {:else}
-                <button
-                  class="copy"
-                  type="button"
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    copy(row.value);
-                  }}
-                  title="copy value"
-                >&#x29C9;</button>
-              {/if}
             </div>
           {/each}
         {/each}
@@ -340,7 +283,7 @@
     width: 100%;
     text-align: left;
     display: grid;
-    grid-template-columns: 260px minmax(0, 1fr) 28px;
+    grid-template-columns: 260px minmax(0, 1fr);
     gap: var(--gap-sm);
     align-items: baseline;
     padding: 3px var(--gap-sm);
@@ -366,38 +309,8 @@
   }
   .env-row .v {
     color: var(--ink-dim);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     min-width: 0;
-  }
-  .env-row .v code {
-    background: transparent;
-    color: inherit;
-    padding: 0;
-  }
-  .size-badge {
-    color: var(--ink-faint);
-    font-style: italic;
-  }
-  .copy,
-  .blob-toggle {
-    appearance: none;
-    background: transparent;
-    border: none;
-    color: var(--ink-faint);
-    font: inherit;
-    font-size: 0.78rem;
-    cursor: pointer;
-    padding: 0 4px;
-  }
-  .blob-toggle {
-    color: var(--accent);
-    font-size: 0.7rem;
-  }
-  .copy:hover,
-  .blob-toggle:hover {
-    color: var(--accent);
+    display: block;
   }
   .sticky {
     display: flex;

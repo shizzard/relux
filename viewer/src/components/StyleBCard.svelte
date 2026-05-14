@@ -5,10 +5,10 @@
   import type { ViewerState } from '../lib/state.svelte';
   import { effectSetupProps, shellBlockProps, toNumber as n } from '../lib/derive';
   import {
-    escapeBytes,
     formatDuration,
     kindFamily,
   } from '../lib/format';
+  import ValueCell from './ValueCell.svelte';
 
   type Mode = { kind: 'event'; event: Event } | { kind: 'span'; span: Span };
 
@@ -238,6 +238,9 @@
     }
     if (span.kind === 'fn-call') {
       const out: Row[] = [{ type: 'kv', key: 'name', value: span.name, mono: true }];
+      if (span.result !== null) {
+        out.push({ type: 'kv', key: 'result', value: span.result, mono: true, accent: true });
+      }
       if (span.args.length > 0) {
         out.push({ type: 'subhead', text: '\u2014 args' });
         for (const [k, v] of span.args) {
@@ -269,30 +272,6 @@
   function expandedKey(row: Row & { type: 'kv' }, i: number): string {
     return rowKey(row, i, mode);
   }
-
-  async function copy(value: string): Promise<void> {
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(value);
-        return;
-      }
-    } catch {
-      // fall through to legacy path
-    }
-    const el = document.createElement('textarea');
-    el.value = value;
-    el.style.position = 'fixed';
-    el.style.opacity = '0';
-    document.body.appendChild(el);
-    el.focus();
-    el.select();
-    try {
-      document.execCommand('copy');
-    } catch {
-      // best-effort
-    }
-    document.body.removeChild(el);
-  }
 </script>
 
 <div class="card {family}">
@@ -306,39 +285,15 @@
         <div class="subhead">{row.text}</div>
       {:else}
         {@const key = expandedKey(row, i)}
-        {@const expanded = state.expandedValueRows.has(key)}
-        <div
-          class="kv-row"
-          class:expanded
-          role="button"
-          tabindex="0"
-          onclick={() => state.toggleExpandedValueRow(key)}
-          onkeydown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              state.toggleExpandedValueRow(key);
-            }
-          }}
-        >
-          <div class="k" class:accent={expanded}>{row.key}</div>
-          <div class="v" class:mono={row.mono} class:accent={row.accent}>
+        <div class="kv-row">
+          <div class="k">{row.key}</div>
+          <div class="v" class:accent={row.accent}>
             {#if row.mono}
-              <code class:expanded-block={expanded}>{escapeBytes(row.value)}</code>
+              <ValueCell value={row.value} {state} expandKey={key} accent={row.accent} />
             {:else}
-              <span class:expanded-block={expanded}>{row.value}</span>
+              <span class="plain">{row.value}</span>
             {/if}
           </div>
-          <button
-            class="copy"
-            type="button"
-            title="copy value"
-            onclick={(e) => {
-              e.stopPropagation();
-              copy(row.value);
-            }}
-          >
-            &#x29C9;
-          </button>
         </div>
       {/if}
     {/each}
@@ -400,70 +355,26 @@
   }
   .kv-row {
     display: contents;
-    cursor: pointer;
   }
   .kv-row .k {
     color: var(--ink-faint);
     padding: 1px 0;
   }
-  .kv-row .k.accent {
-    color: var(--accent);
-  }
   .kv-row .v {
     color: var(--ink);
+    min-width: 0;
+    padding: 1px 0;
+  }
+  .kv-row .v.accent .plain {
+    color: var(--accent);
+  }
+  .kv-row .v .plain {
+    display: inline-block;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    padding: 1px 0;
-    word-break: break-all;
-  }
-  .kv-row .v.accent code,
-  .kv-row .v.accent span {
-    color: var(--accent);
-  }
-  .kv-row .v code {
-    background: var(--paper);
-    color: inherit;
-    padding: 0 4px;
-    border-radius: 3px;
-  }
-  .kv-row .v .expanded-block {
-    display: block;
-    white-space: pre-wrap;
-    word-break: break-all;
-    background: var(--paper);
-    padding: var(--gap-xs) var(--gap-sm);
-    border-radius: 3px;
-    margin-top: 3px;
-  }
-  .kv-row.expanded .v {
-    overflow: visible;
-    white-space: normal;
-  }
-  .kv-row .copy {
-    appearance: none;
-    background: transparent;
-    border: none;
-    color: var(--ink-faint);
-    font-family: var(--font-mono);
-    font-size: 0.78rem;
-    cursor: pointer;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 80ms;
-    grid-column: 2;
-    justify-self: end;
-    margin-top: -18px;
-    padding: 0 4px;
-  }
-  .kv-row:hover .copy,
-  .kv-row:focus-within .copy {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  .kv-row .copy:hover {
-    color: var(--accent);
+    max-width: 100%;
   }
   .muted {
     grid-column: 1 / -1;

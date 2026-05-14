@@ -594,6 +594,7 @@ impl Vm {
                         SpanKind::FnCall {
                             name: fn_name.clone(),
                             args: named_args.clone(),
+                            result: None,
                         },
                         Some(parent_span),
                         Some(span),
@@ -614,6 +615,7 @@ impl Vm {
                     }
                     self.ctx.pop_call();
                     self.ctx.pop_span();
+                    self.log.set_fn_call_result(fn_guard.id(), &last);
                     return Ok(last);
                 }
                 IrFn::Builtin { name, arity } => {
@@ -629,6 +631,7 @@ impl Vm {
                             SpanKind::FnCall {
                                 name: fn_name.clone(),
                                 args: positional_args,
+                                result: None,
                             },
                             Some(parent_span),
                             Some(span),
@@ -636,6 +639,9 @@ impl Vm {
                         self.ctx.push_span(fn_guard.id());
                         let result = bif.call(self, evaluated_args, span).await;
                         self.ctx.pop_span();
+                        if let Ok(ref v) = result {
+                            self.log.set_fn_call_result(fn_guard.id(), v);
+                        }
                         return result;
                     }
                 }
@@ -673,6 +679,7 @@ impl Vm {
                 SpanKind::FnCall {
                     name: fn_name.clone(),
                     args: named_args,
+                    result: None,
                 },
                 Some(parent_span),
                 Some(span),
@@ -685,6 +692,7 @@ impl Vm {
                 &self.tables.pure_fns,
             );
             self.ctx.pop_span();
+            self.log.set_fn_call_result(fn_guard.id(), &return_value);
             return Ok(return_value);
         }
 

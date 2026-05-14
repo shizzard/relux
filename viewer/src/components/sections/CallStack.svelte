@@ -2,6 +2,7 @@
   import type { ViewerState } from '../../lib/state.svelte';
   import Panel from '../Panel.svelte';
   import { truncate } from '../../lib/format';
+  import ValueCell from '../ValueCell.svelte';
 
   let { state }: { state: ViewerState } = $props();
 
@@ -37,7 +38,9 @@
                   {#each frame.args as [k, v] (k)}
                     <tr>
                       <th>{k}</th>
-                      <td><code>{truncate(v, 120)}</code></td>
+                      <td>
+                        <ValueCell value={v} {state} expandKey={`cs:${i}:${k}`} />
+                      </td>
                     </tr>
                   {/each}
                 </tbody>
@@ -117,6 +120,7 @@
     flex: 0 0 auto;
   }
   .name {
+    font-family: var(--font-mono);
     font-weight: 600;
     color: var(--ink);
     flex: 0 0 auto;
@@ -151,6 +155,9 @@
   }
   .kv td {
     padding: 1px 0;
+    min-width: 0;
+    max-width: 0;
+    width: 100%;
   }
   .also-live {
     margin-top: var(--gap-sm);
@@ -173,6 +180,7 @@
     color: var(--danger);
   }
   .also-live .cmd {
+    font-family: var(--font-mono);
     color: var(--ink-dim);
   }
   .also-live .state {

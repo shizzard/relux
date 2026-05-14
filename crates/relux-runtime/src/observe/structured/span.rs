@@ -33,6 +33,7 @@ pub enum SpanKind {
     FnCall {
         name: String,
         args: Vec<(String, String)>,
+        result: Option<String>,
     },
 }
 
@@ -62,7 +63,7 @@ impl SpanKind {
             } => (Some(effect.clone()), overlay.clone()),
             SpanKind::EffectCleanup { effect } => (Some(effect.clone()), Vec::new()),
             SpanKind::ShellBlock { shell } => (Some(shell.clone()), Vec::new()),
-            SpanKind::FnCall { name, args } => (Some(name.clone()), args.clone()),
+            SpanKind::FnCall { name, args, .. } => (Some(name.clone()), args.clone()),
         }
     }
 

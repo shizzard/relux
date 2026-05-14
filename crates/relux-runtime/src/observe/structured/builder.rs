@@ -188,6 +188,18 @@ impl StructuredLogBuilder {
         }
     }
 
+    /// Attach a return value to an in-flight `FnCall` span. Called from
+    /// `exec_call` on the success path before the span closes; failed calls
+    /// leave `result` as `None` so the row title falls back to `name/arity`.
+    pub fn set_fn_call_result(&self, id: SpanId, result: &str) {
+        let mut inner = self.inner.lock().unwrap();
+        if let Some(span) = inner.spans.get_mut(&id)
+            && let SpanKind::FnCall { result: slot, .. } = &mut span.kind
+        {
+            *slot = Some(result.to_string());
+        }
+    }
+
     /// Walk parent pointers from `leaf` back to a root span and return the
     /// frames in root-to-leaf order. Used at failure-construction time to
     /// snapshot the active call chain.
@@ -945,6 +957,7 @@ mod tests {
             SpanKind::FnCall {
                 name: "do_thing".into(),
                 args: vec![("x".into(), "1".into())],
+                result: None,
             },
             Some(block_id),
             None,

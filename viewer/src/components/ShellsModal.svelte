@@ -4,6 +4,7 @@
   import { toNumber as n } from '../lib/derive';
   import Modal from './Modal.svelte';
   import BufferRegions from './sections/BufferRegions.svelte';
+  import ValueCell from './ValueCell.svelte';
 
   let { state }: { state: ViewerState } = $props();
 
@@ -107,7 +108,9 @@
               {sh.name}
               {#if isCurrent}<span class="badge">&#x2605; this event</span>{/if}
             </div>
-            <div class="sh-cmd">{sh.command}</div>
+            <div class="sh-cmd">
+              <ValueCell value={sh.command} {state} expandKey={`sh:${sh.name}:cmd`} />
+            </div>
             <div class="sh-state {stateInfo.cls}">
               <span class="dot"></span>
               <span class="state-label">{stateInfo.label}</span>
@@ -174,7 +177,8 @@
     min-width: 0;
   }
   .sh-name {
-    font-size: 1.2rem;
+    font-family: var(--font-mono);
+    font-size: 1.05rem;
     font-weight: 600;
     color: var(--ink);
     display: flex;
@@ -192,10 +196,9 @@
     border-radius: 100px;
   }
   .sh-cmd {
-    font-family: var(--font-mono);
     font-size: 0.76rem;
     color: var(--ink-dim);
-    word-break: break-all;
+    min-width: 0;
   }
   .sh-state {
     display: inline-flex;

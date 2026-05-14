@@ -192,8 +192,9 @@ export function spanTitle(span: Span): string {
     case 'cleanup-block':
       return 'cleanup';
     case 'fn-call': {
-      const args = span.args.map(([k, v]) => `${k}=${truncate(v, 24)}`).join(', ');
-      return `${span.name}(${args})`;
+      const head = `${span.name}/${span.args.length}`;
+      if (span.result === null) return head;
+      return `${head} \u{2192} "${escapeBytes(span.result)}"`;
     }
   }
 }

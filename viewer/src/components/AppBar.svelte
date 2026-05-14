@@ -23,7 +23,7 @@
 
 <header class="appbar">
   <span class="crumbs">
-    {#if breadcrumb.dir.length > 0}<b>{breadcrumb.dir}</b><span class="sep">/</span>{/if}<span class="file">{breadcrumb.file}</span><span class="sep">&rsaquo;</span><b>{test.name}</b>
+    {#if breadcrumb.dir.length > 0}<b class="dir">{breadcrumb.dir}</b><span class="sep">/</span>{/if}<span class="file">{breadcrumb.file}</span><span class="sep">&rsaquo;</span><b>{test.name}</b>
   </span>
   <span class="pill {cls}">{test.outcome}</span>
   <span class="chips">
@@ -63,7 +63,9 @@
   .crumbs b {
     font-weight: 700;
   }
-  .crumbs .file {
+  .crumbs .file,
+  .crumbs .dir {
+    font-family: var(--font-mono);
     color: var(--ink);
   }
   .crumbs .sep {

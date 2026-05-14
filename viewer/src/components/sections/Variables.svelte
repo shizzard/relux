@@ -1,8 +1,9 @@
 <script lang="ts">
   import type { ViewerState } from '../../lib/state.svelte';
   import Panel from '../Panel.svelte';
-  import { escapeBytes, formatDuration, truncate } from '../../lib/format';
+  import { formatDuration } from '../../lib/format';
   import { toNumber as n } from '../../lib/derive';
+  import ValueCell from '../ValueCell.svelte';
 
   let { state }: { state: ViewerState } = $props();
 
@@ -49,20 +50,26 @@
         <tbody>
           {#each captures as [name, value] (`cap:${name}`)}
             <tr>
-              <th class="cap"><code>${name}</code></th>
-              <td><code class="cap-val">{truncate(escapeBytes(value), 200)}</code></td>
+              <th class="cap">${name}</th>
+              <td>
+                <ValueCell {value} {state} expandKey={`var:cap:${name}`} accent />
+              </td>
             </tr>
           {/each}
           {#each vars as [name, value] (`var:${name}`)}
             <tr>
               <th>{name}</th>
-              <td><code>{truncate(escapeBytes(value), 200)}</code></td>
+              <td>
+                <ValueCell {value} {state} expandKey={`var:${name}`} />
+              </td>
             </tr>
           {/each}
           {#each eventLocals as [name, value] (`ev:${name}`)}
             <tr>
               <th class="ev">{name}</th>
-              <td><code>{truncate(escapeBytes(value), 200)}</code></td>
+              <td>
+                <ValueCell {value} {state} expandKey={`var:ev:${name}`} />
+              </td>
             </tr>
           {/each}
         </tbody>
@@ -97,6 +104,7 @@
     width: 100%;
   }
   .kv th {
+    font-family: var(--font-mono);
     text-align: left;
     color: var(--ink-faint);
     font-weight: 400;
@@ -112,19 +120,10 @@
   }
   .kv td {
     padding: 2px 0;
-    word-break: break-all;
     color: var(--ink);
-  }
-  code {
-    font-family: var(--font-mono);
-    background: var(--paper-2);
-    color: var(--ink);
-    padding: 1px 4px;
-    border-radius: 3px;
-    font-size: 0.78rem;
-  }
-  code.cap-val {
-    color: var(--accent);
+    min-width: 0;
+    max-width: 0;
+    width: 100%;
   }
   .env-pointer {
     margin-top: auto;

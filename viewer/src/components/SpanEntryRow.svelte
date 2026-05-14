@@ -91,8 +91,9 @@
     min-width: 9ch;
   }
   .title {
+    font-family: var(--font-mono);
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.82rem;
     color: var(--ink);
     flex: 1 1 auto;
     min-width: 0;

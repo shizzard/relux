@@ -35,7 +35,6 @@ export class ViewerState {
   envFilter = $state<string>('');
   envFilterScope = $state<EnvFilterScope>('name-matches');
   envSelectedKey = $state<string | null>(null);
-  envExpandedBlobs = $state<Set<string>>(new Set());
 
   rows = $derived<Row[]>(flattenRows(this.data, this.expandedSpans));
 
@@ -136,12 +135,6 @@ export class ViewerState {
     this.expandedValueRows = next;
   }
 
-  toggleEnvExpandedBlob(key: string): void {
-    const next = new Set(this.envExpandedBlobs);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    this.envExpandedBlobs = next;
-  }
 
   openEnv(): void {
     this.openModal = 'env';
