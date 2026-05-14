@@ -101,18 +101,24 @@
     }
   }
 
-  let listEl: HTMLElement | undefined;
+  let rowsEl: HTMLOListElement | undefined;
   onMount(() => {
-    if (!listEl) return;
+    if (!rowsEl) return;
     const seq = state.selectedEventSeq;
     if (seq === null) return;
-    const target = listEl.querySelector<HTMLElement>(`[data-event-seq="${seq}"]`);
+    const target = rowsEl.querySelector<HTMLElement>(`[data-event-seq="${seq}"]`);
     target?.scrollIntoView({ block: 'center', behavior: 'auto' });
   });
 </script>
 
-<section class="events" aria-label="Events" tabindex="0" onkeydown={handleKey} bind:this={listEl}>
-  <ol class="rows">
+<section class="events" aria-label="Events">
+  <ol
+    class="rows"
+    role="tree"
+    tabindex="0"
+    onkeydown={handleKey}
+    bind:this={rowsEl}
+  >
     {#each visibleRows as row, i (rowKey(row, i))}
       {#if row.kind === 'span-entry'}
         <SpanEntryRow {state} span={row.span} depth={row.depth} />
@@ -141,10 +147,6 @@
     flex-direction: column;
     overflow: hidden;
   }
-  .events:focus-visible {
-    outline: 1px solid var(--accent);
-    outline-offset: -1px;
-  }
   .rows {
     flex: 1 1 0;
     min-height: 0;
@@ -152,6 +154,10 @@
     list-style: none;
     margin: 0;
     padding: 0;
+  }
+  .rows:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
   }
   .chips {
     display: flex;
