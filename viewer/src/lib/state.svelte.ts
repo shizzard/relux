@@ -34,7 +34,6 @@ export class ViewerState {
 
   envFilter = $state<string>('');
   envFilterScope = $state<EnvFilterScope>('name-matches');
-  envSelectedKey = $state<string | null>(null);
 
   rows = $derived<Row[]>(flattenRows(this.data, this.expandedSpans));
 

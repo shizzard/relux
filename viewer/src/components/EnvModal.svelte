@@ -98,34 +98,6 @@
     }));
   }
 
-  function handleKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter') {
-      const sel = state.envSelectedKey;
-      if (sel === null) return;
-      const row = rows.find((r) => r.key === sel);
-      if (!row) return;
-      event.preventDefault();
-      if (event.shiftKey) copy(`${row.key}=${row.value}`);
-      else copy(row.value);
-    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      const cur = filtered.findIndex((r) => r.key === state.envSelectedKey);
-      let next = cur + (event.key === 'ArrowDown' ? 1 : -1);
-      if (next < 0) next = 0;
-      if (next >= filtered.length) next = filtered.length - 1;
-      const target = filtered[next];
-      if (target) {
-        state.envSelectedKey = target.key;
-        event.preventDefault();
-      }
-    }
-  }
-
-  function selectedDisplay(): string {
-    const sel = state.envSelectedKey;
-    if (sel === null) return '\u2014 select a row \u2014';
-    const row = rows.find((r) => r.key === sel);
-    return row ? `${row.key}=${row.value}` : '\u2014';
-  }
 </script>
 
 {#if state.openModal === 'env'}
@@ -138,13 +110,13 @@
       <button class="chip" onclick={() => copy(rows.map((r) => `${r.key}=${r.value}`).join('\n'))}>copy all</button>
     {/snippet}
 
-    <div class="modal-body" onkeydown={handleKeydown} role="presentation">
+    <div class="modal-body">
       <div class="filter-row">
         <div class="search-input">
           <span class="glyph">&#x2315;</span>
           <input
             type="search"
-            placeholder="filter\u2026"
+            placeholder={`filter\u2026`}
             bind:value={state.envFilter}
             aria-label="filter env vars"
           />
@@ -164,20 +136,7 @@
         {#each grouped as group (group.group)}
           <div class="group-header">&mdash; {GROUP_LABEL[group.group]} ({group.rows.length})</div>
           {#each group.rows as row (row.key)}
-            <div
-              class="env-row"
-              class:selected={state.envSelectedKey === row.key}
-              role="button"
-              tabindex="0"
-              onclick={() => (state.envSelectedKey = row.key)}
-              ondblclick={() => copy(row.value)}
-              onkeydown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  state.envSelectedKey = row.key;
-                }
-              }}
-            >
+            <div class="env-row">
               <span class="k">{row.key}</span>
               <span class="v">
                 <ValueCell value={row.value} {state} expandKey={`env:${row.key}`} />
@@ -186,12 +145,6 @@
           {/each}
         {/each}
       </div>
-
-      <footer class="sticky">
-        <span class="muted">selected:</span>
-        <span class="selected-row">{selectedDisplay()}</span>
-        <span class="hint">&#x23ce; copy value \u00b7 shift+&#x23ce; copy KEY=VALUE</span>
-      </footer>
     </div>
   </Modal>
 {/if}
@@ -291,15 +244,6 @@
     font-family: var(--font-mono);
     font-size: 0.78rem;
     color: var(--ink);
-    cursor: pointer;
-  }
-  .env-row:hover {
-    background: color-mix(in srgb, var(--ink) 5%, transparent);
-  }
-  .env-row.selected {
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
-    outline: 1px dashed var(--accent);
-    outline-offset: -1px;
   }
   .env-row .k {
     color: var(--ink);
@@ -311,33 +255,6 @@
     color: var(--ink-dim);
     min-width: 0;
     display: block;
-  }
-  .sticky {
-    display: flex;
-    gap: var(--gap-md);
-    align-items: center;
-    padding: var(--gap-sm) var(--gap-lg);
-    border-top: 1px dashed var(--border);
-    background: rgba(0, 0, 0, 0.18);
-    font-family: var(--font-mono);
-    font-size: 0.78rem;
-    flex: 0 0 auto;
-  }
-  .sticky .muted {
-    color: var(--ink-faint);
-  }
-  .sticky .selected-row {
-    color: var(--ink);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-  .sticky .hint {
-    margin-left: auto;
-    color: var(--ink-faint);
-    font-size: 0.74rem;
   }
   .chip {
     appearance: none;

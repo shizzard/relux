@@ -120,8 +120,7 @@
     transition: opacity 80ms;
     border-radius: 3px 0 0 3px;
   }
-  .cell:hover .copy,
-  .cell:focus-within .copy {
+  .cell:hover .copy {
     opacity: 1;
     pointer-events: auto;
   }

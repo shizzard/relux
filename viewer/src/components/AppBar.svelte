@@ -33,7 +33,7 @@
     <button class="chip ok" onclick={() => state.openShells()} title="all shells (cmd-\\)">
       shells &middot; {shellCount} <span class="kbd">&#x2318;\</span>
     </button>
-    <span class="chip search" aria-disabled="true" title="search (cmd-K) \u2014 deferred">
+    <span class="chip search" aria-disabled="true" title={`search (cmd-K) \u2014 deferred`}>
       search <span class="kbd">&#x2318;K</span>
     </span>
   </span>
