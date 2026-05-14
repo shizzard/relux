@@ -1,0 +1,46 @@
+effect E0 {
+    expose shell s
+    shell s {
+        > echo "E0 setup"
+        <? ^E0 setup$
+    }
+    cleanup {
+        > echo "E0" >> ${MARKER_FILE}
+        match_ok()
+    }
+}
+
+effect E1 {
+    start E0 as Zero
+    expose shell Zero.s as s
+    shell Zero.s {
+        > echo "E1 setup"
+        <? ^E1 setup$
+    }
+    cleanup {
+        > echo "E1" >> ${MARKER_FILE}
+        match_ok()
+    }
+}
+
+effect E2 {
+    start E0 as Zero
+    expose shell Zero.s as s
+    shell Zero.s {
+        > echo "E2 setup"
+        <? ^E2 setup$
+    }
+    cleanup {
+        > echo "E2" >> ${MARKER_FILE}
+        match_ok()
+    }
+}
+
+test "diamond cleans up" {
+    start E1 as One
+    start E2 as Two
+    shell One.s {
+        > echo "body"
+        <? ^body$
+    }
+}

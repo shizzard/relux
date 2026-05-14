@@ -1,0 +1,26 @@
+test "failure mid-setup still releases acquired dependencies" ~60s {
+    """
+    Verifies the RAII failure-path: when E1's setup fails *after*
+    successfully acquiring E0, bootstrap_effect releases the E0
+    guard before propagating the error, so E0's cleanup still runs.
+    """
+    let marker = "${__RELUX_TEST_ARTIFACTS}/order"
+
+    shell s {
+        > export MARKER_FILE=${marker}
+        match_ok()
+        > rm -f ${marker}
+        match_ok()
+
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 failed
+        match_prompt()
+        match_exit_code(1)
+
+        // E0 cleanup ran, even though E1's setup failed before the
+        // test body ever started.
+        > grep -c '^E0$' ${marker}
+        <? ^1$
+        match_ok()
+    }
+}

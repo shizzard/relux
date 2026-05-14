@@ -888,7 +888,7 @@ async fn run_test_body(
     let caller_vars = scope.vars().lock().await.clone();
     let root_env = rt_ctx.env.clone();
     let exported = manager
-        .instantiate(test.starts(), &caller_vars, &root_env, test_span)
+        .instantiate_top_level(test.starts(), &caller_vars, &root_env, test_span)
         .await?;
 
     // 4. Build shell map from exposed effect shells

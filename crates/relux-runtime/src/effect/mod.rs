@@ -11,6 +11,7 @@ use futures::future::join_all;
 
 use crate::RuntimeContext;
 use crate::effect::registry::AcquiredEffect;
+use crate::effect::registry::EffectGuard;
 use crate::effect::registry::EffectHandle;
 use crate::effect::registry::EffectInstanceKey;
 use crate::effect::registry::EffectRegistry;
@@ -53,15 +54,22 @@ pub enum Warning {
 
 // ─── EffectManager ──────────────────────────────────────────
 
-#[derive(Clone)]
 pub struct EffectManager {
     registry: Arc<EffectRegistry>,
     pub(crate) rt_ctx: RuntimeContext,
+    /// Guards for the test's direct effect acquires (`start E as a`
+    /// at the top of a test). Drained by `cleanup_all`. Per-test by
+    /// construction: each test instantiates its own `EffectManager`.
+    top_level_guards: TokioMutex<Vec<EffectGuard>>,
 }
 
 impl EffectManager {
     pub fn new(registry: Arc<EffectRegistry>, rt_ctx: RuntimeContext) -> Self {
-        Self { registry, rt_ctx }
+        Self {
+            registry,
+            rt_ctx,
+            top_level_guards: TokioMutex::new(Vec::new()),
+        }
     }
 
     /// Acquire all starts. Each start recursively acquires its own
@@ -70,6 +78,7 @@ impl EffectManager {
     /// allowing overlay expressions to reference the caller's `let` bindings.
     /// `caller_env` is the layered environment visible to the caller.
     /// Returns (key, exported-shells-map) per start declaration.
+    #[allow(clippy::type_complexity)]
     pub fn instantiate<'a>(
         &'a self,
         starts: &'a [IrEffectStart],
@@ -77,15 +86,17 @@ impl EffectManager {
         caller_env: &'a Arc<LayeredEnv>,
         parent_span: SpanId,
     ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = Result<Vec<ExportedEffect>, Failure>> + Send + 'a>,
+        Box<
+            dyn std::future::Future<Output = Result<Vec<(ExportedEffect, EffectGuard)>, Failure>>
+                + Send
+                + 'a,
+        >,
     > {
         Box::pin(async move {
-            let mut results = Vec::with_capacity(starts.len());
+            let mut results: Vec<(ExportedEffect, EffectGuard)> = Vec::with_capacity(starts.len());
             for start in starts {
-                // Evaluate overlay first to build runtime identity key
                 let evaluated = self.eval_overlay(start, caller_vars, caller_env).await?;
 
-                // Look up effect's expect names for identity key
                 let expect_names: Vec<&str> = self
                     .rt_ctx
                     .tables
@@ -100,36 +111,72 @@ impl EffectManager {
                     &evaluated,
                 );
 
-                let acquired = self
+                match self
                     .acquire(&key, start, caller_vars, caller_env, evaluated, parent_span)
-                    .await?;
-                results.push(ExportedEffect {
-                    key,
-                    shells: acquired.shells,
-                    vars: acquired.vars,
-                });
+                    .await
+                {
+                    Ok((acquired, guard)) => {
+                        results.push((
+                            ExportedEffect {
+                                key,
+                                shells: acquired.shells,
+                                vars: acquired.vars,
+                            },
+                            guard,
+                        ));
+                    }
+                    Err(failure) => {
+                        // Release everything we already acquired in this batch
+                        // before propagating the error. Sequential for simplicity.
+                        for (_exported, guard) in results.drain(..) {
+                            self.release_and_teardown(guard, parent_span).await;
+                        }
+                        return Err(failure);
+                    }
+                }
             }
             Ok(results)
         })
     }
 
-    /// Release all effects acquired during this test run.
-    /// Runs one `run_cleanup` per acquisition (matching the symmetric `acquire` calls),
-    /// concurrently. The slot mutex serializes access and refcount ensures the last
-    /// releaser triggers actual teardown + recursive dependency cleanup.
+    /// Public top-level entry point used by the test runner. Acquires every
+    /// `start` in `starts`, stashes the resulting guards on the
+    /// `EffectManager` so `cleanup_all` can drain them, and returns the
+    /// shells/vars exports for the caller's shell map.
+    pub async fn instantiate_top_level(
+        &self,
+        starts: &[IrEffectStart],
+        caller_vars: &VarScope,
+        caller_env: &Arc<LayeredEnv>,
+        test_span: SpanId,
+    ) -> Result<Vec<ExportedEffect>, Failure> {
+        let pairs = self
+            .instantiate(starts, caller_vars, caller_env, test_span)
+            .await?;
+        let mut top = self.top_level_guards.lock().await;
+        let mut exported = Vec::with_capacity(pairs.len());
+        for (ex, guard) in pairs {
+            top.push(guard);
+            exported.push(ex);
+        }
+        Ok(exported)
+    }
+
+    /// Drain the test's top-level guards and release each concurrently.
+    /// The slot mutex + refcount guarantee that for each dedup'd slot,
+    /// exactly one releaser sees `refcount == 0` and runs the cleanup
+    /// body; other releasers return `None` and short-circuit.
     ///
-    /// Every `EffectCleanup` span opened here is parented under `test_span`,
-    /// not the long-closed `EffectSetup` span that originally bootstrapped
-    /// the effect. This keeps the span tree well-ordered (no child opening
-    /// after its parent closed) and reachable in the viewer.
+    /// Every `EffectCleanup` span opened here is parented under
+    /// `test_span`. Cleanups are operationally test-level activity
+    /// (scheduled at test teardown), and the `EffectSetup` span has
+    /// long since closed.
     pub async fn cleanup_all(&self, test_span: SpanId) -> Vec<Warning> {
-        let keys = self.registry.acquired_keys();
-        let futures: Vec<_> = keys
-            .iter()
-            .map(|key| self.run_cleanup(key, test_span))
-            .collect();
-        let results = join_all(futures).await;
-        results.into_iter().flatten().collect()
+        let guards: Vec<EffectGuard> = std::mem::take(&mut *self.top_level_guards.lock().await);
+        let futures = guards
+            .into_iter()
+            .map(|g| self.release_and_teardown(g, test_span));
+        join_all(futures).await.into_iter().flatten().collect()
     }
 
     async fn acquire(
@@ -140,53 +187,78 @@ impl EffectManager {
         caller_env: &Arc<LayeredEnv>,
         evaluated_overlay: Env,
         parent_span: SpanId,
-    ) -> Result<AcquiredEffect, Failure> {
+    ) -> Result<(AcquiredEffect, EffectGuard), Failure> {
         let slot = self.registry.slot(key);
-        let mut guard = slot.lock().await;
-
-        let result = match &mut *guard {
-            EffectSlot::Ready { refcount, handle } => {
-                *refcount += 1;
-                Ok(AcquiredEffect {
-                    shells: handle.exposed_shells(),
-                    vars: handle.exposed_vars.clone(),
-                })
-            }
-            EffectSlot::Failed(failure) => Err(failure.clone()),
-            EffectSlot::Empty => match self
-                .bootstrap_effect(
-                    start,
-                    caller_vars,
-                    caller_env,
-                    evaluated_overlay,
-                    parent_span,
-                )
-                .await
-            {
-                Ok(handle) => {
+        // The slot lock is held only across state inspection and transitions
+        // (`Empty -> Loading`, `Loading -> Ready/Failed`). `bootstrap_effect`
+        // runs WITHOUT the slot lock, so concurrent acquirers that hit
+        // `Loading` can wait without blocking the bootstrap task. Per-test
+        // serial use means this lock-free window is dead code today, but
+        // removing it would re-introduce a deadlock surface if instantiation
+        // ever runs concurrently.
+        let mut evaluated_overlay = Some(evaluated_overlay);
+        loop {
+            let mut guard = slot.lock().await;
+            match &mut *guard {
+                EffectSlot::Ready { refcount, handle } => {
+                    *refcount += 1;
                     let acquired = AcquiredEffect {
                         shells: handle.exposed_shells(),
                         vars: handle.exposed_vars.clone(),
                     };
-                    *guard = EffectSlot::Ready {
-                        refcount: 1,
-                        handle: Box::new(handle),
-                    };
-                    Ok(acquired)
+                    return Ok((acquired, EffectGuard::new(slot.clone())));
                 }
-                Err(failure) => {
-                    self.rt_ctx
-                        .log
-                        .emit_error(parent_span, "", &failure.summary());
-                    *guard = EffectSlot::Failed(failure.clone());
-                    Err(failure)
+                EffectSlot::Failed(failure) => return Err(failure.clone()),
+                EffectSlot::Loading(notify) => {
+                    let notify = notify.clone();
+                    drop(guard);
+                    notify.notified().await;
+                    // Slot is now Ready, Failed, or (rarely, on bootstrap
+                    // panic in another task) still Loading. Loop and re-check.
+                    continue;
                 }
-            },
-        };
-        if result.is_ok() {
-            self.registry.record_acquisition(key.clone());
+                EffectSlot::Empty => {
+                    let notify = Arc::new(tokio::sync::Notify::new());
+                    *guard = EffectSlot::Loading(notify.clone());
+                    drop(guard);
+
+                    // `Some` on the first iteration; the loop only continues
+                    // through `Loading`, which doesn't consume the overlay.
+                    let overlay = evaluated_overlay
+                        .take()
+                        .expect("Empty slot reachable only once per acquire");
+                    let bootstrap_result = self
+                        .bootstrap_effect(start, caller_vars, caller_env, overlay, parent_span)
+                        .await;
+
+                    let mut guard = slot.lock().await;
+                    match bootstrap_result {
+                        Ok(handle) => {
+                            let acquired = AcquiredEffect {
+                                shells: handle.exposed_shells(),
+                                vars: handle.exposed_vars.clone(),
+                            };
+                            *guard = EffectSlot::Ready {
+                                refcount: 1,
+                                handle: Box::new(handle),
+                            };
+                            drop(guard);
+                            notify.notify_waiters();
+                            return Ok((acquired, EffectGuard::new(slot.clone())));
+                        }
+                        Err(failure) => {
+                            self.rt_ctx
+                                .log
+                                .emit_error(parent_span, "", &failure.summary());
+                            *guard = EffectSlot::Failed(failure.clone());
+                            drop(guard);
+                            notify.notify_waiters();
+                            return Err(failure);
+                        }
+                    }
+                }
+            }
         }
-        result
     }
 
     async fn bootstrap_effect(
@@ -249,26 +321,48 @@ impl EffectManager {
             }
         }
 
-        // 4. Recursively instantiate sub-dependencies (effect's vars available to sub-overlays)
+        // 4. Recursively instantiate sub-dependencies. Each pair = (export, guard).
+        //    The `?` below is safe without guard release: `dep_guards` hasn't
+        //    been populated yet, and `instantiate`'s own partial-batch
+        //    rollback handles anything it acquired before failing.
         let effect_vars = scope.vars().lock().await.clone();
         let exported_deps = self
             .instantiate(effect.starts(), &effect_vars, &effect_env, setup_span_id)
             .await?;
 
-        // 5. Build dependency shells/vars maps (alias → exported) and collect dep keys.
-        //    Also remember each alias's source effect name so the export-reset step
-        //    can stamp the parent's POV onto the imported shells.
+        // From here on, `dep_guards` accumulates the guards for the
+        // successfully-instantiated deps. Every fallible step between this
+        // point and the final `Ok(EffectHandle { ... dep_guards ... })` is
+        // wrapped in `try_guards!`, which releases the accumulated guards
+        // via `release_and_teardown` before propagating the error.
+
         let mut dep_shells: HashMap<String, ShellMap> = HashMap::new();
         let mut dep_vars: HashMap<String, VarMap> = HashMap::new();
-        let mut dep_keys: Vec<EffectInstanceKey> = Vec::new();
+        let mut dep_guards: Vec<EffectGuard> = Vec::with_capacity(exported_deps.len());
         let mut alias_to_effect_name: HashMap<String, String> = HashMap::new();
-        for (sub_start, exported) in effect.starts().iter().zip(exported_deps) {
-            dep_keys.push(exported.key);
+        for (sub_start, (exported, guard)) in effect.starts().iter().zip(exported_deps) {
+            dep_guards.push(guard);
             if let Some(alias) = sub_start.alias() {
                 dep_shells.insert(alias.to_string(), exported.shells);
                 dep_vars.insert(alias.to_string(), exported.vars);
                 alias_to_effect_name.insert(alias.to_string(), sub_start.effect().name.0.clone());
             }
+        }
+
+        // Local helper: every fallible step below releases any dep_guards
+        // collected so far before propagating the failure.
+        macro_rules! try_guards {
+            ($e:expr) => {{
+                match $e {
+                    Ok(v) => v,
+                    Err(failure) => {
+                        for g in std::mem::take(&mut dep_guards) {
+                            self.release_and_teardown(g, parent_span).await;
+                        }
+                        return Err(failure);
+                    }
+                }
+            }};
         }
 
         // 5b. Reset imported VMs into this scope's POV.
@@ -335,25 +429,33 @@ impl EffectManager {
                             Some(switch_span),
                         );
                         let block_span_id = block_span.id();
-                        let dep = dep_shells.get(alias).ok_or_else(|| Failure::Runtime {
-                            message: format!("unknown effect alias `{alias}`"),
-                            span: None,
-                            shell: None,
-                            context: FailureContext::default(),
-                        })?;
-                        let vm_arc = dep.get(shell_name).ok_or_else(|| Failure::Runtime {
-                            message: format!(
-                                "effect alias `{alias}` does not expose shell `{shell_name}`"
-                            ),
-                            span: None,
-                            shell: None,
-                            context: FailureContext::default(),
-                        })?;
-                        let mut vm = vm_arc.lock().await;
-                        let vm_name = vm.current_name();
-                        self.rt_ctx.log.emit_shell_switch(block_span_id, &vm_name);
-                        vm.set_block_span(block_span_id);
-                        vm.exec_stmts(block.body()).await?;
+                        let dep =
+                            try_guards!(dep_shells.get(alias).ok_or_else(|| Failure::Runtime {
+                                message: format!("unknown effect alias `{alias}`"),
+                                span: None,
+                                shell: None,
+                                context: FailureContext::default(),
+                            }));
+                        let vm_arc =
+                            try_guards!(dep.get(shell_name).ok_or_else(|| Failure::Runtime {
+                                message: format!(
+                                    "effect alias `{alias}` does not expose shell `{shell_name}`"
+                                ),
+                                span: None,
+                                shell: None,
+                                context: FailureContext::default(),
+                            }));
+                        let exec_result = {
+                            let mut vm = vm_arc.lock().await;
+                            let vm_name = vm.current_name();
+                            self.rt_ctx.log.emit_shell_switch(block_span_id, &vm_name);
+                            vm.set_block_span(block_span_id);
+                            vm.exec_stmts(block.body()).await
+                            // vm lock drops at end of this block, BEFORE try_guards! awaits any
+                            // release_and_teardown that would re-lock the same vm via
+                            // teardown_effect::shutdown.
+                        };
+                        try_guards!(exec_result);
                         // block_span drops here, closing the span.
                     } else {
                         // Unqualified: shell name { ... }
@@ -375,17 +477,22 @@ impl EffectManager {
                                 self.rt_ctx.env.clone(),
                                 block_span_id,
                             );
-                            let vm = Vm::new(name.clone(), ctx, &self.rt_ctx).await?;
+                            let vm = try_guards!(Vm::new(name.clone(), ctx, &self.rt_ctx).await);
                             shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
                         }
-                        let vm_arc = shells.get(&name).expect("shell just inserted above");
-                        let mut vm = vm_arc.lock().await;
-                        let display_name = vm.current_name();
-                        self.rt_ctx
-                            .log
-                            .emit_shell_switch(block_span_id, &display_name);
-                        vm.set_block_span(block_span_id);
-                        vm.exec_stmts(block.body()).await?;
+                        let exec_result = {
+                            let vm_arc = shells.get(&name).expect("shell just inserted above");
+                            let mut vm = vm_arc.lock().await;
+                            let display_name = vm.current_name();
+                            self.rt_ctx
+                                .log
+                                .emit_shell_switch(block_span_id, &display_name);
+                            vm.set_block_span(block_span_id);
+                            vm.exec_stmts(block.body()).await
+                            // vm lock drops at end of this block, BEFORE try_guards! awaits any
+                            // release_and_teardown that would re-lock the same vm.
+                        };
+                        try_guards!(exec_result);
                         // block_span drops here, closing the span.
                     }
                 }
@@ -405,32 +512,36 @@ impl EffectManager {
             match expose.kind() {
                 relux_ir::IrExposeKind::Shell => {
                     if let Some(qualifier) = expose.qualifier() {
-                        let dep = dep_shells.get(qualifier).ok_or_else(|| Failure::Runtime {
-                            message: format!(
-                                "effect `{}` expose references unknown alias `{}`",
-                                effect.name().name(),
-                                qualifier,
-                            ),
-                            span: None,
-                            shell: None,
-                            context: FailureContext::default(),
-                        })?;
-                        let vm_arc = dep.get(expose.target()).ok_or_else(|| Failure::Runtime {
-                            message: format!(
-                                "effect `{}` expose references shell `{}` not exposed by `{}`",
-                                effect.name().name(),
-                                expose.target(),
-                                qualifier,
-                            ),
-                            span: None,
-                            shell: None,
-                            context: FailureContext::default(),
-                        })?;
+                        let dep = try_guards!(dep_shells.get(qualifier).ok_or_else(|| {
+                            Failure::Runtime {
+                                message: format!(
+                                    "effect `{}` expose references unknown alias `{}`",
+                                    effect.name().name(),
+                                    qualifier,
+                                ),
+                                span: None,
+                                shell: None,
+                                context: FailureContext::default(),
+                            }
+                        }));
+                        let vm_arc = try_guards!(dep.get(expose.target()).ok_or_else(|| {
+                            Failure::Runtime {
+                                message: format!(
+                                    "effect `{}` expose references shell `{}` not exposed by `{}`",
+                                    effect.name().name(),
+                                    expose.target(),
+                                    qualifier,
+                                ),
+                                span: None,
+                                shell: None,
+                                context: FailureContext::default(),
+                            }
+                        }));
                         shells.insert(exposed_name.clone(), vm_arc.clone());
                         exposed.insert(exposed_name.clone());
                     } else {
                         if !shells.contains_key(expose.target()) {
-                            return Err(Failure::Runtime {
+                            try_guards!(Err::<(), _>(Failure::Runtime {
                                 message: format!(
                                     "effect `{}` expose references unknown shell `{}`",
                                     effect.name().name(),
@@ -439,7 +550,7 @@ impl EffectManager {
                                 span: None,
                                 shell: None,
                                 context: FailureContext::default(),
-                            });
+                            }));
                         }
                         if exposed_name != expose.target() {
                             let vm_arc = shells.get(expose.target()).unwrap().clone();
@@ -458,19 +569,20 @@ impl EffectManager {
                     let value = if let Some(qualifier) = expose.qualifier() {
                         // Re-expose a variable from a dependency
                         let qualifier_vars =
-                            dep_vars.get(qualifier).ok_or_else(|| Failure::Runtime {
-                                message: format!(
-                                    "effect `{}` expose references unknown alias `{}`",
-                                    effect.name().name(),
-                                    qualifier,
-                                ),
-                                span: None,
-                                shell: None,
-                                context: FailureContext::default(),
-                            })?;
-                        qualifier_vars
-                            .get(expose.target())
-                            .ok_or_else(|| Failure::Runtime {
+                            try_guards!(dep_vars.get(qualifier).ok_or_else(|| {
+                                Failure::Runtime {
+                                    message: format!(
+                                        "effect `{}` expose references unknown alias `{}`",
+                                        effect.name().name(),
+                                        qualifier,
+                                    ),
+                                    span: None,
+                                    shell: None,
+                                    context: FailureContext::default(),
+                                }
+                            }));
+                        try_guards!(qualifier_vars.get(expose.target()).ok_or_else(|| {
+                            Failure::Runtime {
                                 message: format!(
                                     "effect `{}` expose references var `{}` not exposed by `{}`",
                                     effect.name().name(),
@@ -480,8 +592,9 @@ impl EffectManager {
                                 span: None,
                                 shell: None,
                                 context: FailureContext::default(),
-                            })?
-                            .clone()
+                            }
+                        }))
+                        .clone()
                     } else {
                         // Expose a local let-bound variable
                         effect_vars.get(expose.target()).unwrap_or("").to_string()
@@ -529,7 +642,7 @@ impl EffectManager {
             shells,
             exposed,
             exposed_vars,
-            dependencies: dep_keys,
+            dep_guards,
             cleanup: cleanup_block,
             setup_span: setup_span_id,
             alias: start.alias().map(String::from),
@@ -579,99 +692,96 @@ impl EffectManager {
         self.rt_ctx.log.emit_var_let(setup_span, None, name, &value);
     }
 
-    fn run_cleanup<'a>(
+    /// Glue: release one guard, and if it returned the handle (i.e.
+    /// this caller was the last holder), run its cleanup body.
+    fn release_and_teardown<'a>(
         &'a self,
-        key: &'a EffectInstanceKey,
-        test_span: SpanId,
+        guard: EffectGuard,
+        parent_span: SpanId,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<Warning>> + Send + 'a>> {
-        Box::pin(async move { self.run_cleanup_inner(key, test_span).await })
+        Box::pin(async move {
+            match guard.release().await {
+                Some(handle) => self.teardown_effect(handle, parent_span).await,
+                None => Vec::new(),
+            }
+        })
     }
 
-    async fn run_cleanup_inner(&self, key: &EffectInstanceKey, test_span: SpanId) -> Vec<Warning> {
-        let slot = self.registry.slot(key);
-        let mut guard = slot.lock().await;
+    /// Run cleanup for one effect we now exclusively own.
+    ///
+    /// Sequence:
+    ///   1. Open `EffectCleanup` span (parent = `parent_span`).
+    ///   2. Shut down all owned VMs (deduplicated by Arc pointer).
+    ///   3. If a cleanup block exists, run it inside a `CleanupBlock`
+    ///      span; collect `Warning::CleanupFailed` on error.
+    ///   4. Close cleanup span.
+    ///   5. Concurrently `release_and_teardown` every dep guard the
+    ///      handle was holding.
+    async fn teardown_effect(&self, handle: EffectHandle, parent_span: SpanId) -> Vec<Warning> {
+        let effect_name = handle.scope.name().to_string();
+        let setup_span = handle.setup_span;
+        let alias = handle.alias.clone();
         let mut warnings = Vec::new();
 
-        match &mut *guard {
-            EffectSlot::Ready { refcount, handle } => {
-                *refcount -= 1;
+        let cleanup_span = self.rt_ctx.log.open_span(
+            SpanKind::EffectCleanup {
+                effect: effect_name.clone(),
+                alias,
+                setup_span,
+            },
+            Some(parent_span),
+            None,
+        );
 
-                if *refcount == 0 {
-                    let effect_name = handle.scope.name().to_string();
-                    let setup_span = handle.setup_span;
-                    let alias = handle.alias.clone();
-
-                    let cleanup_span = self.rt_ctx.log.open_span(
-                        SpanKind::EffectCleanup {
-                            effect: effect_name.clone(),
-                            alias,
-                            setup_span,
-                        },
-                        Some(test_span),
-                        None,
-                    );
-
-                    // 1. Shut down all VMs (exposed and non-exposed, deduplicated)
-                    let mut seen = HashSet::new();
-                    for vm_arc in handle.shells.values() {
-                        let ptr = Arc::as_ptr(vm_arc) as usize;
-                        if seen.insert(ptr) {
-                            vm_arc.lock().await.shutdown().await;
-                        }
-                    }
-
-                    // 2. Run cleanup block in fresh shell (best-effort)
-                    if let Some(cleanup_block) = &handle.cleanup {
-                        let block_loc = cleanup_block.span();
-                        let block_span = self.rt_ctx.log.open_span(
-                            SpanKind::CleanupBlock,
-                            Some(cleanup_span.id()),
-                            Some(block_loc),
-                        );
-                        let block_span_id = block_span.id();
-                        let cleanup_result = self
-                            .run_cleanup_block(cleanup_block, &handle.scope, block_span_id)
-                            .await;
-                        if let Err(failure) = cleanup_result {
-                            self.rt_ctx.log.emit_warning(
-                                block_span_id,
-                                "__cleanup",
-                                &format!("effect {effect_name} cleanup failed"),
-                            );
-                            warnings.push(Warning::CleanupFailed {
-                                source: CleanupSource::Effect {
-                                    name: effect_name.clone(),
-                                },
-                                failure,
-                            });
-                        }
-                        // block_span drops here, closing the span.
-                    }
-
-                    cleanup_span.close();
-
-                    let deps = handle.dependencies.clone();
-                    *guard = EffectSlot::Empty;
-                    drop(guard);
-
-                    // 3. Recursively release dependencies. The direct
-                    //    `cleanup_all` loop already iterates every acquired
-                    //    key (including deps), so the recursion is typically
-                    //    a no-op against an already-drained slot — but in
-                    //    the rare race where it actually opens a cleanup
-                    //    span, we still want it parented under the test.
-                    for dep in &deps {
-                        warnings.extend(self.run_cleanup(dep, test_span).await);
-                    }
-                }
-            }
-            EffectSlot::Failed(_) => {
-                // nothing to clean up
-            }
-            EffectSlot::Empty => {
-                // Should not happen in normal use, but don't panic
+        // Shut down all VMs (exposed and non-exposed, deduplicated).
+        let mut seen = HashSet::new();
+        for vm_arc in handle.shells.values() {
+            let ptr = Arc::as_ptr(vm_arc) as usize;
+            if seen.insert(ptr) {
+                vm_arc.lock().await.shutdown().await;
             }
         }
+
+        // Run cleanup block in fresh shell (best-effort).
+        if let Some(cleanup_block) = &handle.cleanup {
+            let block_loc = cleanup_block.span();
+            let block_span = self.rt_ctx.log.open_span(
+                SpanKind::CleanupBlock,
+                Some(cleanup_span.id()),
+                Some(block_loc),
+            );
+            let block_span_id = block_span.id();
+            let cleanup_result = self
+                .run_cleanup_block(cleanup_block, &handle.scope, block_span_id)
+                .await;
+            if let Err(failure) = cleanup_result {
+                self.rt_ctx.log.emit_warning(
+                    block_span_id,
+                    "__cleanup",
+                    &format!("effect {effect_name} cleanup failed"),
+                );
+                warnings.push(Warning::CleanupFailed {
+                    source: CleanupSource::Effect {
+                        name: effect_name.clone(),
+                    },
+                    failure,
+                });
+            }
+            // block_span drops here, closing the span.
+        }
+
+        cleanup_span.close();
+
+        // Concurrently release dep guards. The diamond serialization
+        // happens inside `release` (atomic decrement under slot mutex);
+        // join_all lets independent branches make progress.
+        let dep_futures = handle
+            .dep_guards
+            .into_iter()
+            .map(|g| self.release_and_teardown(g, parent_span));
+        let dep_warnings: Vec<Warning> =
+            join_all(dep_futures).await.into_iter().flatten().collect();
+        warnings.extend(dep_warnings);
 
         warnings
     }
