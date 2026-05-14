@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { ViewerState } from '../lib/state.svelte';
-  import type { Row } from '../lib/flatten';
+  import type { FoldedEvent, Row } from '../lib/flatten';
+  import { foldedSeqs, leadEvent } from '../lib/flatten';
   import { toNumber as n } from '../lib/derive';
-  import { kindFamily } from '../lib/format';
+  import { foldedFamily } from '../lib/format';
   import EventRow from './EventRow.svelte';
   import SpanEntryRow from './SpanEntryRow.svelte';
   import GapRow from './GapRow.svelte';
@@ -13,29 +14,34 @@
   const allRows = $derived(state.rows);
   const visibleRows = $derived(filterRows(allRows));
 
+  function isSendMatch(f: FoldedEvent): boolean {
+    if (f.kind === 'match') return true;
+    if (f.kind === 'single') {
+      const k = f.event.kind;
+      return k === 'send' || k === 'match-start' || k === 'match-done' || k === 'timeout';
+    }
+    return false;
+  }
+
   function filterRows(rows: Row[]): Row[] {
     switch (state.filter) {
       case 'all':
         return rows;
       case 'errors':
         return rows.filter((r) => {
-          if (r.kind === 'event') {
-            const fam = kindFamily(r.event.kind);
-            return fam === 'danger';
-          }
+          if (r.kind === 'event') return foldedFamily(r.folded) === 'danger';
           return false;
         });
       case 'send-match':
         return rows.filter((r) => {
           if (r.kind !== 'event') return false;
-          const k = r.event.kind;
-          return k === 'send' || k === 'match-start' || k === 'match-done' || k === 'timeout';
+          return isSendMatch(r.folded);
         });
     }
   }
 
   function rowKey(row: Row, index: number): string {
-    if (row.kind === 'event') return `e:${n(row.event.seq)}`;
+    if (row.kind === 'event') return `e:${n(leadEvent(row.folded).seq)}`;
     if (row.kind === 'span-entry') return `s:${n(row.span.id)}`;
     return `g:${row.from}:${row.to}:${index}`;
   }
@@ -43,7 +49,12 @@
   function rowIndex(): number {
     for (let i = 0; i < visibleRows.length; i++) {
       const r = visibleRows[i]!;
-      if (r.kind === 'event' && state.selectedEventSeq !== null && n(r.event.seq) === state.selectedEventSeq) return i;
+      if (
+        r.kind === 'event' &&
+        state.selectedEventSeq !== null &&
+        foldedSeqs(r.folded).includes(state.selectedEventSeq)
+      )
+        return i;
       if (r.kind === 'span-entry' && state.selectedSpanId !== null && n(r.span.id) === state.selectedSpanId) return i;
     }
     return -1;
@@ -57,7 +68,7 @@
       const r = visibleRows[next]!;
       if (r.kind === 'event') {
         state.selectedSpanId = null;
-        state.selectedEventSeq = n(r.event.seq);
+        state.selectedEventSeq = n(leadEvent(r.folded).seq);
         return;
       }
       if (r.kind === 'span-entry') {
@@ -106,7 +117,12 @@
     if (!rowsEl) return;
     const seq = state.selectedEventSeq;
     if (seq === null) return;
-    const target = rowsEl.querySelector<HTMLElement>(`[data-event-seq="${seq}"]`);
+    // The lead seq is the canonical data-event-seq; fold halves carry the
+    // other halves' seqs so the failure event still scrolls into view even
+    // when it's the closing half (timeout, match-done) of a fold.
+    const target = rowsEl.querySelector<HTMLElement>(
+      `[data-event-seq="${seq}"], [data-fold-other-seq="${seq}"], [data-fold-extra-seq="${seq}"]`,
+    );
     target?.scrollIntoView({ block: 'center', behavior: 'auto' });
   });
 </script>
@@ -123,7 +139,7 @@
       {#if row.kind === 'span-entry'}
         <SpanEntryRow {state} span={row.span} depth={row.depth} />
       {:else if row.kind === 'event'}
-        <EventRow {state} event={row.event} depth={row.depth} />
+        <EventRow {state} folded={row.folded} depth={row.depth} />
       {:else}
         <GapRow ms={row.ms} />
       {/if}

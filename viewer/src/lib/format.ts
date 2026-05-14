@@ -1,6 +1,7 @@
 import type { Event } from '../types/Event';
 import type { Span } from '../types/Span';
 import type { TimeoutValue } from '../types/TimeoutValue';
+import type { FoldedEvent } from './flatten';
 
 export function formatTimestamp(ms: number): string {
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
@@ -176,6 +177,78 @@ export function eventSummary(event: Event): string {
         : event.name;
     case 'effect-expose-var':
       return `${event.name} = ${truncate(escapeBytes(event.value), SUMMARY_MAX)}`;
+  }
+}
+
+// Folded helpers — pair-aware variants used by the timeline rows. For
+// single-event folds we delegate to the existing per-event helpers; for
+// merged folds the glyph / family reflect the closing half (match outcome,
+// spawn readiness) and the summary stitches the halves together.
+
+export function foldedGlyph(f: FoldedEvent): string {
+  switch (f.kind) {
+    case 'single':
+      return kindGlyph(f.event.kind);
+    case 'sleep':
+      return kindGlyph('sleep-start');
+    case 'match':
+      return kindGlyph(f.outcome.kind);
+    case 'spawn':
+      return kindGlyph('shell-spawn');
+  }
+}
+
+export function foldedKindLabel(f: FoldedEvent): string {
+  switch (f.kind) {
+    case 'single':
+      return f.event.kind;
+    case 'sleep':
+      return 'sleep';
+    case 'match':
+      return 'match';
+    case 'spawn':
+      return 'shell-spawn';
+  }
+}
+
+export function foldedFamily(f: FoldedEvent): KindFamily {
+  switch (f.kind) {
+    case 'single':
+      return kindFamily(f.event.kind);
+    case 'sleep':
+      return 'info';
+    case 'match':
+      return kindFamily(f.outcome.kind);
+    case 'spawn':
+      return 'ok';
+  }
+}
+
+export function foldedSummary(f: FoldedEvent): string {
+  switch (f.kind) {
+    case 'single':
+      return eventSummary(f.event);
+    case 'sleep':
+      return formatDuration(f.start.duration);
+    case 'match': {
+      const start = f.start;
+      const outcome = f.outcome;
+      if (start.kind !== 'match-start') return '';
+      if (outcome.kind === 'match-done') {
+        const pat = truncate(start.pattern, 40);
+        const matched = truncate(escapeBytes(outcome.matched), 40);
+        return `${pat} \u{2192} ${matched} (${formatDuration(outcome.elapsed)})`;
+      }
+      if (outcome.kind === 'timeout') {
+        return `${truncate(start.pattern, SUMMARY_MAX)} timed out after ${formatTimeout(outcome.effective)}`;
+      }
+      return truncate(start.pattern, SUMMARY_MAX);
+    }
+    case 'spawn': {
+      const spawn = f.spawn;
+      if (spawn.kind !== 'shell-spawn') return '';
+      return `${spawn.name}: ${truncate(spawn.command, SUMMARY_MAX)}`;
+    }
   }
 }
 

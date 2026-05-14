@@ -1,36 +1,49 @@
 <script lang="ts">
-  import type { Event } from '../types/Event';
   import type { ViewerState } from '../lib/state.svelte';
-  import { eventSummary, formatTimestamp, kindFamily, kindGlyph } from '../lib/format';
-  import { toNumber as n } from '../lib/derive';
+  import type { FoldedEvent } from '../lib/flatten';
+  import { foldedSeqs, leadEvent } from '../lib/flatten';
+  import { foldedFamily, foldedGlyph, foldedKindLabel, foldedSummary, formatTimestamp } from '../lib/format';
   import StyleBCard from './StyleBCard.svelte';
 
   let {
     state,
-    event,
+    folded,
     depth,
-  }: { state: ViewerState; event: Event; depth: number } = $props();
+  }: { state: ViewerState; folded: FoldedEvent; depth: number } = $props();
 
-  const seq = $derived(n(event.seq));
-  const selected = $derived(state.selectedEventSeq === seq);
-  const summary = $derived(eventSummary(event));
-  const ts = $derived(formatTimestamp(event.ts));
-  const glyph = $derived(kindGlyph(event.kind));
-  const family = $derived(kindFamily(event.kind));
+  const lead = $derived(leadEvent(folded));
+  const seqs = $derived(foldedSeqs(folded));
+  const leadSeq = $derived(seqs[0]!);
+  const otherSeq = $derived(seqs.length > 1 ? seqs[1]! : null);
+  const extraSeq = $derived(seqs.length > 2 ? seqs[2]! : null);
+  const selected = $derived(
+    state.selectedEventSeq !== null && seqs.includes(state.selectedEventSeq),
+  );
+  const summary = $derived(foldedSummary(folded));
+  const ts = $derived(formatTimestamp(lead.ts));
+  const glyph = $derived(foldedGlyph(folded));
+  const family = $derived(foldedFamily(folded));
+  const label = $derived(foldedKindLabel(folded));
   const rails = $derived(Array.from({ length: depth }, (_, i) => i));
 </script>
 
-<li class="event-row" class:selected data-event-seq={seq}>
-  <button class="row" type="button" onclick={() => state.selectEvent(seq)}>
+<li
+  class="event-row"
+  class:selected
+  data-event-seq={leadSeq}
+  data-fold-other-seq={otherSeq}
+  data-fold-extra-seq={extraSeq}
+>
+  <button class="row" type="button" onclick={() => state.selectEvent(leadSeq)}>
     {#each rails as i (i)}<span class="rail" aria-hidden="true"></span>{/each}
     <span class="glyph {family}" aria-hidden="true">{glyph}</span>
-    <span class="kind">{event.kind}</span>
+    <span class="kind">{label}</span>
     <span class="summary">{summary}</span>
     <span class="ts">{ts}</span>
   </button>
   {#if selected}
     <div class="card-slot" style:padding-left="{(depth + 1) * 24}px">
-      <StyleBCard {state} mode={{ kind: 'event', event }} />
+      <StyleBCard {state} mode={{ kind: 'event', folded }} />
     </div>
   {/if}
 </li>

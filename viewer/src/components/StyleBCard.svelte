@@ -3,14 +3,19 @@
   import type { Span } from '../types/Span';
   import type { TimeoutValue } from '../types/TimeoutValue';
   import type { ViewerState } from '../lib/state.svelte';
+  import type { FoldedEvent } from '../lib/flatten';
+  import { leadEvent } from '../lib/flatten';
   import { effectSetupProps, shellBlockProps, toNumber as n } from '../lib/derive';
   import {
+    foldedFamily,
+    foldedKindLabel,
     formatDuration,
-    kindFamily,
   } from '../lib/format';
   import ValueCell from './ValueCell.svelte';
 
-  type Mode = { kind: 'event'; event: Event } | { kind: 'span'; span: Span };
+  type Mode =
+    | { kind: 'event'; folded: FoldedEvent }
+    | { kind: 'span'; span: Span };
 
   let {
     state,
@@ -42,26 +47,113 @@
     return out;
   }
 
-  const family = $derived(mode.kind === 'event' ? kindFamily(mode.event.kind) : 'event');
+  const family = $derived(mode.kind === 'event' ? foldedFamily(mode.folded) : 'event');
   const head = $derived(buildHead());
-  const rows = $derived<Row[]>(mode.kind === 'event' ? eventRows(mode.event) : spanRows(mode.span));
+  const rows = $derived<Row[]>(
+    mode.kind === 'event' ? foldedRows(mode.folded) : spanRows(mode.span),
+  );
 
   function buildHead(): { title: string; subtitle: string } {
     if (mode.kind === 'event') {
-      const ev = mode.event;
-      return { title: ev.kind, subtitle: buildEventSubtitle(ev) };
+      return {
+        title: foldedKindLabel(mode.folded),
+        subtitle: buildFoldedSubtitle(mode.folded),
+      };
     }
     const span = mode.span;
     return { title: span.kind, subtitle: buildSpanSubtitle(span) };
   }
 
-  function buildEventSubtitle(ev: Event): string {
+  function buildFoldedSubtitle(f: FoldedEvent): string {
+    const lead = leadEvent(f);
     const parts: string[] = [];
-    if (ev.shell !== null) parts.push(`shell ${ev.shell}`);
-    parts.push(`t = ${formatDuration(ev.ts)}`);
-    if (ev.kind === 'match-done') parts.push(`${formatDuration(ev.elapsed)} wait`);
-    if (ev.kind === 'sleep-start') parts.push(`${formatDuration(ev.duration)}`);
+    if (lead.shell !== null) parts.push(`shell ${lead.shell}`);
+    parts.push(`t = ${formatDuration(lead.ts)}`);
+    switch (f.kind) {
+      case 'single':
+        if (lead.kind === 'match-done') parts.push(`${formatDuration(lead.elapsed)} wait`);
+        if (lead.kind === 'sleep-start') parts.push(formatDuration(lead.duration));
+        break;
+      case 'sleep':
+        if (f.start.kind === 'sleep-start') parts.push(formatDuration(f.start.duration));
+        break;
+      case 'match':
+        if (f.outcome.kind === 'match-done') parts.push(`${formatDuration(f.outcome.elapsed)} wait`);
+        else if (f.outcome.kind === 'timeout') parts.push('timed out');
+        break;
+      case 'spawn':
+        parts.push(`${formatDuration(f.ready.ts - f.spawn.ts)} startup`);
+        break;
+    }
     return parts.join(' \u00b7 ');
+  }
+
+  function foldedRows(f: FoldedEvent): Row[] {
+    switch (f.kind) {
+      case 'single':
+        return eventRows(f.event);
+      case 'sleep':
+        return sleepFoldRows(f.start, f.done);
+      case 'match':
+        return matchFoldRows(f.start, f.outcome);
+      case 'spawn':
+        return spawnFoldRows(f.spawn, f.ready, f.switch);
+    }
+  }
+
+  function sleepFoldRows(start: Event, done: Event): Row[] {
+    if (start.kind !== 'sleep-start') return [];
+    const out: Row[] = [
+      { type: 'kv', key: 'duration', value: formatDuration(start.duration) },
+      { type: 'kv', key: 'start', value: formatDuration(start.ts) },
+      { type: 'kv', key: 'done', value: formatDuration(done.ts) },
+    ];
+    return out;
+  }
+
+  function matchFoldRows(start: Event, outcome: Event): Row[] {
+    if (start.kind !== 'match-start') return [];
+    const out: Row[] = [
+      { type: 'kv', key: 'pattern', value: start.pattern, mono: true, accent: true },
+      { type: 'kv', key: 'is_regex', value: start.is_regex ? 'regex' : 'literal' },
+    ];
+    if (outcome.kind === 'match-done') {
+      out.push({ type: 'subhead', text: '\u2014 matched' });
+      out.push({ type: 'kv', key: 'matched', value: outcome.matched, mono: true, accent: true });
+      out.push({ type: 'kv', key: 'elapsed', value: formatDuration(outcome.elapsed) });
+      out.push({ type: 'kv', key: 'buffer_seq', value: String(n(outcome.buffer_seq)) });
+      if (outcome.captures) {
+        out.push({ type: 'subhead', text: '\u2014 captures' });
+        for (const [name, value] of Object.entries(outcome.captures)) {
+          if (value === undefined) continue;
+          out.push({ type: 'kv', key: `$${name}`, value, mono: true, accent: true });
+        }
+      }
+    } else if (outcome.kind === 'timeout') {
+      out.push({ type: 'subhead', text: '\u2014 timed out' });
+      out.push({
+        type: 'kv',
+        key: 'buffer_seq',
+        value: outcome.buffer_seq === null ? '\u2014' : String(n(outcome.buffer_seq)),
+      });
+    }
+    out.push({ type: 'subhead', text: '\u2014 timeout' });
+    out.push(...timeoutValueRows(start.effective));
+    return out;
+  }
+
+  function spawnFoldRows(spawn: Event, ready: Event, sw: Event | null): Row[] {
+    if (spawn.kind !== 'shell-spawn') return [];
+    const out: Row[] = [
+      { type: 'kv', key: 'name', value: spawn.name, mono: true },
+      { type: 'kv', key: 'command', value: spawn.command, mono: true },
+      { type: 'kv', key: 'startup', value: formatDuration(ready.ts - spawn.ts) },
+      { type: 'kv', key: 'ready at', value: formatDuration(ready.ts) },
+    ];
+    if (sw !== null) {
+      out.push({ type: 'kv', key: 'switch at', value: formatDuration(sw.ts) });
+    }
+    return out;
   }
 
   function buildSpanSubtitle(span: Span): string {
@@ -264,7 +356,9 @@
 
   function rowKey(row: Row, i: number, mode: Mode): string {
     const prefix =
-      mode.kind === 'event' ? `e${n(mode.event.seq)}` : `s${n(mode.span.id)}`;
+      mode.kind === 'event'
+        ? `e${n(leadEvent(mode.folded).seq)}`
+        : `s${n(mode.span.id)}`;
     if (row.type === 'subhead') return `${prefix}:sub:${i}`;
     return `${prefix}:${row.key}:${i}`;
   }
