@@ -49,7 +49,6 @@
     text-align: left;
     display: flex;
     align-items: center;
-    gap: var(--gap-sm);
     width: 100%;
     min-height: 26px;
     cursor: pointer;
@@ -82,12 +81,14 @@
   }
   .kind {
     font-family: var(--font-mono);
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     color: var(--ink-faint);
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    padding: 0 var(--gap-sm);
     flex: 0 0 auto;
-    min-width: 11ch;
+    align-self: center;
+    min-width: 9ch;
   }
   .title {
     font-weight: 600;
