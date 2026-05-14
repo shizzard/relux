@@ -21,6 +21,11 @@ viewer-test:
     docker run --rm -v {{justfile_directory()}}/viewer:/src -w /src node:lts-slim \
         sh -c 'npm ci && npm test'
 
+# Type/Svelte-check the viewer (svelte-check).
+viewer-check:
+    docker run --rm -v {{justfile_directory()}}/viewer:/src -w /src node:lts-slim \
+        sh -c 'npm ci && npm run check'
+
 # Configure git to use the repo-local hooks directory (.githooks/).
 install-hooks:
     git config core.hooksPath .githooks

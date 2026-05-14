@@ -127,10 +127,12 @@ pub enum EventKind {
     // Fail patterns
     FailPatternSet {
         pattern: String,
+        is_regex: bool,
     },
     FailPatternCleared,
     FailPatternTriggered {
         pattern: String,
+        is_regex: bool,
         matched_line: String,
         /// `None` for fail-pattern hits — they observe without advancing the
         /// cursor, so no `Matched` buffer event corresponds.
@@ -157,6 +159,7 @@ pub enum EventKind {
     VarAssign {
         name: String,
         value: String,
+        previous: String,
     },
     StringEval {
         result: String,

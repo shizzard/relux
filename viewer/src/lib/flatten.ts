@@ -4,30 +4,46 @@ import type { StructuredLog } from '../types/StructuredLog';
 import { ancestors, spanById, toNumber as n, type SpanId } from './derive';
 
 // A FoldedEvent is either a single Event (the common case) or a deterministic
-// pair / trio of adjacent events whose halves carry no information the other
+// pair of adjacent events whose halves carry no information the other
 // didn't already imply. The runtime still emits both halves for streaming
 // correctness; folding happens at the viewer layer only.
 export type FoldedEvent =
   | { kind: 'single'; event: Event }
   | { kind: 'sleep'; start: Event; done: Event }
-  | { kind: 'match'; start: Event; outcome: Event }
-  | { kind: 'spawn'; spawn: Event; ready: Event; switch: Event | null };
+  | { kind: 'match'; start: Event; outcome: Event };
+
+export type LogLevel = 'log' | 'warning' | 'error';
 
 export type Row =
   | { kind: 'span-entry'; span: Span; depth: number }
   | { kind: 'event'; folded: FoldedEvent; depth: number }
+  | { kind: 'log-bar'; level: LogLevel; event: Event; depth: number }
   | { kind: 'gap'; from: number; to: number; ms: number };
 
 const GAP_THRESHOLD_MS = 500;
 
-// effect-expose-* events are surfaced as inline props on the owning
-// effect-setup span (see `effectSetupProps`). They never appear in the
-// timeline. All other event kinds reach the flattener; shell-spawn / ready
-// (+ adjacent shell-switch) collapse via foldEvents instead of being hidden.
+// Events that never reach the timeline. `effect-expose-*` surface as inline
+// props on the owning `effect-setup` span (see `effectSetupProps`).
+// `shell-spawn` / `shell-ready` / `shell-switch` are absorbed into the
+// containing `shell-block` span card. `recv` and `string-eval` and
+// `annotate` are filtered for signal-to-noise. `log` / `warning` /
+// `error` produce passive `log-bar` rows instead of regular event rows.
 const HIDDEN_EVENT_KINDS: ReadonlySet<Event['kind']> = new Set([
   'effect-expose-shell',
   'effect-expose-var',
+  'shell-spawn',
+  'shell-ready',
+  'shell-switch',
+  'recv',
+  'string-eval',
+  'annotate',
 ]);
+
+const LOG_LEVELS: Partial<Record<Event['kind'], LogLevel>> = {
+  log: 'log',
+  warning: 'warning',
+  error: 'error',
+};
 
 // Span kinds that "own" shell lifecycles for placement purposes.
 // shell-terminate fires from within the last shell-block the VM was
@@ -65,8 +81,6 @@ export function leadEvent(f: FoldedEvent): Event {
       return f.start;
     case 'match':
       return f.start;
-    case 'spawn':
-      return f.spawn;
   }
 }
 
@@ -78,11 +92,6 @@ export function foldedSeqs(f: FoldedEvent): number[] {
       return [n(f.start.seq), n(f.done.seq)];
     case 'match':
       return [n(f.start.seq), n(f.outcome.seq)];
-    case 'spawn': {
-      const seqs = [n(f.spawn.seq), n(f.ready.seq)];
-      if (f.switch !== null) seqs.push(n(f.switch.seq));
-      return seqs;
-    }
   }
 }
 
@@ -116,12 +125,6 @@ export function foldCloseIndex(events: readonly Event[], startIdx: number): numb
         }
       }
       return startIdx;
-    case 'shell-spawn':
-      for (let i = startIdx + 1; i < events.length; i++) {
-        const c = events[i]!;
-        if (c.kind === 'shell-ready' && sameSpan(e, c) && sameShell(e, c)) return i;
-      }
-      return startIdx;
     default:
       return startIdx;
   }
@@ -150,29 +153,6 @@ export function foldEvents(events: readonly Event[]): FoldedEvent[] {
         i++;
         continue;
       }
-    } else if (ev.kind === 'shell-spawn') {
-      const next = events[i + 1];
-      if (
-        next &&
-        next.kind === 'shell-ready' &&
-        sameSpan(ev, next) &&
-        sameShell(ev, next)
-      ) {
-        const after = events[i + 2];
-        const absorbSwitch =
-          !!after &&
-          after.kind === 'shell-switch' &&
-          sameSpan(ev, after) &&
-          sameShell(ev, after);
-        out.push({
-          kind: 'spawn',
-          spawn: ev,
-          ready: next,
-          switch: absorbSwitch ? after : null,
-        });
-        i += absorbSwitch ? 2 : 1;
-        continue;
-      }
     }
     out.push({ kind: 'single', event: ev });
   }
@@ -180,14 +160,18 @@ export function foldEvents(events: readonly Event[]): FoldedEvent[] {
 }
 
 export function flattenRows(data: StructuredLog, expandedSpans: Set<SpanId>): Row[] {
-  const folded = foldEvents(data.events);
+  // Filter hidden event kinds out before folding so absorbed lifecycle
+  // events (shell-spawn/ready/switch) and noise (recv/string-eval/annotate)
+  // never participate in the row stream. log/warning/error pass through to
+  // become log-bar rows below.
+  const visibleEvents = data.events.filter((ev) => !HIDDEN_EVENT_KINDS.has(ev.kind));
+  const folded = foldEvents(visibleEvents);
   const rows: Row[] = [];
   const enteredSpans = new Set<SpanId>();
   let lastTs: number | null = null;
 
   for (const fe of folded) {
     const lead = leadEvent(fe);
-    if (fe.kind === 'single' && HIDDEN_EVENT_KINDS.has(lead.kind)) continue;
 
     const effectiveSpanId = reattachSpanId(data, lead);
     const chain = ancestors(data, effectiveSpanId);
@@ -235,7 +219,13 @@ export function flattenRows(data: StructuredLog, expandedSpans: Set<SpanId>): Ro
     // Events sit one indent deeper than their containing span (the span
     // header is at chain.length - 2 after the test offset; the event sits
     // visually inside that span at chain.length - 1).
-    rows.push({ kind: 'event', folded: fe, depth: Math.max(0, chain.length - 1) });
+    const depth = Math.max(0, chain.length - 1);
+    const level = fe.kind === 'single' ? LOG_LEVELS[lead.kind] : undefined;
+    if (level !== undefined && fe.kind === 'single') {
+      rows.push({ kind: 'log-bar', level, event: fe.event, depth });
+    } else {
+      rows.push({ kind: 'event', folded: fe, depth });
+    }
     lastTs = lead.ts;
   }
 

@@ -122,6 +122,19 @@ export function formatTimeout(t: TimeoutValue): string {
   return `${t.duration} \u{00D7} ${t.multiplier}`;
 }
 
+// Card-row variant: includes the source location (or `default` when absent).
+//   tolerance, multiplier 1.0  -> '5s (foo.relux:12)'
+//   tolerance, multiplier 1.5  -> '5s \u{00D7} 1.5 = 7.5s (foo.relux:12)'
+//   assertion                  -> '5s (foo.relux:12)'
+//   no source                  -> '... (default)'
+export function formatTimeoutLine(t: TimeoutValue): string {
+  const src = t.source !== null ? `${t.source.file}:${t.source.line}` : 'default';
+  if (t.type === 'tolerance' && t.multiplier !== '1.0') {
+    return `${t.duration} \u{00D7} ${t.multiplier} = ${t.total_duration} (${src})`;
+  }
+  return `${t.duration} (${src})`;
+}
+
 export function truncate(s: string, n: number): string {
   if (s.length <= n) return s;
   return s.slice(0, n - 1) + '\u{2026}';
@@ -193,8 +206,6 @@ export function foldedGlyph(f: FoldedEvent): string {
       return kindGlyph('sleep-start');
     case 'match':
       return kindGlyph(f.outcome.kind);
-    case 'spawn':
-      return kindGlyph('shell-spawn');
   }
 }
 
@@ -206,8 +217,6 @@ export function foldedKindLabel(f: FoldedEvent): string {
       return 'sleep';
     case 'match':
       return 'match';
-    case 'spawn':
-      return 'shell-spawn';
   }
 }
 
@@ -219,8 +228,6 @@ export function foldedFamily(f: FoldedEvent): KindFamily {
       return 'info';
     case 'match':
       return kindFamily(f.outcome.kind);
-    case 'spawn':
-      return 'ok';
   }
 }
 
@@ -229,7 +236,7 @@ export function foldedSummary(f: FoldedEvent): string {
     case 'single':
       return eventSummary(f.event);
     case 'sleep':
-      return formatDuration(f.start.duration);
+      return f.start.kind === 'sleep-start' ? formatDuration(f.start.duration) : '';
     case 'match': {
       const start = f.start;
       const outcome = f.outcome;
@@ -244,12 +251,22 @@ export function foldedSummary(f: FoldedEvent): string {
       }
       return truncate(start.pattern, SUMMARY_MAX);
     }
-    case 'spawn': {
-      const spawn = f.spawn;
-      if (spawn.kind !== 'shell-spawn') return '';
-      return `${spawn.name}: ${truncate(spawn.command, SUMMARY_MAX)}`;
-    }
   }
+}
+
+// Viewer-side display label for `span.kind`. The schema strings
+// (`effect-setup`, `shell-block`, `fn-call`, `effect-cleanup`) are
+// implementation-leaning; the viewer surfaces shorter, DSL-aligned
+// terms in the kind badge and card title.
+const SPAN_KIND_LABELS: Partial<Record<Span['kind'], string>> = {
+  'effect-setup': 'setup',
+  'effect-cleanup': 'cleanup',
+  'shell-block': 'shell',
+  'fn-call': 'call',
+};
+
+export function displaySpanKind(kind: Span['kind']): string {
+  return SPAN_KIND_LABELS[kind] ?? kind;
 }
 
 export function spanTitle(span: Span): string {

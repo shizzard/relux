@@ -25,6 +25,7 @@ pub enum SpanKind {
     },
     EffectCleanup {
         effect: String,
+        alias: Option<String>,
     },
     ShellBlock {
         shell: String,
@@ -61,17 +62,18 @@ impl SpanKind {
             SpanKind::EffectSetup {
                 effect, overlay, ..
             } => (Some(effect.clone()), overlay.clone()),
-            SpanKind::EffectCleanup { effect } => (Some(effect.clone()), Vec::new()),
+            SpanKind::EffectCleanup { effect, .. } => (Some(effect.clone()), Vec::new()),
             SpanKind::ShellBlock { shell } => (Some(shell.clone()), Vec::new()),
             SpanKind::FnCall { name, args, .. } => (Some(name.clone()), args.clone()),
         }
     }
 
     /// User-supplied alias bound at start time, if any (`start FX as Alias`).
-    /// Only effect-setup frames carry one today.
+    /// Only effect-setup / effect-cleanup frames carry one today.
     pub fn frame_alias(&self) -> Option<String> {
         match self {
             SpanKind::EffectSetup { alias, .. } => alias.clone(),
+            SpanKind::EffectCleanup { alias, .. } => alias.clone(),
             _ => None,
         }
     }

@@ -26,7 +26,12 @@ export type TreeFilter = 'all' | 'errors' | 'send-match';
 export type EnvFilterScope = 'name' | 'value' | 'name-matches';
 
 export class ViewerState {
-  readonly data: StructuredLog;
+  // Definite-assignment assertion (`!`): set by the constructor before any
+  // `$derived` lambda below ever runs. The runes are lazy &mdash; their bodies
+  // don't execute during field initialization &mdash; but `svelte-check` can't
+  // see that, so we assert here to silence the false-positive
+  // "used before initialization" diagnostic.
+  readonly data!: StructuredLog;
 
   selectedEventSeq = $state<number | null>(null);
   selectedSpanId = $state<SpanId | null>(null);

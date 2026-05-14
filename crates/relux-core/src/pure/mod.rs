@@ -34,15 +34,12 @@ impl VarScope {
         self.vars.insert(key, value);
     }
 
-    /// Assign a new value to an existing key. Returns `true` if the key
-    /// existed (and was updated), `false` if the key was not found.
-    pub fn assign(&mut self, key: &str, value: String) -> bool {
-        if let Some(slot) = self.vars.get_mut(key) {
-            *slot = value;
-            true
-        } else {
-            false
-        }
+    /// Assign a new value to an existing key. Returns `Some(prev)` with the
+    /// prior value if the key existed (and was updated), `None` if the key
+    /// was not found.
+    pub fn assign(&mut self, key: &str, value: String) -> Option<String> {
+        let slot = self.vars.get_mut(key)?;
+        Some(std::mem::replace(slot, value))
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
@@ -188,17 +185,17 @@ mod tests {
     }
 
     #[test]
-    fn var_scope_assign_existing_returns_true() {
+    fn var_scope_assign_existing_returns_previous() {
         let mut s = VarScope::new();
         s.insert("x".into(), "old".into());
-        assert!(s.assign("x", "new".into()));
+        assert_eq!(s.assign("x", "new".into()), Some("old".into()));
         assert_eq!(s.get("x"), Some("new"));
     }
 
     #[test]
-    fn var_scope_assign_missing_returns_false() {
+    fn var_scope_assign_missing_returns_none() {
         let mut s = VarScope::new();
-        assert!(!s.assign("x", "val".into()));
+        assert_eq!(s.assign("x", "val".into()), None);
     }
 
     #[test]

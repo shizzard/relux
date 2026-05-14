@@ -15,6 +15,8 @@ use crate::vm::context::FailPattern;
 pub struct FailPatternHit {
     /// The pattern string that was being watched for (regex source or literal).
     pub(crate) pattern: String,
+    /// Whether `pattern` is a regex (`true`) or a literal substring (`false`).
+    pub(crate) is_regex: bool,
     /// The actual text in the buffer that matched.
     pub(crate) matched_text: String,
 }
@@ -346,6 +348,7 @@ fn check_fail_in_buffer(text: &str, pattern: &FailPattern) -> Option<FailPattern
             let m = re.find(text)?;
             Some(FailPatternHit {
                 pattern: re.as_str().to_string(),
+                is_regex: true,
                 matched_text: m.as_str().to_string(),
             })
         }
@@ -353,6 +356,7 @@ fn check_fail_in_buffer(text: &str, pattern: &FailPattern) -> Option<FailPattern
             text.find(s.as_str())?;
             Some(FailPatternHit {
                 pattern: s.clone(),
+                is_regex: false,
                 matched_text: s.clone(),
             })
         }

@@ -290,7 +290,7 @@ impl Vm {
                 self.emit_interpolation(pattern, &pat, Some(&span)).await;
                 let shell = self.ctx.current_name();
                 self.log
-                    .emit_fail_pattern_set(self.current_span(), &shell, &pat);
+                    .emit_fail_pattern_set(self.current_span(), &shell, &pat, true);
                 let re = match RegexBuilder::new(&pat).multi_line(true).crlf(true).build() {
                     Ok(re) => re,
                     Err(e) => {
@@ -313,7 +313,7 @@ impl Vm {
                 self.emit_interpolation(pattern, &pat, Some(&span)).await;
                 let shell = self.ctx.current_name();
                 self.log
-                    .emit_fail_pattern_set(self.current_span(), &shell, &pat);
+                    .emit_fail_pattern_set(self.current_span(), &shell, &pat, false);
                 let fp = Some(FailPattern::Literal(pat));
                 self.ctx.set_fail_pattern(fp);
                 self.check_fail(span).await?;
@@ -353,8 +353,8 @@ impl Vm {
             }
             IrShellStmt::Assign { stmt: assign, .. } => {
                 let value = self.eval_expr(assign.value()).await?;
-                let found = self.ctx.assign(assign.name().name(), value.clone()).await;
-                if !found {
+                let Some(previous) = self.ctx.assign(assign.name().name(), value.clone()).await
+                else {
                     let context = self.capture_failure_context().await;
                     return Err(Failure::Runtime {
                         message: format!(
@@ -365,10 +365,15 @@ impl Vm {
                         shell: Some(self.ctx.current_name().to_string()),
                         context,
                     });
-                }
+                };
                 let shell = self.ctx.current_name();
-                self.log
-                    .emit_var_assign(self.current_span(), &shell, assign.name().name(), &value);
+                self.log.emit_var_assign(
+                    self.current_span(),
+                    &shell,
+                    assign.name().name(),
+                    &value,
+                    &previous,
+                );
                 Ok(value)
             }
             IrShellStmt::Expr { expr, .. } => self.eval_expr(expr).await,
@@ -887,6 +892,7 @@ impl Vm {
             self.current_span(),
             &shell,
             &hit.pattern,
+            hit.is_regex,
             &hit.matched_text,
         );
         let context = self.capture_failure_context().await;

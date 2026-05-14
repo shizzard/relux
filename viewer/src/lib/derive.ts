@@ -371,6 +371,98 @@ export function shellBlockProps(
   };
 }
 
+// Find the matching `shell-spawn` event for a given shell name; the latest
+// one before `beforeSeq` (exclusive). Used by `shell-terminate` to compute
+// lifetime and accumulated bytes received.
+export function matchingShellSpawn(
+  data: StructuredLog,
+  shell: string,
+  beforeSeq: number,
+): Event | null {
+  let match: Event | null = null;
+  for (const ev of data.events) {
+    const seq = n(ev.seq);
+    if (seq >= beforeSeq) break;
+    if (ev.kind === 'shell-spawn' && ev.name === shell) match = ev;
+  }
+  return match;
+}
+
+// Most recent event in a given shell strictly before `beforeSeq`. Used by
+// `shell-block` reuse cards to compute "last active" (gap between previous
+// activity in this shell and this block's start).
+export function lastEventInShell(
+  data: StructuredLog,
+  shell: string,
+  beforeSeq: number,
+): Event | null {
+  let last: Event | null = null;
+  for (const ev of data.events) {
+    const seq = n(ev.seq);
+    if (seq >= beforeSeq) break;
+    if (ev.shell === shell) last = ev;
+  }
+  return last;
+}
+
+// First event inside a span (matched by `ev.span === spanId`), or null if
+// the span has no inner events. Used by `shell-block` cards to anchor the
+// "bytes since" range at the block's first event.
+export function firstEventInSpan(
+  data: StructuredLog,
+  spanId: SpanId,
+): Event | null {
+  for (const ev of data.events) {
+    if (n(ev.span) === spanId) return ev;
+  }
+  return null;
+}
+
+// Sum byte lengths of `grew` buffer events for the given shell in the
+// half-open seq range `[fromSeq, toSeq)`. The buffer event stream is the
+// authoritative source for shell output bytes; `Recv` structured events
+// aren't emitted today.
+export function bufferBytesGrewBetween(
+  data: StructuredLog,
+  shell: string,
+  fromSeq: number,
+  toSeq: number,
+): number {
+  let total = 0;
+  for (const ev of data.buffer_events) {
+    const seq = n(ev.seq);
+    if (seq < fromSeq) continue;
+    if (seq >= toSeq) break;
+    if (ev.shell !== shell) continue;
+    if (ev.kind === 'grew') total += ev.data.length;
+  }
+  return total;
+}
+
+// First-use vs. reuse for a shell-block / cleanup-block span. A first-use
+// block is the one that spawns its shell (contains a `shell-spawn` event
+// in its own span). Reuse blocks just switch into an already-spawned
+// shell.
+export interface ShellBlockLifecycle {
+  firstUse: boolean;
+  spawn: Event | null; // present iff firstUse
+  ready: Event | null; // present iff firstUse (and the shell came up)
+}
+
+export function shellBlockLifecycle(
+  data: StructuredLog,
+  spanId: SpanId,
+): ShellBlockLifecycle {
+  let spawn: Event | null = null;
+  let ready: Event | null = null;
+  for (const ev of data.events) {
+    if (n(ev.span) !== spanId) continue;
+    if (ev.kind === 'shell-spawn') spawn = ev;
+    else if (ev.kind === 'shell-ready') ready = ev;
+  }
+  return { firstUse: spawn !== null, spawn, ready };
+}
+
 export type LiveShellState = 'ready' | 'busy' | 'ended' | 'error';
 
 export interface LiveShell {

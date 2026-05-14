@@ -481,12 +481,13 @@ impl StructuredLogBuilder {
 
     // Fail patterns -----------------------------------------------------
 
-    pub fn emit_fail_pattern_set(&self, span: SpanId, shell: &str, pattern: &str) {
+    pub fn emit_fail_pattern_set(&self, span: SpanId, shell: &str, pattern: &str, is_regex: bool) {
         self.push_event(
             span,
             Some(shell),
             EventKind::FailPatternSet {
                 pattern: pattern.to_string(),
+                is_regex,
             },
         );
     }
@@ -500,6 +501,7 @@ impl StructuredLogBuilder {
         span: SpanId,
         shell: &str,
         pattern: &str,
+        is_regex: bool,
         matched_line: &str,
     ) {
         self.push_event(
@@ -507,6 +509,7 @@ impl StructuredLogBuilder {
             Some(shell),
             EventKind::FailPatternTriggered {
                 pattern: pattern.to_string(),
+                is_regex,
                 matched_line: matched_line.to_string(),
                 buffer_seq: None,
             },
@@ -555,13 +558,21 @@ impl StructuredLogBuilder {
         );
     }
 
-    pub fn emit_var_assign(&self, span: SpanId, shell: &str, name: &str, value: &str) {
+    pub fn emit_var_assign(
+        &self,
+        span: SpanId,
+        shell: &str,
+        name: &str,
+        value: &str,
+        previous: &str,
+    ) {
         self.push_event(
             span,
             Some(shell),
             EventKind::VarAssign {
                 name: name.to_string(),
                 value: value.to_string(),
+                previous: previous.to_string(),
             },
         );
     }

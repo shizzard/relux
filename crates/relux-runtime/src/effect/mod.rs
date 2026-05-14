@@ -523,6 +523,7 @@ impl EffectManager {
             dependencies: dep_keys,
             cleanup: cleanup_block,
             parent_span,
+            alias: start.alias().map(String::from),
         })
     }
 
@@ -584,10 +585,12 @@ impl EffectManager {
                 if *refcount == 0 {
                     let effect_name = handle.scope.name().to_string();
                     let parent_span = handle.parent_span;
+                    let alias = handle.alias.clone();
 
                     let cleanup_span = self.rt_ctx.log.open_span(
                         SpanKind::EffectCleanup {
                             effect: effect_name.clone(),
+                            alias,
                         },
                         Some(parent_span),
                         None,

@@ -67,6 +67,9 @@ pub struct StructuredLog {
     pub test: TestInfo,
     pub env: EnvInfo,
     pub shells: HashMap<String, ShellRecord>,
+    /// JSON-serializes `SpanId` keys as strings (per JSON object-key rules),
+    /// so the TS type uses a string-keyed record rather than `bigint`-keyed.
+    #[ts(as = "HashMap<String, Span>")]
     pub spans: HashMap<SpanId, Span>,
     pub events: Vec<Event>,
     pub buffer_events: Vec<BufferEvent>,

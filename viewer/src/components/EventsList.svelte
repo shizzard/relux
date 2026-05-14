@@ -8,6 +8,7 @@
   import EventRow from './EventRow.svelte';
   import SpanEntryRow from './SpanEntryRow.svelte';
   import GapRow from './GapRow.svelte';
+  import LogBar from './LogBar.svelte';
 
   let { state }: { state: ViewerState } = $props();
 
@@ -30,6 +31,7 @@
       case 'errors':
         return rows.filter((r) => {
           if (r.kind === 'event') return foldedFamily(r.folded) === 'danger';
+          if (r.kind === 'log-bar') return r.level === 'error';
           return false;
         });
       case 'send-match':
@@ -43,6 +45,7 @@
   function rowKey(row: Row, index: number): string {
     if (row.kind === 'event') return `e:${n(leadEvent(row.folded).seq)}`;
     if (row.kind === 'span-entry') return `s:${n(row.span.id)}`;
+    if (row.kind === 'log-bar') return `l:${n(row.event.seq)}`;
     return `g:${row.from}:${row.to}:${index}`;
   }
 
@@ -140,6 +143,8 @@
         <SpanEntryRow {state} span={row.span} depth={row.depth} />
       {:else if row.kind === 'event'}
         <EventRow {state} folded={row.folded} depth={row.depth} />
+      {:else if row.kind === 'log-bar'}
+        <LogBar level={row.level} event={row.event} depth={row.depth} />
       {:else}
         <GapRow ms={row.ms} />
       {/if}

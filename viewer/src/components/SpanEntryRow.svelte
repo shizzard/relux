@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Span } from '../types/Span';
   import type { ViewerState } from '../lib/state.svelte';
-  import { spanTitle } from '../lib/format';
+  import { displaySpanKind, spanTitle } from '../lib/format';
   import { toNumber as n } from '../lib/derive';
   import StyleBCard from './StyleBCard.svelte';
 
@@ -32,7 +32,7 @@
       </span>
     </button>
     <button class="select-btn" type="button" onclick={() => state.selectSpan(id)}>
-      <span class="kind">{span.kind}</span>
+      <span class="kind">{displaySpanKind(span.kind)}</span>
       <span class="title">{title}</span>
     </button>
   </div>
@@ -113,7 +113,6 @@
   }
   .title {
     font-family: var(--font-mono);
-    font-weight: 600;
     font-size: 0.82rem;
     color: var(--ink);
     flex: 1 1 auto;

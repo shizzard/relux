@@ -84,6 +84,10 @@ pub struct EffectHandle {
     /// setup/cleanup are siblings under the test span (or under the parent
     /// effect's setup span, for nested effects).
     pub parent_span: SpanId,
+    /// Alias supplied at the first acquisition (`start <FX> as <alias>`).
+    /// `None` when no alias was used. Threaded into the `EffectCleanup`
+    /// span so the cleanup card can mirror `EffectSetup`'s alias display.
+    pub alias: Option<String>,
 }
 
 impl EffectHandle {

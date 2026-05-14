@@ -235,13 +235,15 @@ impl ExecutionContext {
         }
     }
 
-    /// Assign to an existing variable. Returns true if found and updated.
-    pub async fn assign(&mut self, key: &str, value: String) -> bool {
+    /// Assign to an existing variable. Returns `Some(prev)` with the prior
+    /// value if found and updated, `None` if the key was not found in any
+    /// scope.
+    pub async fn assign(&mut self, key: &str, value: String) -> Option<String> {
         if let Some(frame) = self.call_stack.last_mut() {
             return frame.vars.assign(key, value);
         }
-        if self.shell.vars.assign(key, value.clone()) {
-            return true;
+        if let Some(prev) = self.shell.vars.assign(key, value.clone()) {
+            return Some(prev);
         }
         self.scope.vars().lock().await.assign(key, value)
     }
@@ -538,14 +540,14 @@ mod tests {
     async fn assign_in_shell() {
         let mut ctx = test_ctx();
         ctx.shell.vars.insert("x".into(), "old".into());
-        assert!(ctx.assign("x", "new".into()).await);
+        assert_eq!(ctx.assign("x", "new".into()).await, Some("old".into()));
         assert_eq!(ctx.lookup("x").await, Some("new".into()));
     }
 
     #[tokio::test]
-    async fn assign_missing_returns_false() {
+    async fn assign_missing_returns_none() {
         let mut ctx = test_ctx();
-        assert!(!ctx.assign("nope", "val".into()).await);
+        assert_eq!(ctx.assign("nope", "val".into()).await, None);
     }
 
     #[tokio::test]
@@ -556,7 +558,7 @@ mod tests {
             .lock()
             .await
             .insert("g".into(), "old".into());
-        assert!(ctx.assign("g", "new".into()).await);
+        assert_eq!(ctx.assign("g", "new".into()).await, Some("old".into()));
         assert_eq!(ctx.scope.vars().lock().await.get("g"), Some("new"));
     }
 
