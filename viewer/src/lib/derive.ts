@@ -225,45 +225,7 @@ export function replayBufferRegionsAtSeq(
   return { consumed, matched, tail };
 }
 
-export function replayVarsAtSeq(
-  data: StructuredLog,
-  seq: number,
-): Map<string, string> {
-  const vars = new Map<string, string>();
-  for (const ev of data.events) {
-    if (n(ev.seq) > seq) break;
-    if (ev.kind === 'var-let' || ev.kind === 'var-assign') {
-      vars.set(ev.name, ev.value);
-    }
-  }
-  return vars;
-}
-
-// Captures live on the current execution frame (shell or fn-call).
-// Without an explicit "captures cleared" event in the schema we approximate:
-// the captures visible at `seq` for the active `shell` are those set by the
-// most recent `match-done` event on that shell with seq <= input. This is
-// right inside a single shell-block / fn-call body and may show stale values
-// across function boundaries — refine if it bites in practice.
-export function replayCapturesAtSeq(
-  data: StructuredLog,
-  seq: number,
-  shell: string | null,
-): Map<string, string> {
-  if (shell === null) return new Map();
-  for (let i = data.events.length - 1; i >= 0; i--) {
-    const ev = data.events[i]!;
-    if (n(ev.seq) > seq) continue;
-    if (ev.shell !== shell) continue;
-    if (ev.kind !== 'match-done' || !ev.captures) continue;
-    const out = new Map<string, string>();
-    for (const [k, v] of Object.entries(ev.captures)) {
-      if (v !== undefined) out.set(k, v);
-    }
-    return out;
-  }
-  return new Map();
-}
+export { capturesAtSeq, scopeContext, varsAtSeq } from './scope';
 
 export interface ShellContextSnapshot {
   failPatterns: string[];

@@ -547,10 +547,10 @@ impl StructuredLogBuilder {
 
     // Values ------------------------------------------------------------
 
-    pub fn emit_var_let(&self, span: SpanId, shell: &str, name: &str, value: &str) {
+    pub fn emit_var_let(&self, span: SpanId, shell: Option<&str>, name: &str, value: &str) {
         self.push_event(
             span,
-            Some(shell),
+            shell,
             EventKind::VarLet {
                 name: name.to_string(),
                 value: value.to_string(),

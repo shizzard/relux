@@ -236,7 +236,8 @@ impl EffectManager {
         // 3. Evaluate effect-level lets into scope (parser enforces lets before starts)
         for item in effect.body() {
             if let IrEffectItem::Let { stmt, .. } = item {
-                self.eval_effect_let(stmt, &scope, &effect_env).await;
+                self.eval_effect_let(stmt, &scope, &effect_env, setup_span_id)
+                    .await;
             }
         }
 
@@ -551,6 +552,7 @@ impl EffectManager {
         stmt: &IrPureLetStmt,
         scope: &Scope,
         effect_env: &Arc<LayeredEnv>,
+        setup_span: SpanId,
     ) {
         let mut vars = scope.vars().lock().await;
         let value = if let Some(expr) = stmt.value() {
@@ -563,7 +565,10 @@ impl EffectManager {
         } else {
             String::new()
         };
-        vars.insert(stmt.name().name().to_string(), value);
+        let name = stmt.name().name();
+        vars.insert(name.to_string(), value.clone());
+        drop(vars);
+        self.rt_ctx.log.emit_var_let(setup_span, None, name, &value);
     }
 
     fn run_cleanup<'a>(

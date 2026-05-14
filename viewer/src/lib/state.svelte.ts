@@ -7,9 +7,7 @@ import {
   eventBySeq,
   liveShellsAtSeq,
   replayBufferRegionsAtSeq,
-  replayCapturesAtSeq,
   replayShellCtxAtSeq,
-  replayVarsAtSeq,
   spanBufferCutoffSeq,
   spanBufferShell,
   spanById,
@@ -19,6 +17,7 @@ import {
   type ShellContextSnapshot,
   type SpanId,
 } from './derive';
+import { capturesAtSeq, capturesAtSpan, varsAtSeq, varsAtSpan } from './scope';
 import { flattenRows, foldCloseIndex, type Row } from './flatten';
 
 export type OpenModal = 'env' | 'shells' | null;
@@ -60,15 +59,11 @@ export class ViewerState {
 
   bufferShell = $derived<string | null>(this.computeBufferShell());
 
-  varsAt = $derived<Map<string, string>>(
-    this.selected ? replayVarsAtSeq(this.data, n(this.selected.seq)) : new Map(),
-  );
-
-  capturesAt = $derived<Map<string, string>>(
-    this.selected
-      ? replayCapturesAtSeq(this.data, n(this.selected.seq), this.selected.shell)
-      : new Map(),
-  );
+  // `null` = "not applicable" (no event/span selected, or selected
+  // context has no surfaced outer scope). Components render an empty
+  // hint in that case. Empty Map = "applicable but empty".
+  varsAt = $derived<Map<string, string> | null>(this.computeVarsAt());
+  capturesAt = $derived<Map<string, string> | null>(this.computeCapturesAt());
 
   shellContext = $derived<ShellContextSnapshot | null>(
     this.selected ? replayShellCtxAtSeq(this.data, n(this.selected.seq)) : null,
@@ -198,6 +193,20 @@ export class ViewerState {
   private computeBufferShell(): string | null {
     if (this.selected) return this.selected.shell;
     if (this.selectedSpan) return spanBufferShell(this.data, this.selectedSpan);
+    return null;
+  }
+
+  private computeVarsAt(): Map<string, string> | null {
+    if (this.selected) return varsAtSeq(this.data, this.selected);
+    if (this.selectedSpan) return varsAtSpan(this.data, this.selectedSpan);
+    return null;
+  }
+
+  private computeCapturesAt(): Map<string, string> | null {
+    if (this.selected) {
+      return capturesAtSeq(this.data, this.selected, this.selected.shell);
+    }
+    if (this.selectedSpan) return capturesAtSpan(this.data, this.selectedSpan);
     return null;
   }
 }

@@ -877,7 +877,10 @@ async fn run_test_body(
             } else {
                 String::new()
             };
-            vars.insert(stmt.name().name().to_string(), value);
+            let name = stmt.name().name();
+            vars.insert(name.to_string(), value.clone());
+            drop(vars);
+            rt_ctx.log.emit_var_let(test_span, None, name, &value);
         }
     }
 

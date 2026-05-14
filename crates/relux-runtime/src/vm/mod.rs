@@ -345,8 +345,12 @@ impl Vm {
                     String::new()
                 };
                 let shell = self.ctx.current_name();
-                self.log
-                    .emit_var_let(self.current_span(), &shell, let_stmt.name().name(), &value);
+                self.log.emit_var_let(
+                    self.current_span(),
+                    Some(&shell),
+                    let_stmt.name().name(),
+                    &value,
+                );
                 self.ctx
                     .let_insert(let_stmt.name().name().to_string(), value.clone());
                 Ok(value)

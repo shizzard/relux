@@ -1,49 +1,26 @@
 <script lang="ts">
   import type { ViewerState } from '../../lib/state.svelte';
   import Panel from '../Panel.svelte';
-  import { formatDuration } from '../../lib/format';
-  import { toNumber as n } from '../../lib/derive';
   import ValueCell from '../ValueCell.svelte';
 
   let { state }: { state: ViewerState } = $props();
 
-  const captures = $derived(Array.from(state.capturesAt.entries()));
-  const vars = $derived(Array.from(state.varsAt.entries()));
-  const eventLocals = $derived(buildEventLocals());
+  const notApplicable = $derived(state.varsAt === null && state.capturesAt === null);
+  const captures = $derived(Array.from((state.capturesAt ?? new Map()).entries()));
+  const vars = $derived(Array.from((state.varsAt ?? new Map()).entries()));
   const isEmpty = $derived(
-    captures.length === 0 && vars.length === 0 && eventLocals.length === 0,
+    !notApplicable && captures.length === 0 && vars.length === 0,
   );
   const hint = $derived(
-    `${captures.length} captures \u00b7 ${vars.length} span-local${
-      eventLocals.length > 0 ? ` \u00b7 ${eventLocals.length} event` : ''
-    }`,
+    notApplicable ? '' : `${captures.length} captures \u00b7 ${vars.length} vars`,
   );
-
-  function buildEventLocals(): Array<[string, string]> {
-    const ev = state.selected;
-    if (!ev) return [];
-    if (ev.kind === 'match-done') {
-      return [
-        ['elapsed', formatDuration(ev.elapsed)],
-        ['buffer_seq', String(n(ev.buffer_seq))],
-      ];
-    }
-    if (ev.kind === 'match-start') {
-      return [
-        ['pattern', ev.pattern],
-        ['is_regex', String(ev.is_regex)],
-      ];
-    }
-    if (ev.kind === 'timeout') {
-      return [['pattern', ev.pattern]];
-    }
-    return [];
-  }
 </script>
 
 <Panel title="variables in scope" {hint}>
   <div class="content">
-    {#if isEmpty}
+    {#if notApplicable}
+      <p class="empty">no scope context at this point.</p>
+    {:else if isEmpty}
       <p class="empty">no variables in scope at this point.</p>
     {:else}
       <table class="kv">
@@ -61,14 +38,6 @@
               <th>{name}</th>
               <td>
                 <ValueCell {value} {state} expandKey={`var:${name}`} />
-              </td>
-            </tr>
-          {/each}
-          {#each eventLocals as [name, value] (`ev:${name}`)}
-            <tr>
-              <th class="ev">{name}</th>
-              <td>
-                <ValueCell {value} {state} expandKey={`var:ev:${name}`} />
               </td>
             </tr>
           {/each}
@@ -114,9 +83,6 @@
   }
   .kv th.cap {
     color: var(--accent);
-  }
-  .kv th.ev {
-    color: var(--accent-2);
   }
   .kv td {
     padding: 2px 0;
