@@ -22,7 +22,6 @@ use crate::effect::EffectManager;
 use crate::effect::Warning;
 use crate::effect::registry::EffectRegistry;
 use crate::observe::structured::EnvInfo;
-use crate::observe::structured::FailureRecord;
 use crate::observe::structured::SpanId;
 use crate::observe::structured::SpanKind;
 use crate::observe::structured::StructuredLogBuilder;
@@ -780,6 +779,7 @@ async fn run_test(
 
     // Build the structured log. Failure record is a stub for now — commit 4
     // populates it from the outcome with call-stack / buffer-tail / vars.
+    let failure = outcome.as_ref().err().map(|f| log.failure_record(f));
     let structured = log.build(
         TestInfo {
             name: meta.name().to_string(),
@@ -791,7 +791,7 @@ async fn run_test(
             duration_ms: duration.as_millis() as u64,
         },
         EnvInfo { bootstrap },
-        outcome.as_ref().err().map(failure_record),
+        failure,
     );
 
     let events_json_path = log_dir.join("events.json");
@@ -842,80 +842,6 @@ async fn run_test(
             log_dir: Some(log_dir),
             warnings,
             flaky_retries: 0,
-        },
-    }
-}
-
-/// Translate a runtime `Failure` into a `FailureRecord`, lifting the
-/// `FailureContext` captured at failure-construction time into the
-/// structured log artifact. Sites that don't have a VM (effect-resolution
-/// errors, pre-VM init) supply `FailureContext::default()`, which lands as
-/// `span: 0` / `event_seq: 0` / empty stack — the artifact is still
-/// well-formed but lacks call-stack detail for those cases.
-fn failure_record(failure: &Failure) -> FailureRecord {
-    match failure {
-        Failure::MatchTimeout {
-            pattern,
-            shell,
-            context,
-            ..
-        } => FailureRecord::MatchTimeout {
-            span: context.span.unwrap_or(0),
-            event_seq: context.event_seq.unwrap_or(0),
-            shell: shell.clone(),
-            pattern: pattern.clone(),
-            call_stack: context.call_stack.clone(),
-            buffer_tail: context.buffer_tail.clone(),
-            vars_in_scope: context.vars_in_scope.clone(),
-        },
-        Failure::FailPatternMatched {
-            pattern,
-            matched_line,
-            shell,
-            context,
-            ..
-        } => FailureRecord::FailPatternMatched {
-            span: context.span.unwrap_or(0),
-            event_seq: context.event_seq.unwrap_or(0),
-            shell: shell.clone(),
-            pattern: pattern.clone(),
-            matched_line: matched_line.clone(),
-            call_stack: context.call_stack.clone(),
-            buffer_tail: context.buffer_tail.clone(),
-            vars_in_scope: context.vars_in_scope.clone(),
-        },
-        Failure::ShellExited {
-            shell,
-            exit_code,
-            context,
-            ..
-        } => FailureRecord::ShellExited {
-            span: context.span.unwrap_or(0),
-            event_seq: context.event_seq.unwrap_or(0),
-            shell: shell.clone(),
-            exit_code: *exit_code,
-            call_stack: context.call_stack.clone(),
-            buffer_tail: context.buffer_tail.clone(),
-            vars_in_scope: context.vars_in_scope.clone(),
-        },
-        Failure::Runtime {
-            message,
-            shell,
-            context,
-            ..
-        } => FailureRecord::Runtime {
-            span: context.span,
-            event_seq: context.event_seq,
-            shell: shell.clone(),
-            message: message.clone(),
-            call_stack: context.call_stack.clone(),
-            vars_in_scope: context.vars_in_scope.clone(),
-        },
-        Failure::Cancelled { shell, context, .. } => FailureRecord::Cancelled {
-            span: context.span,
-            event_seq: context.event_seq,
-            shell: shell.clone(),
-            call_stack: context.call_stack.clone(),
         },
     }
 }

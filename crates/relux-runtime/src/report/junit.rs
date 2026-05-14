@@ -239,6 +239,7 @@ mod tests {
             pattern: "/ready/".to_string(),
             span: test_span(12, 17),
             shell: "default".to_string(),
+            effective: Box::new(relux_ir::IrTimeout::tolerance(Duration::from_secs(5))),
             context: Default::default(),
         };
         let results = vec![make_result(

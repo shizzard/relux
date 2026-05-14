@@ -2,7 +2,7 @@
   import type { ViewerState } from '../../lib/state.svelte';
   import Panel from '../Panel.svelte';
   import BufferRegions from './BufferRegions.svelte';
-  import { formatDuration } from '../../lib/format';
+  import { formatDuration, formatTimeout } from '../../lib/format';
 
   let { state }: { state: ViewerState } = $props();
 
@@ -24,7 +24,7 @@
     else if (regions === null || activeShell === null) parts.push('no shell');
     else parts.push('idle');
     if (ctx?.timeout !== null && ctx?.timeout !== undefined) {
-      parts.push(`timeout ${ctx.timeout}`);
+      parts.push(`timeout ${formatTimeout(ctx.timeout)}`);
     }
     if (ctx && ctx.failPatterns.length > 0) {
       parts.push(`${ctx.failPatterns.length} fail-patterns armed`);

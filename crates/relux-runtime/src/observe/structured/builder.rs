@@ -7,6 +7,7 @@ use std::time::Instant;
 
 use relux_core::diagnostics::IrSpan;
 use relux_core::table::SourceTable;
+use relux_ir::IrTimeout;
 
 use super::EnvInfo;
 use super::SourceLocation;
@@ -17,6 +18,7 @@ use super::buffer::BufferEventKind;
 use super::event::Event;
 use super::event::EventKind;
 use super::event::EventSeq;
+use super::event::TimeoutValue;
 use super::failure::FailureRecord;
 use super::failure::StackFrame;
 use super::shell::ShellRecord;
@@ -116,6 +118,25 @@ impl StructuredLogBuilder {
             file: rel_path.display().to_string(),
             line,
         })
+    }
+
+    fn timeout_value(&self, t: &IrTimeout) -> TimeoutValue {
+        match t {
+            IrTimeout::Tolerance {
+                duration,
+                multiplier,
+                span,
+            } => TimeoutValue::Tolerance {
+                duration: humantime::format_duration(*duration).to_string(),
+                multiplier: format_multiplier(*multiplier),
+                total_duration: humantime::format_duration(t.adjusted_duration()).to_string(),
+                source: self.resolve_location(span),
+            },
+            IrTimeout::Assertion { duration, span } => TimeoutValue::Assertion {
+                duration: humantime::format_duration(*duration).to_string(),
+                source: self.resolve_location(span),
+            },
+        }
     }
 
     fn push_progress(&self, event: ProgressEvent) {
@@ -370,13 +391,22 @@ impl StructuredLogBuilder {
 
     // Matching ----------------------------------------------------------
 
-    pub fn emit_match_start(&self, span: SpanId, shell: &str, pattern: &str, is_regex: bool) {
+    pub fn emit_match_start(
+        &self,
+        span: SpanId,
+        shell: &str,
+        pattern: &str,
+        is_regex: bool,
+        effective: &IrTimeout,
+    ) {
+        let effective = self.timeout_value(effective);
         self.push_event(
             span,
             Some(shell),
             EventKind::MatchStart {
                 pattern: pattern.to_string(),
                 is_regex,
+                effective,
             },
         );
         self.push_progress(ProgressEvent::MatchStart);
@@ -414,13 +444,15 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::MatchDone);
     }
 
-    pub fn emit_timeout(&self, span: SpanId, shell: &str, pattern: &str) {
+    pub fn emit_timeout(&self, span: SpanId, shell: &str, pattern: &str, effective: &IrTimeout) {
+        let effective = self.timeout_value(effective);
         self.push_event(
             span,
             Some(shell),
             EventKind::Timeout {
                 pattern: pattern.to_string(),
                 buffer_seq: None,
+                effective,
             },
         );
         self.push_progress(ProgressEvent::Timeout);
@@ -482,14 +514,19 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::SleepDone);
     }
 
-    pub fn emit_timeout_set(&self, span: SpanId, shell: &str, timeout: &str, previous: &str) {
+    pub fn emit_timeout_set(
+        &self,
+        span: SpanId,
+        shell: &str,
+        timeout: &IrTimeout,
+        previous: &IrTimeout,
+    ) {
+        let timeout = self.timeout_value(timeout);
+        let previous = self.timeout_value(previous);
         self.push_event(
             span,
             Some(shell),
-            EventKind::TimeoutSet {
-                timeout: timeout.to_string(),
-                previous: previous.to_string(),
-            },
+            EventKind::TimeoutSet { timeout, previous },
         );
     }
 
@@ -597,6 +634,85 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::Failure);
     }
 
+    // ─── Failure record translation ───────────────────────────────
+
+    /// Translate a runtime `Failure` into a `FailureRecord`, lifting the
+    /// `FailureContext` captured at failure-construction time into the
+    /// structured log artifact. Sites that don't have a VM (effect-resolution
+    /// errors, pre-VM init) supply `FailureContext::default()`, which lands as
+    /// `span: 0` / `event_seq: 0` / empty stack — the artifact is still
+    /// well-formed but lacks call-stack detail for those cases.
+    pub fn failure_record(&self, failure: &crate::report::result::Failure) -> FailureRecord {
+        use crate::report::result::Failure;
+        match failure {
+            Failure::MatchTimeout {
+                pattern,
+                shell,
+                effective,
+                context,
+                ..
+            } => FailureRecord::MatchTimeout {
+                span: context.span.unwrap_or(0),
+                event_seq: context.event_seq.unwrap_or(0),
+                shell: shell.clone(),
+                pattern: pattern.clone(),
+                effective: self.timeout_value(effective),
+                call_stack: context.call_stack.clone(),
+                buffer_tail: context.buffer_tail.clone(),
+                vars_in_scope: context.vars_in_scope.clone(),
+            },
+            Failure::FailPatternMatched {
+                pattern,
+                matched_line,
+                shell,
+                context,
+                ..
+            } => FailureRecord::FailPatternMatched {
+                span: context.span.unwrap_or(0),
+                event_seq: context.event_seq.unwrap_or(0),
+                shell: shell.clone(),
+                pattern: pattern.clone(),
+                matched_line: matched_line.clone(),
+                call_stack: context.call_stack.clone(),
+                buffer_tail: context.buffer_tail.clone(),
+                vars_in_scope: context.vars_in_scope.clone(),
+            },
+            Failure::ShellExited {
+                shell,
+                exit_code,
+                context,
+                ..
+            } => FailureRecord::ShellExited {
+                span: context.span.unwrap_or(0),
+                event_seq: context.event_seq.unwrap_or(0),
+                shell: shell.clone(),
+                exit_code: *exit_code,
+                call_stack: context.call_stack.clone(),
+                buffer_tail: context.buffer_tail.clone(),
+                vars_in_scope: context.vars_in_scope.clone(),
+            },
+            Failure::Runtime {
+                message,
+                shell,
+                context,
+                ..
+            } => FailureRecord::Runtime {
+                span: context.span,
+                event_seq: context.event_seq,
+                shell: shell.clone(),
+                message: message.clone(),
+                call_stack: context.call_stack.clone(),
+                vars_in_scope: context.vars_in_scope.clone(),
+            },
+            Failure::Cancelled { shell, context, .. } => FailureRecord::Cancelled {
+                span: context.span,
+                event_seq: context.event_seq,
+                shell: shell.clone(),
+                call_stack: context.call_stack.clone(),
+            },
+        }
+    }
+
     // ─── Final assembly ───────────────────────────────────────────
 
     pub fn build(
@@ -628,6 +744,17 @@ impl StructuredLogBuilder {
             buffer_events: inner.buffer_events,
             failure,
         }
+    }
+}
+
+/// Format a tolerance multiplier as a stable string. Whole numbers keep one
+/// decimal place (`1.0`, `2.0`), fractional values use default float
+/// formatting (`1.5`, `1.25`).
+fn format_multiplier(m: f64) -> String {
+    if m.fract() == 0.0 {
+        format!("{m:.1}")
+    } else {
+        format!("{m}")
     }
 }
 

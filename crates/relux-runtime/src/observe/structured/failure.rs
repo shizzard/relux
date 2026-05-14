@@ -4,6 +4,7 @@ use ts_rs::TS;
 
 use super::SourceLocation;
 use super::event::EventSeq;
+use super::event::TimeoutValue;
 use super::span::SpanId;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -40,6 +41,8 @@ pub enum FailureRecord {
         event_seq: EventSeq,
         shell: String,
         pattern: String,
+        /// The timeout that fired.
+        effective: TimeoutValue,
         call_stack: Vec<StackFrame>,
         buffer_tail: String,
         vars_in_scope: Vec<(String, String)>,

@@ -2,6 +2,7 @@ import type { Event } from '../types/Event';
 import type { Span } from '../types/Span';
 import type { StackFrame } from '../types/StackFrame';
 import type { StructuredLog } from '../types/StructuredLog';
+import type { TimeoutValue } from '../types/TimeoutValue';
 
 // ts-rs annotates `seq`, `span.id`, `parent` as `bigint`, but at runtime
 // they arrive via `JSON.parse(window.RELUX_DATA)` and are plain `number`s
@@ -210,7 +211,7 @@ export function replayCapturesAtSeq(
 
 export interface ShellContextSnapshot {
   failPatterns: string[];
-  timeout: string | null;
+  timeout: TimeoutValue | null;
   activeShell: string | null;
 }
 
@@ -219,7 +220,7 @@ export function replayShellCtxAtSeq(
   seq: number,
 ): ShellContextSnapshot {
   const failPatterns: string[] = [];
-  let timeout: string | null = null;
+  let timeout: TimeoutValue | null = null;
   let activeShell: string | null = null;
   for (const ev of data.events) {
     if (n(ev.seq) > seq) break;

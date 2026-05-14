@@ -4,7 +4,6 @@ pub mod context;
 mod pty;
 
 use std::collections::HashMap;
-use std::time::Duration;
 use std::time::Instant;
 
 use regex::Regex;
@@ -37,6 +36,7 @@ use relux_ir::IrInterpolation;
 use relux_ir::IrPureFn;
 use relux_ir::IrShellStmt;
 use relux_ir::IrStringPart;
+use relux_ir::IrTimeout;
 use relux_ir::Tables;
 
 // ─── Interpolation helpers ──────────────────────────────────────
@@ -327,12 +327,15 @@ impl Vm {
                 Ok(String::new())
             }
             IrShellStmt::Timeout { timeout, .. } => {
-                let previous = format!("{:?}", self.ctx.timeout());
+                let previous = self.ctx.timeout().clone();
                 self.ctx.set_timeout(timeout.clone());
-                let new_timeout = format!("{:?}", self.ctx.timeout());
                 let shell = self.ctx.current_name();
-                self.log
-                    .emit_timeout_set(self.current_span(), &shell, &new_timeout, &previous);
+                self.log.emit_timeout_set(
+                    self.current_span(),
+                    &shell,
+                    self.ctx.timeout(),
+                    &previous,
+                );
                 Ok(String::new())
             }
             IrShellStmt::Let { stmt: let_stmt, .. } => {
@@ -387,18 +390,15 @@ impl Vm {
                 Ok(data)
             }
             IrShellStmt::MatchLiteral { pattern, .. } => {
-                let timeout = self
-                    .ctx
-                    .timeout()
-                    .adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
+                let timeout = self.ctx.timeout().clone();
                 let pat = interpolate_ir(pattern, &self.ctx).await;
                 self.emit_interpolation(pattern, &pat, Some(&span)).await;
                 let shell = self.ctx.current_name();
                 self.log
-                    .emit_match_start(self.current_span(), &shell, &pat, false);
+                    .emit_match_start(self.current_span(), &shell, &pat, false, &timeout);
                 let match_start = Instant::now();
                 let (mat, (before, _, after)) = self
-                    .wait_consume_literal(&pat, timeout, span.clone())
+                    .wait_consume_literal(&pat, &timeout, span.clone())
                     .await?;
                 let shell = self.ctx.current_name();
                 self.log.emit_match_done(
@@ -413,10 +413,7 @@ impl Vm {
                 Ok(pat)
             }
             IrShellStmt::MatchRegex { pattern, .. } => {
-                let timeout = self
-                    .ctx
-                    .timeout()
-                    .adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
+                let timeout = self.ctx.timeout().clone();
                 let pat = interpolate_ir(pattern, &self.ctx).await;
                 self.emit_interpolation(pattern, &pat, Some(&span)).await;
                 let re = match RegexBuilder::new(&pat).multi_line(true).crlf(true).build() {
@@ -433,10 +430,10 @@ impl Vm {
                 };
                 let shell = self.ctx.current_name();
                 self.log
-                    .emit_match_start(self.current_span(), &shell, &pat, true);
+                    .emit_match_start(self.current_span(), &shell, &pat, true, &timeout);
                 let match_start = Instant::now();
                 let (mat, (before, _, after)) = self
-                    .wait_consume_regex(&pat, &re, timeout, span.clone())
+                    .wait_consume_regex(&pat, &re, &timeout, span.clone())
                     .await?;
                 let full = mat.value.0.get("0").cloned().unwrap_or_default();
                 let captures = mat.value.0.clone();
@@ -456,15 +453,15 @@ impl Vm {
             IrShellStmt::TimedMatchLiteral {
                 timeout, pattern, ..
             } => {
-                let dur = timeout.adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
                 let pat = interpolate_ir(pattern, &self.ctx).await;
                 self.emit_interpolation(pattern, &pat, Some(&span)).await;
                 let shell = self.ctx.current_name();
                 self.log
-                    .emit_match_start(self.current_span(), &shell, &pat, false);
+                    .emit_match_start(self.current_span(), &shell, &pat, false, timeout);
                 let match_start = Instant::now();
-                let (mat, (before, _, after)) =
-                    self.wait_consume_literal(&pat, dur, span.clone()).await?;
+                let (mat, (before, _, after)) = self
+                    .wait_consume_literal(&pat, timeout, span.clone())
+                    .await?;
                 let shell = self.ctx.current_name();
                 self.log.emit_match_done(
                     self.current_span(),
@@ -480,7 +477,6 @@ impl Vm {
             IrShellStmt::TimedMatchRegex {
                 timeout, pattern, ..
             } => {
-                let dur = timeout.adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
                 let pat = interpolate_ir(pattern, &self.ctx).await;
                 self.emit_interpolation(pattern, &pat, Some(&span)).await;
                 let re = match RegexBuilder::new(&pat).multi_line(true).crlf(true).build() {
@@ -497,10 +493,10 @@ impl Vm {
                 };
                 let shell = self.ctx.current_name();
                 self.log
-                    .emit_match_start(self.current_span(), &shell, &pat, true);
+                    .emit_match_start(self.current_span(), &shell, &pat, true, timeout);
                 let match_start = Instant::now();
                 let (mat, (before, _, after)) = self
-                    .wait_consume_regex(&pat, &re, dur, span.clone())
+                    .wait_consume_regex(&pat, &re, timeout, span.clone())
                     .await?;
                 let full = mat.value.0.get("0").cloned().unwrap_or_default();
                 let captures = mat.value.0.clone();
@@ -709,15 +705,12 @@ impl Vm {
 
     pub async fn match_literal(&mut self, pattern: &str, span: &IrSpan) -> Result<String, Failure> {
         let shell = self.ctx.current_name();
+        let timeout = self.ctx.timeout().clone();
         self.log
-            .emit_match_start(self.current_span(), &shell, pattern, false);
+            .emit_match_start(self.current_span(), &shell, pattern, false, &timeout);
         let match_start = Instant::now();
-        let timeout = self
-            .ctx
-            .timeout()
-            .adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
         let (mat, (before, _, after)) = self
-            .wait_consume_literal(pattern, timeout, span.clone())
+            .wait_consume_literal(pattern, &timeout, span.clone())
             .await?;
         let shell = self.ctx.current_name();
         self.log.emit_match_done(
@@ -756,9 +749,10 @@ impl Vm {
     async fn wait_consume_literal(
         &self,
         pattern: &str,
-        timeout: Duration,
+        timeout: &IrTimeout,
         span: IrSpan,
     ) -> Result<(buffer::Match<buffer::LiteralMatch>, MatchContext), Failure> {
+        let dur = timeout.adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
         let fut = async {
             loop {
                 let notified = self.pty.output_buf.notify.notified();
@@ -793,16 +787,18 @@ impl Vm {
             }
         };
 
-        match tokio::time::timeout(timeout, fut).await {
+        match tokio::time::timeout(dur, fut).await {
             Ok(result) => result,
             Err(_) => {
                 let shell = self.ctx.current_name();
-                self.log.emit_timeout(self.current_span(), &shell, pattern);
+                self.log
+                    .emit_timeout(self.current_span(), &shell, pattern, timeout);
                 let context = self.capture_failure_context().await;
                 Err(Failure::MatchTimeout {
                     pattern: pattern.to_string(),
                     span,
                     shell: self.ctx.current_name().to_string(),
+                    effective: Box::new(timeout.clone()),
                     context,
                 })
             }
@@ -813,9 +809,10 @@ impl Vm {
         &self,
         pattern: &str,
         re: &Regex,
-        timeout: Duration,
+        timeout: &IrTimeout,
         span: IrSpan,
     ) -> Result<(buffer::Match<buffer::RegexMatch>, MatchContext), Failure> {
+        let dur = timeout.adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
         let fut = async {
             loop {
                 let notified = self.pty.output_buf.notify.notified();
@@ -850,16 +847,18 @@ impl Vm {
             }
         };
 
-        match tokio::time::timeout(timeout, fut).await {
+        match tokio::time::timeout(dur, fut).await {
             Ok(result) => result,
             Err(_) => {
                 let shell = self.ctx.current_name();
-                self.log.emit_timeout(self.current_span(), &shell, pattern);
+                self.log
+                    .emit_timeout(self.current_span(), &shell, pattern, timeout);
                 let context = self.capture_failure_context().await;
                 Err(Failure::MatchTimeout {
                     pattern: pattern.to_string(),
                     span,
                     shell: self.ctx.current_name().to_string(),
+                    effective: Box::new(timeout.clone()),
                     context,
                 })
             }

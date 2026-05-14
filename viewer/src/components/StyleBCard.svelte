@@ -1,13 +1,13 @@
 <script lang="ts">
   import type { Event } from '../types/Event';
   import type { Span } from '../types/Span';
+  import type { TimeoutValue } from '../types/TimeoutValue';
   import type { ViewerState } from '../lib/state.svelte';
   import { effectSetupProps, shellBlockProps, toNumber as n } from '../lib/derive';
   import {
     escapeBytes,
     formatDuration,
     kindFamily,
-    parseTolerance,
   } from '../lib/format';
 
   type Mode = { kind: 'event'; event: Event } | { kind: 'span'; span: Span };
@@ -23,6 +23,24 @@
   type Row =
     | { type: 'kv'; key: string; value: string; mono?: boolean; accent?: boolean }
     | { type: 'subhead'; text: string };
+
+  function timeoutValueRows(tv: TimeoutValue): Row[] {
+    const out: Row[] = [{ type: 'kv', key: 'type', value: tv.type }];
+    out.push({ type: 'kv', key: 'duration', value: tv.duration });
+    if (tv.type === 'tolerance') {
+      out.push({ type: 'kv', key: 'multiplier', value: tv.multiplier });
+      out.push({ type: 'kv', key: 'total', value: tv.total_duration });
+    }
+    if (tv.source !== null) {
+      out.push({
+        type: 'kv',
+        key: 'from',
+        value: `${tv.source.file}:${tv.source.line}`,
+        mono: true,
+      });
+    }
+    return out;
+  }
 
   const family = $derived(mode.kind === 'event' ? kindFamily(mode.event.kind) : 'event');
   const head = $derived(buildHead());
@@ -59,11 +77,15 @@
       case 'send':
       case 'recv':
         return [{ type: 'kv', key: 'data', value: ev.data, mono: true }];
-      case 'match-start':
-        return [
+      case 'match-start': {
+        const out: Row[] = [
           { type: 'kv', key: 'pattern', value: ev.pattern, mono: true, accent: true },
           { type: 'kv', key: 'is_regex', value: ev.is_regex ? 'regex' : 'literal' },
         ];
+        out.push({ type: 'subhead', text: '\u2014 timeout' });
+        out.push(...timeoutValueRows(ev.effective));
+        return out;
+      }
       case 'match-done': {
         const out: Row[] = [
           { type: 'kv', key: 'matched', value: ev.matched, mono: true, accent: true },
@@ -79,11 +101,15 @@
         }
         return out;
       }
-      case 'timeout':
-        return [
+      case 'timeout': {
+        const out: Row[] = [
           { type: 'kv', key: 'pattern', value: ev.pattern, mono: true },
           { type: 'kv', key: 'buffer_seq', value: ev.buffer_seq === null ? '\u2014' : String(n(ev.buffer_seq)) },
         ];
+        out.push({ type: 'subhead', text: '\u2014 timeout' });
+        out.push(...timeoutValueRows(ev.effective));
+        return out;
+      }
       case 'fail-pattern-set':
         return [{ type: 'kv', key: 'pattern', value: ev.pattern, mono: true }];
       case 'fail-pattern-cleared':
@@ -98,31 +124,9 @@
       case 'sleep-done':
         return [];
       case 'timeout-set': {
-        const cur = parseTolerance(ev.timeout);
-        const prev = parseTolerance(ev.previous);
-        const out: Row[] = [
-          { type: 'kv', key: 'duration', value: cur.duration },
-          { type: 'kv', key: 'multiplier', value: cur.multiplier },
-        ];
-        if (cur.from !== null) {
-          out.push({
-            type: 'kv',
-            key: 'from',
-            value: `${cur.from.file}:${cur.from.range}`,
-            mono: true,
-          });
-        }
+        const out: Row[] = timeoutValueRows(ev.timeout);
         out.push({ type: 'subhead', text: '\u2014 previous' });
-        out.push({ type: 'kv', key: 'duration', value: prev.duration });
-        out.push({ type: 'kv', key: 'multiplier', value: prev.multiplier });
-        if (prev.from !== null) {
-          out.push({
-            type: 'kv',
-            key: 'from',
-            value: `${prev.from.file}:${prev.from.range}`,
-            mono: true,
-          });
-        }
+        out.push(...timeoutValueRows(ev.previous));
         return out;
       }
       case 'var-let':

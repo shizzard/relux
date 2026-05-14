@@ -6,6 +6,7 @@ use std::time::Duration;
 use colored::Colorize;
 
 use relux_core::diagnostics::IrSpan;
+use relux_ir::IrTimeout;
 
 use crate::observe::structured::EventSeq;
 use crate::observe::structured::SpanId;
@@ -31,6 +32,9 @@ pub enum Failure {
         pattern: String,
         span: IrSpan,
         shell: String,
+        /// The timeout that fired. Boxed to keep `Failure`'s variant size
+        /// comparable to the others (avoids `clippy::large_enum_variant`).
+        effective: Box<IrTimeout>,
         context: FailureContext,
     },
     FailPatternMatched {
@@ -367,6 +371,7 @@ mod tests {
             pattern: "/ready/".into(),
             shell: "default".into(),
             span: dummy_span(),
+            effective: Box::new(IrTimeout::tolerance(std::time::Duration::from_secs(5))),
             context: FailureContext::default(),
         };
         assert_eq!(

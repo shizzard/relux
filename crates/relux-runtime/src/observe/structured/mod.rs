@@ -40,7 +40,7 @@ pub use utf8_stream::Utf8Stream;
 
 /// Source-file location resolved from an `IrSpan`. Lives on spans and stack
 /// frames; events resolve against their span if needed.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[cfg_attr(
     feature = "ts-export",
     ts(export, export_to = "../../../viewer/src/types/")

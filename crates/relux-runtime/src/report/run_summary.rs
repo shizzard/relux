@@ -145,6 +145,7 @@ mod tests {
                     pattern: "/ready/".into(),
                     shell: "default".into(),
                     span: IrSpan::synthetic(),
+                    effective: Box::new(relux_ir::IrTimeout::tolerance(Duration::from_secs(5))),
                     context: Default::default(),
                 }),
             ),

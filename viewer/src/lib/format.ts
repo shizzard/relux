@@ -1,5 +1,6 @@
 import type { Event } from '../types/Event';
 import type { Span } from '../types/Span';
+import type { TimeoutValue } from '../types/TimeoutValue';
 
 export function formatTimestamp(ms: number): string {
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
@@ -110,29 +111,14 @@ export function formatBytes(bytes: number): string {
   return `${value.toFixed(value < 10 ? 1 : 0)} ${UNITS[unit]}`;
 }
 
-export interface ToleranceFields {
-  duration: string;
-  multiplier: string;
-  from: { file: string; range: string } | null;
-}
-
-// Parses Rust Debug strings like:
-//   Tolerance { duration: 20s, multiplier: 1.0, span: IrSpan { file: "...", span: Span { start: 12, end: 24 } } }
-// Returns null-ish fields when individual pieces fail to parse; falls back
-// to the whole raw string when nothing matches.
-export function parseTolerance(raw: string): ToleranceFields {
-  const duration = raw.match(/duration:\s*([^,}\s]+)/);
-  const multiplier = raw.match(/multiplier:\s*([^,}\s]+)/);
-  const file = raw.match(/file:\s*"([^"]+)"/);
-  const range = raw.match(/Span\s*\{\s*start:\s*(\d+),\s*end:\s*(\d+)/);
-  return {
-    duration: duration?.[1] ?? raw,
-    multiplier: multiplier?.[1] ?? '\u{2014}',
-    from:
-      file && range
-        ? { file: file[1]!, range: `${range[1]}\u{2013}${range[2]}` }
-        : null,
-  };
+// Compact one-line display for a structured `TimeoutValue`.
+//   tolerance, multiplier 1.0  -> '5s'
+//   tolerance, multiplier 1.5  -> '5s \u{00D7} 1.5'  (mid-dot is multiplication)
+//   assertion                  -> '5s exact'
+export function formatTimeout(t: TimeoutValue): string {
+  if (t.type === 'assertion') return `${t.duration} exact`;
+  if (t.multiplier === '1.0') return t.duration;
+  return `${t.duration} \u{00D7} ${t.multiplier}`;
 }
 
 export function truncate(s: string, n: number): string {
@@ -148,11 +134,11 @@ export function eventSummary(event: Event): string {
     case 'recv':
       return truncate(escapeBytes(event.data), SUMMARY_MAX);
     case 'match-start':
-      return `${event.is_regex ? 'regex' : 'literal'} ${truncate(event.pattern, SUMMARY_MAX)}`;
+      return `${event.is_regex ? 'regex' : 'literal'} ${truncate(event.pattern, SUMMARY_MAX)} (\u{2264} ${formatTimeout(event.effective)})`;
     case 'match-done':
       return `${formatDuration(event.elapsed)} ${truncate(escapeBytes(event.matched), SUMMARY_MAX)}`;
     case 'timeout':
-      return truncate(event.pattern, SUMMARY_MAX);
+      return `${truncate(event.pattern, SUMMARY_MAX)} after ${formatTimeout(event.effective)}`;
     case 'fail-pattern-set':
       return truncate(event.pattern, SUMMARY_MAX);
     case 'fail-pattern-cleared':
@@ -164,7 +150,7 @@ export function eventSummary(event: Event): string {
     case 'sleep-done':
       return '';
     case 'timeout-set':
-      return `${event.previous} \u{2192} ${event.timeout}`;
+      return `${formatTimeout(event.previous)} \u{2192} ${formatTimeout(event.timeout)}`;
     case 'var-let':
     case 'var-assign':
       return `${event.name} = ${truncate(escapeBytes(event.value), SUMMARY_MAX)}`;

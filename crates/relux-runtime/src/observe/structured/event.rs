@@ -5,9 +5,32 @@ use serde::Deserialize;
 use serde::Serialize;
 use ts_rs::TS;
 
+use super::SourceLocation;
 use super::span::SpanId;
 
 pub type EventSeq = u64;
+
+/// Structured representation of an effective timeout (the `IrTimeout` value
+/// that bounded a wait or was installed by a `timeout` statement). Pre-formatted
+/// with humantime so consumers never do duration arithmetic.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+pub enum TimeoutValue {
+    Tolerance {
+        duration: String,
+        multiplier: String,
+        total_duration: String,
+        source: Option<SourceLocation>,
+    },
+    Assertion {
+        duration: String,
+        source: Option<SourceLocation>,
+    },
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[cfg_attr(
@@ -81,6 +104,8 @@ pub enum EventKind {
     MatchStart {
         pattern: String,
         is_regex: bool,
+        /// The timeout that bounds this wait.
+        effective: TimeoutValue,
     },
     MatchDone {
         matched: String,
@@ -95,6 +120,8 @@ pub enum EventKind {
         /// `None` when no buffer event corresponds (the failure record's
         /// `buffer_tail` is canonical for the timeout state).
         buffer_seq: Option<EventSeq>,
+        /// The timeout that fired.
+        effective: TimeoutValue,
     },
 
     // Fail patterns
@@ -118,8 +145,8 @@ pub enum EventKind {
     },
     SleepDone,
     TimeoutSet {
-        timeout: String,
-        previous: String,
+        timeout: TimeoutValue,
+        previous: TimeoutValue,
     },
 
     // Values

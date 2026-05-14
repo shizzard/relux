@@ -258,6 +258,9 @@ mod tests {
             pattern: "/ready/".into(),
             span: test_span(14, 20),
             shell: "default".into(),
+            effective: Box::new(relux_ir::IrTimeout::tolerance(
+                std::time::Duration::from_secs(5),
+            )),
             context: Default::default(),
         };
         let results = vec![fail_result(
