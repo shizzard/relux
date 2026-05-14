@@ -117,9 +117,17 @@ impl EffectManager {
     /// Runs one `run_cleanup` per acquisition (matching the symmetric `acquire` calls),
     /// concurrently. The slot mutex serializes access and refcount ensures the last
     /// releaser triggers actual teardown + recursive dependency cleanup.
-    pub async fn cleanup_all(&self) -> Vec<Warning> {
+    ///
+    /// Every `EffectCleanup` span opened here is parented under `test_span`,
+    /// not the long-closed `EffectSetup` span that originally bootstrapped
+    /// the effect. This keeps the span tree well-ordered (no child opening
+    /// after its parent closed) and reachable in the viewer.
+    pub async fn cleanup_all(&self, test_span: SpanId) -> Vec<Warning> {
         let keys = self.registry.acquired_keys();
-        let futures: Vec<_> = keys.iter().map(|key| self.run_cleanup(key)).collect();
+        let futures: Vec<_> = keys
+            .iter()
+            .map(|key| self.run_cleanup(key, test_span))
+            .collect();
         let results = join_all(futures).await;
         results.into_iter().flatten().collect()
     }
@@ -523,7 +531,7 @@ impl EffectManager {
             exposed_vars,
             dependencies: dep_keys,
             cleanup: cleanup_block,
-            parent_span,
+            setup_span: setup_span_id,
             alias: start.alias().map(String::from),
         })
     }
@@ -574,11 +582,12 @@ impl EffectManager {
     fn run_cleanup<'a>(
         &'a self,
         key: &'a EffectInstanceKey,
+        test_span: SpanId,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<Warning>> + Send + 'a>> {
-        Box::pin(async move { self.run_cleanup_inner(key).await })
+        Box::pin(async move { self.run_cleanup_inner(key, test_span).await })
     }
 
-    async fn run_cleanup_inner(&self, key: &EffectInstanceKey) -> Vec<Warning> {
+    async fn run_cleanup_inner(&self, key: &EffectInstanceKey, test_span: SpanId) -> Vec<Warning> {
         let slot = self.registry.slot(key);
         let mut guard = slot.lock().await;
         let mut warnings = Vec::new();
@@ -589,15 +598,16 @@ impl EffectManager {
 
                 if *refcount == 0 {
                     let effect_name = handle.scope.name().to_string();
-                    let parent_span = handle.parent_span;
+                    let setup_span = handle.setup_span;
                     let alias = handle.alias.clone();
 
                     let cleanup_span = self.rt_ctx.log.open_span(
                         SpanKind::EffectCleanup {
                             effect: effect_name.clone(),
                             alias,
+                            setup_span,
                         },
-                        Some(parent_span),
+                        Some(test_span),
                         None,
                     );
 
@@ -644,9 +654,14 @@ impl EffectManager {
                     *guard = EffectSlot::Empty;
                     drop(guard);
 
-                    // 3. Recursively release dependencies
+                    // 3. Recursively release dependencies. The direct
+                    //    `cleanup_all` loop already iterates every acquired
+                    //    key (including deps), so the recursion is typically
+                    //    a no-op against an already-drained slot — but in
+                    //    the rare race where it actually opens a cleanup
+                    //    span, we still want it parented under the test.
                     for dep in &deps {
-                        warnings.extend(self.run_cleanup(dep).await);
+                        warnings.extend(self.run_cleanup(dep, test_span).await);
                     }
                 }
             }

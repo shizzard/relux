@@ -13,6 +13,13 @@ import { spanById, toNumber as n, type SpanId } from './derive';
 //
 // Walking starts at `spanId` itself, so when called on a Test or
 // EffectSetup span, `ambientScope` returns that span's id.
+//
+// `effect-cleanup` ancestors are special: the runtime parents them
+// directly under the test span (not the long-closed `effect-setup`),
+// but the cleanup VM still runs with the *effect's* `Scope`. We honour
+// that by hopping to `effect-cleanup.setup_span` — which by
+// construction is an `effect-setup` id — and returning it as
+// `ambientScope`.
 export function scopeContext(
   data: StructuredLog,
   spanId: SpanId,
@@ -22,6 +29,9 @@ export function scopeContext(
   while (current) {
     if (current.kind === 'test' || current.kind === 'effect-setup') {
       return { ambientScope: n(current.id), innermostFn };
+    }
+    if (current.kind === 'effect-cleanup') {
+      return { ambientScope: n(current.setup_span), innermostFn };
     }
     if (current.kind === 'fn-call' && innermostFn === null) {
       innermostFn = n(current.id);

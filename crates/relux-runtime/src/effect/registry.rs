@@ -79,11 +79,12 @@ pub struct EffectHandle {
     pub exposed_vars: VarMap,
     pub dependencies: Vec<EffectInstanceKey>,
     pub cleanup: Option<IrCleanupBlock>,
-    /// Parent span used when opening this effect's `EffectCleanup` span at
-    /// teardown — same parent as the `EffectSetup` span at bootstrap, so
-    /// setup/cleanup are siblings under the test span (or under the parent
-    /// effect's setup span, for nested effects).
-    pub parent_span: SpanId,
+    /// The `EffectSetup` span this handle represents. Threaded into the
+    /// `EffectCleanup` span at teardown so the viewer can resolve a
+    /// cleanup shell's scope back to the owning effect — cleanups
+    /// themselves are now parented directly under the test span, so this
+    /// is the only link from cleanup back to the originating setup.
+    pub setup_span: SpanId,
     /// Alias supplied at the first acquisition (`start <FX> as <alias>`).
     /// `None` when no alias was used. Threaded into the `EffectCleanup`
     /// span so the cleanup card can mirror `EffectSetup`'s alias display.

@@ -15,6 +15,8 @@ import {
 type SpanInput = { id: number; parent: number | null } & (
   | { kind: 'test'; name?: string }
   | { kind: 'effect-setup'; effect: string; alias: string | null }
+  | { kind: 'effect-cleanup'; effect: string; alias: string | null; setup_span: number }
+  | { kind: 'cleanup-block' }
   | { kind: 'shell-block'; shell: string }
   | { kind: 'fn-call'; name?: string; args?: Array<[string, string]> }
 );
@@ -38,6 +40,16 @@ function buildSpan(input: SpanInput): Span {
         overlay: [],
         alias: input.alias,
       };
+    case 'effect-cleanup':
+      return {
+        ...base,
+        kind: 'effect-cleanup',
+        effect: input.effect,
+        alias: input.alias,
+        setup_span: BigInt(input.setup_span),
+      };
+    case 'cleanup-block':
+      return { ...base, kind: 'cleanup-block' };
     case 'shell-block':
       return { ...base, kind: 'shell-block', shell: input.shell };
     case 'fn-call':
@@ -204,6 +216,35 @@ describe('scopeContext', () => {
   it('returns nulls when the span id is unknown', () => {
     const log = makeLog([], []);
     expect(scopeContext(log, 99)).toEqual({ ambientScope: null, innermostFn: null });
+  });
+
+  it('hops through effect-cleanup to its linked setup_span', () => {
+    // Cleanup is now parented under test (sibling of effect-setup), but
+    // its scope still belongs to the originating effect.
+    const log = makeLog(
+      [
+        buildSpan({ kind: 'test', id: 1, parent: null }),
+        buildSpan({ kind: 'effect-setup', id: 2, parent: 1, effect: 'Eff', alias: 'E' }),
+        buildSpan({ kind: 'effect-cleanup', id: 3, parent: 1, effect: 'Eff', alias: 'E', setup_span: 2 }),
+        buildSpan({ kind: 'cleanup-block', id: 4, parent: 3 }),
+      ],
+      [],
+    );
+    expect(scopeContext(log, 4)).toEqual({ ambientScope: 2, innermostFn: null });
+  });
+
+  it('reports innermostFn for fn-call inside cleanup-block, scope still hops to setup', () => {
+    const log = makeLog(
+      [
+        buildSpan({ kind: 'test', id: 1, parent: null }),
+        buildSpan({ kind: 'effect-setup', id: 2, parent: 1, effect: 'Eff', alias: 'E' }),
+        buildSpan({ kind: 'effect-cleanup', id: 3, parent: 1, effect: 'Eff', alias: 'E', setup_span: 2 }),
+        buildSpan({ kind: 'cleanup-block', id: 4, parent: 3 }),
+        buildSpan({ kind: 'fn-call', id: 5, parent: 4 }),
+      ],
+      [],
+    );
+    expect(scopeContext(log, 5)).toEqual({ ambientScope: 2, innermostFn: 5 });
   });
 });
 
@@ -373,6 +414,40 @@ describe('varsAtSeq (shell mode)', () => {
     const log = makeLog(spans, events);
     expect(varsAtSeq(log, events[1]!)).toEqual(new Map([['inside', 'val']]));
     expect(varsAtSeq(log, events[2]!)).toEqual(new Map());
+  });
+
+  it('cleanup-block sees the effect-level vars (via effect-cleanup hop)', () => {
+    // test(1) -> effect-setup(2) declares `let X=v`.
+    // test(1) -> effect-cleanup(3, setup_span=2) -> cleanup-block(4).
+    // Selecting an event in cleanup-block must surface effect-level X.
+    const spans = [
+      buildSpan({ kind: 'test', id: 1, parent: null }),
+      buildSpan({ kind: 'effect-setup', id: 2, parent: 1, effect: 'Eff', alias: 'E' }),
+      buildSpan({ kind: 'effect-cleanup', id: 3, parent: 1, effect: 'Eff', alias: 'E', setup_span: 2 }),
+      buildSpan({ kind: 'cleanup-block', id: 4, parent: 3 }),
+    ];
+    const events = [
+      varLet(1, 2, null, 'X', 'v'),
+      marker(2, 4, '__cleanup'),
+    ];
+    const log = makeLog(spans, events);
+    expect(varsAtSeq(log, events[1]!)).toEqual(new Map([['X', 'v']]));
+  });
+
+  it('cleanup-block does NOT see test-level vars (effect-scope isolation)', () => {
+    const spans = [
+      buildSpan({ kind: 'test', id: 1, parent: null }),
+      buildSpan({ kind: 'effect-setup', id: 2, parent: 1, effect: 'Eff', alias: 'E' }),
+      buildSpan({ kind: 'effect-cleanup', id: 3, parent: 1, effect: 'Eff', alias: 'E', setup_span: 2 }),
+      buildSpan({ kind: 'cleanup-block', id: 4, parent: 3 }),
+    ];
+    const events = [
+      varLet(1, 1, null, 'Y', 'test-val'),
+      varLet(2, 2, null, 'X', 'eff-val'),
+      marker(3, 4, '__cleanup'),
+    ];
+    const log = makeLog(spans, events);
+    expect(varsAtSeq(log, events[2]!)).toEqual(new Map([['X', 'eff-val']]));
   });
 });
 
@@ -726,6 +801,24 @@ describe('varsAtSpan', () => {
     ];
     const log = makeLog(spans, []);
     expect(varsAtSpan(log, spans[1]!)).toBeNull();
+  });
+
+  it('returns the effect scope when a cleanup-block under effect-cleanup is selected', () => {
+    const spans = [
+      buildSpan({ kind: 'test', id: 1, parent: null }),
+      buildSpan({ kind: 'effect-setup', id: 2, parent: 1, effect: 'E', alias: 'E' }),
+      buildSpan({ kind: 'effect-cleanup', id: 3, parent: 1, effect: 'E', alias: 'E', setup_span: 2 }),
+      buildSpan({ kind: 'cleanup-block', id: 4, parent: 3 }),
+    ];
+    const events: Event[] = [
+      varLet(1, 2, null, 'EffectVar', 'v'),
+      // Test-scope var must NOT appear in the cleanup outer view.
+      varLet(2, 1, null, 'TestVar', 't'),
+      marker(3, 4, '__cleanup'),
+    ];
+    expect(varsAtSpan(makeLog(spans, events), spans[3]!)).toEqual(
+      new Map([['EffectVar', 'v']]),
+    );
   });
 });
 

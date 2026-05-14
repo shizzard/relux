@@ -26,6 +26,12 @@ pub enum SpanKind {
     EffectCleanup {
         effect: String,
         alias: Option<String>,
+        /// `EffectSetup` span this cleanup releases. Cleanups are parented
+        /// directly under the test span (not the long-closed `EffectSetup`)
+        /// so they stay well-ordered and reachable in the viewer; this
+        /// back-reference preserves the link so consumers can resolve a
+        /// cleanup shell's scope to the owning effect's vars.
+        setup_span: SpanId,
     },
     ShellBlock {
         shell: String,

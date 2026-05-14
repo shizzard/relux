@@ -758,7 +758,7 @@ async fn run_test(
     }
 
     // Release effects (always runs, even after cancellation)
-    let effect_warnings = test_manager.cleanup_all().await;
+    let effect_warnings = test_manager.cleanup_all(test_span_id).await;
     warnings.extend(effect_warnings);
 
     // Drop all remaining ProgressTx holders so the forwarder task can finish.
