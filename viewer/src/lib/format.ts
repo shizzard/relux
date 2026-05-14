@@ -30,6 +30,22 @@ export function escapeBytes(s: string): string {
   return out;
 }
 
+// Buffer rendering version of escapeBytes. Designed for `<pre>` blocks
+// where the browser handles whitespace natively: CR is stripped (terminals
+// emit CRLF; the LF alone is enough to break a line), LF and TAB pass
+// through, other non-printable bytes still escape as `\xNN`.
+export function escapeBufferBytes(s: string): string {
+  let out = '';
+  for (const ch of s) {
+    const code = ch.charCodeAt(0);
+    if (ch === CR) continue;
+    if (ch === LF || ch === TAB) out += ch;
+    else if (code < 0x20 || code === 0x7f) out += `\\x${code.toString(16).padStart(2, '0')}`;
+    else out += ch;
+  }
+  return out;
+}
+
 const KIND_GLYPHS: Record<string, string> = {
   'shell-spawn': '\u{229E}',
   'shell-ready': '\u{2713}',
@@ -58,6 +74,65 @@ const KIND_GLYPHS: Record<string, string> = {
 
 export function kindGlyph(kind: Event['kind']): string {
   return KIND_GLYPHS[kind] ?? '\u{2022}';
+}
+
+export type KindFamily = 'event' | 'ok' | 'danger' | 'info';
+
+const KIND_FAMILY: Partial<Record<Event['kind'], KindFamily>> = {
+  send: 'ok',
+  'match-done': 'ok',
+  'shell-spawn': 'ok',
+  'shell-ready': 'ok',
+  timeout: 'danger',
+  'fail-pattern-triggered': 'danger',
+  error: 'danger',
+  log: 'info',
+  warning: 'info',
+  annotate: 'info',
+  'sleep-start': 'info',
+  'sleep-done': 'info',
+};
+
+export function kindFamily(kind: Event['kind']): KindFamily {
+  return KIND_FAMILY[kind] ?? 'event';
+}
+
+const UNITS = ['B', 'KB', 'MB', 'GB'];
+
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < UNITS.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${value.toFixed(value < 10 ? 1 : 0)} ${UNITS[unit]}`;
+}
+
+export interface ToleranceFields {
+  duration: string;
+  multiplier: string;
+  from: { file: string; range: string } | null;
+}
+
+// Parses Rust Debug strings like:
+//   Tolerance { duration: 20s, multiplier: 1.0, span: IrSpan { file: "...", span: Span { start: 12, end: 24 } } }
+// Returns null-ish fields when individual pieces fail to parse; falls back
+// to the whole raw string when nothing matches.
+export function parseTolerance(raw: string): ToleranceFields {
+  const duration = raw.match(/duration:\s*([^,}\s]+)/);
+  const multiplier = raw.match(/multiplier:\s*([^,}\s]+)/);
+  const file = raw.match(/file:\s*"([^"]+)"/);
+  const range = raw.match(/Span\s*\{\s*start:\s*(\d+),\s*end:\s*(\d+)/);
+  return {
+    duration: duration?.[1] ?? raw,
+    multiplier: multiplier?.[1] ?? '\u{2014}',
+    from:
+      file && range
+        ? { file: file[1]!, range: `${range[1]}\u{2013}${range[2]}` }
+        : null,
+  };
 }
 
 export function truncate(s: string, n: number): string {

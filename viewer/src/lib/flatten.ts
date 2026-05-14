@@ -18,10 +18,11 @@ const GAP_THRESHOLD_MS = 500;
 // None of them appear as timeline rows. The runtime continues to emit
 // shell-switch because it doubles as a progress-stream signal that drives
 // the live TUI's `|` indicator.
+// shell-spawn / shell-ready / shell-switch / shell-terminate are surfaced as
+// first-class event rows per the design. The effect-expose-* events stay
+// hidden — they're rendered as inline props on the owning effect-setup
+// span (see `effectSetupProps`).
 const HIDDEN_EVENT_KINDS: ReadonlySet<Event['kind']> = new Set([
-  'shell-spawn',
-  'shell-ready',
-  'shell-switch',
   'effect-expose-shell',
   'effect-expose-var',
 ]);

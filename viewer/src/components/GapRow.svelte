@@ -27,7 +27,7 @@
   .elapsed {
     font-family: var(--font-mono);
     font-size: 0.75rem;
-    color: var(--muted);
+    color: var(--ink-dim);
     flex: 0 0 auto;
   }
 </style>

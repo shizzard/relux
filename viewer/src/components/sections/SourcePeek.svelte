@@ -1,33 +1,49 @@
 <script lang="ts">
   import type { ViewerState } from '../../lib/state.svelte';
-  let { state: _state }: { state: ViewerState } = $props();
+  import Panel from '../Panel.svelte';
+
+  let { state }: { state: ViewerState } = $props();
+
+  const location = $derived(state.callStack.at(-1)?.location ?? null);
+  const hint = $derived(location ? `${location.file}:${location.line}` : 'no location');
 </script>
 
-<section class="section">
-  <h3>Source</h3>
-  <p class="empty">&lt;empty&gt;</p>
-</section>
+<Panel title="source" {hint}>
+  <div class="content">
+    {#if location !== null}
+      <p class="placeholder">
+        source bytes are not shipped in this report (deferred).
+      </p>
+      <p class="loc"><code>{location.file}:{location.line}</code></p>
+    {:else}
+      <p class="placeholder">no location available for this event.</p>
+    {/if}
+  </div>
+</Panel>
 
 <style>
-  .section {
-    padding: var(--gap-md) 0;
-    border-bottom: 1px solid var(--border);
+  .content {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--gap-sm) var(--gap-md);
   }
-  .section:last-child {
-    border-bottom: none;
-  }
-  h3 {
+  .placeholder {
     margin: 0 0 var(--gap-sm);
-    font-size: 0.85em;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--muted);
-  }
-  .empty {
-    margin: 0;
-    color: var(--muted);
+    color: var(--ink-faint);
     font-style: italic;
-    font-size: 0.9em;
+    font-size: 0.85rem;
+  }
+  .loc {
+    margin: 0;
+    font-size: 0.85rem;
+  }
+  code {
+    font-family: var(--font-mono);
+    background: var(--paper-2);
+    color: var(--ink);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 0.8rem;
   }
 </style>

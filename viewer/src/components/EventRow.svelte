@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { Event } from '../types/Event';
   import type { ViewerState } from '../lib/state.svelte';
-  import { eventSummary, formatTimestamp, kindGlyph } from '../lib/format';
+  import { eventSummary, formatTimestamp, kindFamily, kindGlyph } from '../lib/format';
   import { toNumber as n } from '../lib/derive';
-  import EventDetails from './EventDetails.svelte';
+  import StyleBCard from './StyleBCard.svelte';
 
   let {
     state,
@@ -16,20 +16,21 @@
   const summary = $derived(eventSummary(event));
   const ts = $derived(formatTimestamp(event.ts));
   const glyph = $derived(kindGlyph(event.kind));
+  const family = $derived(kindFamily(event.kind));
   const rails = $derived(Array.from({ length: depth }, (_, i) => i));
 </script>
 
 <li class="event-row" class:selected data-event-seq={seq}>
   <button class="row" type="button" onclick={() => state.selectEvent(seq)}>
     {#each rails as i (i)}<span class="rail" aria-hidden="true"></span>{/each}
-    <span class="glyph" aria-hidden="true">{glyph}</span>
+    <span class="glyph {family}" aria-hidden="true">{glyph}</span>
     <span class="kind">{event.kind}</span>
     <span class="summary">{summary}</span>
     <span class="ts">{ts}</span>
   </button>
   {#if selected}
-    <div class="body">
-      <EventDetails {event} />
+    <div class="card-slot" style:padding-left="{(depth + 1) * 24}px">
+      <StyleBCard {state} mode={{ kind: 'event', event }} />
     </div>
   {/if}
 </li>
@@ -58,6 +59,8 @@
   }
   .selected > .row {
     background: color-mix(in srgb, var(--accent) 14%, transparent);
+    outline: 1px dashed var(--accent);
+    outline-offset: -1px;
   }
   .rail {
     width: 24px;
@@ -67,15 +70,24 @@
   .glyph {
     width: 20px;
     text-align: center;
-    color: var(--muted);
+    color: var(--ink-faint);
     font-family: var(--font-mono);
     flex: 0 0 auto;
     align-self: center;
   }
+  .glyph.ok {
+    color: var(--accent-2);
+  }
+  .glyph.danger {
+    color: var(--danger);
+  }
+  .glyph.info {
+    color: var(--ink-dim);
+  }
   .kind {
     font-family: var(--font-mono);
-    font-size: 0.8rem;
-    color: var(--muted);
+    font-size: 0.75rem;
+    color: var(--ink-dim);
     padding: 0 var(--gap-sm);
     flex: 0 0 auto;
     align-self: center;
@@ -83,25 +95,24 @@
   }
   .summary {
     font-family: var(--font-mono);
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     align-self: center;
+    color: var(--ink);
   }
   .ts {
     font-family: var(--font-mono);
-    font-size: 0.75rem;
-    color: var(--muted);
+    font-size: 0.72rem;
+    color: var(--ink-faint);
     padding: 0 var(--gap-sm);
     flex: 0 0 auto;
     align-self: center;
   }
-  .body {
-    background: var(--sidebar);
-    border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
+  .card-slot {
+    padding-right: var(--gap-md);
   }
 </style>

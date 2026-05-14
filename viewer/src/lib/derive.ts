@@ -108,27 +108,64 @@ function toStackFrame(span: Span): StackFrame {
   };
 }
 
-export function replayBufferAtSeq(
+export interface BufferRegions {
+  consumed: string;
+  matched: { bytes: string; seq: number } | null;
+  tail: string;
+}
+
+// Per-shell buffer reconstruction up to a given event seq.
+//
+// The buffer is append-only from the viewer's perspective: `grew` adds
+// bytes to the tail; `matched` does not remove bytes, it just re-colors
+// them (previously highlighted bytes fold into consumed, the freshly
+// matched bytes become the new highlight, bytes after the match stay in
+// the tail).
+//
+// Invariant: at the moment of a `matched` buffer event, the runtime's
+// unmatched tail equals `before + matched + after`. The runtime emits
+// `before` and `after` untruncated for exactly this reason, so the viewer
+// can validate the invariant and rebuild lossless history. When the
+// invariant fails (it shouldn't if grew/matched events are consistent),
+// we still fall back to `before + matched + after` for the new tail
+// segment so the user sees coherent regions.
+export function replayBufferRegionsAtSeq(
   data: StructuredLog,
   seq: number,
-): Map<string, string> {
-  const buffers = new Map<string, string>();
+  shell: string,
+): BufferRegions {
+  let consumed = '';
+  let matched: { bytes: string; seq: number } | null = null;
+  let tail = '';
   for (const ev of data.buffer_events) {
     if (n(ev.seq) > seq) break;
-    const current = buffers.get(ev.shell) ?? '';
+    if (ev.shell !== shell) continue;
     switch (ev.kind) {
       case 'grew':
-        buffers.set(ev.shell, current + ev.data);
+        tail += ev.data;
         break;
-      case 'matched':
-        buffers.set(ev.shell, ev.after);
+      case 'matched': {
+        const reconstructed = ev.before + ev.matched + ev.after;
+        if (reconstructed !== tail) {
+          console.warn(
+            `[viewer] buffer reconstruction: tail mismatch at seq=${n(ev.seq)} shell=${shell}; ` +
+              `tail.length=${tail.length} before+matched+after.length=${reconstructed.length}`,
+          );
+        }
+        if (matched !== null) consumed += matched.bytes;
+        consumed += ev.before;
+        matched = { bytes: ev.matched, seq: n(ev.seq) };
+        tail = ev.after;
         break;
+      }
       case 'reset':
-        buffers.set(ev.shell, '');
+        consumed = '';
+        matched = null;
+        tail = '';
         break;
     }
   }
-  return buffers;
+  return { consumed, matched, tail };
 }
 
 export function replayVarsAtSeq(
@@ -143,6 +180,32 @@ export function replayVarsAtSeq(
     }
   }
   return vars;
+}
+
+// Captures live on the current execution frame (shell or fn-call).
+// Without an explicit "captures cleared" event in the schema we approximate:
+// the captures visible at `seq` for the active `shell` are those set by the
+// most recent `match-done` event on that shell with seq <= input. This is
+// right inside a single shell-block / fn-call body and may show stale values
+// across function boundaries — refine if it bites in practice.
+export function replayCapturesAtSeq(
+  data: StructuredLog,
+  seq: number,
+  shell: string | null,
+): Map<string, string> {
+  if (shell === null) return new Map();
+  for (let i = data.events.length - 1; i >= 0; i--) {
+    const ev = data.events[i]!;
+    if (n(ev.seq) > seq) continue;
+    if (ev.shell !== shell) continue;
+    if (ev.kind !== 'match-done' || !ev.captures) continue;
+    const out = new Map<string, string>();
+    for (const [k, v] of Object.entries(ev.captures)) {
+      if (v !== undefined) out.set(k, v);
+    }
+    return out;
+  }
+  return new Map();
 }
 
 export interface ShellContextSnapshot {
@@ -249,6 +312,49 @@ export function shellBlockProps(
     command,
     startupMs: readyTs !== null ? readyTs - spawnTs : null,
   };
+}
+
+export type LiveShellState = 'ready' | 'busy' | 'ended' | 'error';
+
+export interface LiveShell {
+  name: string;
+  command: string;
+  state: LiveShellState;
+}
+
+// Approximate per-shell state at the moment of `event`.
+//
+//   - "ended"  : shell had a `shell-terminate` event at-or-before `event.seq`.
+//   - "busy"   : most recent `match-start` for the shell at-or-before seq
+//                has no corresponding `match-done` yet.
+//   - "ready"  : otherwise (post-`shell-ready`, idle prompt).
+//
+// Returns one entry per shell in `data.shells`, in declaration order.
+export function liveShellsAtSeq(data: StructuredLog, event: Event): LiveShell[] {
+  const seq = n(event.seq);
+  const out: LiveShell[] = [];
+  const records = data.shells as unknown as Record<
+    string,
+    { command: string; spawn_ts: number; terminate_ts: number | null } | undefined
+  >;
+  for (const name of Object.keys(records)) {
+    const rec = records[name];
+    if (!rec) continue;
+    let state: LiveShellState = 'ready';
+    let busy = false;
+    let ended = false;
+    for (const ev of data.events) {
+      if (n(ev.seq) > seq) break;
+      if (ev.shell !== name && ev.kind !== 'shell-terminate') continue;
+      if (ev.kind === 'shell-terminate' && ev.name === name) ended = true;
+      else if (ev.kind === 'match-start') busy = true;
+      else if (ev.kind === 'match-done' || ev.kind === 'timeout') busy = false;
+    }
+    if (ended) state = 'ended';
+    else if (busy) state = 'busy';
+    out.push({ name, command: rec.command, state });
+  }
+  return out;
 }
 
 export { n as toNumber };

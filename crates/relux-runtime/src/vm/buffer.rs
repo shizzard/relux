@@ -19,18 +19,22 @@ pub struct FailPatternHit {
     pub(crate) matched_text: String,
 }
 
-// ─── Constants ──────────────────────────────────────────────────
-
-const BUFFER_PREFIX_LEN: usize = 40;
-const BUFFER_SUFFIX_LEN: usize = 40;
-
 // ─── MatchContext ───────────────────────────────────────────────
 
 /// `(before, matched, after)` slices around a match. Used by the VM to push a
 /// `BufferEventKind::Matched` describing how the cursor advanced.
+///
+/// All three strings carry the *full* bytes around the match, untruncated.
+/// The viewer reconstructs each shell's append-only buffer from the `grew`
+/// stream and validates that `before + matched + after` equals the
+/// currently-unmatched buffer tail at the moment of the match.
 pub type MatchContext = (String, String, String);
 
-// ─── Truncation helpers ─────────────────────────────────────────
+// ─── Tail truncation helpers (failure-context capture only) ────
+// `match_context` does NOT use these — match events ship full bytes so the
+// viewer can rebuild append-only history losslessly. These helpers are
+// kept for `snapshot_tail` and other places that intentionally want a
+// human-sized excerpt of the buffer.
 
 fn truncate_before(s: &str, max: usize) -> String {
     if s.len() <= max {
@@ -38,15 +42,6 @@ fn truncate_before(s: &str, max: usize) -> String {
     } else {
         let start = s.ceil_char_boundary(s.len() - max);
         format!("...{}", &s[start..])
-    }
-}
-
-fn truncate_after(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        let end = s.floor_char_boundary(max);
-        format!("{}...", &s[..end])
     }
 }
 
@@ -63,9 +58,9 @@ pub(crate) fn regex_error_summary(e: &regex::Error) -> String {
 
 fn match_context(text: &str, pos: usize, end_pos: usize, matched: &str) -> MatchContext {
     (
-        truncate_before(&text[..pos], BUFFER_PREFIX_LEN),
+        text[..pos].to_string(),
         matched.to_string(),
-        truncate_after(&text[end_pos..], BUFFER_SUFFIX_LEN),
+        text[end_pos..].to_string(),
     )
 }
 
@@ -398,23 +393,6 @@ mod tests {
         assert_eq!(truncate_before("hello", 0), "...");
     }
 
-    // ── truncate_after ───────────────────────────────────────────────
-
-    #[test]
-    fn truncate_after_short_string_unchanged() {
-        assert_eq!(truncate_after("hello", 10), "hello");
-    }
-
-    #[test]
-    fn truncate_after_exact_length_unchanged() {
-        assert_eq!(truncate_after("hello", 5), "hello");
-    }
-
-    #[test]
-    fn truncate_after_keeps_first_n_chars() {
-        assert_eq!(truncate_after("hello world", 5), "hello...");
-    }
-
     // ── OutputBuffer::append / remaining ────────────────────────────
 
     #[tokio::test]
@@ -482,13 +460,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn consume_literal_context_has_truncated_before_and_after() {
+    async fn consume_literal_context_carries_full_before_and_after() {
         let buf = OutputBuffer::new();
-        buf.append(b"before MATCH after").await;
+        let huge_prefix = "x".repeat(500);
+        let huge_suffix = "y".repeat(500);
+        buf.append(format!("{huge_prefix}MATCH{huge_suffix}").as_bytes())
+            .await;
         let (_, (before, matched, after)) = buf.consume_literal("MATCH").await.unwrap();
-        assert_eq!(before, "before ");
+        assert_eq!(before, huge_prefix);
         assert_eq!(matched, "MATCH");
-        assert_eq!(after, " after");
+        assert_eq!(after, huge_suffix);
     }
 
     // ── OutputBuffer::consume_regex ──────────────────────────────────

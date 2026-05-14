@@ -16,6 +16,11 @@ viewer-build:
         sh -c 'npm ci && npm run build'
     cp viewer/dist/relux-viewer.js.gz vendor/relux-viewer.js.gz
 
+# Run viewer unit tests (vitest).
+viewer-test:
+    docker run --rm -v {{justfile_directory()}}/viewer:/src -w /src node:lts-slim \
+        sh -c 'npm ci && npm test'
+
 # Configure git to use the repo-local hooks directory (.githooks/).
 install-hooks:
     git config core.hooksPath .githooks

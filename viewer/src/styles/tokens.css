@@ -1,44 +1,31 @@
 :root {
-  --bg: #fff;
-  --fg: #222;
-  --muted: #888;
-  --accent: #1a6dcc;
-  --sidebar: #f6f6f6;
-  --code-bg: #f6f6f6;
-  --code-fg: #222;
-  --border: #ddd;
+  --bg: #0f1620;
+  --bg-deep: #0a0f17;
+  --paper: #18212e;
+  --paper-2: #1d2735;
 
-  --pass: #1a8a3f;
-  --fail: #cc2222;
-  --skip: #888;
-  --invalid: #cc6622;
+  --ink: #e8e4d6;
+  --ink-dim: #9aa3ad;
+  --ink-faint: #5b6470;
 
-  --font-body: "Open Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, "Cascadia Code", "Fira Code", "Source Code Pro", Menlo, Consolas, monospace;
+  --accent: #ffd166;
+  --accent-2: #6fd3a3;
+  --danger: #ff7a7a;
+
+  --pass: var(--accent-2);
+  --fail: var(--danger);
+  --skip: var(--ink-faint);
+  --invalid: var(--accent);
+
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", "Fira Code", "Source Code Pro", Menlo, Consolas, monospace;
 
   --gap-xs: 4px;
   --gap-sm: 8px;
   --gap-md: 12px;
-  --gap-lg: 20px;
-  --gap-xl: 32px;
+  --gap-lg: 18px;
+  --gap-xl: 28px;
 
-  --radius: 4px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1a1a2e;
-    --fg: #d4d4d4;
-    --muted: #777;
-    --accent: #5cadff;
-    --sidebar: #1e1e32;
-    --code-bg: #1e1e32;
-    --code-fg: #d4d4d4;
-    --border: #333;
-
-    --pass: #4dd87a;
-    --fail: #ff5555;
-    --skip: #777;
-    --invalid: #f0a060;
-  }
+  --radius: 6px;
+  --border: rgba(232, 228, 214, 0.18);
 }

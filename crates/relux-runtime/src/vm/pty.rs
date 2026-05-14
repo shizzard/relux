@@ -17,6 +17,8 @@ pub(crate) struct PtyShell {
     child: Child,
     pub(crate) output_buf: OutputBuffer,
     read_task: tokio::task::JoinHandle<()>,
+    log: StructuredLogBuilder,
+    shell_name: String,
 }
 
 impl PtyShell {
@@ -38,6 +40,8 @@ impl PtyShell {
         let output_for_reader = output_buf.clone();
         let mut reader = tokio::io::BufReader::new(reader);
         let utf8 = Arc::new(Mutex::new(Utf8Stream::new()));
+        let log_for_reader = log.clone();
+        let shell_name_for_reader = shell_name.clone();
         let read_task = tokio::spawn(async move {
             let mut buf = vec![0u8; 4096];
             loop {
@@ -50,8 +54,8 @@ impl PtyShell {
                         // arrive intact.
                         let decoded = utf8.lock().await.feed(&buf[..n]);
                         if !decoded.is_empty() {
-                            log.push_buffer_event(
-                                &shell_name,
+                            log_for_reader.push_buffer_event(
+                                &shell_name_for_reader,
                                 BufferEventKind::Grew { data: decoded },
                             );
                         }
@@ -70,6 +74,8 @@ impl PtyShell {
             child,
             output_buf,
             read_task,
+            log,
+            shell_name,
         })
     }
 
@@ -89,16 +95,26 @@ impl PtyShell {
             .build()
             .expect("prompt regex must be valid");
 
+        let log = self.log.clone();
+        let shell_name = self.shell_name.clone();
         tokio::time::timeout(timeout, async {
-            // Step 1: Wait for any shell output (rc files, default prompt, etc.)
+            // Step 1: Wait for any shell output (rc files, default prompt, etc.).
+            // Each successful drain emits a Matched buffer event so that the
+            // viewer can faithfully reconstruct the buffer history without
+            // losing the bytes consumed by init.
             loop {
                 let notified = self.output_buf.notify.notified();
-                if self
-                    .output_buf
-                    .consume_regex(&any_output_re)
-                    .await
-                    .is_some()
+                if let Some((_, (before, matched, after))) =
+                    self.output_buf.consume_regex(&any_output_re).await
                 {
+                    log.push_buffer_event(
+                        &shell_name,
+                        BufferEventKind::Matched {
+                            before,
+                            matched,
+                            after,
+                        },
+                    );
                     break;
                 }
                 notified.await;
@@ -111,7 +127,17 @@ impl PtyShell {
             // Step 3: Wait for the new prompt to appear
             loop {
                 let notified = self.output_buf.notify.notified();
-                if self.output_buf.consume_regex(&prompt_re).await.is_some() {
+                if let Some((_, (before, matched, after))) =
+                    self.output_buf.consume_regex(&prompt_re).await
+                {
+                    log.push_buffer_event(
+                        &shell_name,
+                        BufferEventKind::Matched {
+                            before,
+                            matched,
+                            after,
+                        },
+                    );
                     break;
                 }
                 notified.await;
