@@ -15,7 +15,7 @@ import {
   type ShellContextSnapshot,
   type SpanId,
 } from './derive';
-import { flattenRows, type Row } from './flatten';
+import { flattenRows, foldCloseIndex, type Row } from './flatten';
 
 export type OpenModal = 'env' | 'shells' | null;
 export type TreeFilter = 'all' | 'errors' | 'send-match';
@@ -157,10 +157,37 @@ export class ViewerState {
 
   private computeBufferRegions(): Map<string, BufferRegions> {
     if (!this.selected) return new Map();
-    const seq = n(this.selected.seq);
+    const events = this.data.events;
+    const selectedSeq = n(this.selected.seq);
+
+    // The selected lead may open a fold (match-start, sleep-start, shell-
+    // spawn). Treat E1 as the close half of that fold so the cutoff
+    // reflects "after the match completed / sleep returned / shell came
+    // up", not the moment the operation began. From E1, peek one more
+    // event in the same shell — that becomes the actual replay cutoff so
+    // any bytes that arrived between the close and the next operation
+    // also show up. If the next event switches shells (or there is no
+    // next event), the cutoff stays at E1.
+    let idx = -1;
+    for (let i = 0; i < events.length; i++) {
+      if (n(events[i]!.seq) === selectedSeq) {
+        idx = i;
+        break;
+      }
+    }
+    if (idx < 0) return new Map();
+
+    idx = foldCloseIndex(events, idx);
+    const close = events[idx]!;
+    let targetSeq = n(close.seq);
+    const next = events[idx + 1];
+    if (next && next.shell === close.shell) {
+      targetSeq = n(next.seq);
+    }
+
     const out = new Map<string, BufferRegions>();
     for (const name of Object.keys(this.data.shells)) {
-      out.set(name, replayBufferRegionsAtSeq(this.data, seq, name));
+      out.set(name, replayBufferRegionsAtSeq(this.data, targetSeq, name));
     }
     return out;
   }

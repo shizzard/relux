@@ -86,6 +86,47 @@ export function foldedSeqs(f: FoldedEvent): number[] {
   }
 }
 
+// Given an index into `events`, returns the index of the close half of the
+// fold that starts there (sleep-done, match-done/timeout, shell-ready).
+// Unlike `foldEvents`, which requires strict adjacency to merge rows
+// visually, this helper scans forward by *kind* within the same span
+// (and shell, where the event kind carries one) so it stays correct if
+// future code paths inject other events (log, fail-pattern-triggered,
+// recv, ...) between the open and the close. Returns `startIdx` when the
+// event there does not open a fold, or when no matching close is found.
+export function foldCloseIndex(events: readonly Event[], startIdx: number): number {
+  const e = events[startIdx];
+  if (!e) return startIdx;
+  switch (e.kind) {
+    case 'sleep-start':
+      for (let i = startIdx + 1; i < events.length; i++) {
+        const c = events[i]!;
+        if (c.kind === 'sleep-done' && sameSpan(e, c)) return i;
+      }
+      return startIdx;
+    case 'match-start':
+      for (let i = startIdx + 1; i < events.length; i++) {
+        const c = events[i]!;
+        if (
+          (c.kind === 'match-done' || c.kind === 'timeout') &&
+          sameSpan(e, c) &&
+          sameShell(e, c)
+        ) {
+          return i;
+        }
+      }
+      return startIdx;
+    case 'shell-spawn':
+      for (let i = startIdx + 1; i < events.length; i++) {
+        const c = events[i]!;
+        if (c.kind === 'shell-ready' && sameSpan(e, c) && sameShell(e, c)) return i;
+      }
+      return startIdx;
+    default:
+      return startIdx;
+  }
+}
+
 export function foldEvents(events: readonly Event[]): FoldedEvent[] {
   const out: FoldedEvent[] = [];
   for (let i = 0; i < events.length; i++) {
