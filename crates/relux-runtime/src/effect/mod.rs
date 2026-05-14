@@ -17,6 +17,7 @@ use crate::effect::registry::EffectInstanceKey;
 use crate::effect::registry::EffectRegistry;
 use crate::effect::registry::EffectSlot;
 use crate::effect::registry::ExportedEffect;
+use crate::effect::registry::ReleaseOutcome;
 use crate::effect::registry::ShellMap;
 use crate::effect::registry::VarMap;
 use crate::observe::structured::SpanId;
@@ -206,6 +207,28 @@ impl EffectManager {
                         shells: handle.exposed_shells(),
                         vars: handle.exposed_vars.clone(),
                     };
+                    let marker = handle.marker.clone();
+                    drop(guard);
+
+                    // Emit a zero-duration reuse span under the caller's
+                    // parent so the dedup hit is visible in the viewer.
+                    // The marker matches the bootstrap span's marker —
+                    // the viewer hops back by marker on pill click.
+                    let overlay = evaluated_overlay
+                        .take()
+                        .expect("Ready slot reachable only once per acquire");
+                    let reuse_span = self.rt_ctx.log.open_span(
+                        SpanKind::EffectSetup {
+                            effect: start.effect().name.to_string(),
+                            overlay: Self::evaluated_overlay_pairs(&overlay),
+                            alias: start.alias().map(String::from),
+                            marker,
+                            is_reuse: true,
+                        },
+                        Some(parent_span),
+                        Some(start.span()),
+                    );
+                    reuse_span.close();
                     return Ok((acquired, EffectGuard::new(slot.clone())));
                 }
                 EffectSlot::Failed(failure) => return Err(failure.clone()),
@@ -228,7 +251,7 @@ impl EffectManager {
                         .take()
                         .expect("Empty slot reachable only once per acquire");
                     let bootstrap_result = self
-                        .bootstrap_effect(start, caller_vars, caller_env, overlay, parent_span)
+                        .bootstrap_effect(key, start, caller_vars, caller_env, overlay, parent_span)
                         .await;
 
                     let mut guard = slot.lock().await;
@@ -263,21 +286,22 @@ impl EffectManager {
 
     async fn bootstrap_effect(
         &self,
+        key: &EffectInstanceKey,
         start: &IrEffectStart,
         _caller_vars: &VarScope,
         caller_env: &Arc<LayeredEnv>,
         evaluated_overlay: Env,
         parent_span: SpanId,
     ) -> Result<EffectHandle, Failure> {
-        let overlay_pairs: Vec<(String, String)> = evaluated_overlay
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect();
+        let marker = key.marker();
+        let overlay_pairs = Self::evaluated_overlay_pairs(&evaluated_overlay);
         let setup_span = self.rt_ctx.log.open_span(
             SpanKind::EffectSetup {
                 effect: start.effect().name.to_string(),
                 overlay: overlay_pairs,
                 alias: start.alias().map(String::from),
+                marker: marker.clone(),
+                is_reuse: false,
             },
             Some(parent_span),
             Some(start.span()),
@@ -645,8 +669,20 @@ impl EffectManager {
             dep_guards,
             cleanup: cleanup_block,
             setup_span: setup_span_id,
+            marker,
             alias: start.alias().map(String::from),
         })
+    }
+
+    /// Surface form of an evaluated overlay, used wherever a structured
+    /// `EffectSetup` span needs the overlay as `(key, value)` pairs.
+    /// Same conversion used by bootstrap and reuse paths so dedup'd
+    /// acquires render identically to bootstraps.
+    fn evaluated_overlay_pairs(overlay: &Env) -> Vec<(String, String)> {
+        overlay
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
     async fn eval_overlay(
@@ -692,8 +728,9 @@ impl EffectManager {
         self.rt_ctx.log.emit_var_let(setup_span, None, name, &value);
     }
 
-    /// Glue: release one guard, and if it returned the handle (i.e.
-    /// this caller was the last holder), run its cleanup body.
+    /// Glue: release one guard, then either run its cleanup body (when
+    /// this caller was the last holder) or open a zero-duration
+    /// deferred-cleanup span (otherwise).
     fn release_and_teardown<'a>(
         &'a self,
         guard: EffectGuard,
@@ -701,8 +738,30 @@ impl EffectManager {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<Warning>> + Send + 'a>> {
         Box::pin(async move {
             match guard.release().await {
-                Some(handle) => self.teardown_effect(handle, parent_span).await,
-                None => Vec::new(),
+                ReleaseOutcome::LastHolder { handle } => {
+                    self.teardown_effect(*handle, parent_span).await
+                }
+                ReleaseOutcome::Deferred {
+                    effect,
+                    alias,
+                    setup_span,
+                    marker,
+                } => {
+                    let deferred = self.rt_ctx.log.open_span(
+                        SpanKind::EffectCleanup {
+                            effect,
+                            alias,
+                            setup_span,
+                            marker,
+                            is_deferred: true,
+                        },
+                        Some(parent_span),
+                        None,
+                    );
+                    deferred.close();
+                    Vec::new()
+                }
+                ReleaseOutcome::Drift => Vec::new(),
             }
         })
     }
@@ -721,6 +780,7 @@ impl EffectManager {
         let effect_name = handle.scope.name().to_string();
         let setup_span = handle.setup_span;
         let alias = handle.alias.clone();
+        let marker = handle.marker.clone();
         let mut warnings = Vec::new();
 
         let cleanup_span = self.rt_ctx.log.open_span(
@@ -728,10 +788,13 @@ impl EffectManager {
                 effect: effect_name.clone(),
                 alias,
                 setup_span,
+                marker,
+                is_deferred: false,
             },
             Some(parent_span),
             None,
         );
+        let cleanup_span_id = cleanup_span.id();
 
         // Shut down all VMs (exposed and non-exposed, deduplicated).
         let mut seen = HashSet::new();
@@ -747,7 +810,7 @@ impl EffectManager {
             let block_loc = cleanup_block.span();
             let block_span = self.rt_ctx.log.open_span(
                 SpanKind::CleanupBlock,
-                Some(cleanup_span.id()),
+                Some(cleanup_span_id),
                 Some(block_loc),
             );
             let block_span_id = block_span.id();
@@ -770,18 +833,24 @@ impl EffectManager {
             // block_span drops here, closing the span.
         }
 
-        cleanup_span.close();
-
-        // Concurrently release dep guards. The diamond serialization
-        // happens inside `release` (atomic decrement under slot mutex);
+        // Concurrently release dep guards under our own cleanup span:
+        // dep cleanups (including deferred-release spans for the
+        // diamond's non-last holder) parent under this cleanup, not
+        // under our caller. The diamond serialization still happens
+        // inside `release` (atomic decrement under slot mutex);
         // join_all lets independent branches make progress.
         let dep_futures = handle
             .dep_guards
             .into_iter()
-            .map(|g| self.release_and_teardown(g, parent_span));
+            .map(|g| self.release_and_teardown(g, cleanup_span_id));
         let dep_warnings: Vec<Warning> =
             join_all(dep_futures).await.into_iter().flatten().collect();
         warnings.extend(dep_warnings);
+
+        // Close cleanup_span AFTER the recursion so deferred-cleanup
+        // spans emitted by dep releases (and nested final-cleanup spans
+        // from dep release-to-zero) are well-ordered children.
+        cleanup_span.close();
 
         warnings
     }

@@ -112,6 +112,19 @@ export class ViewerState {
     }
   }
 
+  // Reveal a span deep in the tree: expand every ancestor in the
+  // expansion set, then select the target. Used by the marker pill's
+  // jump-to-partner click handler.
+  revealAndSelect(targetId: SpanId): void {
+    const next = new Set(this.expandedSpans);
+    for (const a of ancestors(this.data, targetId)) {
+      next.add(n(a.id));
+    }
+    this.expandedSpans = next;
+    this.selectedSpanId = targetId;
+    this.selectedEventSeq = null;
+  }
+
   toggleSpan(id: SpanId): void {
     const next = new Set(this.expandedSpans);
     if (next.has(id)) next.delete(id);

@@ -5,14 +5,18 @@
   import type { FoldedEvent } from '../lib/flatten';
   import { leadEvent } from '../lib/flatten';
   import {
+    bootstrapForReuse,
     bufferBytesGrewBetween,
     effectSetupProps,
+    finalCleanupForDeferred,
     firstEventInSpan,
     lastEventInShell,
     matchingShellSpawn,
     shellBlockLifecycle,
     toNumber as n,
   } from '../lib/derive';
+  import type { SpanId } from '../lib/derive';
+  import MarkerPill from './MarkerPill.svelte';
   import {
     displaySpanKind,
     foldedFamily,
@@ -41,6 +45,31 @@
 
   const family = $derived(mode.kind === 'event' ? foldedFamily(mode.folded) : 'event');
   const head = $derived(buildHead());
+
+  type PillProps = {
+    marker: string;
+    prefix: 'reused' | 'deferred' | null;
+    jumpTo: SpanId | null;
+  };
+  const pillProps = $derived.by<PillProps | null>(() => {
+    if (mode.kind !== 'span') return null;
+    const span = mode.span;
+    if (span.kind === 'effect-setup') {
+      return {
+        marker: span.marker,
+        prefix: span.is_reuse ? 'reused' : null,
+        jumpTo: span.is_reuse ? bootstrapForReuse(state.data, span.marker) : null,
+      };
+    }
+    if (span.kind === 'effect-cleanup') {
+      return {
+        marker: span.marker,
+        prefix: span.is_deferred ? 'deferred' : null,
+        jumpTo: span.is_deferred ? finalCleanupForDeferred(state.data, span.marker) : null,
+      };
+    }
+    return null;
+  });
   const rows = $derived<Row[]>(
     mode.kind === 'event' ? foldedRows(mode.folded) : spanRows(mode.span),
   );
@@ -399,6 +428,14 @@
 <div class="card {family}">
   <header class="head">
     <span class="title">{head.title}</span>
+    {#if pillProps}
+      <MarkerPill
+        {state}
+        marker={pillProps.marker}
+        prefix={pillProps.prefix}
+        jumpTo={pillProps.jumpTo}
+      />
+    {/if}
     <span class="sub">{head.subtitle}</span>
   </header>
   <div class="grid">

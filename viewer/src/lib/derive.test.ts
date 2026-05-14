@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BufferEvent } from '../types/BufferEvent';
 import type { StructuredLog } from '../types/StructuredLog';
-import { replayBufferRegionsAtSeq } from './derive';
+import { bootstrapForReuse, finalCleanupForDeferred, replayBufferRegionsAtSeq } from './derive';
 
 // Minimal log builder — only `buffer_events` is consulted by
 // replayBufferRegionsAtSeq, so every other field is stubbed.
@@ -278,5 +278,92 @@ describe('replayBufferRegionsAtSeq', () => {
       expect(replayBufferRegionsAtSeq(log, seq, 's'), `seq=${seq}`).toEqual(want);
     }
     expect(warnSpy).not.toHaveBeenCalled();
+  });
+});
+
+// Helpers for the partner-lookup tests below — only `spans` is read, so
+// everything else is stubbed.
+type SpanRecord = Record<string, unknown>;
+function spansLog(spans: SpanRecord[]): StructuredLog {
+  const byId: Record<string, SpanRecord> = {};
+  for (const span of spans) {
+    byId[String(span.id)] = span;
+  }
+  return {
+    test: { name: 't', path: 'p', outcome: 'pass', duration_ms: 0n },
+    env: { bootstrap: [] },
+    shells: {},
+    spans: byId,
+    events: [],
+    buffer_events: [],
+    failure: null,
+  } as unknown as StructuredLog;
+}
+function setupSpan(id: bigint, marker: string, is_reuse: boolean): SpanRecord {
+  return {
+    id,
+    kind: 'effect-setup',
+    effect: 'E0',
+    overlay: [],
+    alias: null,
+    marker,
+    is_reuse,
+    parent: 1n,
+    start_ts: 0,
+    end_ts: 0,
+    location: null,
+  };
+}
+function cleanupSpan(id: bigint, marker: string, is_deferred: boolean): SpanRecord {
+  return {
+    id,
+    kind: 'effect-cleanup',
+    effect: 'E0',
+    alias: null,
+    setup_span: 2n,
+    marker,
+    is_deferred,
+    parent: 1n,
+    start_ts: 0,
+    end_ts: 0,
+    location: null,
+  };
+}
+
+describe('bootstrapForReuse', () => {
+  it('returns the bootstrap setup id when one with the marker exists', () => {
+    const log = spansLog([
+      setupSpan(2n, 'kind-cobra-0001', false),
+      setupSpan(3n, 'kind-cobra-0001', true),
+    ]);
+    expect(bootstrapForReuse(log, 'kind-cobra-0001')).toBe(2);
+  });
+
+  it('ignores reuse spans even when their marker matches', () => {
+    const log = spansLog([setupSpan(5n, 'kind-cobra-0001', true)]);
+    expect(bootstrapForReuse(log, 'kind-cobra-0001')).toBeNull();
+  });
+
+  it('returns null when no bootstrap with that marker exists', () => {
+    expect(bootstrapForReuse(spansLog([]), 'kind-cobra-0001')).toBeNull();
+  });
+});
+
+describe('finalCleanupForDeferred', () => {
+  it('returns the final cleanup id when one with the marker exists', () => {
+    const log = spansLog([
+      cleanupSpan(4n, 'kind-cobra-0001', false),
+      cleanupSpan(5n, 'kind-cobra-0001', true),
+    ]);
+    expect(finalCleanupForDeferred(log, 'kind-cobra-0001')).toBe(4);
+  });
+
+  it('ignores deferred cleanups even when their marker matches', () => {
+    const log = spansLog([cleanupSpan(6n, 'kind-cobra-0001', true)]);
+    expect(finalCleanupForDeferred(log, 'kind-cobra-0001')).toBeNull();
+  });
+
+  it('returns null when no final cleanup with that marker exists', () => {
+    expect(finalCleanupForDeferred(spansLog([]), 'kind-cobra-0001')).toBeNull();
   });
 });

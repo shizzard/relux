@@ -22,6 +22,13 @@ pub enum SpanKind {
         effect: String,
         overlay: Vec<(String, String)>,
         alias: Option<String>,
+        /// Identity marker computed from the effect-instance dedup key.
+        /// Same value on every `EffectSetup` for the same instance —
+        /// the bootstrap span plus every dedup'd reuse share it.
+        marker: String,
+        /// `false` on the bootstrap span that runs the setup body.
+        /// `true` on zero-duration spans emitted by dedup'd acquires.
+        is_reuse: bool,
     },
     EffectCleanup {
         effect: String,
@@ -32,6 +39,11 @@ pub enum SpanKind {
         /// back-reference preserves the link so consumers can resolve a
         /// cleanup shell's scope to the owning effect's vars.
         setup_span: SpanId,
+        /// Identity marker, identical to the paired `EffectSetup`'s.
+        marker: String,
+        /// `false` on the final-release span that runs the cleanup body.
+        /// `true` on zero-duration spans emitted by non-last releases.
+        is_deferred: bool,
     },
     ShellBlock {
         shell: String,

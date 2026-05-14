@@ -39,6 +39,8 @@ function buildSpan(input: SpanInput): Span {
         effect: input.effect,
         overlay: [],
         alias: input.alias,
+        marker: 'test-marker-0000',
+        is_reuse: false,
       };
     case 'effect-cleanup':
       return {
@@ -47,6 +49,8 @@ function buildSpan(input: SpanInput): Span {
         effect: input.effect,
         alias: input.alias,
         setup_span: BigInt(input.setup_span),
+        marker: 'test-marker-0000',
+        is_deferred: false,
       };
     case 'cleanup-block':
       return { ...base, kind: 'cleanup-block' };

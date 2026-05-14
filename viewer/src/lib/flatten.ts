@@ -1,7 +1,7 @@
 import type { Event } from '../types/Event';
 import type { Span } from '../types/Span';
 import type { StructuredLog } from '../types/StructuredLog';
-import { ancestors, spanById, toNumber as n, type SpanId } from './derive';
+import { spanById, toNumber as n, type SpanId } from './derive';
 
 // A FoldedEvent is either a single Event (the common case) or a deterministic
 // pair of adjacent events whose halves carry no information the other
@@ -159,67 +159,82 @@ export function foldEvents(events: readonly Event[]): FoldedEvent[] {
   return out;
 }
 
+// flattenRows: tree-driven flattening.
+//
+// Walks the span tree in DFS order rooted at the test span, sorting
+// children by `start_ts`. At each span, direct events (those whose
+// post-reattach span IS this span) and child spans are merged by
+// timestamp and emitted in chronological order. Events are emitted as
+// `event` or `log-bar` rows; child spans are emitted as `span-entry`
+// rows followed (if expanded) by their own contents at one deeper
+// indent.
+//
+// This replaces an earlier event-seq-driven pass that lazily emitted
+// span-entry rows on first event visit. The old pass produced correct
+// nesting whenever event order happened to follow tree order (the case
+// for sequential effect setup) but broke for concurrently-running
+// children (the diamond-cleanup case where E1 and E2 cleanup events
+// interleave in seq and E0's cleanup runs after both). The tree-driven
+// pass uses parent links directly, so nesting is correct regardless of
+// event interleaving.
+//
+// Zero-duration "marker-only" spans (`effect-setup { is_reuse: true }`
+// and `effect-cleanup { is_deferred: true }`) need no special handling
+// — they appear in the tree as ordinary children and slot into the
+// merged ts ordering naturally.
 export function flattenRows(data: StructuredLog, expandedSpans: Set<SpanId>): Row[] {
-  // Filter hidden event kinds out before folding so absorbed lifecycle
-  // events (shell-spawn/ready/switch) and noise (recv/string-eval/annotate)
-  // never participate in the row stream. log/warning/error pass through to
-  // become log-bar rows below.
   const visibleEvents = data.events.filter((ev) => !HIDDEN_EVENT_KINDS.has(ev.kind));
   const folded = foldEvents(visibleEvents);
-  const rows: Row[] = [];
-  const enteredSpans = new Set<SpanId>();
-  let lastTs: number | null = null;
 
+  // Index folded events by their effective (post-reattach) span.
+  const eventsBySpan = new Map<SpanId, FoldedEvent[]>();
   for (const fe of folded) {
     const lead = leadEvent(fe);
-
-    const effectiveSpanId = reattachSpanId(data, lead);
-    const chain = ancestors(data, effectiveSpanId);
-    if (chain.length === 0) continue;
-
-    // Walk the chain top-down, emitting span-entry rows lazily and
-    // breaking as soon as we hit a collapsed ancestor. The test span at
-    // chain[0] is the page-level root (its identity is in the header
-    // bar); it is never rendered as a row and is treated as implicitly
-    // always-expanded.
-    //
-    // The event renders only if every span up to and including its own
-    // span is reachable. Stopping one short would let events fire even
-    // when their own shell-block / fn-call is collapsed.
-    let allVisible = true;
-    for (let i = 0; i < chain.length; i++) {
-      const span = chain[i]!;
-      const id = n(span.id);
-      const isTest = span.kind === 'test';
-
-      if (!enteredSpans.has(id)) {
-        enteredSpans.add(id);
-        if (isTest) {
-          if (lastTs === null) lastTs = span.start_ts;
-        } else {
-          const ts = span.start_ts;
-          if (lastTs !== null && ts - lastTs > GAP_THRESHOLD_MS) {
-            rows.push({ kind: 'gap', from: lastTs, to: ts, ms: ts - lastTs });
-          }
-          rows.push({ kind: 'span-entry', span, depth: Math.max(0, i - 1) });
-          lastTs = ts;
-        }
-      }
-
-      if (!isTest && !expandedSpans.has(id)) {
-        allVisible = false;
-        break;
-      }
+    const sid = reattachSpanId(data, lead);
+    let bucket = eventsBySpan.get(sid);
+    if (!bucket) {
+      bucket = [];
+      eventsBySpan.set(sid, bucket);
     }
-    if (!allVisible) continue;
+    bucket.push(fe);
+  }
+  // Within each bucket events are already in seq order (folded preserves
+  // it), which is also non-decreasing by ts; no further sort needed.
 
-    if (lastTs !== null && lead.ts - lastTs > GAP_THRESHOLD_MS) {
-      rows.push({ kind: 'gap', from: lastTs, to: lead.ts, ms: lead.ts - lastTs });
+  // Index children by parent, sorted by start_ts.
+  const childrenByParent = new Map<SpanId, Span[]>();
+  const spanMap = data.spans as unknown as Record<string, Span | undefined>;
+  let testSpan: Span | null = null;
+  for (const key of Object.keys(spanMap)) {
+    const span = spanMap[key];
+    if (!span) continue;
+    if (span.kind === 'test' && testSpan === null) testSpan = span;
+    if (span.parent === null) continue;
+    const pid = n(span.parent);
+    let bucket = childrenByParent.get(pid);
+    if (!bucket) {
+      bucket = [];
+      childrenByParent.set(pid, bucket);
     }
-    // Events sit one indent deeper than their containing span (the span
-    // header is at chain.length - 2 after the test offset; the event sits
-    // visually inside that span at chain.length - 1).
-    const depth = Math.max(0, chain.length - 1);
+    bucket.push(span);
+  }
+  for (const bucket of childrenByParent.values()) {
+    bucket.sort((a, b) => a.start_ts - b.start_ts);
+  }
+  if (testSpan === null) return [];
+
+  const rows: Row[] = [];
+  let lastTs: number | null = testSpan.start_ts;
+
+  function maybeGap(ts: number): void {
+    if (lastTs !== null && ts - lastTs > GAP_THRESHOLD_MS) {
+      rows.push({ kind: 'gap', from: lastTs, to: ts, ms: ts - lastTs });
+    }
+  }
+
+  function emitEvent(fe: FoldedEvent, depth: number): void {
+    const lead = leadEvent(fe);
+    maybeGap(lead.ts);
     const level = fe.kind === 'single' ? LOG_LEVELS[lead.kind] : undefined;
     if (level !== undefined && fe.kind === 'single') {
       rows.push({ kind: 'log-bar', level, event: fe.event, depth });
@@ -228,6 +243,39 @@ export function flattenRows(data: StructuredLog, expandedSpans: Set<SpanId>): Ro
     }
     lastTs = lead.ts;
   }
+
+  function emitSpanContents(span: Span, depth: number): void {
+    const events = eventsBySpan.get(n(span.id)) ?? [];
+    const children = childrenByParent.get(n(span.id)) ?? [];
+    let ei = 0;
+    let ci = 0;
+    while (ei < events.length || ci < children.length) {
+      const eTs = ei < events.length ? leadEvent(events[ei]!).ts : Infinity;
+      const cTs = ci < children.length ? children[ci]!.start_ts : Infinity;
+      // Ties: child span before its same-ts events (spans open at the
+      // instant before any of their inner activity).
+      if (cTs <= eTs) {
+        emitChildSpan(children[ci]!, depth);
+        ci++;
+      } else {
+        emitEvent(events[ei]!, depth);
+        ei++;
+      }
+    }
+  }
+
+  function emitChildSpan(span: Span, depth: number): void {
+    maybeGap(span.start_ts);
+    rows.push({ kind: 'span-entry', span, depth });
+    lastTs = span.start_ts;
+    if (expandedSpans.has(n(span.id))) {
+      emitSpanContents(span, depth + 1);
+    }
+  }
+
+  // Test span is the page-level root: never rendered as a row,
+  // implicitly always-expanded. Its direct children are at depth 0.
+  emitSpanContents(testSpan, 0);
 
   return rows;
 }

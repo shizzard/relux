@@ -66,6 +66,17 @@ impl EffectInstanceKey {
             evaluated_overlay: identity,
         }
     }
+
+    /// Stable mnemonic computed from the dedup identity. Same key →
+    /// same marker; two acquires of the same effect-instance (one
+    /// bootstrap + N dedup'd reuses) all share this string.
+    pub fn marker(&self) -> String {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::Hasher;
+        let mut hasher = DefaultHasher::new();
+        std::hash::Hash::hash(self, &mut hasher);
+        relux_core::diagnostics::format_mnemonic(hasher.finish())
+    }
 }
 
 // ─── EffectHandle ───────────────────────────────────────────
@@ -89,6 +100,10 @@ pub struct EffectHandle {
     /// themselves are now parented directly under the test span, so this
     /// is the only link from cleanup back to the originating setup.
     pub setup_span: SpanId,
+    /// Identity marker mirrored from the dedup key. Threaded into every
+    /// `EffectCleanup` span this handle drives at teardown so partner
+    /// lookup by marker works without re-deriving from the key.
+    pub marker: String,
     /// Alias supplied at the first acquisition (`start <FX> as <alias>`).
     /// `None` when no alias was used. Threaded into the `EffectCleanup`
     /// span so the cleanup card can mirror `EffectSetup`'s alias display.
@@ -129,6 +144,30 @@ pub enum EffectSlot {
 
 // EffectGuard
 
+/// What `EffectGuard::release` returns.
+///
+/// - `LastHolder` — refcount went to zero. Caller takes ownership of
+///   the handle and runs the cleanup body.
+/// - `Deferred` — refcount stayed positive. Caller emits a
+///   zero-duration deferred `EffectCleanup` span using the supplied
+///   metadata; the actual cleanup span (and body) will be opened by a
+///   later releaser.
+/// - `Drift` — slot wasn't `Ready` (only reachable on a bug: a guard
+///   was released against a slot it doesn't belong to). A
+///   `debug_assert!` fires inside `release`; release builds short-circuit.
+pub enum ReleaseOutcome {
+    LastHolder {
+        handle: Box<EffectHandle>,
+    },
+    Deferred {
+        effect: String,
+        alias: Option<String>,
+        setup_span: SpanId,
+        marker: String,
+    },
+    Drift,
+}
+
 /// Outstanding handle on one acquired refcount of an `EffectSlot`.
 ///
 /// Constructed only by `EffectManager::acquire` via `EffectGuard::new`
@@ -155,25 +194,32 @@ impl EffectGuard {
 
     /// Atomic decrement-and-take under the slot mutex.
     ///
-    /// Returns `Some(handle)` exactly once per slot (the call that
-    /// drove `refcount` from 1 to 0) and `None` from every other
-    /// release on the same slot. The handle is moved out of the
-    /// slot; the slot becomes `EffectSlot::Empty`. Callers run the
-    /// returned handle's cleanup body *after* this method returns,
-    /// so the slot mutex is not held during cleanup.
-    pub async fn release(self) -> Option<EffectHandle> {
+    /// Returns `LastHolder { handle }` exactly once per slot (the call
+    /// that drove `refcount` from 1 to 0) and `Deferred { ... }` from
+    /// every other release on the same slot, carrying the metadata the
+    /// caller needs to emit a zero-duration deferred-cleanup span.
+    /// The handle is moved out of the slot; the slot becomes
+    /// `EffectSlot::Empty`. Callers run the returned handle's cleanup
+    /// body *after* this method returns, so the slot mutex is not held
+    /// during cleanup.
+    pub async fn release(self) -> ReleaseOutcome {
         let mut guard = self.slot.lock().await;
         match &mut *guard {
-            EffectSlot::Ready { refcount, .. } => {
+            EffectSlot::Ready { refcount, handle } => {
                 *refcount -= 1;
                 if *refcount == 0 {
                     let taken = std::mem::replace(&mut *guard, EffectSlot::Empty);
                     match taken {
-                        EffectSlot::Ready { handle, .. } => Some(*handle),
+                        EffectSlot::Ready { handle, .. } => ReleaseOutcome::LastHolder { handle },
                         _ => unreachable!("matched Ready above"),
                     }
                 } else {
-                    None
+                    ReleaseOutcome::Deferred {
+                        effect: handle.scope.name().to_string(),
+                        alias: handle.alias.clone(),
+                        setup_span: handle.setup_span,
+                        marker: handle.marker.clone(),
+                    }
                 }
             }
             EffectSlot::Empty | EffectSlot::Loading(_) | EffectSlot::Failed(_) => {
@@ -181,7 +227,7 @@ impl EffectGuard {
                     false,
                     r#"EffectGuard::release on non-Ready slot indicates a refcount/outstanding-guard drift; every guard must point at a Ready slot until it is consumed"#,
                 );
-                None
+                ReleaseOutcome::Drift
             }
         }
     }
@@ -257,6 +303,7 @@ mod tests {
             dep_guards: Vec::new(),
             cleanup: None,
             setup_span: 0u64,
+            marker: "stub-marker-0000".into(),
             alias: None,
         }
     }
@@ -338,14 +385,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn release_decrements_returns_none_when_holders_remain() {
+    async fn release_deferred_carries_metadata_and_decrements() {
         let slot = ready_slot(2);
         let g = EffectGuard::new(slot.clone());
-        let returned = g.release().await;
-        assert!(
-            returned.is_none(),
-            "non-last release should not return handle"
-        );
+        match g.release().await {
+            ReleaseOutcome::Deferred { marker, .. } => {
+                assert_eq!(marker, "stub-marker-0000");
+            }
+            _ => panic!("non-last release should produce Deferred"),
+        }
         let guard = slot.lock().await;
         match &*guard {
             EffectSlot::Ready { refcount, .. } => assert_eq!(*refcount, 1),
@@ -354,11 +402,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn release_returns_handle_when_last_holder() {
+    async fn release_last_holder_returns_handle_and_empties_slot() {
         let slot = ready_slot(1);
         let g = EffectGuard::new(slot.clone());
-        let returned = g.release().await;
-        assert!(returned.is_some(), "last release should return the handle");
+        match g.release().await {
+            ReleaseOutcome::LastHolder { handle } => {
+                assert_eq!(handle.marker, "stub-marker-0000");
+            }
+            _ => panic!("last release should produce LastHolder"),
+        }
         let guard = slot.lock().await;
         assert!(matches!(*guard, EffectSlot::Empty), "slot should be Empty");
     }
@@ -369,8 +421,17 @@ mod tests {
         let g1 = EffectGuard::new(slot.clone());
         let g2 = EffectGuard::new(slot.clone());
         let (a, b) = tokio::join!(g1.release(), g2.release());
-        let returned: Vec<_> = [a, b].into_iter().flatten().collect();
-        assert_eq!(returned.len(), 1, "exactly one release must return Some");
+        let mut last_holder = 0usize;
+        let mut deferred = 0usize;
+        for outcome in [a, b] {
+            match outcome {
+                ReleaseOutcome::LastHolder { .. } => last_holder += 1,
+                ReleaseOutcome::Deferred { .. } => deferred += 1,
+                ReleaseOutcome::Drift => panic!("unexpected Drift"),
+            }
+        }
+        assert_eq!(last_holder, 1, "exactly one releaser is the last holder");
+        assert_eq!(deferred, 1, "exactly one releaser is deferred");
         let guard = slot.lock().await;
         assert!(matches!(*guard, EffectSlot::Empty));
     }
@@ -472,5 +533,30 @@ mod tests {
             k1, k2,
             "effects with no expects should always share identity"
         );
+    }
+
+    #[test]
+    fn marker_is_stable_for_same_key() {
+        let k = test_key("FX");
+        assert_eq!(k.marker(), k.marker());
+    }
+
+    #[test]
+    fn marker_differs_for_different_overlay() {
+        let a = test_key_with_overlay("FX", "alpha");
+        let b = test_key_with_overlay("FX", "beta");
+        assert_ne!(a.marker(), b.marker());
+    }
+
+    #[test]
+    fn marker_matches_mnemonic_format() {
+        let k = test_key("FX");
+        let m = k.marker();
+        let parts: Vec<&str> = m.split('-').collect();
+        assert_eq!(parts.len(), 3, "marker {m:?} should be adj-noun-NNNN");
+        assert!(parts[0].chars().all(|c| c.is_ascii_lowercase()));
+        assert!(parts[1].chars().all(|c| c.is_ascii_lowercase()));
+        assert_eq!(parts[2].len(), 4);
+        assert!(parts[2].chars().all(|c| c.is_ascii_digit()));
     }
 }

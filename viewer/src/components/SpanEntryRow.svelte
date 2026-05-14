@@ -2,8 +2,10 @@
   import type { Span } from '../types/Span';
   import type { ViewerState } from '../lib/state.svelte';
   import { displaySpanKind, spanTitle } from '../lib/format';
-  import { toNumber as n } from '../lib/derive';
+  import { bootstrapForReuse, finalCleanupForDeferred, toNumber as n } from '../lib/derive';
+  import type { SpanId } from '../lib/derive';
   import StyleBCard from './StyleBCard.svelte';
+  import MarkerPill from './MarkerPill.svelte';
 
   let {
     state,
@@ -16,6 +18,29 @@
   const selected = $derived(state.selectedSpanId === id);
   const title = $derived(spanTitle(span));
   const rails = $derived(Array.from({ length: depth }, (_, i) => i));
+
+  type PillProps = {
+    marker: string;
+    prefix: 'reused' | 'deferred' | null;
+    jumpTo: SpanId | null;
+  };
+  const pillProps = $derived.by<PillProps | null>(() => {
+    if (span.kind === 'effect-setup') {
+      return {
+        marker: span.marker,
+        prefix: span.is_reuse ? 'reused' : null,
+        jumpTo: span.is_reuse ? bootstrapForReuse(state.data, span.marker) : null,
+      };
+    }
+    if (span.kind === 'effect-cleanup') {
+      return {
+        marker: span.marker,
+        prefix: span.is_deferred ? 'deferred' : null,
+        jumpTo: span.is_deferred ? finalCleanupForDeferred(state.data, span.marker) : null,
+      };
+    }
+    return null;
+  });
 </script>
 
 <li class="span-row" class:selected data-span-id={id}>
@@ -35,6 +60,16 @@
       <span class="kind">{displaySpanKind(span.kind)}</span>
       <span class="title">{title}</span>
     </button>
+    {#if pillProps}
+      <span class="pill-slot">
+        <MarkerPill
+          {state}
+          marker={pillProps.marker}
+          prefix={pillProps.prefix}
+          jumpTo={pillProps.jumpTo}
+        />
+      </span>
+    {/if}
   </div>
   {#if selected}
     <div class="card-slot" style:padding-left="{(depth + 1) * 24 + 20}px">
@@ -123,5 +158,11 @@
   }
   .card-slot {
     padding-right: var(--gap-md);
+  }
+  .pill-slot {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 var(--gap-sm);
+    flex: 0 0 auto;
   }
 </style>

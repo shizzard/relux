@@ -143,7 +143,14 @@ export interface BufferRegions {
 // effect-cleanup) or when no event inside the subtree carries a shell.
 export function spanBufferShell(data: StructuredLog, span: Span): string | null {
   if (span.kind === 'shell-block') return span.shell;
-  if (span.kind !== 'cleanup-block' && span.kind !== 'fn-call') return null;
+  if (
+    span.kind !== 'cleanup-block' &&
+    span.kind !== 'fn-call' &&
+    span.kind !== 'effect-setup' &&
+    span.kind !== 'effect-cleanup'
+  ) {
+    return null;
+  }
   const subtree = new Set<SpanId>([n(span.id), ...descendants(data, n(span.id))]);
   for (const ev of data.events) {
     if (subtree.has(n(ev.span)) && ev.shell !== null) return ev.shell;
@@ -167,7 +174,12 @@ export function spanBufferCutoffSeq(data: StructuredLog, span: Span): number | n
   if (span.end_ts === null) return null;
   const endTs = span.end_ts;
 
-  if (span.kind === 'shell-block' || span.kind === 'cleanup-block') {
+  if (
+    span.kind === 'shell-block' ||
+    span.kind === 'cleanup-block' ||
+    span.kind === 'effect-setup' ||
+    span.kind === 'effect-cleanup'
+  ) {
     for (const ev of data.events) {
       if (ev.ts >= endTs && ev.kind === 'shell-switch') return n(ev.seq);
     }
@@ -466,6 +478,47 @@ export function liveShellsAtSeq(data: StructuredLog, event: Event): LiveShell[] 
     out.push({ name, command: rec.command, state });
   }
   return out;
+}
+
+/// Return the bootstrap setup span's id for a given marker, or null if
+/// no such span exists. By construction at most one bootstrap span
+/// exists per marker per test (the setup body runs at most once).
+export function bootstrapForReuse(data: StructuredLog, marker: string): SpanId | null {
+  const map = data.spans as unknown as Record<string, Span | undefined>;
+  for (const key of Object.keys(map)) {
+    const span = map[key];
+    if (
+      span &&
+      span.kind === 'effect-setup' &&
+      span.marker === marker &&
+      span.is_reuse === false
+    ) {
+      return n(span.id);
+    }
+  }
+  return null;
+}
+
+/// Return the final cleanup span's id for a given marker, or null if
+/// no such span exists. By construction at most one final cleanup span
+/// exists per marker per test (refcount hits zero at most once).
+export function finalCleanupForDeferred(
+  data: StructuredLog,
+  marker: string,
+): SpanId | null {
+  const map = data.spans as unknown as Record<string, Span | undefined>;
+  for (const key of Object.keys(map)) {
+    const span = map[key];
+    if (
+      span &&
+      span.kind === 'effect-cleanup' &&
+      span.marker === marker &&
+      span.is_deferred === false
+    ) {
+      return n(span.id);
+    }
+  }
+  return null;
 }
 
 export { n as toNumber };
