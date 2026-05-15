@@ -45,16 +45,16 @@
     margin: 0;
     padding: 0;
     min-height: 24px;
-    border-left: 2px solid var(--ink-faint);
-    background: color-mix(in srgb, var(--ink-faint) 4%, transparent);
+    box-shadow: inset 2px 0 0 var(--accent-2);
+    background: color-mix(in srgb, var(--accent-2) 5%, transparent);
   }
   .log-bar.warning {
-    border-left-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 6%, transparent);
+    box-shadow: inset 2px 0 0 var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
   }
   .log-bar.error {
-    border-left-color: var(--danger);
-    background: color-mix(in srgb, var(--danger) 6%, transparent);
+    box-shadow: inset 2px 0 0 var(--danger);
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
   }
   .rail {
     width: 24px;
@@ -66,7 +66,7 @@
     text-align: center;
     flex: 0 0 auto;
     align-self: center;
-    color: var(--ink-faint);
+    color: var(--accent-2);
     font-family: var(--font-mono);
   }
   .log-bar.warning .pictogram {

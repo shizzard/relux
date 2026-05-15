@@ -71,7 +71,7 @@
       onclick={() => state.toggleSpan(id)}
     >
       <span class="chevron" aria-hidden="true">
-        {expanded ? '\u25BE' : '\u25B8'}
+        {expanded ? '\u25BC' : '\u25B6'}
       </span>
     </button>
     <button class="select-btn" type="button" onclick={() => state.selectSpan(id)}>
@@ -134,7 +134,7 @@
     align-items: center;
   }
   .chevron-btn {
-    width: 20px;
+    width: 24px;
     flex: 0 0 auto;
     justify-content: center;
   }

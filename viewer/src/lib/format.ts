@@ -69,7 +69,7 @@ const KIND_GLYPHS: Record<string, string> = {
   'string-eval': '\u{0024}',
   interpolation: '\u{0024}',
   'pure-match': '\u{003F}',
-  'var-read': '\u{0024}',
+  'var-read': '\u{2261}',
   'bool-check': '\u{2714}',
   annotate: '\u{266B}',
   log: '\u{00B7}',
@@ -329,7 +329,7 @@ export function spanTitle(span: Span): string {
 }
 
 export function displayMarkerKind(k: 'skip' | 'run' | 'flaky'): string {
-  return `@${k}`;
+  return `#${k}`;
 }
 
 export function displayMarkerModifier(m: 'if' | 'unless'): string {
