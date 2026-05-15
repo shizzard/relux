@@ -100,12 +100,13 @@ impl Bif for Sleep {
         };
         let span_id = vm.current_span();
         let shell = vm.current_name();
-        vm.log.emit_sleep_start(span_id, &shell, duration);
+        let marker = vm.shell_marker().to_string();
+        vm.log.emit_sleep_start(span_id, &shell, &marker, duration);
         tokio::select! {
             _ = tokio::time::sleep(duration) => {}
             _ = vm.cancel.cancelled() => {
                 let shell = vm.current_name();
-                vm.log.emit_sleep_done(span_id, &shell);
+                vm.log.emit_sleep_done(span_id, &shell, &marker);
                 let context = vm.capture_failure_context().await;
                 return Err(Failure::Cancelled {
                     span: Some(span.clone()),
@@ -115,7 +116,7 @@ impl Bif for Sleep {
             }
         }
         let shell = vm.current_name();
-        vm.log.emit_sleep_done(span_id, &shell);
+        vm.log.emit_sleep_done(span_id, &shell, &marker);
         Ok(String::new())
     }
 }
@@ -139,7 +140,9 @@ impl Bif for Annotate {
     ) -> Result<String, Failure> {
         let text = args[0].clone();
         let shell = vm.current_name();
-        vm.log.emit_annotate(vm.current_span(), &shell, &text);
+        let marker = vm.shell_marker().to_string();
+        vm.log
+            .emit_annotate(vm.current_span(), &shell, &marker, &text);
         Ok(text)
     }
 }
@@ -163,7 +166,9 @@ impl Bif for Log {
     ) -> Result<String, Failure> {
         let message = args[0].clone();
         let shell = vm.current_name();
-        vm.log.emit_log(vm.current_span(), &shell, &message);
+        let marker = vm.shell_marker().to_string();
+        vm.log
+            .emit_log(vm.current_span(), &shell, &marker, &message);
         Ok(message)
     }
 }

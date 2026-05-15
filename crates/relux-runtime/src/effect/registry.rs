@@ -79,6 +79,43 @@ impl EffectInstanceKey {
     }
 }
 
+// ─── ShellInstanceKey ───────────────────────────────────────
+
+/// Stable identity for a shell, regardless of how the shell is
+/// renamed by `reset_for_export` later in its lifetime. The marker
+/// hashed from this key is stored on the VM at spawn time and
+/// threaded through every shell-bearing event and buffer event.
+///
+/// `Effect`: shells owned by an effect instance (`shell foo { ... }`
+/// inside an effect body), including the synthetic `__cleanup`
+/// shell each effect cleanup opens. Identity composes the dedup
+/// `EffectInstanceKey` with the shell's local name.
+///
+/// `Test`: shells owned directly by the test span (`shell foo { ... }`
+/// at test scope, plus the synthetic test-level `__cleanup`).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ShellInstanceKey {
+    Effect {
+        effect: EffectInstanceKey,
+        shell_name: String,
+    },
+    Test {
+        shell_name: String,
+    },
+}
+
+impl ShellInstanceKey {
+    /// Stable mnemonic computed from the identity. Same key → same
+    /// marker across runs.
+    pub fn marker(&self) -> String {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::Hasher;
+        let mut hasher = DefaultHasher::new();
+        std::hash::Hash::hash(self, &mut hasher);
+        relux_core::diagnostics::format_mnemonic(hasher.finish())
+    }
+}
+
 // ─── EffectHandle ───────────────────────────────────────────
 
 pub struct EffectHandle {
@@ -100,6 +137,11 @@ pub struct EffectHandle {
     /// themselves are now parented directly under the test span, so this
     /// is the only link from cleanup back to the originating setup.
     pub setup_span: SpanId,
+    /// Dedup key for this effect instance. Needed at cleanup time to
+    /// derive a `ShellInstanceKey::Effect` for the synthetic
+    /// `__cleanup` shell. `marker` below is `key.marker()`,
+    /// pre-computed at construction.
+    pub key: EffectInstanceKey,
     /// Identity marker mirrored from the dedup key. Threaded into every
     /// `EffectCleanup` span this handle drives at teardown so partner
     /// lookup by marker works without re-deriving from the key.
@@ -303,6 +345,7 @@ mod tests {
             dep_guards: Vec::new(),
             cleanup: None,
             setup_span: 0u64,
+            key: test_key("stub"),
             marker: "stub-marker-0000".into(),
             alias: None,
         }
@@ -558,5 +601,72 @@ mod tests {
         assert!(parts[1].chars().all(|c| c.is_ascii_lowercase()));
         assert_eq!(parts[2].len(), 4);
         assert!(parts[2].chars().all(|c| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn shell_key_effect_marker_is_stable() {
+        let key = ShellInstanceKey::Effect {
+            effect: test_key("Db"),
+            shell_name: "redis".into(),
+        };
+        assert_eq!(key.marker(), key.marker());
+    }
+
+    #[test]
+    fn shell_key_test_marker_is_stable() {
+        let key = ShellInstanceKey::Test {
+            shell_name: "default".into(),
+        };
+        assert_eq!(key.marker(), key.marker());
+    }
+
+    #[test]
+    fn shell_key_marker_matches_mnemonic_format() {
+        let key = ShellInstanceKey::Test {
+            shell_name: "default".into(),
+        };
+        let m = key.marker();
+        let parts: Vec<&str> = m.split('-').collect();
+        assert_eq!(parts.len(), 3, "marker {m:?} should be adj-noun-NNNN");
+        assert_eq!(parts[2].len(), 4);
+        assert!(parts[2].chars().all(|c| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn shell_key_effect_vs_test_dont_collide_for_same_name() {
+        let effect_key = ShellInstanceKey::Effect {
+            effect: test_key("Db"),
+            shell_name: "default".into(),
+        };
+        let test_key_shell = ShellInstanceKey::Test {
+            shell_name: "default".into(),
+        };
+        assert_ne!(effect_key.marker(), test_key_shell.marker());
+    }
+
+    #[test]
+    fn shell_key_different_shell_names_produce_distinct_markers() {
+        let a = ShellInstanceKey::Effect {
+            effect: test_key("Db"),
+            shell_name: "redis".into(),
+        };
+        let b = ShellInstanceKey::Effect {
+            effect: test_key("Db"),
+            shell_name: "postgres".into(),
+        };
+        assert_ne!(a.marker(), b.marker());
+    }
+
+    #[test]
+    fn shell_key_cleanup_distinct_per_effect_instance() {
+        let a = ShellInstanceKey::Effect {
+            effect: test_key("Db"),
+            shell_name: "__cleanup".into(),
+        };
+        let b = ShellInstanceKey::Effect {
+            effect: test_key("Redis"),
+            shell_name: "__cleanup".into(),
+        };
+        assert_ne!(a.marker(), b.marker());
     }
 }

@@ -21,6 +21,7 @@ use crate::effect::CleanupSource;
 use crate::effect::EffectManager;
 use crate::effect::Warning;
 use crate::effect::registry::EffectRegistry;
+use crate::effect::registry::ShellInstanceKey;
 use crate::observe::structured::EnvInfo;
 use crate::observe::structured::SpanId;
 use crate::observe::structured::SpanKind;
@@ -880,7 +881,7 @@ async fn run_test_body(
             let name = stmt.name().name();
             vars.insert(name.to_string(), value.clone());
             drop(vars);
-            rt_ctx.log.emit_var_let(test_span, None, name, &value);
+            rt_ctx.log.emit_var_let(test_span, None, None, name, &value);
         }
     }
 
@@ -979,7 +980,10 @@ async fn run_test_body(
                         })?;
                         let mut vm = vm_arc.lock().await;
                         let vm_name = vm.current_name();
-                        rt_ctx.log.emit_shell_switch(block_span_id, &vm_name);
+                        let vm_marker = vm.shell_marker().to_string();
+                        rt_ctx
+                            .log
+                            .emit_shell_switch(block_span_id, &vm_name, &vm_marker);
                         vm.set_block_span(block_span_id);
                         vm.exec_stmts(block.body()).await?;
                         // block_span drops here, closing the span.
@@ -1003,13 +1007,19 @@ async fn run_test_body(
                                 rt_ctx.env.clone(),
                                 block_span_id,
                             );
-                            let vm = Vm::new(name.clone(), ctx, rt_ctx).await?;
+                            let shell_key = ShellInstanceKey::Test {
+                                shell_name: name.clone(),
+                            };
+                            let vm = Vm::new(name.clone(), shell_key.marker(), ctx, rt_ctx).await?;
                             shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
                         }
                         let vm_arc = shells.get(&name).expect("shell just inserted above");
                         let mut vm = vm_arc.lock().await;
                         let display_name = vm.current_name();
-                        rt_ctx.log.emit_shell_switch(block_span_id, &display_name);
+                        let display_marker = vm.shell_marker().to_string();
+                        rt_ctx
+                            .log
+                            .emit_shell_switch(block_span_id, &display_name, &display_marker);
                         vm.set_block_span(block_span_id);
                         vm.exec_stmts(block.body()).await?;
                         // block_span drops here, closing the span.
@@ -1049,12 +1059,24 @@ async fn run_test_body(
         // Cleanup uses its own uncancellable token
         let mut cleanup_rt_ctx = rt_ctx.clone();
         cleanup_rt_ctx.cancel = CancellationToken::new();
-        match Vm::new("__cleanup".to_string(), ctx, &cleanup_rt_ctx).await {
+        let cleanup_shell_key = ShellInstanceKey::Test {
+            shell_name: "__cleanup".into(),
+        };
+        let cleanup_marker = cleanup_shell_key.marker();
+        match Vm::new(
+            "__cleanup".to_string(),
+            cleanup_marker.clone(),
+            ctx,
+            &cleanup_rt_ctx,
+        )
+        .await
+        {
             Ok(mut cleanup_vm) => {
                 if let Err(failure) = cleanup_vm.exec_stmts(cleanup.body()).await {
                     rt_ctx.log.emit_warning(
                         cleanup_block_span_id,
                         "__cleanup",
+                        &cleanup_marker,
                         "test cleanup failed",
                     );
                     warnings.push(Warning::CleanupFailed {
@@ -1068,6 +1090,7 @@ async fn run_test_body(
                 rt_ctx.log.emit_warning(
                     cleanup_block_span_id,
                     "__cleanup",
+                    &cleanup_marker,
                     "failed to spawn cleanup shell",
                 );
                 warnings.push(Warning::CleanupFailed {

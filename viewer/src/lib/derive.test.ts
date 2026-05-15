@@ -1,10 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BufferEvent } from '../types/BufferEvent';
 import type { StructuredLog } from '../types/StructuredLog';
-import { bootstrapForReuse, finalCleanupForDeferred, replayBufferRegionsAtSeq } from './derive';
+import {
+  bootstrapForReuse,
+  finalCleanupForDeferred,
+  firstUseShellBlockForMarker,
+  replayBufferRegionsAtMarker,
+} from './derive';
 
 // Minimal log builder — only `buffer_events` is consulted by
-// replayBufferRegionsAtSeq, so every other field is stubbed.
+// replayBufferRegionsAtMarker, so every other field is stubbed.
 function makeLog(buffer_events: BufferEvent[]): StructuredLog {
   return {
     test: { name: 't', path: 'p', outcome: 'pass', duration_ms: 0n },
@@ -17,8 +22,11 @@ function makeLog(buffer_events: BufferEvent[]): StructuredLog {
   };
 }
 
+// The tests below use the same shell name and marker for each event so
+// the existing replay scenarios still address one logical shell. Marker
+// indexing is exercised explicitly in the cross-shell test further down.
 function grew(seq: number, shell: string, data: string): BufferEvent {
-  return { seq: BigInt(seq), ts: 0, shell, kind: 'grew', data };
+  return { seq: BigInt(seq), ts: 0, shell, shell_marker: shell, kind: 'grew', data };
 }
 
 // The runtime emits `before` and `after` untruncated — they are the full
@@ -35,6 +43,7 @@ function matched(
     seq: BigInt(seq),
     ts: 0,
     shell,
+    shell_marker: shell,
     kind: 'matched',
     before,
     matched: matchedBytes,
@@ -43,10 +52,17 @@ function matched(
 }
 
 function reset(seq: number, shell: string, discarded = ''): BufferEvent {
-  return { seq: BigInt(seq), ts: 0, shell, kind: 'reset', discarded };
+  return {
+    seq: BigInt(seq),
+    ts: 0,
+    shell,
+    shell_marker: shell,
+    kind: 'reset',
+    discarded,
+  };
 }
 
-describe('replayBufferRegionsAtSeq', () => {
+describe('replayBufferRegionsAtMarker', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>;
   beforeEach(() => {
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -57,7 +73,7 @@ describe('replayBufferRegionsAtSeq', () => {
 
   it('returns empty regions when no buffer events exist', () => {
     const log = makeLog([]);
-    expect(replayBufferRegionsAtSeq(log, 100, 's')).toEqual({
+    expect(replayBufferRegionsAtMarker(log, 100, 's')).toEqual({
       consumed: '',
       matched: null,
       tail: '',
@@ -67,7 +83,7 @@ describe('replayBufferRegionsAtSeq', () => {
 
   it('returns empty regions when no events match the shell', () => {
     const log = makeLog([grew(1, 'other', 'abc'), grew(2, 'other', 'def')]);
-    expect(replayBufferRegionsAtSeq(log, 100, 's')).toEqual({
+    expect(replayBufferRegionsAtMarker(log, 100, 's')).toEqual({
       consumed: '',
       matched: null,
       tail: '',
@@ -76,7 +92,7 @@ describe('replayBufferRegionsAtSeq', () => {
 
   it('appends grow data to tail when no match has happened', () => {
     const log = makeLog([grew(1, 's', 'abc'), grew(2, 's', 'def')]);
-    expect(replayBufferRegionsAtSeq(log, 100, 's')).toEqual({
+    expect(replayBufferRegionsAtMarker(log, 100, 's')).toEqual({
       consumed: '',
       matched: null,
       tail: 'abcdef',
@@ -89,7 +105,7 @@ describe('replayBufferRegionsAtSeq', () => {
       grew(1, 's', 'abcdef'),
       matched(2, 's', 'ab', 'cd', 'ef'),
     ]);
-    expect(replayBufferRegionsAtSeq(log, 100, 's')).toEqual({
+    expect(replayBufferRegionsAtMarker(log, 100, 's')).toEqual({
       consumed: 'ab',
       matched: { bytes: 'cd', seq: 2 },
       tail: 'ef',
@@ -110,7 +126,7 @@ describe('replayBufferRegionsAtSeq', () => {
       grew(3, 's', 'ghi'),
       matched(4, 's', 'ef', 'g', 'hi'),
     ]);
-    const out = replayBufferRegionsAtSeq(log, 100, 's');
+    const out = replayBufferRegionsAtMarker(log, 100, 's');
     expect(out).toEqual({
       consumed: 'abcdef',
       matched: { bytes: 'g', seq: 4 },
@@ -126,7 +142,7 @@ describe('replayBufferRegionsAtSeq', () => {
       matched(2, 's', '', 'a', 'bc'),
       reset(3, 's', 'whatever'),
     ]);
-    expect(replayBufferRegionsAtSeq(log, 100, 's')).toEqual({
+    expect(replayBufferRegionsAtMarker(log, 100, 's')).toEqual({
       consumed: '',
       matched: null,
       tail: '',
@@ -139,7 +155,7 @@ describe('replayBufferRegionsAtSeq', () => {
       reset(2, 's'),
       grew(3, 's', 'post'),
     ]);
-    expect(replayBufferRegionsAtSeq(log, 100, 's')).toEqual({
+    expect(replayBufferRegionsAtMarker(log, 100, 's')).toEqual({
       consumed: '',
       matched: null,
       tail: 'post',
@@ -153,7 +169,7 @@ describe('replayBufferRegionsAtSeq', () => {
       grew(3, 's', 'ghi'),
       matched(4, 's', 'cd', 'ef', 'ghi'),
     ]);
-    expect(replayBufferRegionsAtSeq(log, 3, 's')).toEqual({
+    expect(replayBufferRegionsAtMarker(log, 3, 's')).toEqual({
       consumed: '',
       matched: { bytes: 'ab', seq: 2 },
       tail: 'cdefghi',
@@ -165,7 +181,7 @@ describe('replayBufferRegionsAtSeq', () => {
       grew(1, 's', 'abc'),
       matched(2, 's', 'a', 'b', 'c'),
     ]);
-    expect(replayBufferRegionsAtSeq(log, 2, 's')).toEqual({
+    expect(replayBufferRegionsAtMarker(log, 2, 's')).toEqual({
       consumed: 'a',
       matched: { bytes: 'b', seq: 2 },
       tail: 'c',
@@ -180,7 +196,7 @@ describe('replayBufferRegionsAtSeq', () => {
       matched(4, 'other', '', 'X', 'YZmore'),
       matched(5, 's', '', 'a', 'bc'),
     ]);
-    expect(replayBufferRegionsAtSeq(log, 100, 's')).toEqual({
+    expect(replayBufferRegionsAtMarker(log, 100, 's')).toEqual({
       consumed: '',
       matched: { bytes: 'a', seq: 5 },
       tail: 'bc',
@@ -195,12 +211,12 @@ describe('replayBufferRegionsAtSeq', () => {
       grew(4, 'b', 'bbb'),
       matched(5, 'b', 'BB', 'B', 'bbb'),
     ]);
-    expect(replayBufferRegionsAtSeq(log, 100, 'a')).toEqual({
+    expect(replayBufferRegionsAtMarker(log, 100, 'a')).toEqual({
       consumed: '',
       matched: { bytes: 'A', seq: 3 },
       tail: 'AA',
     });
-    expect(replayBufferRegionsAtSeq(log, 100, 'b')).toEqual({
+    expect(replayBufferRegionsAtMarker(log, 100, 'b')).toEqual({
       consumed: 'BB',
       matched: { bytes: 'B', seq: 5 },
       tail: 'bbb',
@@ -213,7 +229,7 @@ describe('replayBufferRegionsAtSeq', () => {
       grew(1, 's', 'exact'),
       matched(2, 's', '', 'exact', ''),
     ]);
-    expect(replayBufferRegionsAtSeq(log, 100, 's')).toEqual({
+    expect(replayBufferRegionsAtMarker(log, 100, 's')).toEqual({
       consumed: '',
       matched: { bytes: 'exact', seq: 2 },
       tail: '',
@@ -226,7 +242,7 @@ describe('replayBufferRegionsAtSeq', () => {
       grew(1, 's', `${big}M`),
       matched(2, 's', big, 'M', ''),
     ]);
-    const out = replayBufferRegionsAtSeq(log, 100, 's');
+    const out = replayBufferRegionsAtMarker(log, 100, 's');
     expect(out.consumed).toBe(big);
     expect(out.consumed.length).toBe(9000);
     expect(out.matched).toEqual({ bytes: 'M', seq: 2 });
@@ -242,11 +258,11 @@ describe('replayBufferRegionsAtSeq', () => {
       grew(1, 's', 'abcdef'),
       matched(2, 's', 'QZ', 'cd', ''),
     ]);
-    replayBufferRegionsAtSeq(log, 100, 's');
+    replayBufferRegionsAtMarker(log, 100, 's');
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(warnSpy.mock.calls[0]?.[0]).toContain('tail mismatch');
     expect(warnSpy.mock.calls[0]?.[0]).toContain('seq=2');
-    expect(warnSpy.mock.calls[0]?.[0]).toContain('shell=s');
+    expect(warnSpy.mock.calls[0]?.[0]).toContain('marker=s');
   });
 
   it('produces the right regions at every intermediate seq prefix', () => {
@@ -263,7 +279,7 @@ describe('replayBufferRegionsAtSeq', () => {
     ];
     const log = makeLog(events);
 
-    const expected: Array<[number, ReturnType<typeof replayBufferRegionsAtSeq>]> = [
+    const expected: Array<[number, ReturnType<typeof replayBufferRegionsAtMarker>]> = [
       [0, { consumed: '', matched: null, tail: '' }],
       [1, { consumed: '', matched: null, tail: 'hello ' }],
       [2, { consumed: '', matched: null, tail: 'hello world\n' }],
@@ -275,7 +291,7 @@ describe('replayBufferRegionsAtSeq', () => {
     ];
 
     for (const [seq, want] of expected) {
-      expect(replayBufferRegionsAtSeq(log, seq, 's'), `seq=${seq}`).toEqual(want);
+      expect(replayBufferRegionsAtMarker(log, seq, 's'), `seq=${seq}`).toEqual(want);
     }
     expect(warnSpy).not.toHaveBeenCalled();
   });
@@ -365,5 +381,92 @@ describe('finalCleanupForDeferred', () => {
 
   it('returns null when no final cleanup with that marker exists', () => {
     expect(finalCleanupForDeferred(spansLog([]), 'kind-cobra-0001')).toBeNull();
+  });
+});
+
+// firstUseShellBlockForMarker reads `spans` AND `events`, so this helper
+// needs both wired up.
+function shellBlock(id: bigint, shell: string): SpanRecord {
+  return {
+    id,
+    kind: 'shell-block',
+    shell,
+    parent: 1n,
+    start_ts: 0,
+    end_ts: 0,
+    location: null,
+  };
+}
+
+function spawnEvent(seq: number, span: bigint, marker: string, name: string) {
+  return {
+    seq: BigInt(seq),
+    ts: 0,
+    span,
+    shell: name,
+    shell_marker: marker,
+    kind: 'shell-spawn',
+    name,
+    command: '/bin/sh',
+  };
+}
+
+function switchEvent(seq: number, span: bigint, marker: string, name: string) {
+  return {
+    seq: BigInt(seq),
+    ts: 0,
+    span,
+    shell: name,
+    shell_marker: marker,
+    kind: 'shell-switch',
+    name,
+  };
+}
+
+function logWithSpansAndEvents(spans: SpanRecord[], events: unknown[]): StructuredLog {
+  const byId: Record<string, SpanRecord> = {};
+  for (const span of spans) byId[String(span.id)] = span;
+  return {
+    test: { name: 't', path: 'p', outcome: 'pass', duration_ms: 0n },
+    env: { bootstrap: [] },
+    shells: {},
+    spans: byId,
+    events,
+    buffer_events: [],
+    failure: null,
+  } as unknown as StructuredLog;
+}
+
+describe('firstUseShellBlockForMarker', () => {
+  it('returns the shell-block that contains shell-spawn for the marker', () => {
+    const log = logWithSpansAndEvents(
+      [shellBlock(10n, 'default'), shellBlock(20n, 'default')],
+      [
+        spawnEvent(1, 10n, 'tiny-cat-0001', 'default'),
+        switchEvent(2, 20n, 'tiny-cat-0001', 'default'),
+      ],
+    );
+    expect(firstUseShellBlockForMarker(log, 'tiny-cat-0001')).toBe(10);
+  });
+
+  it('returns null when no shell-block first-event is shell-spawn for the marker', () => {
+    const log = logWithSpansAndEvents(
+      [shellBlock(20n, 'default')],
+      [switchEvent(1, 20n, 'tiny-cat-0001', 'default')],
+    );
+    expect(firstUseShellBlockForMarker(log, 'tiny-cat-0001')).toBeNull();
+  });
+
+  it('distinguishes two markers with the same shell name', () => {
+    // Two effect-cleanup `__cleanup` shells: same name, different markers.
+    const log = logWithSpansAndEvents(
+      [shellBlock(10n, '__cleanup'), shellBlock(20n, '__cleanup')],
+      [
+        spawnEvent(1, 10n, 'aaa-bbb-1111', '__cleanup'),
+        spawnEvent(2, 20n, 'ccc-ddd-2222', '__cleanup'),
+      ],
+    );
+    expect(firstUseShellBlockForMarker(log, 'aaa-bbb-1111')).toBe(10);
+    expect(firstUseShellBlockForMarker(log, 'ccc-ddd-2222')).toBe(20);
   });
 });

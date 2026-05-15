@@ -18,6 +18,7 @@ use crate::effect::registry::EffectRegistry;
 use crate::effect::registry::EffectSlot;
 use crate::effect::registry::ExportedEffect;
 use crate::effect::registry::ReleaseOutcome;
+use crate::effect::registry::ShellInstanceKey;
 use crate::effect::registry::ShellMap;
 use crate::effect::registry::VarMap;
 use crate::observe::structured::SpanId;
@@ -272,7 +273,7 @@ impl EffectManager {
                         Err(failure) => {
                             self.rt_ctx
                                 .log
-                                .emit_error(parent_span, "", &failure.summary());
+                                .emit_error(parent_span, "", "", &failure.summary());
                             *guard = EffectSlot::Failed(failure.clone());
                             drop(guard);
                             notify.notify_waiters();
@@ -472,7 +473,10 @@ impl EffectManager {
                         let exec_result = {
                             let mut vm = vm_arc.lock().await;
                             let vm_name = vm.current_name();
-                            self.rt_ctx.log.emit_shell_switch(block_span_id, &vm_name);
+                            let vm_marker = vm.shell_marker().to_string();
+                            self.rt_ctx
+                                .log
+                                .emit_shell_switch(block_span_id, &vm_name, &vm_marker);
                             vm.set_block_span(block_span_id);
                             vm.exec_stmts(block.body()).await
                             // vm lock drops at end of this block, BEFORE try_guards! awaits any
@@ -501,16 +505,25 @@ impl EffectManager {
                                 self.rt_ctx.env.clone(),
                                 block_span_id,
                             );
-                            let vm = try_guards!(Vm::new(name.clone(), ctx, &self.rt_ctx).await);
+                            let shell_key = ShellInstanceKey::Effect {
+                                effect: key.clone(),
+                                shell_name: name.clone(),
+                            };
+                            let vm = try_guards!(
+                                Vm::new(name.clone(), shell_key.marker(), ctx, &self.rt_ctx).await
+                            );
                             shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
                         }
                         let exec_result = {
                             let vm_arc = shells.get(&name).expect("shell just inserted above");
                             let mut vm = vm_arc.lock().await;
                             let display_name = vm.current_name();
-                            self.rt_ctx
-                                .log
-                                .emit_shell_switch(block_span_id, &display_name);
+                            let display_marker = vm.shell_marker().to_string();
+                            self.rt_ctx.log.emit_shell_switch(
+                                block_span_id,
+                                &display_name,
+                                &display_marker,
+                            );
                             vm.set_block_span(block_span_id);
                             vm.exec_stmts(block.body()).await
                             // vm lock drops at end of this block, BEFORE try_guards! awaits any
@@ -669,6 +682,7 @@ impl EffectManager {
             dep_guards,
             cleanup: cleanup_block,
             setup_span: setup_span_id,
+            key: key.clone(),
             marker,
             alias: start.alias().map(String::from),
         })
@@ -725,7 +739,9 @@ impl EffectManager {
         let name = stmt.name().name();
         vars.insert(name.to_string(), value.clone());
         drop(vars);
-        self.rt_ctx.log.emit_var_let(setup_span, None, name, &value);
+        self.rt_ctx
+            .log
+            .emit_var_let(setup_span, None, None, name, &value);
     }
 
     /// Glue: release one guard, then either run its cleanup body (when
@@ -814,13 +830,19 @@ impl EffectManager {
                 Some(block_loc),
             );
             let block_span_id = block_span.id();
+            let cleanup_shell_key = ShellInstanceKey::Effect {
+                effect: handle.key.clone(),
+                shell_name: "__cleanup".into(),
+            };
+            let cleanup_marker = cleanup_shell_key.marker();
             let cleanup_result = self
-                .run_cleanup_block(cleanup_block, &handle.scope, block_span_id)
+                .run_cleanup_block(cleanup_block, &handle.scope, &cleanup_marker, block_span_id)
                 .await;
             if let Err(failure) = cleanup_result {
                 self.rt_ctx.log.emit_warning(
                     block_span_id,
                     "__cleanup",
+                    &cleanup_marker,
                     &format!("effect {effect_name} cleanup failed"),
                 );
                 warnings.push(Warning::CleanupFailed {
@@ -859,6 +881,7 @@ impl EffectManager {
         &self,
         cleanup_block: &IrCleanupBlock,
         scope: &Scope,
+        cleanup_marker: &str,
         block_span: SpanId,
     ) -> Result<(), Failure> {
         let shell_state = ShellState::new("__cleanup".to_string());
@@ -872,7 +895,13 @@ impl EffectManager {
         // Cleanup uses its own uncancellable token
         let mut cleanup_rt_ctx = self.rt_ctx.clone();
         cleanup_rt_ctx.cancel = CancellationToken::new();
-        let mut vm = Vm::new("__cleanup".to_string(), ctx, &cleanup_rt_ctx).await?;
+        let mut vm = Vm::new(
+            "__cleanup".to_string(),
+            cleanup_marker.to_string(),
+            ctx,
+            &cleanup_rt_ctx,
+        )
+        .await?;
         vm.exec_stmts(cleanup_block.body()).await?;
         vm.shutdown().await;
         Ok(())

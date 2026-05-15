@@ -6,14 +6,19 @@
 
   let { state }: { state: ViewerState } = $props();
 
-  const activeShell = $derived(state.bufferShell);
+  const activeMarker = $derived(state.bufferKey);
+  const activeShellName = $derived(
+    activeMarker !== null
+      ? ((state.data.shells as unknown as Record<string, { name: string } | undefined>)[activeMarker]?.name ?? null)
+      : null,
+  );
   const regions = $derived(
-    activeShell !== null ? (state.bufferRegionsAt.get(activeShell) ?? null) : null,
+    activeMarker !== null ? (state.bufferRegionsAt.get(activeMarker) ?? null) : null,
   );
   const ctx = $derived(state.shellContext);
 
   const title = $derived(
-    activeShell !== null ? `shell \u00b7 ${activeShell}` : 'shell',
+    activeShellName !== null ? `shell \u00b7 ${activeShellName}` : 'shell',
   );
   const hint = $derived(buildHint());
 
@@ -21,7 +26,7 @@
     if (state.selected) {
       const parts: string[] = [`@ t = ${formatDuration(state.selected.ts)}`];
       if (regions?.matched) parts.push('matched \u2713');
-      else if (regions === null || activeShell === null) parts.push('no shell');
+      else if (regions === null || activeMarker === null) parts.push('no shell');
       else parts.push('idle');
       if (ctx?.timeout !== null && ctx?.timeout !== undefined) {
         parts.push(`timeout ${formatTimeout(ctx.timeout)}`);
@@ -47,7 +52,7 @@
 </script>
 
 <Panel {title} {hint}>
-  {#if activeShell === null}
+  {#if activeMarker === null}
     <p class="empty">this event has no shell context.</p>
   {:else}
     <div class="wrap">

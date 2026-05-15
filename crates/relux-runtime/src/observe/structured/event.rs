@@ -44,6 +44,10 @@ pub struct Event {
     pub ts: Duration,
     pub span: SpanId,
     pub shell: Option<String>,
+    /// Stable identity for the shell, when present. Present iff
+    /// `shell` is present. Viewers index by marker; `shell` is the
+    /// display name at emit time (qualified post-export, bare pre).
+    pub shell_marker: Option<String>,
     #[serde(flatten)]
     pub kind: EventKind,
 }

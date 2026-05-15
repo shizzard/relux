@@ -6,6 +6,10 @@ use regex::Regex;
 use tokio::sync::Mutex;
 use tokio::sync::Notify;
 
+use crate::observe::structured::BufferEventKind;
+use crate::observe::structured::EventSeq;
+use crate::observe::structured::StructuredLogBuilder;
+use crate::observe::structured::Utf8Stream;
 use crate::vm::context::FailPattern;
 
 // ─── FailPatternHit ─────────────────────────────────────────────
@@ -99,48 +103,84 @@ pub struct Match<T: MatchKind> {
 struct BufferInner {
     data: BytesMut,
     base: usize,
+    utf8: Utf8Stream,
 }
 
 #[derive(Clone)]
 pub struct OutputBuffer {
     inner: Arc<Mutex<BufferInner>>,
     pub(crate) notify: Arc<Notify>,
-}
-
-impl Default for OutputBuffer {
-    fn default() -> Self {
-        Self::new()
-    }
+    /// Log builder used to emit buffer events (grew/matched/reset)
+    /// while still holding the inner mutex. Optional so unit tests
+    /// can construct an `OutputBuffer` without a log surface.
+    log: Option<StructuredLogBuilder>,
+    shell_name: String,
+    shell_marker: String,
 }
 
 impl OutputBuffer {
-    pub fn new() -> Self {
+    /// Construct an `OutputBuffer` wired to the given log builder.
+    /// `append`/`consume_*`/`clear` will emit their corresponding
+    /// buffer events on `log` while still holding the inner mutex,
+    /// preventing a race between byte appends and event order.
+    pub fn new(log: StructuredLogBuilder, shell_name: String, shell_marker: String) -> Self {
         Self {
             inner: Arc::new(Mutex::new(BufferInner {
                 data: BytesMut::new(),
                 base: 0,
+                utf8: Utf8Stream::new(),
             })),
             notify: Arc::new(Notify::new()),
+            log: Some(log),
+            shell_name,
+            shell_marker,
+        }
+    }
+
+    /// Construct an `OutputBuffer` with no log surface — buffer-event
+    /// emissions are silently dropped. Unit-test only.
+    #[cfg(test)]
+    pub fn for_tests() -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(BufferInner {
+                data: BytesMut::new(),
+                base: 0,
+                utf8: Utf8Stream::new(),
+            })),
+            notify: Arc::new(Notify::new()),
+            log: None,
+            shell_name: String::new(),
+            shell_marker: String::new(),
         }
     }
 
     pub async fn append(&self, bytes: &[u8]) {
-        self.inner.lock().await.data.extend_from_slice(bytes);
+        let mut inner = self.inner.lock().await;
+        inner.data.extend_from_slice(bytes);
+        let decoded = inner.utf8.feed(bytes);
+        if !decoded.is_empty()
+            && let Some(log) = &self.log
+        {
+            log.push_buffer_event(
+                &self.shell_name,
+                &self.shell_marker,
+                BufferEventKind::Grew { data: decoded },
+            );
+        }
+        drop(inner);
         self.notify.notify_waiters();
     }
 
-    /// Find literal, extract truncated context, drain via split_to. One lock.
-    /// Returns the match plus a `MatchContext` for emitting a buffer event.
-    pub async fn consume_literal(
-        &self,
-        needle: &str,
-    ) -> Option<(Match<LiteralMatch>, MatchContext)> {
+    /// Find literal, drain via split_to, push the `Matched` buffer event
+    /// while still holding the inner lock, and return the match plus the
+    /// `EventSeq` of the just-pushed buffer event. All under one lock.
+    pub async fn consume_literal(&self, needle: &str) -> Option<(Match<LiteralMatch>, EventSeq)> {
         let mut inner = self.inner.lock().await;
         let text = String::from_utf8_lossy(&inner.data);
         let pos = text.find(needle)?;
         let end_pos = pos + needle.len();
 
-        let ctx = match_context(&text, pos, end_pos, needle);
+        let (before, matched_str, after) = match_context(&text, pos, end_pos, needle);
 
         let consumed = end_pos;
         let m = Match {
@@ -154,16 +194,19 @@ impl OutputBuffer {
         let _ = inner.data.split_to(end_pos);
         inner.base += end_pos;
 
-        Some((m, ctx))
+        let buffer_seq = self.emit_matched(before, matched_str, after);
+        Some((m, buffer_seq))
     }
 
-    /// Find regex, extract truncated context, drain via split_to. One lock.
+    /// Find regex, drain via split_to, push the `Matched` buffer event,
+    /// and return the match plus the `EventSeq` of the just-pushed
+    /// buffer event. All under one lock.
     ///
     /// Guards against partial-line matches: if the match ends at the buffer
     /// boundary and the buffer does not end with a newline, the last line may
     /// still be arriving. In that case we return `None` so the caller waits
     /// for more data rather than consuming an incomplete line.
-    pub async fn consume_regex(&self, re: &Regex) -> Option<(Match<RegexMatch>, MatchContext)> {
+    pub async fn consume_regex(&self, re: &Regex) -> Option<(Match<RegexMatch>, EventSeq)> {
         let mut inner = self.inner.lock().await;
         let text = String::from_utf8_lossy(&inner.data);
         let cap = re.captures(&text)?;
@@ -176,7 +219,7 @@ impl OutputBuffer {
         }
 
         let matched_str = whole.as_str().to_string();
-        let ctx = match_context(&text, pos, end_pos, &matched_str);
+        let (before, _, after) = match_context(&text, pos, end_pos, &matched_str);
 
         let mut captures = HashMap::new();
         for i in 0..cap.len() {
@@ -197,16 +240,18 @@ impl OutputBuffer {
         let _ = inner.data.split_to(end_pos);
         inner.base += end_pos;
 
-        Some((m, ctx))
+        let buffer_seq = self.emit_matched(before, matched_str, after);
+        Some((m, buffer_seq))
     }
 
     /// Check fail pattern against buffer, then try to consume literal — under one lock.
     /// Returns Err if fail pattern found, Ok(Some) if literal consumed, Ok(None) if not found.
+    /// On success the `Matched` buffer event is pushed before releasing the lock.
     pub async fn fail_check_consume_literal(
         &self,
         needle: &str,
         fail_pattern: Option<&FailPattern>,
-    ) -> Result<Option<(Match<LiteralMatch>, MatchContext)>, FailPatternHit> {
+    ) -> Result<Option<(Match<LiteralMatch>, EventSeq)>, FailPatternHit> {
         let mut inner = self.inner.lock().await;
         let text = String::from_utf8_lossy(&inner.data);
 
@@ -223,7 +268,7 @@ impl OutputBuffer {
         };
         let end_pos = pos + needle.len();
 
-        let ctx = match_context(&text, pos, end_pos, needle);
+        let (before, matched_str, after) = match_context(&text, pos, end_pos, needle);
 
         let consumed = end_pos;
         let m = Match {
@@ -237,16 +282,18 @@ impl OutputBuffer {
         let _ = inner.data.split_to(end_pos);
         inner.base += end_pos;
 
-        Ok(Some((m, ctx)))
+        let buffer_seq = self.emit_matched(before, matched_str, after);
+        Ok(Some((m, buffer_seq)))
     }
 
     /// Check fail pattern against buffer, then try to consume regex — under one lock.
     /// Returns Err if fail pattern found, Ok(Some) if regex consumed, Ok(None) if not found.
+    /// On success the `Matched` buffer event is pushed before releasing the lock.
     pub async fn fail_check_consume_regex(
         &self,
         re: &Regex,
         fail_pattern: Option<&FailPattern>,
-    ) -> Result<Option<(Match<RegexMatch>, MatchContext)>, FailPatternHit> {
+    ) -> Result<Option<(Match<RegexMatch>, EventSeq)>, FailPatternHit> {
         let mut inner = self.inner.lock().await;
         let text = String::from_utf8_lossy(&inner.data);
 
@@ -272,7 +319,7 @@ impl OutputBuffer {
         }
 
         let matched_str = whole.as_str().to_string();
-        let ctx = match_context(&text, pos, end_pos, &matched_str);
+        let (before, _, after) = match_context(&text, pos, end_pos, &matched_str);
 
         let mut captures = HashMap::new();
         for i in 0..cap.len() {
@@ -293,7 +340,26 @@ impl OutputBuffer {
         let _ = inner.data.split_to(end_pos);
         inner.base += end_pos;
 
-        Ok(Some((m, ctx)))
+        let buffer_seq = self.emit_matched(before, matched_str, after);
+        Ok(Some((m, buffer_seq)))
+    }
+
+    /// Push a `Matched` buffer event on the log, if one is wired up.
+    /// Returns the event seq (or `0` when no log is configured).
+    fn emit_matched(&self, before: String, matched: String, after: String) -> EventSeq {
+        if let Some(log) = &self.log {
+            log.push_buffer_event(
+                &self.shell_name,
+                &self.shell_marker,
+                BufferEventKind::Matched {
+                    before,
+                    matched,
+                    after,
+                },
+            )
+        } else {
+            0
+        }
     }
 
     /// Check fail pattern against current buffer (peek only, no drain).
@@ -307,13 +373,25 @@ impl OutputBuffer {
         check_fail_in_buffer(&text, fp)
     }
 
-    /// Drain all buffered data, advancing base. Returns the discarded text.
+    /// Drain all buffered data, advancing base. Emit a `Reset` buffer
+    /// event with the discarded text (before releasing the lock).
+    /// Returns the discarded text.
     pub async fn clear(&self) -> String {
         let mut inner = self.inner.lock().await;
         let len = inner.data.len();
         let chunk = inner.data.split_to(len);
         inner.base += len;
-        String::from_utf8_lossy(&chunk).to_string()
+        let discarded = String::from_utf8_lossy(&chunk).to_string();
+        if let Some(log) = &self.log {
+            log.push_buffer_event(
+                &self.shell_name,
+                &self.shell_marker,
+                BufferEventKind::Reset {
+                    discarded: discarded.clone(),
+                },
+            );
+        }
+        discarded
     }
 
     /// Return the tail of the current buffer (last `n` chars) as a string.
@@ -367,8 +445,45 @@ fn check_fail_in_buffer(text: &str, pattern: &FailPattern) -> Option<FailPattern
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+    use std::time::Instant;
+
     use super::*;
+    use crate::observe::progress;
     use regex::RegexBuilder;
+
+    /// Construct an `OutputBuffer` wired to a fresh `StructuredLogBuilder`,
+    /// returning both so tests can assert on the buffer events that the
+    /// `OutputBuffer` emits.
+    fn wired_buffer() -> (
+        OutputBuffer,
+        StructuredLogBuilder,
+        tokio::sync::mpsc::UnboundedReceiver<crate::observe::progress::ProgressEvent>,
+    ) {
+        let (tx, rx) = progress::channel();
+        let sources = relux_core::table::SharedTable::new();
+        let builder = StructuredLogBuilder::new(
+            tx,
+            Instant::now(),
+            sources,
+            Arc::from(PathBuf::from("/project").as_path()),
+        );
+        let buf = OutputBuffer::new(builder.clone(), "sh".into(), "m".into());
+        (buf, builder, rx)
+    }
+
+    /// Inspect the last buffer event the builder accumulated.
+    fn last_matched(builder: &StructuredLogBuilder) -> Option<(String, String, String)> {
+        let events = builder.buffer_events_for_tests();
+        events.last().and_then(|ev| match &ev.kind {
+            BufferEventKind::Matched {
+                before,
+                matched,
+                after,
+            } => Some((before.clone(), matched.clone(), after.clone())),
+            _ => None,
+        })
+    }
 
     // ── truncate_before ──────────────────────────────────────────────
 
@@ -401,14 +516,14 @@ mod tests {
 
     #[tokio::test]
     async fn output_buffer_append_and_remaining() {
-        let buf = OutputBuffer::new();
+        let buf = OutputBuffer::for_tests();
         buf.append(b"hello").await;
         assert_eq!(buf.remaining().await, b"hello");
     }
 
     #[tokio::test]
     async fn output_buffer_append_empty_bytes() {
-        let buf = OutputBuffer::new();
+        let buf = OutputBuffer::for_tests();
         buf.append(b"").await;
         assert!(buf.remaining().await.is_empty());
     }
@@ -417,13 +532,14 @@ mod tests {
 
     #[tokio::test]
     async fn consume_literal_basic() {
-        let buf = OutputBuffer::new();
+        let (buf, builder, _rx) = wired_buffer();
         buf.append(b"hello world").await;
-        let (m, (before, matched, after)) = buf.consume_literal("hello").await.unwrap();
+        let (m, _buffer_seq) = buf.consume_literal("hello").await.unwrap();
         assert_eq!(m.start, 0);
         assert_eq!(m.end, 5);
         assert_eq!(m.consumed, 5);
         assert_eq!(m.value.0, "hello");
+        let (before, matched, after) = last_matched(&builder).expect("matched event");
         assert_eq!(before, "");
         assert_eq!(matched, "hello");
         assert_eq!(after, " world");
@@ -433,7 +549,7 @@ mod tests {
 
     #[tokio::test]
     async fn consume_literal_drains_up_to_match_end() {
-        let buf = OutputBuffer::new();
+        let buf = OutputBuffer::for_tests();
         buf.append(b"prefix MATCH suffix").await;
         let (m, _) = buf.consume_literal("MATCH").await.unwrap();
         assert_eq!(m.start, 7);
@@ -444,7 +560,7 @@ mod tests {
 
     #[tokio::test]
     async fn consume_literal_not_found() {
-        let buf = OutputBuffer::new();
+        let buf = OutputBuffer::for_tests();
         buf.append(b"hello world").await;
         assert!(buf.consume_literal("xyz").await.is_none());
         assert_eq!(buf.remaining().await, b"hello world");
@@ -452,7 +568,7 @@ mod tests {
 
     #[tokio::test]
     async fn consume_literal_absolute_offsets_after_drain() {
-        let buf = OutputBuffer::new();
+        let buf = OutputBuffer::for_tests();
         buf.append(b"aaa bbb ccc").await;
         let (m1, _) = buf.consume_literal("aaa").await.unwrap();
         assert_eq!(m1.start, 0);
@@ -465,12 +581,13 @@ mod tests {
 
     #[tokio::test]
     async fn consume_literal_context_carries_full_before_and_after() {
-        let buf = OutputBuffer::new();
+        let (buf, builder, _rx) = wired_buffer();
         let huge_prefix = "x".repeat(500);
         let huge_suffix = "y".repeat(500);
         buf.append(format!("{huge_prefix}MATCH{huge_suffix}").as_bytes())
             .await;
-        let (_, (before, matched, after)) = buf.consume_literal("MATCH").await.unwrap();
+        let _ = buf.consume_literal("MATCH").await.unwrap();
+        let (before, matched, after) = last_matched(&builder).expect("matched event");
         assert_eq!(before, huge_prefix);
         assert_eq!(matched, "MATCH");
         assert_eq!(after, huge_suffix);
@@ -480,7 +597,7 @@ mod tests {
 
     #[tokio::test]
     async fn consume_regex_basic() {
-        let buf = OutputBuffer::new();
+        let buf = OutputBuffer::for_tests();
         buf.append(b"abc 123 def").await;
         let re = Regex::new(r"\d+").unwrap();
         let (m, _) = buf.consume_regex(&re).await.unwrap();
@@ -492,7 +609,7 @@ mod tests {
 
     #[tokio::test]
     async fn consume_regex_with_captures() {
-        let buf = OutputBuffer::new();
+        let buf = OutputBuffer::for_tests();
         buf.append(b"name: Alice age: 30\n").await;
         let re = Regex::new(r"name: (\w+) age: (\d+)").unwrap();
         let (m, _) = buf.consume_regex(&re).await.unwrap();
@@ -505,7 +622,7 @@ mod tests {
 
     #[tokio::test]
     async fn consume_regex_not_found() {
-        let buf = OutputBuffer::new();
+        let buf = OutputBuffer::for_tests();
         buf.append(b"hello world").await;
         let re = Regex::new(r"\d+").unwrap();
         assert!(buf.consume_regex(&re).await.is_none());
@@ -514,7 +631,7 @@ mod tests {
 
     #[tokio::test]
     async fn consume_regex_absolute_offsets_after_drain() {
-        let buf = OutputBuffer::new();
+        let buf = OutputBuffer::for_tests();
         buf.append(b"aaa 123 bbb 456\n").await;
         let re = Regex::new(r"\d+").unwrap();
         let (m1, _) = buf.consume_regex(&re).await.unwrap();
@@ -529,7 +646,7 @@ mod tests {
 
     #[tokio::test]
     async fn consume_regex_defers_partial_line() {
-        let buf = OutputBuffer::new();
+        let buf = OutputBuffer::for_tests();
         buf.append(b"hello wor").await;
         let re = RegexBuilder::new(r"^(.+)$")
             .multi_line(true)
@@ -545,7 +662,7 @@ mod tests {
 
     #[tokio::test]
     async fn consume_regex_allows_match_before_partial_tail() {
-        let buf = OutputBuffer::new();
+        let buf = OutputBuffer::for_tests();
         buf.append(b"first line\nsecond li").await;
         let re = RegexBuilder::new(r"^(.+)$")
             .multi_line(true)
@@ -557,7 +674,7 @@ mod tests {
 
     #[tokio::test]
     async fn fail_check_consume_regex_defers_partial_line() {
-        let buf = OutputBuffer::new();
+        let buf = OutputBuffer::for_tests();
         buf.append(b"partial data").await;
         let re = RegexBuilder::new(r"^(.+)$")
             .multi_line(true)
@@ -576,7 +693,7 @@ mod tests {
 
     #[tokio::test]
     async fn clear_empties_buffer_and_returns_discarded() {
-        let buf = OutputBuffer::new();
+        let buf = OutputBuffer::for_tests();
         buf.append(b"hello world").await;
         let discarded = buf.clear().await;
         assert_eq!(discarded, "hello world");
@@ -585,7 +702,7 @@ mod tests {
 
     #[tokio::test]
     async fn clear_advances_base_correctly() {
-        let buf = OutputBuffer::new();
+        let buf = OutputBuffer::for_tests();
         buf.append(b"hello world").await;
         let _ = buf.clear().await;
         buf.append(b"abc 123\n").await;
@@ -600,7 +717,7 @@ mod tests {
 
     #[tokio::test]
     async fn snapshot_tail_returns_truncated_tail() {
-        let buf = OutputBuffer::new();
+        let buf = OutputBuffer::for_tests();
         buf.append(b"hello world").await;
         let tail = buf.snapshot_tail(5).await;
         assert_eq!(tail, "...world");
@@ -608,7 +725,7 @@ mod tests {
 
     #[tokio::test]
     async fn snapshot_tail_full_content_when_short() {
-        let buf = OutputBuffer::new();
+        let buf = OutputBuffer::for_tests();
         buf.append(b"hi").await;
         let tail = buf.snapshot_tail(80).await;
         assert_eq!(tail, "hi");

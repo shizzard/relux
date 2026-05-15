@@ -6,10 +6,10 @@ import {
   buildCallStack,
   eventBySeq,
   liveShellsAtSeq,
-  replayBufferRegionsAtSeq,
+  replayBufferRegionsAtMarker,
   replayShellCtxAtSeq,
   spanBufferCutoffSeq,
-  spanBufferShell,
+  spanBufferKey,
   spanById,
   toNumber as n,
   type BufferRegions,
@@ -57,7 +57,7 @@ export class ViewerState {
 
   bufferRegionsAt = $derived<Map<string, BufferRegions>>(this.computeBufferRegions());
 
-  bufferShell = $derived<string | null>(this.computeBufferShell());
+  bufferKey = $derived<string | null>(this.computeBufferKey());
 
   // `null` = "not applicable" (no event/span selected, or selected
   // context has no surfaced outer scope). Components render an empty
@@ -165,8 +165,8 @@ export class ViewerState {
     if (targetSeq === null) return new Map();
 
     const out = new Map<string, BufferRegions>();
-    for (const name of Object.keys(this.data.shells)) {
-      out.set(name, replayBufferRegionsAtSeq(this.data, targetSeq, name));
+    for (const marker of Object.keys(this.data.shells)) {
+      out.set(marker, replayBufferRegionsAtMarker(this.data, targetSeq, marker));
     }
     return out;
   }
@@ -203,9 +203,9 @@ export class ViewerState {
     return null;
   }
 
-  private computeBufferShell(): string | null {
-    if (this.selected) return this.selected.shell;
-    if (this.selectedSpan) return spanBufferShell(this.data, this.selectedSpan);
+  private computeBufferKey(): string | null {
+    if (this.selected) return this.selected.shell_marker;
+    if (this.selectedSpan) return spanBufferKey(this.data, this.selectedSpan);
     return null;
   }
 

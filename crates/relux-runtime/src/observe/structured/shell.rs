@@ -10,6 +10,11 @@ use ts_rs::TS;
     ts(export, export_to = "../../../viewer/src/types/")
 )]
 pub struct ShellRecord {
+    /// Stable mnemonic identity (matches the key in `StructuredLog.shells`).
+    pub marker: String,
+    /// Spawn-time bare name (e.g. `inner`, `__cleanup`). Display layer
+    /// may show qualified forms (`Db.inner`) derived from events.
+    pub name: String,
     #[serde(with = "super::ts_duration_ms")]
     #[ts(as = "f64")]
     pub spawn_ts: Duration,
@@ -17,5 +22,4 @@ pub struct ShellRecord {
     #[ts(as = "Option<f64>")]
     pub terminate_ts: Option<Duration>,
     pub command: String,
-    pub alias_of: Option<String>,
 }

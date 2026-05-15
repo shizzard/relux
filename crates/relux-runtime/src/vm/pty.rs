@@ -1,24 +1,18 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use regex::RegexBuilder;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Child;
-use tokio::sync::Mutex;
 
 use super::buffer::OutputBuffer;
-use crate::observe::structured::BufferEventKind;
 use crate::observe::structured::StructuredLogBuilder;
-use crate::observe::structured::Utf8Stream;
 
 pub(crate) struct PtyShell {
     writer: pty_process::OwnedWritePty,
     child: Child,
     pub(crate) output_buf: OutputBuffer,
     read_task: tokio::task::JoinHandle<()>,
-    log: StructuredLogBuilder,
-    shell_name: String,
 }
 
 impl PtyShell {
@@ -27,6 +21,7 @@ impl PtyShell {
         env: impl IntoIterator<Item = (String, String)>,
         log: StructuredLogBuilder,
         shell_name: String,
+        shell_marker: String,
     ) -> Result<Self, pty_process::Error> {
         let (pty, pts) = pty_process::open()?;
         pty.resize(pty_process::Size::new(24, u16::MAX))?;
@@ -36,32 +31,19 @@ impl PtyShell {
         let child = cmd.spawn(pts)?;
 
         let (reader, writer) = pty.into_split();
-        let output_buf = OutputBuffer::new();
+        let output_buf = OutputBuffer::new(log, shell_name, shell_marker);
         let output_for_reader = output_buf.clone();
         let mut reader = tokio::io::BufReader::new(reader);
-        let utf8 = Arc::new(Mutex::new(Utf8Stream::new()));
-        let log_for_reader = log.clone();
-        let shell_name_for_reader = shell_name.clone();
         let read_task = tokio::spawn(async move {
             let mut buf = vec![0u8; 4096];
             loop {
                 match reader.read(&mut buf).await {
                     Ok(0) => break,
                     Ok(n) => {
-                        // Emit a `Grew` buffer event with the decoded text.
-                        // The streaming UTF-8 decoder holds back any partial
-                        // sequence so multi-byte codepoints split across reads
-                        // arrive intact.
-                        let decoded = utf8.lock().await.feed(&buf[..n]);
-                        if !decoded.is_empty() {
-                            log_for_reader.push_buffer_event(
-                                &shell_name_for_reader,
-                                BufferEventKind::Grew { data: decoded },
-                            );
-                        }
-                        // Append the raw bytes to the matching buffer. Matching
-                        // does its own lossy decoding on the entire buffer, so
-                        // raw bytes are correct here.
+                        // `append` pushes the streaming-decoded `Grew`
+                        // buffer event under the same mutex that holds
+                        // the raw bytes — `grew`/`matched` ordering is
+                        // race-free against the VM's match emissions.
                         output_for_reader.append(&buf[..n]).await;
                     }
                     Err(_) => break,
@@ -74,8 +56,6 @@ impl PtyShell {
             child,
             output_buf,
             read_task,
-            log,
-            shell_name,
         })
     }
 
@@ -95,26 +75,18 @@ impl PtyShell {
             .build()
             .expect("prompt regex must be valid");
 
-        let log = self.log.clone();
-        let shell_name = self.shell_name.clone();
         tokio::time::timeout(timeout, async {
             // Step 1: Wait for any shell output (rc files, default prompt, etc.).
-            // Each successful drain emits a Matched buffer event so that the
-            // viewer can faithfully reconstruct the buffer history without
-            // losing the bytes consumed by init.
+            // `consume_regex` emits the `Matched` buffer event under its
+            // internal mutex, so init drains the buffer losslessly.
             loop {
                 let notified = self.output_buf.notify.notified();
-                if let Some((_, (before, matched, after))) =
-                    self.output_buf.consume_regex(&any_output_re).await
+                if self
+                    .output_buf
+                    .consume_regex(&any_output_re)
+                    .await
+                    .is_some()
                 {
-                    log.push_buffer_event(
-                        &shell_name,
-                        BufferEventKind::Matched {
-                            before,
-                            matched,
-                            after,
-                        },
-                    );
                     break;
                 }
                 notified.await;
@@ -127,17 +99,7 @@ impl PtyShell {
             // Step 3: Wait for the new prompt to appear
             loop {
                 let notified = self.output_buf.notify.notified();
-                if let Some((_, (before, matched, after))) =
-                    self.output_buf.consume_regex(&prompt_re).await
-                {
-                    log.push_buffer_event(
-                        &shell_name,
-                        BufferEventKind::Matched {
-                            before,
-                            matched,
-                            after,
-                        },
-                    );
+                if self.output_buf.consume_regex(&prompt_re).await.is_some() {
                     break;
                 }
                 notified.await;

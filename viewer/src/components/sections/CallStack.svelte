@@ -53,7 +53,7 @@
     {#if liveShells.length > 0}
       <footer class="also-live">
         also live: {liveShells.length} shell{liveShells.length === 1 ? '' : 's'} (
-        {#each liveShells as sh, i (sh.name)}
+        {#each liveShells as sh, i (sh.marker)}
           {#if i > 0} &middot; {/if}
           <span class={sh.state}><code>{sh.name}</code></span>
           <span class="cmd">{truncate(sh.command, 36)}</span>

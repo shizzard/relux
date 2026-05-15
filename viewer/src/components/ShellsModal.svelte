@@ -14,6 +14,7 @@
   const shellCount = $derived(shells.length);
 
   function buildShells(): Array<{
+    marker: string;
     name: string;
     command: string;
     spawn_ts: number;
@@ -21,20 +22,28 @@
   }> {
     const recs = state.data.shells as unknown as Record<
       string,
-      | { command: string; spawn_ts: number; terminate_ts: number | null }
+      | {
+          marker: string;
+          name: string;
+          command: string;
+          spawn_ts: number;
+          terminate_ts: number | null;
+        }
       | undefined
     >;
     const out: Array<{
+      marker: string;
       name: string;
       command: string;
       spawn_ts: number;
       terminate_ts: number | null;
     }> = [];
-    for (const name of Object.keys(recs)) {
-      const r = recs[name];
+    for (const marker of Object.keys(recs)) {
+      const r = recs[marker];
       if (!r) continue;
       out.push({
-        name,
+        marker,
+        name: r.name,
         command: r.command,
         spawn_ts: r.spawn_ts,
         terminate_ts: r.terminate_ts,
@@ -43,8 +52,8 @@
     return out.sort((a, b) => a.spawn_ts - b.spawn_ts);
   }
 
-  function shellStateLabel(name: string): { label: string; cls: string } {
-    const live = state.liveShells.find((s) => s.name === name);
+  function shellStateLabel(marker: string): { label: string; cls: string } {
+    const live = state.liveShells.find((s) => s.marker === marker);
     if (!live) return { label: 'unknown', cls: 'dead' };
     switch (live.state) {
       case 'ready':
@@ -58,19 +67,19 @@
     }
   }
 
-  function bufferEventCount(shell: string): number {
+  function bufferEventCount(marker: string): number {
     if (!ev) return 0;
     const seq = n(ev.seq);
     let count = 0;
     for (const be of state.data.buffer_events) {
       if (n(be.seq) > seq) break;
-      if (be.shell === shell) count++;
+      if (be.shell_marker === marker) count++;
     }
     return count;
   }
 
-  function bufferSize(shell: string): number {
-    const r = state.bufferRegionsAt.get(shell);
+  function bufferSize(marker: string): number {
+    const r = state.bufferRegionsAt.get(marker);
     if (!r) return 0;
     return (
       r.consumed.length + (r.matched?.bytes.length ?? 0) + r.tail.length
@@ -97,11 +106,11 @@
     {/snippet}
 
     <div class="cards">
-      {#each shells as sh (sh.name)}
-        {@const isCurrent = ev?.shell === sh.name}
+      {#each shells as sh (sh.marker)}
+        {@const isCurrent = ev?.shell_marker === sh.marker}
         {@const isEnded = endedBefore(sh.terminate_ts)}
-        {@const stateInfo = shellStateLabel(sh.name)}
-        {@const regions = state.bufferRegionsAt.get(sh.name) ?? null}
+        {@const stateInfo = shellStateLabel(sh.marker)}
+        {@const regions = state.bufferRegionsAt.get(sh.marker) ?? null}
         <div class="sh-card" class:current={isCurrent} class:ended={isEnded}>
           <div class="meta-col">
             <div class="sh-name">
@@ -109,7 +118,7 @@
               {#if isCurrent}<span class="badge">&#x2605; this event</span>{/if}
             </div>
             <div class="sh-cmd">
-              <ValueCell value={sh.command} {state} expandKey={`sh:${sh.name}:cmd`} />
+              <ValueCell value={sh.command} {state} expandKey={`sh:${sh.marker}:cmd`} />
             </div>
             <div class="sh-state {stateInfo.cls}">
               <span class="dot"></span>
@@ -120,8 +129,8 @@
             {#if isEnded && sh.terminate_ts !== null}
               <div class="sh-row"><span>ended</span><b>{formatDuration(sh.terminate_ts)}</b></div>
             {/if}
-            <div class="sh-row"><span>buffer size</span><b>{formatBytes(bufferSize(sh.name))}</b></div>
-            <div class="sh-row"><span>buffer events</span><b>{bufferEventCount(sh.name)}</b></div>
+            <div class="sh-row"><span>buffer size</span><b>{formatBytes(bufferSize(sh.marker))}</b></div>
+            <div class="sh-row"><span>buffer events</span><b>{bufferEventCount(sh.marker)}</b></div>
           </div>
           <div class="buf-col">
             <BufferRegions {regions} />

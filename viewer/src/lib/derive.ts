@@ -130,20 +130,22 @@ export interface BufferRegions {
 // invariant fails (it shouldn't if grew/matched events are consistent),
 // we still fall back to `before + matched + after` for the new tail
 // segment so the user sees coherent regions.
-// Returns the shell name to render in the buffer pane for a span.
-//   shell-block   -> span.shell (carried on the span)
-//   cleanup-block -> the shell of the first event inside the span; the
-//                    runtime always spins a fresh implicit shell named
-//                    `__cleanup`, but we discover it via events rather
-//                    than hardcoding, since the span itself has no
-//                    `shell` field
-//   fn-call       -> first event inside the span subtree (the function
-//                    executes in its caller's shell, whichever that is)
-// Returns null for kinds without a shell context (test, effect-setup,
-// effect-cleanup) or when no event inside the subtree carries a shell.
-export function spanBufferShell(data: StructuredLog, span: Span): string | null {
-  if (span.kind === 'shell-block') return span.shell;
+// Returns the shell *marker* (stable identity) to use for buffer-pane
+// lookup for a span. Display name comes from `data.shells[marker].name`.
+//
+//   shell-block   -> marker from the first inner event
+//   cleanup-block -> the marker of the first event inside the span;
+//                    the runtime always spins a fresh implicit shell
+//                    named `__cleanup`, but its marker is unique per
+//                    owning effect (or per test for top-level cleanup)
+//   fn-call       -> marker from the first event inside the subtree
+//                    (the function executes in its caller's shell)
+//   effect-setup / effect-cleanup -> marker from the first event in
+//                    the subtree, when present
+// Returns null when no event inside the subtree carries a shell.
+export function spanBufferKey(data: StructuredLog, span: Span): string | null {
   if (
+    span.kind !== 'shell-block' &&
     span.kind !== 'cleanup-block' &&
     span.kind !== 'fn-call' &&
     span.kind !== 'effect-setup' &&
@@ -153,7 +155,7 @@ export function spanBufferShell(data: StructuredLog, span: Span): string | null 
   }
   const subtree = new Set<SpanId>([n(span.id), ...descendants(data, n(span.id))]);
   for (const ev of data.events) {
-    if (subtree.has(n(ev.span)) && ev.shell !== null) return ev.shell;
+    if (subtree.has(n(ev.span)) && ev.shell_marker !== null) return ev.shell_marker;
   }
   return null;
 }
@@ -198,17 +200,17 @@ export function spanBufferCutoffSeq(data: StructuredLog, span: Span): number | n
   return null;
 }
 
-export function replayBufferRegionsAtSeq(
+export function replayBufferRegionsAtMarker(
   data: StructuredLog,
   seq: number,
-  shell: string,
+  marker: string,
 ): BufferRegions {
   let consumed = '';
   let matched: { bytes: string; seq: number } | null = null;
   let tail = '';
   for (const ev of data.buffer_events) {
     if (n(ev.seq) > seq) break;
-    if (ev.shell !== shell) continue;
+    if (ev.shell_marker !== marker) continue;
     switch (ev.kind) {
       case 'grew':
         tail += ev.data;
@@ -217,7 +219,7 @@ export function replayBufferRegionsAtSeq(
         const reconstructed = ev.before + ev.matched + ev.after;
         if (reconstructed !== tail) {
           console.warn(
-            `[viewer] buffer reconstruction: tail mismatch at seq=${n(ev.seq)} shell=${shell}; ` +
+            `[viewer] buffer reconstruction: tail mismatch at seq=${n(ev.seq)} marker=${marker}; ` +
               `tail.length=${tail.length} before+matched+after.length=${reconstructed.length}`,
           );
         }
@@ -440,6 +442,7 @@ export function shellBlockLifecycle(
 export type LiveShellState = 'ready' | 'busy' | 'ended' | 'error';
 
 export interface LiveShell {
+  marker: string;
   name: string;
   command: string;
   state: LiveShellState;
@@ -452,30 +455,31 @@ export interface LiveShell {
 //                has no corresponding `match-done` yet.
 //   - "ready"  : otherwise (post-`shell-ready`, idle prompt).
 //
-// Returns one entry per shell in `data.shells`, in declaration order.
+// Returns one entry per shell in `data.shells`, keyed by marker.
 export function liveShellsAtSeq(data: StructuredLog, event: Event): LiveShell[] {
   const seq = n(event.seq);
   const out: LiveShell[] = [];
   const records = data.shells as unknown as Record<
     string,
-    { command: string; spawn_ts: number; terminate_ts: number | null } | undefined
+    | { marker: string; name: string; command: string; spawn_ts: number; terminate_ts: number | null }
+    | undefined
   >;
-  for (const name of Object.keys(records)) {
-    const rec = records[name];
+  for (const marker of Object.keys(records)) {
+    const rec = records[marker];
     if (!rec) continue;
     let state: LiveShellState = 'ready';
     let busy = false;
     let ended = false;
     for (const ev of data.events) {
       if (n(ev.seq) > seq) break;
-      if (ev.shell !== name && ev.kind !== 'shell-terminate') continue;
-      if (ev.kind === 'shell-terminate' && ev.name === name) ended = true;
+      if (ev.shell_marker !== marker) continue;
+      if (ev.kind === 'shell-terminate') ended = true;
       else if (ev.kind === 'match-start') busy = true;
       else if (ev.kind === 'match-done' || ev.kind === 'timeout') busy = false;
     }
     if (ended) state = 'ended';
     else if (busy) state = 'busy';
-    out.push({ name, command: rec.command, state });
+    out.push({ marker, name: rec.name, command: rec.command, state });
   }
   return out;
 }
@@ -516,6 +520,31 @@ export function finalCleanupForDeferred(
       span.is_deferred === false
     ) {
       return n(span.id);
+    }
+  }
+  return null;
+}
+
+/// Return the `shell-block` span whose first inner event is
+/// `shell-spawn` for the given marker, or null if none exists. By
+/// construction at most one first-use block exists per marker (one
+/// PTY = one spawn).
+export function firstUseShellBlockForMarker(
+  data: StructuredLog,
+  marker: string,
+): SpanId | null {
+  const map = data.spans as unknown as Record<string, Span | undefined>;
+  for (const key of Object.keys(map)) {
+    const span = map[key];
+    if (!span || span.kind !== 'shell-block') continue;
+    for (const ev of data.events) {
+      if (n(ev.span) !== n(span.id)) continue;
+      if (ev.kind === 'shell-spawn' && ev.shell_marker === marker) {
+        return n(span.id);
+      }
+      // First event in span — if not a marker-matching shell-spawn,
+      // move on to the next shell-block.
+      break;
     }
   }
   return null;

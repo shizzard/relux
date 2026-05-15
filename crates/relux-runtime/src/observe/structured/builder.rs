@@ -236,7 +236,20 @@ impl StructuredLogBuilder {
 
     // ─── Raw event/buffer-event push ──────────────────────────────
 
-    pub fn push_event(&self, span: SpanId, shell: Option<&str>, kind: EventKind) -> EventSeq {
+    /// Test-only: a snapshot of the accumulated buffer events, in the
+    /// order they were pushed.
+    #[cfg(test)]
+    pub(crate) fn buffer_events_for_tests(&self) -> Vec<BufferEvent> {
+        self.inner.lock().unwrap().buffer_events.clone()
+    }
+
+    pub fn push_event(
+        &self,
+        span: SpanId,
+        shell: Option<&str>,
+        shell_marker: Option<&str>,
+        kind: EventKind,
+    ) -> EventSeq {
         let ts = self.now();
         let mut inner = self.inner.lock().unwrap();
         let seq = inner.next_seq;
@@ -246,12 +259,18 @@ impl StructuredLogBuilder {
             ts,
             span,
             shell: shell.map(String::from),
+            shell_marker: shell_marker.map(String::from),
             kind,
         });
         seq
     }
 
-    pub fn push_buffer_event(&self, shell: &str, kind: BufferEventKind) -> EventSeq {
+    pub fn push_buffer_event(
+        &self,
+        shell: &str,
+        shell_marker: &str,
+        kind: BufferEventKind,
+    ) -> EventSeq {
         let ts = self.now();
         let mut inner = self.inner.lock().unwrap();
         let seq = inner.next_seq;
@@ -260,6 +279,7 @@ impl StructuredLogBuilder {
             seq,
             ts,
             shell: shell.to_string(),
+            shell_marker: shell_marker.to_string(),
             kind,
         });
         seq
@@ -267,24 +287,25 @@ impl StructuredLogBuilder {
 
     // ─── Shells glossary ──────────────────────────────────────────
 
-    pub fn record_shell_spawn(&self, name: &str, command: &str) {
+    pub fn record_shell_spawn(&self, marker: &str, name: &str, command: &str) {
         let spawn_ts = self.now();
         let mut inner = self.inner.lock().unwrap();
         inner.shells.insert(
-            name.to_string(),
+            marker.to_string(),
             ShellRecord {
+                marker: marker.to_string(),
+                name: name.to_string(),
                 spawn_ts,
                 terminate_ts: None,
                 command: command.to_string(),
-                alias_of: None,
             },
         );
     }
 
-    pub fn record_shell_terminate(&self, name: &str) {
+    pub fn record_shell_terminate(&self, marker: &str) {
         let terminate_ts = self.now();
         let mut inner = self.inner.lock().unwrap();
-        if let Some(rec) = inner.shells.get_mut(name) {
+        if let Some(rec) = inner.shells.get_mut(marker) {
             rec.terminate_ts = Some(terminate_ts);
         }
     }
@@ -293,11 +314,12 @@ impl StructuredLogBuilder {
 
     // Shell lifecycle ---------------------------------------------------
 
-    pub fn emit_shell_spawn(&self, span: SpanId, shell: &str, command: &str) {
-        self.record_shell_spawn(shell, command);
+    pub fn emit_shell_spawn(&self, span: SpanId, shell: &str, marker: &str, command: &str) {
+        self.record_shell_spawn(marker, shell, command);
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::ShellSpawn {
                 name: shell.to_string(),
                 command: command.to_string(),
@@ -306,20 +328,22 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::ShellSpawn);
     }
 
-    pub fn emit_shell_ready(&self, span: SpanId, shell: &str) {
+    pub fn emit_shell_ready(&self, span: SpanId, shell: &str, marker: &str) {
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::ShellReady {
                 name: shell.to_string(),
             },
         );
     }
 
-    pub fn emit_shell_switch(&self, span: SpanId, shell: &str) {
+    pub fn emit_shell_switch(&self, span: SpanId, shell: &str, marker: &str) {
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::ShellSwitch {
                 name: shell.to_string(),
             },
@@ -327,11 +351,12 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::ShellSwitch(shell.to_string()));
     }
 
-    pub fn emit_shell_terminate(&self, span: SpanId, shell: &str) {
-        self.record_shell_terminate(shell);
+    pub fn emit_shell_terminate(&self, span: SpanId, shell: &str, marker: &str) {
+        self.record_shell_terminate(marker);
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::ShellTerminate {
                 name: shell.to_string(),
             },
@@ -349,6 +374,7 @@ impl StructuredLogBuilder {
     ) {
         self.push_event(
             span,
+            None,
             None,
             EventKind::EffectExposeShell {
                 name: name.to_string(),
@@ -369,6 +395,7 @@ impl StructuredLogBuilder {
         self.push_event(
             span,
             None,
+            None,
             EventKind::EffectExposeVar {
                 name: name.to_string(),
                 target: target.to_string(),
@@ -380,10 +407,11 @@ impl StructuredLogBuilder {
 
     // I/O ---------------------------------------------------------------
 
-    pub fn emit_send(&self, span: SpanId, shell: &str, data: &str) {
+    pub fn emit_send(&self, span: SpanId, shell: &str, marker: &str, data: &str) {
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::Send {
                 data: data.to_string(),
             },
@@ -391,10 +419,11 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::Send);
     }
 
-    pub fn emit_recv(&self, span: SpanId, shell: &str, data: &str) {
+    pub fn emit_recv(&self, span: SpanId, shell: &str, marker: &str, data: &str) {
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::Recv {
                 data: data.to_string(),
             },
@@ -403,10 +432,12 @@ impl StructuredLogBuilder {
 
     // Matching ----------------------------------------------------------
 
+    #[allow(clippy::too_many_arguments)]
     pub fn emit_match_start(
         &self,
         span: SpanId,
         shell: &str,
+        marker: &str,
         pattern: &str,
         is_regex: bool,
         effective: &IrTimeout,
@@ -415,6 +446,7 @@ impl StructuredLogBuilder {
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::MatchStart {
                 pattern: pattern.to_string(),
                 is_regex,
@@ -424,28 +456,26 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::MatchStart);
     }
 
+    /// Record a structured `MatchDone` event referencing a buffer event
+    /// that was pushed (atomically with the consume operation) by
+    /// `OutputBuffer::consume_*`. The buffer event push is the consumer's
+    /// responsibility — this method only emits the structured event +
+    /// progress notification.
     #[allow(clippy::too_many_arguments)]
-    pub fn emit_match_done(
+    pub fn emit_match_done_record(
         &self,
         span: SpanId,
         shell: &str,
+        marker: &str,
         matched: &str,
         elapsed: Duration,
         captures: Option<HashMap<String, String>>,
-        before: &str,
-        after: &str,
+        buffer_seq: EventSeq,
     ) {
-        let buffer_seq = self.push_buffer_event(
-            shell,
-            BufferEventKind::Matched {
-                before: before.to_string(),
-                matched: matched.to_string(),
-                after: after.to_string(),
-            },
-        );
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::MatchDone {
                 matched: matched.to_string(),
                 elapsed,
@@ -456,11 +486,19 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::MatchDone);
     }
 
-    pub fn emit_timeout(&self, span: SpanId, shell: &str, pattern: &str, effective: &IrTimeout) {
+    pub fn emit_timeout(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        pattern: &str,
+        effective: &IrTimeout,
+    ) {
         let effective = self.timeout_value(effective);
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::Timeout {
                 pattern: pattern.to_string(),
                 buffer_seq: None,
@@ -470,21 +508,20 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::Timeout);
     }
 
-    pub fn emit_buffer_reset(&self, shell: &str, discarded: &str) {
-        self.push_buffer_event(
-            shell,
-            BufferEventKind::Reset {
-                discarded: discarded.to_string(),
-            },
-        );
-    }
-
     // Fail patterns -----------------------------------------------------
 
-    pub fn emit_fail_pattern_set(&self, span: SpanId, shell: &str, pattern: &str, is_regex: bool) {
+    pub fn emit_fail_pattern_set(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        pattern: &str,
+        is_regex: bool,
+    ) {
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::FailPatternSet {
                 pattern: pattern.to_string(),
                 is_regex,
@@ -492,14 +529,21 @@ impl StructuredLogBuilder {
         );
     }
 
-    pub fn emit_fail_pattern_cleared(&self, span: SpanId, shell: &str) {
-        self.push_event(span, Some(shell), EventKind::FailPatternCleared);
+    pub fn emit_fail_pattern_cleared(&self, span: SpanId, shell: &str, marker: &str) {
+        self.push_event(
+            span,
+            Some(shell),
+            Some(marker),
+            EventKind::FailPatternCleared,
+        );
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn emit_fail_pattern_triggered(
         &self,
         span: SpanId,
         shell: &str,
+        marker: &str,
         pattern: &str,
         is_regex: bool,
         matched_line: &str,
@@ -507,6 +551,7 @@ impl StructuredLogBuilder {
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::FailPatternTriggered {
                 pattern: pattern.to_string(),
                 is_regex,
@@ -519,13 +564,18 @@ impl StructuredLogBuilder {
 
     // Control flow ------------------------------------------------------
 
-    pub fn emit_sleep_start(&self, span: SpanId, shell: &str, duration: Duration) {
-        self.push_event(span, Some(shell), EventKind::SleepStart { duration });
+    pub fn emit_sleep_start(&self, span: SpanId, shell: &str, marker: &str, duration: Duration) {
+        self.push_event(
+            span,
+            Some(shell),
+            Some(marker),
+            EventKind::SleepStart { duration },
+        );
         self.push_progress(ProgressEvent::SleepStart);
     }
 
-    pub fn emit_sleep_done(&self, span: SpanId, shell: &str) {
-        self.push_event(span, Some(shell), EventKind::SleepDone);
+    pub fn emit_sleep_done(&self, span: SpanId, shell: &str, marker: &str) {
+        self.push_event(span, Some(shell), Some(marker), EventKind::SleepDone);
         self.push_progress(ProgressEvent::SleepDone);
     }
 
@@ -533,6 +583,7 @@ impl StructuredLogBuilder {
         &self,
         span: SpanId,
         shell: &str,
+        marker: &str,
         timeout: &IrTimeout,
         previous: &IrTimeout,
     ) {
@@ -541,16 +592,25 @@ impl StructuredLogBuilder {
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::TimeoutSet { timeout, previous },
         );
     }
 
     // Values ------------------------------------------------------------
 
-    pub fn emit_var_let(&self, span: SpanId, shell: Option<&str>, name: &str, value: &str) {
+    pub fn emit_var_let(
+        &self,
+        span: SpanId,
+        shell: Option<&str>,
+        marker: Option<&str>,
+        name: &str,
+        value: &str,
+    ) {
         self.push_event(
             span,
             shell,
+            marker,
             EventKind::VarLet {
                 name: name.to_string(),
                 value: value.to_string(),
@@ -558,10 +618,12 @@ impl StructuredLogBuilder {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn emit_var_assign(
         &self,
         span: SpanId,
         shell: &str,
+        marker: &str,
         name: &str,
         value: &str,
         previous: &str,
@@ -569,6 +631,7 @@ impl StructuredLogBuilder {
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::VarAssign {
                 name: name.to_string(),
                 value: value.to_string(),
@@ -577,20 +640,23 @@ impl StructuredLogBuilder {
         );
     }
 
-    pub fn emit_string_eval(&self, span: SpanId, shell: &str, result: &str) {
+    pub fn emit_string_eval(&self, span: SpanId, shell: &str, marker: &str, result: &str) {
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::StringEval {
                 result: result.to_string(),
             },
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn emit_interpolation(
         &self,
         span: SpanId,
         shell: &str,
+        marker: &str,
         template: &str,
         result: &str,
         bindings: &[(String, String)],
@@ -598,6 +664,7 @@ impl StructuredLogBuilder {
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::Interpolation {
                 template: template.to_string(),
                 result: result.to_string(),
@@ -608,10 +675,11 @@ impl StructuredLogBuilder {
 
     // Diagnostics -------------------------------------------------------
 
-    pub fn emit_annotate(&self, span: SpanId, shell: &str, text: &str) {
+    pub fn emit_annotate(&self, span: SpanId, shell: &str, marker: &str, text: &str) {
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::Annotate {
                 text: text.to_string(),
             },
@@ -619,20 +687,22 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::Annotation(text.to_string()));
     }
 
-    pub fn emit_log(&self, span: SpanId, shell: &str, message: &str) {
+    pub fn emit_log(&self, span: SpanId, shell: &str, marker: &str, message: &str) {
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::Log {
                 message: message.to_string(),
             },
         );
     }
 
-    pub fn emit_warning(&self, span: SpanId, shell: &str, message: &str) {
+    pub fn emit_warning(&self, span: SpanId, shell: &str, marker: &str, message: &str) {
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::Warning {
                 message: message.to_string(),
             },
@@ -640,10 +710,11 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::Warning(message.to_string()));
     }
 
-    pub fn emit_error(&self, span: SpanId, shell: &str, message: &str) {
+    pub fn emit_error(&self, span: SpanId, shell: &str, marker: &str, message: &str) {
         self.push_event(
             span,
             Some(shell),
+            Some(marker),
             EventKind::Error {
                 message: message.to_string(),
             },
@@ -808,9 +879,19 @@ mod tests {
         let (b, _rx) = make_builder();
         let test_span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
         let id = test_span.id();
-        let s1 = b.push_event(id, Some("sh"), EventKind::Send { data: "a".into() });
-        let s2 = b.push_buffer_event("sh", BufferEventKind::Grew { data: "b".into() });
-        let s3 = b.push_event(id, Some("sh"), EventKind::Recv { data: "c".into() });
+        let s1 = b.push_event(
+            id,
+            Some("sh"),
+            Some("m"),
+            EventKind::Send { data: "a".into() },
+        );
+        let s2 = b.push_buffer_event("sh", "m", BufferEventKind::Grew { data: "b".into() });
+        let s3 = b.push_event(
+            id,
+            Some("sh"),
+            Some("m"),
+            EventKind::Recv { data: "c".into() },
+        );
         assert_eq!(s1, 0);
         assert_eq!(s2, 1);
         assert_eq!(s3, 2);
@@ -874,10 +955,11 @@ mod tests {
     #[test]
     fn shell_glossary_records_spawn_and_terminate() {
         let (b, _rx) = make_builder();
-        b.record_shell_spawn("default", "/bin/bash");
-        b.record_shell_terminate("default");
+        b.record_shell_spawn("test-marker-0000", "default", "/bin/bash");
+        b.record_shell_terminate("test-marker-0000");
         let inner = b.inner.lock().unwrap();
-        let rec = inner.shells.get("default").unwrap();
+        let rec = inner.shells.get("test-marker-0000").unwrap();
+        assert_eq!(rec.name, "default");
         assert_eq!(rec.command, "/bin/bash");
         assert!(rec.terminate_ts.is_some());
     }
@@ -887,7 +969,12 @@ mod tests {
         let (b, _rx) = make_builder();
         let b2 = b.clone();
         let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
-        b2.push_event(span.id(), Some("sh"), EventKind::Send { data: "x".into() });
+        b2.push_event(
+            span.id(),
+            Some("sh"),
+            Some("m"),
+            EventKind::Send { data: "x".into() },
+        );
         let inner = b.inner.lock().unwrap();
         assert_eq!(inner.events.len(), 1);
     }
@@ -897,8 +984,13 @@ mod tests {
         let (b, _rx) = make_builder();
         let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
         let id = span.id();
-        b.push_event(id, Some("sh"), EventKind::Send { data: "x".into() });
-        b.push_buffer_event("sh", BufferEventKind::Grew { data: "y".into() });
+        b.push_event(
+            id,
+            Some("sh"),
+            Some("m"),
+            EventKind::Send { data: "x".into() },
+        );
+        b.push_buffer_event("sh", "m", BufferEventKind::Grew { data: "y".into() });
         span.close();
         let log = b.build(
             TestInfo {
@@ -920,7 +1012,7 @@ mod tests {
     fn emit_send_pushes_event_and_progress() {
         let (b, mut rx) = make_builder();
         let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
-        b.emit_send(span.id(), "sh", "hello");
+        b.emit_send(span.id(), "sh", "m", "hello");
         let inner = b.inner.lock().unwrap();
         assert!(matches!(
             &inner.events.last().unwrap().kind,
@@ -931,24 +1023,36 @@ mod tests {
     }
 
     #[test]
-    fn emit_match_done_pushes_buffer_event_and_referencing_event() {
+    fn emit_match_done_record_pushes_event_with_supplied_buffer_seq() {
         let (b, _rx) = make_builder();
         let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
-        b.emit_match_done(
+        // Simulate the buffer event that `OutputBuffer::consume_*` would
+        // have pushed atomically with the consume operation.
+        let buffer_seq = b.push_buffer_event(
+            "sh",
+            "m",
+            BufferEventKind::Matched {
+                before: "before".into(),
+                matched: "ok".into(),
+                after: "after".into(),
+            },
+        );
+        b.emit_match_done_record(
             span.id(),
             "sh",
+            "m",
             "ok",
             Duration::from_millis(5),
             None,
-            "before",
-            "after",
+            buffer_seq,
         );
         let inner = b.inner.lock().unwrap();
         assert_eq!(inner.buffer_events.len(), 1);
-        let buf_seq = inner.buffer_events[0].seq;
         let last = inner.events.last().unwrap();
         match &last.kind {
-            EventKind::MatchDone { buffer_seq, .. } => assert_eq!(*buffer_seq, buf_seq),
+            EventKind::MatchDone {
+                buffer_seq: ev_seq, ..
+            } => assert_eq!(*ev_seq, buffer_seq),
             _ => panic!("expected MatchDone"),
         }
     }
@@ -994,9 +1098,14 @@ mod tests {
         let (b, _rx) = make_builder();
         assert_eq!(b.current_seq(), 0);
         let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
-        b.push_event(span.id(), Some("sh"), EventKind::Send { data: "a".into() });
+        b.push_event(
+            span.id(),
+            Some("sh"),
+            Some("m"),
+            EventKind::Send { data: "a".into() },
+        );
         assert_eq!(b.current_seq(), 0);
-        b.push_buffer_event("sh", BufferEventKind::Grew { data: "b".into() });
+        b.push_buffer_event("sh", "m", BufferEventKind::Grew { data: "b".into() });
         assert_eq!(b.current_seq(), 1);
     }
 
@@ -1004,14 +1113,23 @@ mod tests {
     fn round_trip_serde_json() {
         let (b, _rx) = make_builder();
         let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
-        b.emit_match_done(
+        let buffer_seq = b.push_buffer_event(
+            "sh",
+            "m",
+            BufferEventKind::Matched {
+                before: "".into(),
+                matched: "ok".into(),
+                after: "".into(),
+            },
+        );
+        b.emit_match_done_record(
             span.id(),
             "sh",
+            "m",
             "ok",
             Duration::from_millis(1),
             None,
-            "",
-            "",
+            buffer_seq,
         );
         span.close();
         let log = b.build(

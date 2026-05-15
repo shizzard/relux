@@ -2,7 +2,14 @@
   import type { Span } from '../types/Span';
   import type { ViewerState } from '../lib/state.svelte';
   import { displaySpanKind, spanTitle } from '../lib/format';
-  import { bootstrapForReuse, finalCleanupForDeferred, toNumber as n } from '../lib/derive';
+  import {
+    bootstrapForReuse,
+    finalCleanupForDeferred,
+    firstEventInSpan,
+    firstUseShellBlockForMarker,
+    shellBlockLifecycle,
+    toNumber as n,
+  } from '../lib/derive';
   import type { SpanId } from '../lib/derive';
   import StyleBCard from './StyleBCard.svelte';
   import MarkerPill from './MarkerPill.svelte';
@@ -37,6 +44,17 @@
         marker: span.marker,
         prefix: span.is_deferred ? 'deferred' : null,
         jumpTo: span.is_deferred ? finalCleanupForDeferred(state.data, span.marker) : null,
+      };
+    }
+    if (span.kind === 'shell-block') {
+      const firstEv = firstEventInSpan(state.data, id);
+      const marker = firstEv?.shell_marker ?? null;
+      if (marker === null) return null;
+      const lifecycle = shellBlockLifecycle(state.data, id);
+      return {
+        marker,
+        prefix: null,
+        jumpTo: lifecycle.firstUse ? null : firstUseShellBlockForMarker(state.data, marker),
       };
     }
     return null;

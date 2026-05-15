@@ -17,6 +17,8 @@ pub struct BufferEvent {
     #[ts(as = "f64")]
     pub ts: Duration,
     pub shell: String,
+    /// Stable identity for the shell. Buffer events always have a shell.
+    pub shell_marker: String,
     #[serde(flatten)]
     pub kind: BufferEventKind,
 }
