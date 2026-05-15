@@ -1,8 +1,11 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import type { BufferRegions } from '../../lib/derive';
   import { escapeBufferBytes } from '../../lib/format';
 
   let { regions }: { regions: BufferRegions | null } = $props();
+
+  let preEl: HTMLPreElement | undefined;
 
   const isEmpty = $derived(
     regions === null ||
@@ -10,9 +13,31 @@
         regions.matched === null &&
         regions.tail.length === 0),
   );
+
+  // After regions change, scroll the pre so the last match sits at the
+  // viewport's vertical center. Phantom padding-bottom (half the viewport
+  // height) ensures an end-of-buffer match can still center rather than
+  // sticking to the bottom edge. No match -> scroll to the bottom (latest
+  // tail / cursor).
+  $effect(() => {
+    void regions;
+    if (!preEl) return;
+    const pre = preEl;
+    void (async () => {
+      await tick();
+      const half = pre.clientHeight / 2;
+      pre.style.paddingBottom = `${half}px`;
+      const matched = pre.querySelector<HTMLElement>('.matched');
+      const target = matched
+        ? matched.offsetTop + matched.offsetHeight / 2 - half
+        : pre.scrollHeight - pre.clientHeight;
+      const max = pre.scrollHeight - pre.clientHeight;
+      pre.scrollTop = Math.max(0, Math.min(max, target));
+    })();
+  });
 </script>
 
-<pre class="shell" class:empty={isEmpty}>{#if regions === null || isEmpty}<span class="empty-marker">(empty)</span>{:else}<span class="consumed">{escapeBufferBytes(regions.consumed)}</span>{#if regions.matched}<span class="matched">{escapeBufferBytes(regions.matched.bytes)}</span>{/if}<span class="tail">{escapeBufferBytes(regions.tail)}</span><span class="cursor"></span>{/if}</pre>
+<pre bind:this={preEl} class="shell" class:empty={isEmpty}>{#if regions === null || isEmpty}<span class="empty-marker">(empty)</span>{:else}<span class="consumed">{escapeBufferBytes(regions.consumed)}</span>{#if regions.matched}<span class="matched">{escapeBufferBytes(regions.matched.bytes)}</span>{/if}<span class="tail">{escapeBufferBytes(regions.tail)}</span><span class="cursor"></span>{/if}</pre>
 
 <style>
   .shell {

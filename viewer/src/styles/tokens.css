@@ -11,6 +11,7 @@
   --accent: #ffd166;
   --accent-2: #6fd3a3;
   --danger: #ff7a7a;
+  --info: #7aa7d9;
 
   --pass: var(--accent-2);
   --fail: var(--danger);

@@ -142,7 +142,10 @@ export interface BufferRegions {
 //                    named `__cleanup`, but its marker is unique per
 //                    owning effect (or per test for top-level cleanup)
 //   fn-call       -> marker from the first event inside the subtree
-//                    (the function executes in its caller's shell)
+//                    (the function executes in its caller's shell);
+//                    falls back to the shell active at the call's
+//                    start_ts when the body is purely pure and emits
+//                    no shell-tagged events.
 //   effect-setup / effect-cleanup -> marker from the first event in
 //                    the subtree, when present
 // Returns null when no event inside the subtree carries a shell.
@@ -160,7 +163,22 @@ export function spanBufferKey(data: StructuredLog, span: Span): string | null {
   for (const ev of data.events) {
     if (subtree.has(n(ev.span)) && ev.shell_marker !== null) return ev.shell_marker;
   }
+  if (span.kind === 'fn-call') {
+    return activeShellMarkerAtTs(data, span.start_ts);
+  }
   return null;
+}
+
+function activeShellMarkerAtTs(
+  data: StructuredLog,
+  ts: number,
+): string | null {
+  let marker: string | null = null;
+  for (const ev of data.events) {
+    if (ev.ts > ts) break;
+    if (ev.shell_marker !== null) marker = ev.shell_marker;
+  }
+  return marker;
 }
 
 // Buffer-replay cutoff seq for span selection.

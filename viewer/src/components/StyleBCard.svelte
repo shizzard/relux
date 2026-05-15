@@ -143,9 +143,14 @@
       if (start.is_regex) {
         out.push({ type: 'kv', key: 'matched', value: outcome.matched, mono: true, accent: true });
       }
-      if (outcome.captures) {
-        for (const [name, value] of Object.entries(outcome.captures)) {
-          if (value === undefined) continue;
+      const caps = outcome.captures
+        ? Object.entries(outcome.captures).filter(
+            (entry): entry is [string, string] => entry[1] !== undefined,
+          )
+        : [];
+      if (caps.length > 0) {
+        out.push({ type: 'subhead', text: 'captures' });
+        for (const [name, value] of caps) {
           out.push({ type: 'kv', key: `$${name}`, value, mono: true, accent: true });
         }
       }
@@ -199,9 +204,14 @@
           { type: 'kv', key: 'matched', value: ev.matched, mono: true, accent: true },
           { type: 'kv', key: 'elapsed', value: formatDuration(ev.elapsed) },
         ];
-        if (ev.captures) {
-          for (const [name, value] of Object.entries(ev.captures)) {
-            if (value === undefined) continue;
+        const caps = ev.captures
+          ? Object.entries(ev.captures).filter(
+              (entry): entry is [string, string] => entry[1] !== undefined,
+            )
+          : [];
+        if (caps.length > 0) {
+          out.push({ type: 'subhead', text: 'captures' });
+          for (const [name, value] of caps) {
             out.push({ type: 'kv', key: `$${name}`, value, mono: true, accent: true });
           }
         }
@@ -246,11 +256,14 @@
       case 'interpolation': {
         const out: Row[] = [
           { type: 'kv', key: 'template', value: ev.template, mono: true },
+          { type: 'kv', key: 'result', value: ev.result, mono: true, accent: true },
         ];
-        for (const [k, v] of ev.bindings) {
-          out.push({ type: 'kv', key: `\${${k}}`, value: v, mono: true });
+        if (ev.bindings.length > 0) {
+          out.push({ type: 'subhead', text: 'bindings' });
+          for (const [k, v] of ev.bindings) {
+            out.push({ type: 'kv', key: `\${${k}}`, value: v, mono: true });
+          }
         }
-        out.push({ type: 'kv', key: 'result', value: ev.result, mono: true, accent: true });
         return out;
       }
       case 'var-read':
@@ -289,9 +302,15 @@
         } else {
           out.push({ type: 'kv', key: 'matched', value: '(none)' });
         }
-        for (const [k, v] of Object.entries(ev.captures)) {
-          if (k === '0' || v === undefined) continue;
-          out.push({ type: 'kv', key: `$${k}`, value: v, mono: true, accent: true });
+        const caps = Object.entries(ev.captures).filter(
+          (entry): entry is [string, string] =>
+            entry[0] !== '0' && entry[1] !== undefined,
+        );
+        if (caps.length > 0) {
+          out.push({ type: 'subhead', text: 'captures' });
+          for (const [k, v] of caps) {
+            out.push({ type: 'kv', key: `$${k}`, value: v, mono: true, accent: true });
+          }
         }
         return out;
       }
@@ -362,13 +381,13 @@
       if (span.alias !== null) out.push({ type: 'kv', key: 'alias', value: span.alias, mono: true });
       if (props !== null) {
         if (props.overlay.length > 0) {
-          out.push({ type: 'subhead', text: '\u2014 expects' });
+          out.push({ type: 'subhead', text: 'expects' });
           for (const [k, v] of props.overlay) {
             out.push({ type: 'kv', key: k, value: v, mono: true });
           }
         }
         if (props.shellExposes.length > 0) {
-          out.push({ type: 'subhead', text: '\u2014 exposes shells' });
+          out.push({ type: 'subhead', text: 'exposes shells' });
           for (const e of props.shellExposes) {
             const target =
               e.qualifier !== null ? `${e.qualifier}.${e.target}` : e.target;
@@ -381,7 +400,7 @@
           }
         }
         if (props.varExposes.length > 0) {
-          out.push({ type: 'subhead', text: '\u2014 exposes vars' });
+          out.push({ type: 'subhead', text: 'exposes vars' });
           for (const v of props.varExposes) {
             out.push({ type: 'kv', key: v.name, value: v.value, mono: true });
           }
@@ -391,11 +410,14 @@
     }
     if (span.kind === 'fn-call') {
       const out: Row[] = [{ type: 'kv', key: 'elapsed', value: spanElapsed(span) }];
-      for (const [k, v] of span.args) {
-        out.push({ type: 'kv', key: k, value: v, mono: true });
-      }
       if (span.result !== null) {
         out.push({ type: 'kv', key: 'result', value: span.result, mono: true, accent: true });
+      }
+      if (span.args.length > 0) {
+        out.push({ type: 'subhead', text: 'arguments' });
+        for (const [k, v] of span.args) {
+          out.push({ type: 'kv', key: k, value: v, mono: true });
+        }
       }
       return out;
     }
@@ -519,13 +541,13 @@
 <style>
   .card {
     border: 1px solid var(--border);
-    border-left: 3px solid var(--accent);
+    border-left: 3px solid var(--ink-dim);
     border-radius: var(--radius);
     background: var(--paper-2);
     padding: var(--gap-sm) var(--gap-md);
     font-family: var(--font-mono);
     font-size: 0.78rem;
-    margin: var(--gap-xs) 0 var(--gap-sm) var(--gap-md);
+    margin: var(--gap-xs) 0 var(--gap-sm) 0;
   }
   .card.ok {
     border-left-color: var(--accent-2);
@@ -534,7 +556,7 @@
     border-left-color: var(--danger);
   }
   .card.info {
-    border-left-color: var(--ink-dim);
+    border-left-color: var(--info);
   }
   .head {
     display: flex;
@@ -561,9 +583,24 @@
   }
   .subhead {
     grid-column: 1 / -1;
-    color: var(--ink-faint);
+    display: flex;
+    align-items: center;
+    gap: var(--gap-sm);
+    color: var(--ink-dim);
     font-size: 0.72rem;
-    padding-top: 4px;
+    padding-top: 6px;
+  }
+  .subhead::before,
+  .subhead::after {
+    content: '';
+    border-top: 1px dashed var(--border);
+    height: 0;
+  }
+  .subhead::before {
+    flex: 0 0 16px;
+  }
+  .subhead::after {
+    flex: 1 1 auto;
   }
   .kv-row {
     display: contents;

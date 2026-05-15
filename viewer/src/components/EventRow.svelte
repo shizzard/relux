@@ -42,7 +42,7 @@
     <span class="ts">{ts}</span>
   </button>
   {#if selected}
-    <div class="card-slot" style:padding-left="{(depth + 1) * 24}px">
+    <div class="card-slot" style:padding-left="{depth * 24}px">
       <StyleBCard {state} mode={{ kind: 'event', folded }} />
     </div>
   {/if}
@@ -71,9 +71,9 @@
     background: color-mix(in srgb, var(--accent) 8%, transparent);
   }
   .selected > .row {
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-    outline: 1px dashed var(--accent);
+    outline: 1px solid var(--accent);
     outline-offset: -1px;
+    border-radius: var(--radius);
   }
   .rail {
     width: 24px;
