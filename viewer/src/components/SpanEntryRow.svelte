@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Span } from '../types/Span';
   import type { ViewerState } from '../lib/state.svelte';
-  import { displaySpanKind, spanTitle } from '../lib/format';
+  import { displaySpanCallKind, spanTitle } from '../lib/format';
   import {
     bootstrapForReuse,
     finalCleanupForDeferred,
@@ -75,7 +75,7 @@
       </span>
     </button>
     <button class="select-btn" type="button" onclick={() => state.selectSpan(id)}>
-      <span class="kind">{displaySpanKind(span.kind)}</span>
+      <span class="kind">{displaySpanCallKind(span)}</span>
       <span class="title">{title}</span>
     </button>
     {#if pillProps}

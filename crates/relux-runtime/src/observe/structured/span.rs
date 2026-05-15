@@ -8,6 +8,17 @@ use super::SourceLocation;
 
 pub type SpanId = u64;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum FnCallKind {
+    User,
+    Bif,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[cfg_attr(
     feature = "ts-export",
@@ -53,6 +64,8 @@ pub enum SpanKind {
         name: String,
         args: Vec<(String, String)>,
         result: Option<String>,
+        callee_kind: FnCallKind,
+        is_pure: bool,
     },
 }
 
@@ -94,6 +107,27 @@ impl SpanKind {
             SpanKind::EffectCleanup { alias, .. } => alias.clone(),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fn_call_span_serializes_callee_kind_and_is_pure() {
+        let span = SpanKind::FnCall {
+            name: "trim".into(),
+            args: vec![("$0".into(), "  hi  ".into())],
+            result: Some("hi".into()),
+            callee_kind: FnCallKind::Bif,
+            is_pure: true,
+        };
+        let json = serde_json::to_value(&span).unwrap();
+        assert_eq!(json["kind"], "fn-call");
+        assert_eq!(json["name"], "trim");
+        assert_eq!(json["callee_kind"], "bif");
+        assert_eq!(json["is_pure"], true);
     }
 }
 

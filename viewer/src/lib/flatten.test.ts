@@ -25,7 +25,14 @@ type SpanInput = { id: number; parent: number | null; start_ts?: number; end_ts?
     }
   | { kind: 'cleanup-block' }
   | { kind: 'shell-block'; shell: string }
-  | { kind: 'fn-call'; name?: string }
+  | {
+      kind: 'fn-call';
+      name?: string;
+      args?: Array<[string, string]>;
+      result?: string | null;
+      callee_kind?: 'user' | 'bif';
+      is_pure?: boolean;
+    }
 );
 
 function buildSpan(input: SpanInput): Span {
@@ -64,7 +71,15 @@ function buildSpan(input: SpanInput): Span {
     case 'shell-block':
       return { ...base, kind: 'shell-block', shell: input.shell };
     case 'fn-call':
-      return { ...base, kind: 'fn-call', name: input.name ?? 'f', args: [], result: null };
+      return {
+        ...base,
+        kind: 'fn-call',
+        name: input.name ?? 'f',
+        args: input.args ?? [],
+        result: input.result ?? null,
+        callee_kind: input.callee_kind ?? 'user',
+        is_pure: input.is_pure ?? false,
+      };
   }
 }
 
@@ -142,6 +157,35 @@ function logEv(seq: number, span: number, msg = 'log'): Event {
     message: msg,
   } as Event;
 }
+function annotateEv(seq: number, span: number, text = 'note'): Event {
+  return {
+    seq: BigInt(seq),
+    ts: seq,
+    span: BigInt(span),
+    shell: null,
+    kind: 'annotate',
+    text,
+  } as Event;
+}
+function sleepStart(seq: number, span: number, ms = 100): Event {
+  return {
+    seq: BigInt(seq),
+    ts: seq,
+    span: BigInt(span),
+    shell: null,
+    kind: 'sleep-start',
+    duration: ms,
+  } as Event;
+}
+function sleepDone(seq: number, span: number): Event {
+  return {
+    seq: BigInt(seq),
+    ts: seq,
+    span: BigInt(span),
+    shell: null,
+    kind: 'sleep-done',
+  } as Event;
+}
 function warningEv(seq: number, span: number, msg = 'warn'): Event {
   return {
     seq: BigInt(seq),
@@ -171,6 +215,7 @@ type RowSummary =
   | { kind: 'span'; id: number; depth: number }
   | { kind: 'event'; eventSeq: number; depth: number }
   | { kind: 'log-bar'; level: string; eventSeq: number; depth: number }
+  | { kind: 'bif-row'; id: number; depth: number }
   | { kind: 'gap'; ms: number };
 
 function summarize(rows: Row[]): RowSummary[] {
@@ -182,6 +227,8 @@ function summarize(rows: Row[]): RowSummary[] {
         return { kind: 'event', eventSeq: leadSeq(r.folded), depth: r.depth };
       case 'log-bar':
         return { kind: 'log-bar', level: r.level, eventSeq: Number(r.event.seq), depth: r.depth };
+      case 'bif-row':
+        return { kind: 'bif-row', id: Number(r.span.id), depth: r.depth };
       case 'gap':
         return { kind: 'gap', ms: r.ms };
     }
@@ -544,6 +591,113 @@ describe('flattenRows', () => {
       [matchStart(3, 3), matchDone(4, 3)],
     );
     expect(summarize(flattenRows(log, new Set([3])))).toEqual([
+      { kind: 'span', id: 2, depth: 0 },
+    ]);
+  });
+});
+
+describe('flattenRows — transparent BIFs', () => {
+  it('hides pure-BIF FnCall span and emits a bif-row', () => {
+    const log = logWith(
+      [
+        buildSpan({ id: 1, parent: null, kind: 'test' }),
+        buildSpan({
+          id: 2,
+          parent: 1,
+          kind: 'fn-call',
+          name: 'trim',
+          start_ts: 1,
+          callee_kind: 'bif',
+          is_pure: true,
+          args: [['$0', 'hi']],
+          result: 'hi',
+        }),
+      ],
+      [],
+    );
+    expect(summarize(flattenRows(log, new Set()))).toEqual([
+      { kind: 'bif-row', id: 2, depth: 0 },
+    ]);
+  });
+
+  it('hides sleep FnCall span; folded sleep row appears at parent depth', () => {
+    const log = logWith(
+      [
+        buildSpan({ id: 1, parent: null, kind: 'test' }),
+        buildSpan({
+          id: 2,
+          parent: 1,
+          kind: 'fn-call',
+          name: 'sleep',
+          start_ts: 1,
+          callee_kind: 'bif',
+          is_pure: false,
+        }),
+      ],
+      [sleepStart(1, 2), sleepDone(2, 2)],
+    );
+    expect(summarize(flattenRows(log, new Set()))).toEqual([
+      { kind: 'event', eventSeq: 1, depth: 0 },
+    ]);
+  });
+
+  it('hides log FnCall span; LogBar appears at parent depth', () => {
+    const log = logWith(
+      [
+        buildSpan({ id: 1, parent: null, kind: 'test' }),
+        buildSpan({
+          id: 2,
+          parent: 1,
+          kind: 'fn-call',
+          name: 'log',
+          start_ts: 1,
+          callee_kind: 'bif',
+          is_pure: false,
+        }),
+      ],
+      [logEv(1, 2, 'hi')],
+    );
+    expect(summarize(flattenRows(log, new Set()))).toEqual([
+      { kind: 'log-bar', level: 'log', eventSeq: 1, depth: 0 },
+    ]);
+  });
+
+  it('hides annotate FnCall span; annotate event is also filtered', () => {
+    const log = logWith(
+      [
+        buildSpan({ id: 1, parent: null, kind: 'test' }),
+        buildSpan({
+          id: 2,
+          parent: 1,
+          kind: 'fn-call',
+          name: 'annotate',
+          start_ts: 1,
+          callee_kind: 'bif',
+          is_pure: false,
+        }),
+      ],
+      [annotateEv(1, 2, 'note')],
+    );
+    expect(summarize(flattenRows(log, new Set()))).toEqual([]);
+  });
+
+  it('keeps match_ok FnCall span as a span-entry row', () => {
+    const log = logWith(
+      [
+        buildSpan({ id: 1, parent: null, kind: 'test' }),
+        buildSpan({
+          id: 2,
+          parent: 1,
+          kind: 'fn-call',
+          name: 'match_ok',
+          start_ts: 1,
+          callee_kind: 'bif',
+          is_pure: false,
+        }),
+      ],
+      [],
+    );
+    expect(summarize(flattenRows(log, new Set()))).toEqual([
       { kind: 'span', id: 2, depth: 0 },
     ]);
   });

@@ -3,6 +3,7 @@ import type { Span } from '../types/Span';
 import type { StackFrame } from '../types/StackFrame';
 import type { StructuredLog } from '../types/StructuredLog';
 import type { TimeoutValue } from '../types/TimeoutValue';
+import { isTransparentBif } from './bif';
 
 // ts-rs annotates `seq`, `span.id`, `parent` as `bigint`, but at runtime
 // they arrive via `JSON.parse(window.RELUX_DATA)` and are plain `number`s
@@ -69,7 +70,9 @@ export function descendants(data: StructuredLog, spanId: SpanId): Set<SpanId> {
 }
 
 export function buildCallStack(data: StructuredLog, event: Event): StackFrame[] {
-  return ancestors(data, n(event.span)).map(toStackFrame);
+  return ancestors(data, n(event.span))
+    .filter((span) => !isTransparentBif(span))
+    .map(toStackFrame);
 }
 
 function toStackFrame(span: Span): StackFrame {

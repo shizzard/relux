@@ -1,6 +1,7 @@
 import type { Event } from '../types/Event';
 import type { Span } from '../types/Span';
 import type { StructuredLog } from '../types/StructuredLog';
+import { isTransparentBif } from './bif';
 import { spanById, toNumber as n, type SpanId } from './derive';
 
 // Walk the ancestor chain of `spanId` and return:
@@ -33,7 +34,7 @@ export function scopeContext(
     if (current.kind === 'effect-cleanup') {
       return { ambientScope: n(current.setup_span), innermostFn };
     }
-    if (current.kind === 'fn-call' && innermostFn === null) {
+    if (current.kind === 'fn-call' && !isTransparentBif(current) && innermostFn === null) {
       innermostFn = n(current.id);
     }
     if (current.parent === null) break;
@@ -68,6 +69,7 @@ function varsAtCutoff(
   for (const key of Object.keys(spans)) {
     const span = spans[key];
     if (!span || span.kind !== 'fn-call') continue;
+    if (isTransparentBif(span)) continue;
     const seed = new Map<string, string>();
     for (const [k, v] of span.args) seed.set(k, v);
     frameVars.set(n(span.id), seed);
@@ -299,7 +301,7 @@ function outerContextForSpan(
         cutoffSeq,
       };
     }
-    if (parent.kind === 'fn-call') {
+    if (parent.kind === 'fn-call' && !isTransparentBif(parent)) {
       return {
         viewerSpanId: n(parent.id),
         viewerShell: null,

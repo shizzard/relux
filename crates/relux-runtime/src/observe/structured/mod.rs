@@ -33,6 +33,7 @@ pub use event::EventSeq;
 pub use failure::FailureRecord;
 pub use failure::StackFrame;
 pub use shell::ShellRecord;
+pub use span::FnCallKind;
 pub use span::Span;
 pub use span::SpanId;
 pub use span::SpanKind;

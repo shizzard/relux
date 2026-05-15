@@ -1,0 +1,56 @@
+test "bif rendering: FnCall spans tagged with callee_kind and is_pure" ~60s {
+    """
+    Verifies the FnCall span schema extension used by the viewer to
+    distinguish BIFs from user-defined functions:
+      * pure BIFs (trim) have callee_kind=bif, is_pure=true
+      * impure BIFs (log, annotate, sleep, match_ok, ctrl_l) have
+        callee_kind=bif, is_pure=false
+    The viewer applies the rendering rules; here we only verify the
+    runtime emission shape.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <= 1 passed
+        match_ok()
+
+        > events=$(ls -dt ${__RELUX_TEST_ROOT}/fixtures/relux/out/*/logs/relux/tests/bif_rendering/bif-rendering-exercises-every-bif-bucket/events.json 2>/dev/null | head -1); echo FOUND=$events
+        <? ^FOUND=/
+        match_ok()
+
+        // trim is a pure BIF.
+        > jq -M '.spans | to_entries[] | select(.value.name == "trim") | .value.callee_kind' $events
+        <? ^"bif"$
+        match_ok()
+        > jq -M '.spans | to_entries[] | select(.value.name == "trim") | .value.is_pure' $events
+        <? ^true$
+        match_ok()
+
+        // log is an impure BIF.
+        > jq -M '.spans | to_entries[] | select(.value.name == "log") | .value.callee_kind' $events
+        <? ^"bif"$
+        match_ok()
+        > jq -M '.spans | to_entries[] | select(.value.name == "log") | .value.is_pure' $events
+        <? ^false$
+        match_ok()
+
+        // sleep is an impure BIF.
+        > jq -M '.spans | to_entries[] | select(.value.name == "sleep") | .value.callee_kind' $events
+        <? ^"bif"$
+        match_ok()
+
+        // annotate is an impure BIF.
+        > jq -M '.spans | to_entries[] | select(.value.name == "annotate") | .value.callee_kind' $events
+        <? ^"bif"$
+        match_ok()
+
+        // match_ok is an impure BIF kept as a wrapper in the viewer.
+        > jq -M '.spans | to_entries[] | select(.value.name == "match_ok") | .value.callee_kind' $events
+        <? ^"bif"$
+        match_ok()
+
+        // ctrl_l is an impure BIF kept as a wrapper in the viewer.
+        > jq -M '.spans | to_entries[] | select(.value.name == "ctrl_l") | .value.callee_kind' $events
+        <? ^"bif"$
+        match_ok()
+    }
+}

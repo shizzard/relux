@@ -269,6 +269,17 @@ export function displaySpanKind(kind: Span['kind']): string {
   return SPAN_KIND_LABELS[kind] ?? kind;
 }
 
+// Span-aware variant: BIF fn-call spans render as `BIF` instead of `call`
+// so the viewer's kind badge / card title distinguish built-ins from
+// user-defined function calls. Falls back to `displaySpanKind` for every
+// other span kind.
+export function displaySpanCallKind(span: Span): string {
+  if (span.kind === 'fn-call' && span.callee_kind === 'bif') {
+    return 'BIF';
+  }
+  return displaySpanKind(span.kind);
+}
+
 export function spanTitle(span: Span): string {
   switch (span.kind) {
     case 'test':

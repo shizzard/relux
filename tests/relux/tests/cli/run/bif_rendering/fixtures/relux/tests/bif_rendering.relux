@@ -1,0 +1,18 @@
+test "bif rendering exercises every bif bucket" {
+    """
+    Drives one BIF from each rendering bucket so the meta-test can
+    inspect FnCall spans in the resulting structured log:
+        pure BIF (trim), log, annotate, sleep, match_ok, ctrl_l.
+    """
+    shell s {
+        let trimmed = trim("  hi  ")
+        > echo "${trimmed}"
+        <? ^hi$
+        match_ok()
+
+        log("hello from log")
+        annotate("note")
+        sleep("10ms")
+        ctrl_l()
+    }
+}

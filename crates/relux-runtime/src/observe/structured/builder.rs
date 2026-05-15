@@ -856,6 +856,7 @@ fn format_multiplier(m: f64) -> String {
 mod tests {
     use std::path::PathBuf;
 
+    use super::super::span::FnCallKind;
     use super::*;
     use crate::observe::progress;
 
@@ -1073,6 +1074,8 @@ mod tests {
                 name: "do_thing".into(),
                 args: vec![("x".into(), "1".into())],
                 result: None,
+                callee_kind: FnCallKind::User,
+                is_pure: false,
             },
             Some(block_id),
             None,
@@ -1091,6 +1094,41 @@ mod tests {
         assert_eq!(frames[2].kind, "fn-call");
         assert_eq!(frames[2].name.as_deref(), Some("do_thing"));
         assert_eq!(frames[2].args, vec![("x".into(), "1".into())]);
+    }
+
+    #[test]
+    fn fn_call_round_trips_callee_kind_and_is_pure() {
+        let (b, _rx) = make_builder();
+        let test_span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let test_id = test_span.id();
+        let fn_span = b.open_span(
+            SpanKind::FnCall {
+                name: "trim".into(),
+                args: vec![("$0".into(), "hi".into())],
+                result: None,
+                callee_kind: FnCallKind::Bif,
+                is_pure: true,
+            },
+            Some(test_id),
+            None,
+        );
+        let fn_id = fn_span.id();
+        fn_span.close();
+        test_span.close();
+
+        let inner = b.inner.lock().unwrap();
+        let stored = inner.spans.get(&fn_id).unwrap();
+        match &stored.kind {
+            SpanKind::FnCall {
+                callee_kind,
+                is_pure,
+                ..
+            } => {
+                assert_eq!(*callee_kind, FnCallKind::Bif);
+                assert!(*is_pure);
+            }
+            _ => panic!("expected FnCall"),
+        }
     }
 
     #[test]

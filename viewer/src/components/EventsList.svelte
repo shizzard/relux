@@ -5,6 +5,7 @@
   import { foldedSeqs, leadEvent } from '../lib/flatten';
   import { toNumber as n } from '../lib/derive';
   import { foldedFamily } from '../lib/format';
+  import BifRow from './BifRow.svelte';
   import EventRow from './EventRow.svelte';
   import SpanEntryRow from './SpanEntryRow.svelte';
   import GapRow from './GapRow.svelte';
@@ -46,6 +47,7 @@
     if (row.kind === 'event') return `e:${n(leadEvent(row.folded).seq)}`;
     if (row.kind === 'span-entry') return `s:${n(row.span.id)}`;
     if (row.kind === 'log-bar') return `l:${n(row.event.seq)}`;
+    if (row.kind === 'bif-row') return `b:${n(row.span.id)}`;
     return `g:${row.from}:${row.to}:${index}`;
   }
 
@@ -59,6 +61,7 @@
       )
         return i;
       if (r.kind === 'span-entry' && state.selectedSpanId !== null && n(r.span.id) === state.selectedSpanId) return i;
+      if (r.kind === 'bif-row' && state.selectedSpanId !== null && n(r.span.id) === state.selectedSpanId) return i;
     }
     return -1;
   }
@@ -75,6 +78,11 @@
         return;
       }
       if (r.kind === 'span-entry') {
+        state.selectedEventSeq = null;
+        state.selectedSpanId = n(r.span.id);
+        return;
+      }
+      if (r.kind === 'bif-row') {
         state.selectedEventSeq = null;
         state.selectedSpanId = n(r.span.id);
         return;
@@ -145,6 +153,8 @@
         <EventRow {state} folded={row.folded} depth={row.depth} />
       {:else if row.kind === 'log-bar'}
         <LogBar level={row.level} event={row.event} depth={row.depth} />
+      {:else if row.kind === 'bif-row'}
+        <BifRow {state} span={row.span} depth={row.depth} />
       {:else}
         <GapRow ms={row.ms} />
       {/if}

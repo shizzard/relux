@@ -1,6 +1,7 @@
 import type { Event } from '../types/Event';
 import type { Span } from '../types/Span';
 import type { StructuredLog } from '../types/StructuredLog';
+import { isTransparentBif } from './bif';
 import { spanById, toNumber as n, type SpanId } from './derive';
 
 // A FoldedEvent is either a single Event (the common case) or a deterministic
@@ -18,6 +19,7 @@ export type Row =
   | { kind: 'span-entry'; span: Span; depth: number }
   | { kind: 'event'; folded: FoldedEvent; depth: number }
   | { kind: 'log-bar'; level: LogLevel; event: Event; depth: number }
+  | { kind: 'bif-row'; span: Span; depth: number }
   | { kind: 'gap'; from: number; to: number; ms: number };
 
 const GAP_THRESHOLD_MS = 500;
@@ -266,6 +268,14 @@ export function flattenRows(data: StructuredLog, expandedSpans: Set<SpanId>): Ro
 
   function emitChildSpan(span: Span, depth: number): void {
     maybeGap(span.start_ts);
+    if (isTransparentBif(span)) {
+      if (span.kind === 'fn-call' && span.is_pure) {
+        rows.push({ kind: 'bif-row', span, depth });
+      }
+      lastTs = span.start_ts;
+      emitSpanContents(span, depth);
+      return;
+    }
     rows.push({ kind: 'span-entry', span, depth });
     lastTs = span.start_ts;
     if (expandedSpans.has(n(span.id))) {

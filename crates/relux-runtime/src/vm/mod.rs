@@ -12,6 +12,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::RuntimeContext;
 use crate::observe::structured::EventSeq;
+use crate::observe::structured::FnCallKind;
 use crate::observe::structured::SpanId;
 use crate::observe::structured::SpanKind;
 use crate::observe::structured::StructuredLogBuilder;
@@ -656,6 +657,8 @@ impl Vm {
                             name: fn_name.clone(),
                             args: named_args.clone(),
                             result: None,
+                            callee_kind: FnCallKind::User,
+                            is_pure: false,
                         },
                         Some(parent_span),
                         Some(span),
@@ -693,6 +696,8 @@ impl Vm {
                                 name: fn_name.clone(),
                                 args: positional_args,
                                 result: None,
+                                callee_kind: FnCallKind::Bif,
+                                is_pure: false,
                             },
                             Some(parent_span),
                             Some(span),
@@ -735,12 +740,18 @@ impl Vm {
                     .map(|(i, v)| (format!("${i}"), v.clone()))
                     .collect(),
             };
+            let callee_kind = match ir_fn {
+                IrPureFn::UserDefined { .. } => FnCallKind::User,
+                IrPureFn::Builtin { .. } => FnCallKind::Bif,
+            };
             let parent_span = self.current_span();
             let fn_guard = self.log.open_span(
                 SpanKind::FnCall {
                     name: fn_name.clone(),
                     args: named_args,
                     result: None,
+                    callee_kind,
+                    is_pure: true,
                 },
                 Some(parent_span),
                 Some(span),

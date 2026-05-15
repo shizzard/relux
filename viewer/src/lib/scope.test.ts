@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Event } from '../types/Event';
 import type { Span } from '../types/Span';
 import type { StructuredLog } from '../types/StructuredLog';
+import { buildCallStack } from './derive';
 import {
   capturesAtSeq,
   capturesAtSpan,
@@ -18,7 +19,14 @@ type SpanInput = { id: number; parent: number | null } & (
   | { kind: 'effect-cleanup'; effect: string; alias: string | null; setup_span: number }
   | { kind: 'cleanup-block' }
   | { kind: 'shell-block'; shell: string }
-  | { kind: 'fn-call'; name?: string; args?: Array<[string, string]> }
+  | {
+      kind: 'fn-call';
+      name?: string;
+      args?: Array<[string, string]>;
+      result?: string | null;
+      callee_kind?: 'user' | 'bif';
+      is_pure?: boolean;
+    }
 );
 
 function buildSpan(input: SpanInput): Span {
@@ -62,7 +70,9 @@ function buildSpan(input: SpanInput): Span {
         kind: 'fn-call',
         name: input.name ?? 'f',
         args: input.args ?? [],
-        result: null,
+        result: input.result ?? null,
+        callee_kind: input.callee_kind ?? 'user',
+        is_pure: input.is_pure ?? false,
       };
   }
 }
@@ -858,5 +868,83 @@ describe('capturesAtSpan', () => {
     ];
     // The shell-block's caller is the test scope, which has no shell.
     expect(capturesAtSpan(makeLog(spans, []), spans[1]!)).toEqual(new Map());
+  });
+});
+
+describe('scopeContext — transparent BIFs', () => {
+  it('skips a transparent pure-BIF fn-call when computing innermostFn', () => {
+    const log = makeLog(
+      [
+        buildSpan({ kind: 'test', id: 1, parent: null }),
+        buildSpan({ kind: 'shell-block', id: 2, parent: 1, shell: 'sh' }),
+        buildSpan({
+          kind: 'fn-call',
+          id: 3,
+          parent: 2,
+          name: 'trim',
+          callee_kind: 'bif',
+          is_pure: true,
+        }),
+      ],
+      [],
+    );
+    const ctx = scopeContext(log, 3);
+    expect(ctx.innermostFn).toBeNull();
+    expect(ctx.ambientScope).toBe(1);
+  });
+
+  it('keeps a user fn-call as innermostFn', () => {
+    const log = makeLog(
+      [
+        buildSpan({ kind: 'test', id: 1, parent: null }),
+        buildSpan({ kind: 'shell-block', id: 2, parent: 1, shell: 'sh' }),
+        buildSpan({
+          kind: 'fn-call',
+          id: 3,
+          parent: 2,
+          name: 'my_helper',
+          callee_kind: 'user',
+          is_pure: false,
+        }),
+      ],
+      [],
+    );
+    expect(scopeContext(log, 3).innermostFn).toBe(3);
+  });
+
+  it('skips a transparent log fn-call from buildCallStack', () => {
+    const spans = [
+      buildSpan({ kind: 'test', id: 1, parent: null }),
+      buildSpan({ kind: 'shell-block', id: 2, parent: 1, shell: 'sh' }),
+      buildSpan({
+        kind: 'fn-call',
+        id: 3,
+        parent: 2,
+        name: 'trim',
+        callee_kind: 'bif',
+        is_pure: true,
+      }),
+    ];
+    const log = makeLog(spans, [marker(1, 3, 'sh')]);
+    const stack = buildCallStack(log, log.events[0]!);
+    expect(stack.map((f) => f.kind)).toEqual(['test', 'shell-block']);
+  });
+
+  it('skips a transparent log fn-call', () => {
+    const log = makeLog(
+      [
+        buildSpan({ kind: 'test', id: 1, parent: null }),
+        buildSpan({
+          kind: 'fn-call',
+          id: 2,
+          parent: 1,
+          name: 'log',
+          callee_kind: 'bif',
+          is_pure: false,
+        }),
+      ],
+      [],
+    );
+    expect(scopeContext(log, 2).innermostFn).toBeNull();
   });
 });

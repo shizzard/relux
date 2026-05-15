@@ -18,6 +18,7 @@
   import type { SpanId } from '../lib/derive';
   import MarkerPill from './MarkerPill.svelte';
   import {
+    displaySpanCallKind,
     displaySpanKind,
     foldedFamily,
     foldedKindLabel,
@@ -168,8 +169,12 @@
         const shell = lifecycleShellName(span);
         return shell !== null ? `${label} \u00b7 ${shell}` : label;
       }
-      case 'fn-call':
-        return `${label} \u00b7 ${span.name}`;
+      case 'fn-call': {
+        const callLabel = displaySpanCallKind(span);
+        const head =
+          span.callee_kind === 'bif' ? `${span.name}/${span.args.length}` : span.name;
+        return `${callLabel} \u00b7 ${head}`;
+      }
       default:
         return label;
     }
