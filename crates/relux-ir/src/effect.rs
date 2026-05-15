@@ -179,6 +179,7 @@ pub struct IrEffect {
     exposes: Vec<IrExposeDecl>,
     starts: Vec<IrEffectStart>,
     body: Vec<IrEffectItem>,
+    marker_recordings: Vec<crate::marker::MarkerRecording>,
     span: IrSpan,
 }
 
@@ -197,8 +198,17 @@ impl IrEffect {
             exposes,
             starts,
             body,
+            marker_recordings: Vec::new(),
             span,
         }
+    }
+
+    pub fn marker_recordings(&self) -> &[crate::marker::MarkerRecording] {
+        &self.marker_recordings
+    }
+
+    pub fn set_marker_recordings(&mut self, recordings: Vec<crate::marker::MarkerRecording>) {
+        self.marker_recordings = recordings;
     }
 
     pub fn name(&self) -> &IrIdent {

@@ -18,6 +18,7 @@ use relux_core::table::FileId;
 use super::IrNode;
 use super::IrNodeLowering;
 use super::LoweringContext;
+use super::marker::MarkerRecording;
 use super::tables::Tables;
 use super::test_def::IrTest;
 use super::timeout::IrTimeout;
@@ -30,6 +31,7 @@ pub struct TestMeta {
     docstring: Option<String>,
     timeout: Option<IrTimeout>,
     flaky: bool,
+    marker_recordings: Vec<MarkerRecording>,
     span: IrSpan,
 }
 
@@ -45,6 +47,7 @@ impl TestMeta {
             docstring,
             timeout,
             flaky: false,
+            marker_recordings: Vec::new(),
             span,
         }
     }
@@ -67,6 +70,14 @@ impl TestMeta {
 
     pub fn set_flaky(&mut self, flaky: bool) {
         self.flaky = flaky;
+    }
+
+    pub fn marker_recordings(&self) -> &[MarkerRecording] {
+        &self.marker_recordings
+    }
+
+    pub fn set_marker_recordings(&mut self, recordings: Vec<MarkerRecording>) {
+        self.marker_recordings = recordings;
     }
 }
 
@@ -180,6 +191,7 @@ pub(crate) fn build_plan(
                 };
             }
             meta.set_flaky(result.flaky);
+            meta.set_marker_recordings(result.recordings);
         }
         Err(bail) => {
             let cause_id = bail.cause_id();

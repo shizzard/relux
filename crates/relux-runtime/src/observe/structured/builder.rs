@@ -673,6 +673,101 @@ impl StructuredLogBuilder {
         );
     }
 
+    /// Interpolation event emitted from a pure-eval context (no shell,
+    /// no shell marker). Used by `LogSink` for marker replay and for
+    /// test/effect-level lets.
+    pub fn emit_pure_interpolation(
+        &self,
+        span: SpanId,
+        template: &str,
+        result: &str,
+        bindings: &[(String, String)],
+    ) {
+        self.push_event(
+            span,
+            None,
+            None,
+            EventKind::Interpolation {
+                template: template.to_string(),
+                result: result.to_string(),
+                bindings: bindings.to_vec(),
+            },
+        );
+    }
+
+    /// Pure variable-read event. Used by `LogSink` to surface bare
+    /// `${X}`-style reads that resolve against scope/env. The result
+    /// is the resolved string (`""` when the var is undefined).
+    pub fn emit_var_read(&self, span: SpanId, name: &str, value: &str) {
+        self.push_event(
+            span,
+            None,
+            None,
+            EventKind::VarRead {
+                name: name.to_string(),
+                value: value.to_string(),
+            },
+        );
+    }
+
+    /// Pure string-match event. Used by `LogSink` for marker `?`
+    /// regex conditions and the future runtime string-match syntax.
+    #[allow(clippy::too_many_arguments)]
+    pub fn emit_pure_match(
+        &self,
+        span: SpanId,
+        match_kind: super::span::MatchKind,
+        value: &str,
+        pattern: &str,
+        result: &str,
+        captures: &HashMap<String, String>,
+    ) {
+        self.push_event(
+            span,
+            None,
+            None,
+            EventKind::PureMatch {
+                match_kind,
+                value: value.to_string(),
+                pattern: pattern.to_string(),
+                result: result.to_string(),
+                captures: captures.clone(),
+            },
+        );
+    }
+
+    /// Open the synthetic `markers` root span. Always opened (per
+    /// design); viewer filters out empty markers roots.
+    pub fn open_markers_span(&self, location: Option<&IrSpan>) -> SpanGuard {
+        self.open_span(SpanKind::Markers, None, location)
+    }
+
+    /// Open a `marker-eval` span as a child of a `markers` root.
+    pub fn open_marker_eval_span(
+        &self,
+        parent: SpanId,
+        marker_kind: super::span::MarkerEvalKind,
+        modifier: super::span::MarkerEvalModifier,
+        decision: super::span::MarkerEvalDecision,
+        location: Option<&IrSpan>,
+    ) -> SpanGuard {
+        self.open_span(
+            SpanKind::MarkerEval {
+                marker_kind,
+                modifier,
+                decision,
+            },
+            Some(parent),
+            location,
+        )
+    }
+
+    /// Emit the final truthy/falsy outcome event inside a marker-eval
+    /// span. Mirrors the shape stored on `MarkerRecording.evaluation`.
+    pub fn emit_bool_check(&self, span: SpanId, evaluation: super::span::MarkerEvalDetail) {
+        self.push_event(span, None, None, EventKind::BoolCheck { evaluation });
+    }
+
     // Diagnostics -------------------------------------------------------
 
     pub fn emit_annotate(&self, span: SpanId, shell: &str, marker: &str, text: &str) {

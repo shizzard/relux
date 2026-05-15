@@ -1,0 +1,17 @@
+# skip if trim("  hi  ") = "no-match"
+# flaky if "abc" ? ^a.c$
+test "marker events fixture" {
+    """
+    Drives one of each marker condition shape so the meta-test can
+    inspect the recorded marker-eval payloads and the replayed
+    sink ops:
+      - skip if Eq (with trim/1 BIF pure-call)
+      - flaky if Regex (records a pure-match event)
+    """
+    let greeting = trim("  hi  ")
+    shell s {
+        > echo "${greeting}"
+        <? ^hi$
+        match_ok()
+    }
+}

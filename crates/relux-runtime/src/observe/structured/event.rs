@@ -173,6 +173,31 @@ pub enum EventKind {
         result: String,
         bindings: Vec<(String, String)>,
     },
+    /// Pure string-match. Today: marker `expr ? ^pat$` conditions.
+    /// `result` is the matched substring (`$0`) or `""` on no match.
+    /// `captures` mirrors shell-buffer match captures.
+    PureMatch {
+        match_kind: super::span::MatchKind,
+        value: String,
+        pattern: String,
+        result: String,
+        captures: HashMap<String, String>,
+    },
+    /// Pure variable read: a bare-var expression resolved against the
+    /// active scope or environment. `value` is the resolved string
+    /// (`""` when the variable is undefined). Read counterpart to
+    /// `var-let` / `var-assign`.
+    VarRead {
+        name: String,
+        value: String,
+    },
+    /// Final truthy/falsy evaluation of a marker condition. Carries
+    /// the shape-specific payload (Unconditional / Bare / Eq / Regex)
+    /// and the `met` outcome that determined the marker's decision.
+    /// Emitted as the last event inside a `marker-eval` span.
+    BoolCheck {
+        evaluation: super::span::MarkerEvalDetail,
+    },
 
     // Diagnostics
     Annotate {
@@ -187,4 +212,27 @@ pub enum EventKind {
     Error {
         message: String,
     },
+}
+
+#[cfg(test)]
+mod pure_match_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn pure_match_event_kind_serialises() {
+        let mut caps = HashMap::new();
+        caps.insert("0".to_string(), "abc".to_string());
+        let k = EventKind::PureMatch {
+            match_kind: super::super::span::MatchKind::Regex,
+            value: "abc".into(),
+            pattern: "^a.c$".into(),
+            result: "abc".into(),
+            captures: caps,
+        };
+        let v = serde_json::to_value(&k).unwrap();
+        assert_eq!(v["kind"], serde_json::json!("pure-match"));
+        assert_eq!(v["match_kind"], serde_json::json!("regex"));
+        assert_eq!(v["result"], serde_json::json!("abc"));
+    }
 }

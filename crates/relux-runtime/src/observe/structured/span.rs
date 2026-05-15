@@ -19,6 +19,78 @@ pub enum FnCallKind {
     Bif,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum MatchKind {
+    Regex,
+    Literal,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum MarkerEvalKind {
+    Skip,
+    Run,
+    Flaky,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum MarkerEvalModifier {
+    If,
+    Unless,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum MarkerEvalDecision {
+    /// Marker's action did not apply.
+    Pass,
+    /// Marker's action applied — the kind tells which (skip / run /
+    /// flaky).
+    Mark,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
+#[serde(tag = "shape", rename_all = "kebab-case")]
+pub enum MarkerEvalDetail {
+    Unconditional,
+    Bare {
+        value: String,
+        met: bool,
+    },
+    Eq {
+        lhs: String,
+        rhs: String,
+        met: bool,
+    },
+    Regex {
+        value: String,
+        pattern: String,
+        met: bool,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[cfg_attr(
     feature = "ts-export",
@@ -67,6 +139,19 @@ pub enum SpanKind {
         callee_kind: FnCallKind,
         is_pure: bool,
     },
+    /// Synthetic root span grouping per-test marker evaluations.
+    /// Opened before the test root; carries no payload of its own.
+    Markers,
+    /// One marker evaluation. Child of `Markers`. Inner sink-op
+    /// events (`var-read`, `interpolation`, `fn-call`, `pure-match`)
+    /// describe how the condition was computed; a final `bool-check`
+    /// event carries the truthy/falsy outcome that the `decision`
+    /// summarises. `marker_kind` avoids collision with serde tag `kind`.
+    MarkerEval {
+        marker_kind: MarkerEvalKind,
+        modifier: MarkerEvalModifier,
+        decision: MarkerEvalDecision,
+    },
 }
 
 impl SpanKind {
@@ -81,6 +166,8 @@ impl SpanKind {
             SpanKind::ShellBlock { .. } => "shell-block",
             SpanKind::CleanupBlock => "cleanup-block",
             SpanKind::FnCall { .. } => "fn-call",
+            SpanKind::Markers => "markers",
+            SpanKind::MarkerEval { .. } => "marker-eval",
         }
     }
 
@@ -96,6 +183,8 @@ impl SpanKind {
             SpanKind::EffectCleanup { effect, .. } => (Some(effect.clone()), Vec::new()),
             SpanKind::ShellBlock { shell } => (Some(shell.clone()), Vec::new()),
             SpanKind::FnCall { name, args, .. } => (Some(name.clone()), args.clone()),
+            SpanKind::Markers => (None, Vec::new()),
+            SpanKind::MarkerEval { .. } => (None, Vec::new()),
         }
     }
 
@@ -113,6 +202,27 @@ impl SpanKind {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn markers_span_kind_serialises_as_kebab_kind() {
+        let kind = SpanKind::Markers;
+        let v = serde_json::to_value(&kind).unwrap();
+        assert_eq!(v, serde_json::json!({ "kind": "markers" }));
+    }
+
+    #[test]
+    fn marker_eval_span_kind_serialises_payload() {
+        let kind = SpanKind::MarkerEval {
+            marker_kind: MarkerEvalKind::Skip,
+            modifier: MarkerEvalModifier::If,
+            decision: MarkerEvalDecision::Mark,
+        };
+        let v = serde_json::to_value(&kind).unwrap();
+        assert_eq!(v["kind"], serde_json::json!("marker-eval"));
+        assert_eq!(v["marker_kind"], serde_json::json!("skip"));
+        assert_eq!(v["modifier"], serde_json::json!("if"));
+        assert_eq!(v["decision"], serde_json::json!("mark"));
+    }
 
     #[test]
     fn fn_call_span_serializes_callee_kind_and_is_pure() {

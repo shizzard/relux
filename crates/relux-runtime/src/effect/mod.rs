@@ -97,7 +97,9 @@ impl EffectManager {
         Box::pin(async move {
             let mut results: Vec<(ExportedEffect, EffectGuard)> = Vec::with_capacity(starts.len());
             for start in starts {
-                let evaluated = self.eval_overlay(start, caller_vars, caller_env).await?;
+                let evaluated = self
+                    .eval_overlay(start, caller_vars, caller_env, parent_span)
+                    .await?;
 
                 let expect_names: Vec<&str> = self
                     .rt_ctx
@@ -704,14 +706,18 @@ impl EffectManager {
         start: &IrEffectStart,
         caller_vars: &VarScope,
         caller_env: &Arc<LayeredEnv>,
+        caller_span: SpanId,
     ) -> Result<Env, Failure> {
         let mut overlay = Env::new();
+        let mut sink =
+            crate::observe::structured::log_sink::LogSink::new(&self.rt_ctx.log, caller_span);
         for entry in start.overlay() {
             let value = relux_ir::evaluator::eval_pure_expr(
                 entry.value(),
                 caller_vars,
                 caller_env,
                 &self.rt_ctx.tables.pure_fns,
+                &mut sink,
             );
             overlay.insert(entry.key().name().to_string(), value);
         }
@@ -726,12 +732,15 @@ impl EffectManager {
         setup_span: SpanId,
     ) {
         let mut vars = scope.vars().lock().await;
+        let mut sink =
+            crate::observe::structured::log_sink::LogSink::new(&self.rt_ctx.log, setup_span);
         let value = if let Some(expr) = stmt.value() {
             relux_ir::evaluator::eval_pure_expr(
                 expr,
                 &vars,
                 effect_env,
                 &self.rt_ctx.tables.pure_fns,
+                &mut sink,
             )
         } else {
             String::new()

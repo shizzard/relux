@@ -253,6 +253,48 @@
         out.push({ type: 'kv', key: 'result', value: ev.result, mono: true, accent: true });
         return out;
       }
+      case 'var-read':
+        return [{ type: 'kv', key: 'name', value: ev.name, mono: true }, { type: 'kv', key: 'value', value: ev.value, mono: true, accent: true }];
+      case 'bool-check': {
+        const out: Row[] = [];
+        const e = ev.evaluation;
+        switch (e.shape) {
+          case 'unconditional':
+            out.push({ type: 'kv', key: 'condition', value: 'unconditional' });
+            break;
+          case 'bare':
+            out.push({ type: 'kv', key: 'value', value: e.value, mono: true });
+            out.push({ type: 'kv', key: 'met', value: String(e.met), accent: true });
+            break;
+          case 'eq':
+            out.push({ type: 'kv', key: 'lhs', value: e.lhs, mono: true });
+            out.push({ type: 'kv', key: 'rhs', value: e.rhs, mono: true });
+            out.push({ type: 'kv', key: 'met', value: String(e.met), accent: true });
+            break;
+          case 'regex':
+            out.push({ type: 'kv', key: 'value', value: e.value, mono: true });
+            out.push({ type: 'kv', key: 'pattern', value: e.pattern, mono: true });
+            out.push({ type: 'kv', key: 'met', value: String(e.met), accent: true });
+            break;
+        }
+        return out;
+      }
+      case 'pure-match': {
+        const out: Row[] = [
+          { type: 'kv', key: 'value', value: ev.value, mono: true },
+          { type: 'kv', key: 'pattern', value: ev.pattern, mono: true, accent: true },
+        ];
+        if (ev.result !== '') {
+          out.push({ type: 'kv', key: 'matched', value: ev.result, mono: true, accent: true });
+        } else {
+          out.push({ type: 'kv', key: 'matched', value: '(none)' });
+        }
+        for (const [k, v] of Object.entries(ev.captures)) {
+          if (k === '0' || v === undefined) continue;
+          out.push({ type: 'kv', key: `$${k}`, value: v, mono: true, accent: true });
+        }
+        return out;
+      }
       case 'annotate':
         return [{ type: 'kv', key: 'text', value: ev.text }];
       case 'log':
@@ -366,6 +408,13 @@
         out.push({ type: 'kv', key: 'alias', value: span.alias, mono: true });
       }
       return out;
+    }
+    if (span.kind === 'marker-eval') {
+      return [
+        { type: 'kv', key: 'marker', value: `@${span.marker_kind}`, mono: true },
+        { type: 'kv', key: 'modifier', value: span.modifier, mono: true },
+        { type: 'kv', key: 'decision', value: span.decision, accent: true },
+      ];
     }
     return [];
   }

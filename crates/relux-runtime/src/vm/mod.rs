@@ -762,6 +762,7 @@ impl Vm {
                 evaluated_args,
                 &self.ctx.env,
                 &self.tables.pure_fns,
+                &mut relux_ir::pure_sink::NoOpSink,
             );
             self.ctx.pop_span();
             self.log.set_fn_call_result(fn_guard.id(), &return_value);

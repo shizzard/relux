@@ -68,6 +68,9 @@ const KIND_GLYPHS: Record<string, string> = {
   'var-assign': '\u{003D}',
   'string-eval': '\u{0024}',
   interpolation: '\u{0024}',
+  'pure-match': '\u{003F}',
+  'var-read': '\u{0024}',
+  'bool-check': '\u{2714}',
   annotate: '\u{266B}',
   log: '\u{00B7}',
   warning: '\u{0021}',
@@ -172,6 +175,25 @@ export function eventSummary(event: Event): string {
       return truncate(escapeBytes(event.result), SUMMARY_MAX);
     case 'interpolation':
       return truncate(escapeBytes(event.result), SUMMARY_MAX);
+    case 'pure-match':
+      return event.result === ''
+        ? `${truncate(event.pattern, SUMMARY_MAX)} \u{2192} (no match)`
+        : `${truncate(event.pattern, SUMMARY_MAX)} \u{2192} ${truncate(escapeBytes(event.result), SUMMARY_MAX)}`;
+    case 'var-read':
+      return `${event.name} = ${truncate(escapeBytes(event.value), SUMMARY_MAX)}`;
+    case 'bool-check': {
+      const ev = event.evaluation;
+      switch (ev.shape) {
+        case 'unconditional':
+          return 'unconditional';
+        case 'bare':
+          return `"${truncate(escapeBytes(ev.value), SUMMARY_MAX)}" \u{2192} ${ev.met}`;
+        case 'eq':
+          return `"${truncate(escapeBytes(ev.lhs), 32)}" = "${truncate(escapeBytes(ev.rhs), 32)}" \u{2192} ${ev.met}`;
+        case 'regex':
+          return `"${truncate(escapeBytes(ev.value), 32)}" ? ${truncate(ev.pattern, 32)} \u{2192} ${ev.met}`;
+      }
+    }
     case 'annotate':
       return truncate(event.text, SUMMARY_MAX);
     case 'log':
@@ -263,6 +285,8 @@ const SPAN_KIND_LABELS: Partial<Record<Span['kind'], string>> = {
   'effect-cleanup': 'cleanup',
   'shell-block': 'shell',
   'fn-call': 'call',
+  markers: 'MARKERS',
+  'marker-eval': 'marker',
 };
 
 export function displaySpanKind(kind: Span['kind']): string {
@@ -297,5 +321,21 @@ export function spanTitle(span: Span): string {
       if (span.result === null) return head;
       return `${head} \u{2192} "${escapeBytes(span.result)}"`;
     }
+    case 'markers':
+      return '';
+    case 'marker-eval':
+      return `${displayMarkerKind(span.marker_kind)} ${displayMarkerModifier(span.modifier)} \u2192 ${displayMarkerDecision(span.decision)}`;
   }
+}
+
+export function displayMarkerKind(k: 'skip' | 'run' | 'flaky'): string {
+  return `@${k}`;
+}
+
+export function displayMarkerModifier(m: 'if' | 'unless'): string {
+  return m;
+}
+
+export function displayMarkerDecision(d: 'pass' | 'mark'): string {
+  return d;
 }

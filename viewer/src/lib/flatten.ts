@@ -206,12 +206,14 @@ export function flattenRows(data: StructuredLog, expandedSpans: Set<SpanId>): Ro
   // Index children by parent, sorted by start_ts.
   const childrenByParent = new Map<SpanId, Span[]>();
   const spanMap = data.spans as unknown as Record<string, Span | undefined>;
-  let testSpan: Span | null = null;
+  const roots: Span[] = [];
   for (const key of Object.keys(spanMap)) {
     const span = spanMap[key];
     if (!span) continue;
-    if (span.kind === 'test' && testSpan === null) testSpan = span;
-    if (span.parent === null) continue;
+    if (span.parent === null) {
+      roots.push(span);
+      continue;
+    }
     const pid = n(span.parent);
     let bucket = childrenByParent.get(pid);
     if (!bucket) {
@@ -223,10 +225,13 @@ export function flattenRows(data: StructuredLog, expandedSpans: Set<SpanId>): Ro
   for (const bucket of childrenByParent.values()) {
     bucket.sort((a, b) => a.start_ts - b.start_ts);
   }
-  if (testSpan === null) return [];
+  // Sort roots by start_ts (markers root opens before test root); break
+  // ties by id for stability.
+  roots.sort((a, b) => a.start_ts - b.start_ts || n(a.id) - n(b.id));
+  if (roots.length === 0) return [];
 
   const rows: Row[] = [];
-  let lastTs: number | null = testSpan.start_ts;
+  let lastTs: number | null = roots[0]!.start_ts;
 
   function maybeGap(ts: number): void {
     if (lastTs !== null && ts - lastTs > GAP_THRESHOLD_MS) {
@@ -283,9 +288,24 @@ export function flattenRows(data: StructuredLog, expandedSpans: Set<SpanId>): Ro
     }
   }
 
-  // Test span is the page-level root: never rendered as a row,
-  // implicitly always-expanded. Its direct children are at depth 0.
-  emitSpanContents(testSpan, 0);
+  // Walk roots in start_ts order. The `test` root keeps its
+  // historical "implicit page root" behaviour (contents at depth 0,
+  // no header row). The `markers` root renders as a depth-0 span-entry
+  // with marker-evals at depth 1, but is omitted entirely when empty.
+  for (const root of roots) {
+    if (root.kind === 'markers') {
+      const children = childrenByParent.get(n(root.id)) ?? [];
+      const hasMarkerEval = children.some((c) => c.kind === 'marker-eval');
+      if (!hasMarkerEval) continue;
+      rows.push({ kind: 'span-entry', span: root, depth: 0 });
+      lastTs = root.start_ts;
+      if (expandedSpans.has(n(root.id))) {
+        emitSpanContents(root, 1);
+      }
+      continue;
+    }
+    emitSpanContents(root, 0);
+  }
 
   return rows;
 }

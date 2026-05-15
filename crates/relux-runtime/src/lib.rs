@@ -23,10 +23,15 @@ use crate::effect::Warning;
 use crate::effect::registry::EffectRegistry;
 use crate::effect::registry::ShellInstanceKey;
 use crate::observe::structured::EnvInfo;
+use crate::observe::structured::MarkerEvalDecision;
+use crate::observe::structured::MarkerEvalDetail;
+use crate::observe::structured::MarkerEvalKind;
+use crate::observe::structured::MarkerEvalModifier;
 use crate::observe::structured::SpanId;
 use crate::observe::structured::SpanKind;
 use crate::observe::structured::StructuredLogBuilder;
 use crate::observe::structured::TestInfo;
+use crate::observe::structured::log_sink::LogSink;
 use crate::report::result::Failure;
 use crate::report::result::FailureContext;
 use crate::report::result::Outcome;
@@ -51,6 +56,7 @@ use relux_ir::Plan;
 use relux_ir::Suite;
 
 pub mod effect;
+pub(crate) mod marker_walk;
 pub mod observe;
 pub mod report;
 pub mod runtime_context;
@@ -719,6 +725,18 @@ async fn run_test(
         Arc::from(run_ctx.project_root.as_path()),
     );
 
+    // Replay marker evaluations under a synthetic `markers` root span.
+    // Always opened (the viewer filters out empty markers roots).
+    // The runtime walks the test's IR transitively (Relux is
+    // deterministic: every reachable fn-call and effect-start is
+    // guaranteed to execute) and concatenates marker recordings from
+    // the test, every reachable effect, and every reachable function.
+    // All recordings become flat `marker-eval` children of the markers
+    // root — no nesting under fn-call or effect-setup, since markers
+    // run before any test execution.
+    let recordings = crate::marker_walk::collect_test_marker_recordings(test, meta, tables);
+    replay_markers(&log, &recordings);
+
     // Open the root span for this test. Every emission inside the test body
     // (effect setup, shell block, fn call, cleanup block) is parented on this.
     let test_span = log.open_span(
@@ -868,12 +886,14 @@ async fn run_test_body(
     for item in test.body() {
         if let IrTestItem::Let { stmt, .. } = item {
             let mut vars = scope.vars().lock().await;
+            let mut sink = LogSink::new(&rt_ctx.log, test_span);
             let value = if let Some(expr) = stmt.value() {
                 relux_ir::evaluator::eval_pure_expr(
                     expr,
                     &vars,
                     &rt_ctx.env,
                     &rt_ctx.tables.pure_fns,
+                    &mut sink,
                 )
             } else {
                 String::new()
@@ -1108,6 +1128,89 @@ async fn run_test_body(
     }
 
     body_result
+}
+
+// ─── Marker replay ─────────────────────────────────────────
+
+pub(crate) fn marker_kind_to_runtime(k: relux_ir::marker::MarkerEvalKind) -> MarkerEvalKind {
+    match k {
+        relux_ir::marker::MarkerEvalKind::Skip => MarkerEvalKind::Skip,
+        relux_ir::marker::MarkerEvalKind::Run => MarkerEvalKind::Run,
+        relux_ir::marker::MarkerEvalKind::Flaky => MarkerEvalKind::Flaky,
+    }
+}
+
+pub(crate) fn marker_modifier_to_runtime(
+    m: relux_ir::marker::MarkerEvalModifier,
+) -> MarkerEvalModifier {
+    match m {
+        relux_ir::marker::MarkerEvalModifier::If => MarkerEvalModifier::If,
+        relux_ir::marker::MarkerEvalModifier::Unless => MarkerEvalModifier::Unless,
+    }
+}
+
+pub(crate) fn marker_decision_to_runtime(
+    d: relux_ir::marker::MarkerEvalDecision,
+) -> MarkerEvalDecision {
+    match d {
+        relux_ir::marker::MarkerEvalDecision::Pass => MarkerEvalDecision::Pass,
+        relux_ir::marker::MarkerEvalDecision::Mark => MarkerEvalDecision::Mark,
+    }
+}
+
+pub(crate) fn marker_detail_from_evaluation(
+    e: &relux_core::diagnostics::SkipEvaluation,
+) -> MarkerEvalDetail {
+    use relux_core::diagnostics::SkipEvaluation::*;
+    match e {
+        Unconditional => MarkerEvalDetail::Unconditional,
+        Bare { value, met } => MarkerEvalDetail::Bare {
+            value: value.clone(),
+            met: *met,
+        },
+        Eq { lhs, rhs, met } => MarkerEvalDetail::Eq {
+            lhs: lhs.clone(),
+            rhs: rhs.clone(),
+            met: *met,
+        },
+        Regex {
+            value,
+            pattern,
+            met,
+        } => MarkerEvalDetail::Regex {
+            value: value.clone(),
+            pattern: pattern.clone(),
+            met: *met,
+        },
+    }
+}
+
+/// Lay down the synthetic `markers` root span and every recorded
+/// `marker-eval` child. Always emits the root (even when empty); the
+/// viewer filters it.
+pub(crate) fn replay_markers(
+    log: &StructuredLogBuilder,
+    recordings: &[relux_ir::marker::MarkerRecording],
+) {
+    let markers_guard = log.open_markers_span(None);
+    for rec in recordings {
+        let me_guard = log.open_marker_eval_span(
+            markers_guard.id(),
+            marker_kind_to_runtime(rec.kind),
+            marker_modifier_to_runtime(rec.modifier),
+            marker_decision_to_runtime(rec.decision),
+            Some(&rec.marker_span),
+        );
+        let mut sink = LogSink::new(log, me_guard.id());
+        sink.replay(&rec.ops);
+        // Final truthy/falsy outcome event, after the sink-op trail.
+        log.emit_bool_check(
+            me_guard.id(),
+            marker_detail_from_evaluation(&rec.evaluation),
+        );
+        // me_guard drops here, closing the marker-eval span.
+    }
+    // markers_guard drops here, closing the markers root.
 }
 
 #[cfg(test)]
