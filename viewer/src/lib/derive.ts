@@ -1,9 +1,11 @@
 import type { Event } from '../types/Event';
+import type { SourceLocation } from '../types/SourceLocation';
 import type { Span } from '../types/Span';
 import type { StackFrame } from '../types/StackFrame';
 import type { StructuredLog } from '../types/StructuredLog';
 import type { TimeoutValue } from '../types/TimeoutValue';
 import { isTransparentBif } from './bif';
+import { foldCloseIndex } from './flatten';
 
 // ts-rs annotates `seq`, `span.id`, `parent` as `bigint`, but at runtime
 // they arrive via `JSON.parse(window.RELUX_DATA)` and are plain `number`s
@@ -72,6 +74,16 @@ export function descendants(data: StructuredLog, spanId: SpanId): Set<SpanId> {
 export function buildCallStack(data: StructuredLog, event: Event): StackFrame[] {
   return ancestors(data, n(event.span))
     .filter((span) => !isTransparentBif(span))
+    .map(toStackFrame);
+}
+
+// Selecting a span shows the **outer** scope (vars/captures at the
+// moment the span opened), so the call stack should also be the chain
+// of callers — i.e. ancestors *excluding* the span itself.
+export function buildCallStackForSpan(data: StructuredLog, span: Span): StackFrame[] {
+  if (span.parent === null) return [];
+  return ancestors(data, n(span.parent))
+    .filter((s) => !isTransparentBif(s))
     .map(toStackFrame);
 }
 
@@ -567,6 +579,56 @@ export function firstUseShellBlockForMarker(
       // move on to the next shell-block.
       break;
     }
+  }
+  return null;
+}
+
+/**
+ * Returns the source byte range to highlight for the current selection.
+ *
+ * - Selected span -> span.location.
+ * - Selected event -> event.source if present, else its parent span's
+ *   location.
+ * - Folded event row -> union of the two halves' ranges
+ *   (`file = lead.file`, `start = min`, `end = max`).
+ * - null otherwise.
+ *
+ * Cross-file folded halves can't be merged into a single range; if
+ * that invariant ever breaks (it shouldn't by construction), the
+ * lead's source is returned and the wider range is silently dropped.
+ */
+export function selectionSourceRange(
+  data: StructuredLog,
+  selectedSpanId: SpanId | null,
+  selectedEventSeq: number | null,
+): SourceLocation | null {
+  if (selectedSpanId !== null) {
+    const span = spanById(data, selectedSpanId);
+    return span?.location ?? null;
+  }
+  if (selectedEventSeq !== null) {
+    const idx = data.events.findIndex((e) => n(e.seq) === selectedEventSeq);
+    if (idx < 0) return null;
+    const lead = data.events[idx]!;
+    const closeIdx = foldCloseIndex(data.events, idx);
+    if (closeIdx > idx) {
+      const close = data.events[closeIdx]!;
+      const a = lead.source;
+      const b = close.source;
+      if (a && b && a.file === b.file) {
+        return {
+          file: a.file,
+          line: a.line,
+          start: Math.min(a.start, b.start),
+          end: Math.max(a.end, b.end),
+        };
+      }
+      if (a) return a;
+      if (b) return b;
+    }
+    if (lead.source) return lead.source;
+    const parent = spanById(data, n(lead.span));
+    return parent?.location ?? null;
   }
   return null;
 }

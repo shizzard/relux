@@ -55,6 +55,8 @@ pub use utf8_stream::Utf8Stream;
 pub struct SourceLocation {
     pub file: String,
     pub line: usize,
+    pub start: usize,
+    pub end: usize,
 }
 
 impl std::fmt::Display for SourceLocation {
@@ -81,6 +83,9 @@ pub struct StructuredLog {
     pub events: Vec<Event>,
     pub buffer_events: Vec<BufferEvent>,
     pub failure: Option<FailureRecord>,
+    /// `.relux` file contents referenced by any span's `location` or any
+    /// event's `source`. Keys are relative paths matching `SourceLocation.file`.
+    pub sources: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

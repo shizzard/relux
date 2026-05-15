@@ -29,6 +29,7 @@ use crate::vm::Vm;
 use crate::vm::context::ExecutionContext;
 use crate::vm::context::Scope;
 use crate::vm::context::ShellState;
+use relux_core::diagnostics::IrSpan;
 use relux_core::pure::Env;
 use relux_core::pure::LayeredEnv;
 use relux_core::pure::VarScope;
@@ -273,9 +274,13 @@ impl EffectManager {
                             return Ok((acquired, EffectGuard::new(slot.clone())));
                         }
                         Err(failure) => {
-                            self.rt_ctx
-                                .log
-                                .emit_error(parent_span, "", "", &failure.summary());
+                            self.rt_ctx.log.emit_error(
+                                parent_span,
+                                "",
+                                "",
+                                &failure.summary(),
+                                None,
+                            );
                             *guard = EffectSlot::Failed(failure.clone());
                             drop(guard);
                             notify.notify_waiters();
@@ -342,8 +347,8 @@ impl EffectManager {
 
         // 3. Evaluate effect-level lets into scope (parser enforces lets before starts)
         for item in effect.body() {
-            if let IrEffectItem::Let { stmt, .. } = item {
-                self.eval_effect_let(stmt, &scope, &effect_env, setup_span_id)
+            if let IrEffectItem::Let { stmt, span } = item {
+                self.eval_effect_let(stmt, span, &scope, &effect_env, setup_span_id)
                     .await;
             }
         }
@@ -476,9 +481,12 @@ impl EffectManager {
                             let mut vm = vm_arc.lock().await;
                             let vm_name = vm.current_name();
                             let vm_marker = vm.shell_marker().to_string();
-                            self.rt_ctx
-                                .log
-                                .emit_shell_switch(block_span_id, &vm_name, &vm_marker);
+                            self.rt_ctx.log.emit_shell_switch(
+                                block_span_id,
+                                &vm_name,
+                                &vm_marker,
+                                None,
+                            );
                             vm.set_block_span(block_span_id);
                             vm.exec_stmts(block.body()).await
                             // vm lock drops at end of this block, BEFORE try_guards! awaits any
@@ -525,6 +533,7 @@ impl EffectManager {
                                 block_span_id,
                                 &display_name,
                                 &display_marker,
+                                None,
                             );
                             vm.set_block_span(block_span_id);
                             vm.exec_stmts(block.body()).await
@@ -602,6 +611,7 @@ impl EffectManager {
                         &exposed_name,
                         expose.target(),
                         expose.qualifier(),
+                        None,
                     );
                 }
                 relux_ir::IrExposeKind::Var => {
@@ -645,6 +655,7 @@ impl EffectManager {
                         expose.target(),
                         expose.qualifier(),
                         &value,
+                        None,
                     );
                 }
             }
@@ -727,6 +738,7 @@ impl EffectManager {
     async fn eval_effect_let(
         &self,
         stmt: &IrPureLetStmt,
+        span: &IrSpan,
         scope: &Scope,
         effect_env: &Arc<LayeredEnv>,
         setup_span: SpanId,
@@ -750,7 +762,7 @@ impl EffectManager {
         drop(vars);
         self.rt_ctx
             .log
-            .emit_var_let(setup_span, None, None, name, &value);
+            .emit_var_let(setup_span, None, None, name, &value, Some(span));
     }
 
     /// Glue: release one guard, then either run its cleanup body (when
@@ -853,6 +865,7 @@ impl EffectManager {
                     "__cleanup",
                     &cleanup_marker,
                     &format!("effect {effect_name} cleanup failed"),
+                    None,
                 );
                 warnings.push(Warning::CleanupFailed {
                     source: CleanupSource::Effect {

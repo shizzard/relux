@@ -129,14 +129,15 @@ pub fn def_effect<'a>()
     .repeated()
     .collect::<Vec<_>>();
 
+    // `stmt_let()` ends with `.then_ignore(newline())`, so `e.span()` here
+    // would include the trailing `\n`. Use the inner `AstStmt::Let`'s
+    // span (set before the newline is consumed) so the AST node spans
+    // `let <name> = <expr>` only.
     let let_item = leading_ws()
         .ignore_then(stmt_let_standalone())
-        .map_with(|s, e| {
-            let span = crate::span_from_chumsky(e.span());
-            match s.node {
-                AstStmt::Let { stmt, .. } => AstEffectItem::Let { stmt, span },
-                _ => unreachable!(),
-            }
+        .map(|s| match s.node {
+            AstStmt::Let { stmt, span } => AstEffectItem::Let { stmt, span },
+            _ => unreachable!(),
         });
     let let_comment = leading_ws().ignore_then(comment()).map_with(|c, e| {
         let span = crate::span_from_chumsky(e.span());

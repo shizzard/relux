@@ -4,6 +4,7 @@ import type { StructuredLog } from '../types/StructuredLog';
 import {
   ancestors,
   buildCallStack,
+  buildCallStackForSpan,
   eventBySeq,
   liveShellsAtSeq,
   replayBufferRegionsAtMarker,
@@ -53,7 +54,13 @@ export class ViewerState {
     this.selectedSpanId === null ? null : spanById(this.data, this.selectedSpanId),
   );
 
-  callStack = $derived(this.selected ? buildCallStack(this.data, this.selected) : []);
+  callStack = $derived(
+    this.selected
+      ? buildCallStack(this.data, this.selected)
+      : this.selectedSpan
+        ? buildCallStackForSpan(this.data, this.selectedSpan)
+        : [],
+  );
 
   bufferRegionsAt = $derived<Map<string, BufferRegions>>(this.computeBufferRegions());
 

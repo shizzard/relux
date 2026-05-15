@@ -64,8 +64,9 @@ impl<'a> LogSink<'a> {
                     template,
                     result,
                     bindings,
+                    span,
                 } => {
-                    self.record_interpolation(template, result, bindings);
+                    self.record_interpolation(template, result, bindings, span);
                 }
                 SinkOp::Match {
                     kind,
@@ -73,11 +74,12 @@ impl<'a> LogSink<'a> {
                     pattern,
                     result,
                     captures,
+                    span,
                 } => {
-                    self.record_match(*kind, value, pattern, result, captures);
+                    self.record_match(*kind, value, pattern, result, captures, span);
                 }
-                SinkOp::VarRead { name, value } => {
-                    self.record_var_read(name, value);
+                SinkOp::VarRead { name, value, span } => {
+                    self.record_var_read(name, value, span);
                 }
             }
         }
@@ -127,10 +129,11 @@ impl<'a> PureEvalSink for LogSink<'a> {
         template: &str,
         result: &str,
         bindings: &[(String, String)],
+        span: &IrSpan,
     ) {
         let parent = self.current_parent();
         self.log
-            .emit_pure_interpolation(parent, template, result, bindings);
+            .emit_pure_interpolation(parent, template, result, bindings, Some(span));
     }
 
     fn record_match(
@@ -140,6 +143,7 @@ impl<'a> PureEvalSink for LogSink<'a> {
         pattern: &str,
         result: &str,
         captures: &HashMap<String, String>,
+        span: &IrSpan,
     ) {
         let parent = self.current_parent();
         self.log.emit_pure_match(
@@ -149,11 +153,12 @@ impl<'a> PureEvalSink for LogSink<'a> {
             pattern,
             result,
             captures,
+            Some(span),
         );
     }
 
-    fn record_var_read(&mut self, name: &str, value: &str) {
+    fn record_var_read(&mut self, name: &str, value: &str, span: &IrSpan) {
         let parent = self.current_parent();
-        self.log.emit_var_read(parent, name, value);
+        self.log.emit_var_read(parent, name, value, Some(span));
     }
 }

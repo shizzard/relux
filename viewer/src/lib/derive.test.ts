@@ -6,6 +6,7 @@ import {
   finalCleanupForDeferred,
   firstUseShellBlockForMarker,
   replayBufferRegionsAtMarker,
+  selectionSourceRange,
 } from './derive';
 
 // Minimal log builder — only `buffer_events` is consulted by
@@ -19,6 +20,7 @@ function makeLog(buffer_events: BufferEvent[]): StructuredLog {
     events: [],
     buffer_events,
     failure: null,
+    sources: {},
   };
 }
 
@@ -313,6 +315,7 @@ function spansLog(spans: SpanRecord[]): StructuredLog {
     events: [],
     buffer_events: [],
     failure: null,
+    sources: {},
   } as unknown as StructuredLog;
 }
 function setupSpan(id: bigint, marker: string, is_reuse: boolean): SpanRecord {
@@ -434,6 +437,7 @@ function logWithSpansAndEvents(spans: SpanRecord[], events: unknown[]): Structur
     events,
     buffer_events: [],
     failure: null,
+    sources: {},
   } as unknown as StructuredLog;
 }
 
@@ -468,5 +472,132 @@ describe('firstUseShellBlockForMarker', () => {
     );
     expect(firstUseShellBlockForMarker(log, 'aaa-bbb-1111')).toBe(10);
     expect(firstUseShellBlockForMarker(log, 'ccc-ddd-2222')).toBe(20);
+  });
+});
+
+describe('selectionSourceRange', () => {
+  function makeData(
+    spans: Record<string, unknown> = {},
+    events: unknown[] = [],
+  ): StructuredLog {
+    return {
+      test: { name: 't', path: 'p', outcome: 'pass', duration_ms: 0n },
+      env: { bootstrap: [] },
+      shells: {},
+      spans,
+      events,
+      buffer_events: [],
+      failure: null,
+      sources: {},
+    } as unknown as StructuredLog;
+  }
+
+  it('returns the span location when a span is selected', () => {
+    const data = makeData({
+      '1': {
+        id: 1n,
+        parent: null,
+        start_ts: 0,
+        end_ts: 0,
+        kind: 'test',
+        name: 't',
+        location: { file: 'a.relux', line: 1, start: 0, end: 4 },
+      },
+    });
+    expect(selectionSourceRange(data, 1, null)).toEqual({
+      file: 'a.relux',
+      line: 1,
+      start: 0,
+      end: 4,
+    });
+  });
+
+  it('returns event.source when an event is selected', () => {
+    const data = makeData({}, [
+      {
+        seq: 7n,
+        ts: 0,
+        span: 1n,
+        shell: null,
+        shell_marker: null,
+        source: { file: 'a.relux', line: 2, start: 10, end: 20 },
+        kind: 'annotate',
+        text: 'x',
+      },
+    ]);
+    expect(selectionSourceRange(data, null, 7)).toEqual({
+      file: 'a.relux',
+      line: 2,
+      start: 10,
+      end: 20,
+    });
+  });
+
+  it('falls back to parent-span location when event has no source', () => {
+    const data = makeData(
+      {
+        '1': {
+          id: 1n,
+          parent: null,
+          start_ts: 0,
+          end_ts: 0,
+          kind: 'test',
+          name: 't',
+          location: { file: 'a.relux', line: 5, start: 50, end: 60 },
+        },
+      },
+      [
+        {
+          seq: 7n,
+          ts: 0,
+          span: 1n,
+          shell: null,
+          shell_marker: null,
+          source: null,
+          kind: 'annotate',
+          text: 'x',
+        },
+      ],
+    );
+    expect(selectionSourceRange(data, null, 7)).toEqual({
+      file: 'a.relux',
+      line: 5,
+      start: 50,
+      end: 60,
+    });
+  });
+
+  it('merges folded sleep halves (min start, max end)', () => {
+    const data = makeData({}, [
+      {
+        seq: 7n,
+        ts: 0,
+        span: 1n,
+        shell: null,
+        shell_marker: null,
+        source: { file: 'a.relux', line: 3, start: 100, end: 110 },
+        kind: 'sleep-start',
+        duration: 1,
+      },
+      {
+        seq: 8n,
+        ts: 0,
+        span: 1n,
+        shell: null,
+        shell_marker: null,
+        source: { file: 'a.relux', line: 3, start: 102, end: 112 },
+        kind: 'sleep-done',
+      },
+    ]);
+    expect(selectionSourceRange(data, null, 7)).toEqual({
+      file: 'a.relux',
+      line: 3,
+      start: 100,
+      end: 112,
+    });
+  });
+
+  it('returns null when nothing is selected', () => {
+    expect(selectionSourceRange(makeData(), null, null)).toBeNull();
   });
 });

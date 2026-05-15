@@ -172,6 +172,8 @@ mod tests {
             location: location.map(|(file, line)| SourceLocation {
                 file: file.to_string(),
                 line,
+                start: 0,
+                end: 0,
             }),
         }
     }

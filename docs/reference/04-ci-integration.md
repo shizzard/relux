@@ -19,12 +19,19 @@ that support attachments (Jenkins, GitLab) can link directly to per-test
 Each per-test directory under `logs/` contains two artifacts:
 
 - `events.json` — canonical structured payload (spans, events, buffer events,
-  failure record). Stable schema, consumable by external tooling.
+  failure record, embedded source files). Stable schema, consumable by
+  external tooling. Each `Span.location` and `Event.source` carries
+  `{ file, line, start, end }` where `start` / `end` are byte offsets into the
+  matching entry of the top-level `sources` map (relative path -> file
+  contents). Files referenced by no span or event are not embedded.
 - `event.html` — self-contained Svelte SPA viewer with the JSON inlined as
-  `window.RELUX_DATA` and the gzipped bundle decompressed into a `<script>`
-  tag. Opens directly via `file://`; no server required. This is the
-  recommended human entry point and the link target used by the run-summary
-  `index.html`, JUnit `[[ATTACHMENT|...]]` markers, and TAP `log:` fields.
+  `window.RELUX_DATA`. Two additional inlined `<script>` tags carry
+  the highlight.js core bundle and the Relux language definition so the
+  source pane renders syntax-highlighted code; the viewer bundle itself
+  is decompressed into a final `<script>` tag. Opens directly via
+  `file://`; no server required. This is the recommended human entry
+  point and the link target used by the run-summary `index.html`, JUnit
+  `[[ATTACHMENT|...]]` markers, and TAP `log:` fields.
 
 The viewer bundle is committed at `vendor/relux-viewer.js.gz`; regenerate it
 (and the TypeScript schema bindings) with `just viewer-build`.

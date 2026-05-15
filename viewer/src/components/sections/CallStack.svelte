@@ -2,6 +2,7 @@
   import type { ViewerState } from '../../lib/state.svelte';
   import Panel from '../Panel.svelte';
   import { truncate } from '../../lib/format';
+  import { toNumber as n } from '../../lib/derive';
   import ValueCell from '../ValueCell.svelte';
 
   let { state }: { state: ViewerState } = $props();
@@ -9,6 +10,16 @@
   const frames = $derived(state.callStack.slice().reverse());
   const liveShells = $derived(state.liveShells);
   const hint = $derived(`depth ${frames.length}`);
+
+  // Clicking a frame "promotes" it to be the new visible stack top by
+  // selecting its inner neighbor's span — i.e. the span whose outer
+  // scope is the clicked frame. The topmost frame (i === 0) has no
+  // inner neighbor in the displayed stack, so its click is a no-op.
+  function selectFrame(i: number): void {
+    if (i === 0) return;
+    const target = frames[i - 1];
+    if (target) state.revealAndSelect(n(target.span));
+  }
 </script>
 
 <Panel title="call stack" {hint}>
@@ -19,7 +30,13 @@
       <ol class="frames">
         {#each frames as frame, i (i)}
           <li class="frame" class:top={i === 0}>
-            <div class="head">
+            <button
+              type="button"
+              class="head"
+              class:clickable={i !== 0}
+              disabled={i === 0}
+              onclick={() => selectFrame(i)}
+            >
               <span class="idx">{i}</span>
               <span class="kind">{frame.kind}</span>
               {#if frame.name !== null}
@@ -31,7 +48,7 @@
               {#if frame.location !== null}
                 <span class="loc"><code>{frame.location.file}:{frame.location.line}</code></span>
               {/if}
-            </div>
+            </button>
             {#if frame.args.length > 0}
               <table class="kv">
                 <tbody>
@@ -98,11 +115,27 @@
     border-color: var(--accent);
   }
   .head {
+    appearance: none;
+    background: transparent;
+    border: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    padding: 0;
+    width: 100%;
     display: flex;
     align-items: baseline;
     gap: var(--gap-xs);
     flex-wrap: wrap;
     font-size: 0.82rem;
+    cursor: default;
+  }
+  .head.clickable {
+    cursor: pointer;
+  }
+  .head.clickable:hover {
+    background: var(--paper);
+    border-radius: var(--radius);
   }
   .idx {
     font-family: var(--font-mono);

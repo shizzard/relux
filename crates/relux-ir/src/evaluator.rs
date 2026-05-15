@@ -6,6 +6,7 @@ use crate::IrPureStmt;
 use crate::IrStringPart;
 use crate::PureFnTable;
 use crate::pure_sink::PureEvalSink;
+use relux_core::diagnostics::IrSpan;
 use relux_core::pure::LayeredEnv;
 use relux_core::pure::VarScope;
 
@@ -30,10 +31,10 @@ pub fn eval_pure_expr(
     sink: &mut dyn PureEvalSink,
 ) -> String {
     match expr {
-        IrPureExpr::String { value, .. } => eval_interpolation(value, vars, env, sink),
-        IrPureExpr::Var { name, .. } => {
+        IrPureExpr::String { value, span } => eval_interpolation(value, span, vars, env, sink),
+        IrPureExpr::Var { name, span } => {
             let value = resolve_var(name, vars, env);
-            sink.record_var_read(name, &value);
+            sink.record_var_read(name, &value, span);
             value
         }
         IrPureExpr::Call { call, .. } => eval_pure_call(call, vars, env, fns, sink),
@@ -117,6 +118,7 @@ fn eval_pure_call(
 
 fn eval_interpolation(
     interp: &IrInterpolation,
+    span: &IrSpan,
     vars: &VarScope,
     env: &LayeredEnv,
     sink: &mut dyn PureEvalSink,
@@ -153,7 +155,7 @@ fn eval_interpolation(
         }
     }
     if has_interp {
-        sink.record_interpolation(&template, &result, &bindings);
+        sink.record_interpolation(&template, &result, &bindings, span);
     }
     result
 }

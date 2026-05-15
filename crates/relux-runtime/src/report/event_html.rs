@@ -1,10 +1,13 @@
 //! Per-test `event.html` emitter.
 //!
 //! Writes a single self-contained HTML file beside `events.json`. The
-//! `StructuredLog` payload is inlined as `window.RELUX_DATA` and the
+//! `StructuredLog` payload is inlined as `window.RELUX_DATA`; the
+//! highlight.js core + Relux language definition are inlined as a
+//! second / third `<script>` so the source pane can render syntax-
+//! highlighted code without a separate served asset; finally the
 //! gzipped Svelte bundle (`relux_runtime::viewer::bundle_gz()`) is
-//! decompressed into a `<script>` tag — no `fetch`, no CORS, opens
-//! directly via `file://`.
+//! decompressed into a fourth `<script>` tag — no `fetch`, no CORS,
+//! opens directly via `file://`.
 
 use std::io::Read;
 use std::path::Path;
@@ -12,6 +15,7 @@ use std::path::Path;
 use flate2::read::GzDecoder;
 
 use crate::observe::structured::StructuredLog;
+use crate::report::hljs_init::HLJS_RELUX_INIT;
 use crate::viewer;
 
 const HEADER: &str = "<!doctype html>\n\
@@ -20,7 +24,8 @@ const HEADER: &str = "<!doctype html>\n\
     <style>html,body{margin:0;padding:0}</style></head>\n\
     <body><div id=\"app\"></div>\n\
     <script>window.RELUX_DATA = ";
-const MID: &str = ";</script>\n<script>";
+const SCRIPT_BREAK: &str = ";</script>\n<script>";
+const SCRIPT_GAP: &str = "</script>\n<script>";
 const FOOTER: &str = "</script>\n</body></html>\n";
 
 pub fn write(log_dir: &Path, structured: &StructuredLog) -> std::io::Result<()> {
@@ -36,14 +41,30 @@ fn render(structured: &StructuredLog) -> std::io::Result<String> {
         json = json.replace("</", "<\\/");
     }
 
+    let mut hljs = String::new();
+    GzDecoder::new(viewer::hljs_gz()).read_to_string(&mut hljs)?;
+
     let mut bundle = String::new();
     GzDecoder::new(viewer::bundle_gz()).read_to_string(&mut bundle)?;
 
-    let mut html =
-        String::with_capacity(HEADER.len() + json.len() + MID.len() + bundle.len() + FOOTER.len());
+    let mut html = String::with_capacity(
+        HEADER.len()
+            + json.len()
+            + SCRIPT_BREAK.len()
+            + hljs.len()
+            + SCRIPT_GAP.len()
+            + HLJS_RELUX_INIT.len()
+            + SCRIPT_GAP.len()
+            + bundle.len()
+            + FOOTER.len(),
+    );
     html.push_str(HEADER);
     html.push_str(&json);
-    html.push_str(MID);
+    html.push_str(SCRIPT_BREAK);
+    html.push_str(&hljs);
+    html.push_str(SCRIPT_GAP);
+    html.push_str(HLJS_RELUX_INIT);
+    html.push_str(SCRIPT_GAP);
     html.push_str(&bundle);
     html.push_str(FOOTER);
     Ok(html)
@@ -72,6 +93,7 @@ mod tests {
             events: Vec::new(),
             buffer_events: Vec::new(),
             failure: None,
+            sources: HashMap::new(),
         }
     }
 
@@ -96,7 +118,9 @@ mod tests {
 
         // The exact byte sequence `</script>` must not appear inside the
         // RELUX_DATA assignment — only `<\/script>` is allowed.
-        let payload_end = html.find(";</script>\n<script>").expect("MID separator");
+        let payload_end = html
+            .find(";</script>\n<script>")
+            .expect("SCRIPT_BREAK separator");
         let payload = &html[..payload_end];
         assert!(
             !payload.contains("</script>"),

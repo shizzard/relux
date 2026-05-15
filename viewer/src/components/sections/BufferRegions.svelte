@@ -71,9 +71,19 @@
   }
   .matched {
     color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 18%, transparent);
     border-radius: 2px;
     padding: 0 1px;
+    /* Quadratic ease-in-out, alternating between 5% and 30% accent
+       tint. Same cadence as the source view span frame. */
+    animation: matched-pulse 0.8s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+  }
+  @keyframes matched-pulse {
+    from {
+      background-color: color-mix(in srgb, var(--accent) 5%, transparent);
+    }
+    to {
+      background-color: color-mix(in srgb, var(--accent) 30%, transparent);
+    }
   }
   .tail {
     color: var(--ink);
@@ -85,7 +95,9 @@
     background: var(--accent);
     margin-left: 1px;
     vertical-align: text-bottom;
-    animation: blink 1s steps(2) infinite;
+    /* Toggle on/off twice per second. `step-end` (== one-step timing)
+       holds each segment's start value until the next keyframe. */
+    animation: blink 0.5s step-end infinite;
   }
   @keyframes blink {
     50% {

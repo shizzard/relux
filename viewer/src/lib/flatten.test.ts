@@ -206,6 +206,7 @@ function logWith(spans: Span[], events: Event[]): StructuredLog {
     events,
     buffer_events: [],
     failure: null,
+    sources: {},
   } as unknown as StructuredLog;
 }
 

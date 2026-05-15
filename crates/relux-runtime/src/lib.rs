@@ -884,7 +884,7 @@ async fn run_test_body(
 
     // 2. Evaluate test-level lets into scope (parser enforces lets come before starts)
     for item in test.body() {
-        if let IrTestItem::Let { stmt, .. } = item {
+        if let IrTestItem::Let { stmt, span } = item {
             let mut vars = scope.vars().lock().await;
             let mut sink = LogSink::new(&rt_ctx.log, test_span);
             let value = if let Some(expr) = stmt.value() {
@@ -901,7 +901,9 @@ async fn run_test_body(
             let name = stmt.name().name();
             vars.insert(name.to_string(), value.clone());
             drop(vars);
-            rt_ctx.log.emit_var_let(test_span, None, None, name, &value);
+            rt_ctx
+                .log
+                .emit_var_let(test_span, None, None, name, &value, Some(span));
         }
     }
 
@@ -1003,7 +1005,7 @@ async fn run_test_body(
                         let vm_marker = vm.shell_marker().to_string();
                         rt_ctx
                             .log
-                            .emit_shell_switch(block_span_id, &vm_name, &vm_marker);
+                            .emit_shell_switch(block_span_id, &vm_name, &vm_marker, None);
                         vm.set_block_span(block_span_id);
                         vm.exec_stmts(block.body()).await?;
                         // block_span drops here, closing the span.
@@ -1037,9 +1039,12 @@ async fn run_test_body(
                         let mut vm = vm_arc.lock().await;
                         let display_name = vm.current_name();
                         let display_marker = vm.shell_marker().to_string();
-                        rt_ctx
-                            .log
-                            .emit_shell_switch(block_span_id, &display_name, &display_marker);
+                        rt_ctx.log.emit_shell_switch(
+                            block_span_id,
+                            &display_name,
+                            &display_marker,
+                            None,
+                        );
                         vm.set_block_span(block_span_id);
                         vm.exec_stmts(block.body()).await?;
                         // block_span drops here, closing the span.
@@ -1098,6 +1103,7 @@ async fn run_test_body(
                         "__cleanup",
                         &cleanup_marker,
                         "test cleanup failed",
+                        None,
                     );
                     warnings.push(Warning::CleanupFailed {
                         source: CleanupSource::Test,
@@ -1112,6 +1118,7 @@ async fn run_test_body(
                     "__cleanup",
                     &cleanup_marker,
                     "failed to spawn cleanup shell",
+                    None,
                 );
                 warnings.push(Warning::CleanupFailed {
                     source: CleanupSource::Test,
@@ -1207,6 +1214,7 @@ pub(crate) fn replay_markers(
         log.emit_bool_check(
             me_guard.id(),
             marker_detail_from_evaluation(&rec.evaluation),
+            Some(&rec.marker_span),
         );
         // me_guard drops here, closing the marker-eval span.
     }

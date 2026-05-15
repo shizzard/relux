@@ -169,6 +169,7 @@ function makeLog(spans: Span[], events: Event[]): StructuredLog {
     events,
     buffer_events: [],
     failure: null,
+    sources: {},
   };
 }
 

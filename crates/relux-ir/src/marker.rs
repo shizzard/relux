@@ -231,6 +231,7 @@ pub fn eval_marker(
                     &pattern_str,
                     &result_str,
                     &captures,
+                    &IrSpan::new(file_id.clone(), *span),
                 );
 
                 let met = !result_str.is_empty();

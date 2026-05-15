@@ -48,6 +48,9 @@ pub struct Event {
     /// `shell` is present. Viewers index by marker; `shell` is the
     /// display name at emit time (qualified post-export, bare pre).
     pub shell_marker: Option<String>,
+    /// Source byte range that produced this event, when one is in
+    /// scope at the emit site. Resolves against `StructuredLog.sources`.
+    pub source: Option<SourceLocation>,
     #[serde(flatten)]
     pub kind: EventKind,
 }

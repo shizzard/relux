@@ -101,12 +101,13 @@ impl Bif for Sleep {
         let span_id = vm.current_span();
         let shell = vm.current_name();
         let marker = vm.shell_marker().to_string();
-        vm.log.emit_sleep_start(span_id, &shell, &marker, duration);
+        vm.log
+            .emit_sleep_start(span_id, &shell, &marker, duration, Some(span));
         tokio::select! {
             _ = tokio::time::sleep(duration) => {}
             _ = vm.cancel.cancelled() => {
                 let shell = vm.current_name();
-                vm.log.emit_sleep_done(span_id, &shell, &marker);
+                vm.log.emit_sleep_done(span_id, &shell, &marker, Some(span));
                 let context = vm.capture_failure_context().await;
                 return Err(Failure::Cancelled {
                     span: Some(span.clone()),
@@ -116,7 +117,7 @@ impl Bif for Sleep {
             }
         }
         let shell = vm.current_name();
-        vm.log.emit_sleep_done(span_id, &shell, &marker);
+        vm.log.emit_sleep_done(span_id, &shell, &marker, Some(span));
         Ok(String::new())
     }
 }
@@ -132,17 +133,12 @@ impl Bif for Annotate {
         1
     }
 
-    async fn call(
-        &self,
-        vm: &mut Vm,
-        args: Vec<String>,
-        _span: &IrSpan,
-    ) -> Result<String, Failure> {
+    async fn call(&self, vm: &mut Vm, args: Vec<String>, span: &IrSpan) -> Result<String, Failure> {
         let text = args[0].clone();
         let shell = vm.current_name();
         let marker = vm.shell_marker().to_string();
         vm.log
-            .emit_annotate(vm.current_span(), &shell, &marker, &text);
+            .emit_annotate(vm.current_span(), &shell, &marker, &text, Some(span));
         Ok(text)
     }
 }
@@ -158,17 +154,12 @@ impl Bif for Log {
         1
     }
 
-    async fn call(
-        &self,
-        vm: &mut Vm,
-        args: Vec<String>,
-        _span: &IrSpan,
-    ) -> Result<String, Failure> {
+    async fn call(&self, vm: &mut Vm, args: Vec<String>, span: &IrSpan) -> Result<String, Failure> {
         let message = args[0].clone();
         let shell = vm.current_name();
         let marker = vm.shell_marker().to_string();
         vm.log
-            .emit_log(vm.current_span(), &shell, &marker, &message);
+            .emit_log(vm.current_span(), &shell, &marker, &message, Some(span));
         Ok(message)
     }
 }

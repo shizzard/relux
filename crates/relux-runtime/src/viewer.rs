@@ -16,6 +16,13 @@ pub fn bundle_gz() -> &'static [u8] {
     include_bytes!("../../../vendor/relux-viewer.js.gz")
 }
 
+/// Gzipped highlight.js core bundle. Inlined into `event.html`
+/// alongside the viewer bundle so the source pane can syntax-highlight
+/// Relux code without a separate served asset.
+pub fn hljs_gz() -> &'static [u8] {
+    include_bytes!("../../../vendor/highlight-11.11.1.min.js.gz")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -40,6 +47,26 @@ mod tests {
         assert!(
             js.contains("RELUX_DATA"),
             "decompressed bundle missing 'RELUX_DATA' entry hook"
+        );
+    }
+
+    #[test]
+    fn hljs_bundle_is_valid_gzip_with_register_language_hook() {
+        let bytes = hljs_gz();
+        assert!(!bytes.is_empty(), "hljs bundle is empty");
+
+        let mut decoder = GzDecoder::new(bytes);
+        let mut js = String::new();
+        decoder
+            .read_to_string(&mut js)
+            .expect("hljs bundle is not valid gzip");
+
+        // highlight.js exposes its API as `hljs` and includes
+        // `registerLanguage`. If either is missing the wrong file is
+        // vendored.
+        assert!(
+            js.contains("registerLanguage"),
+            "decompressed hljs bundle missing 'registerLanguage' entry hook"
         );
     }
 }

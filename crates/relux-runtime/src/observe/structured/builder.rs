@@ -117,6 +117,8 @@ impl StructuredLogBuilder {
         Some(SourceLocation {
             file: rel_path.display().to_string(),
             line,
+            start: span.span().start(),
+            end: span.span().end(),
         })
     }
 
@@ -243,13 +245,25 @@ impl StructuredLogBuilder {
         self.inner.lock().unwrap().buffer_events.clone()
     }
 
+    #[cfg(test)]
+    pub(crate) fn sources_for_tests(&self) -> &relux_core::table::SourceTable {
+        &self.sources
+    }
+
+    #[cfg(test)]
+    pub(crate) fn resolve_location_for_tests(&self, span: &IrSpan) -> Option<SourceLocation> {
+        self.resolve_location(span)
+    }
+
     pub fn push_event(
         &self,
         span: SpanId,
         shell: Option<&str>,
         shell_marker: Option<&str>,
+        location: Option<&IrSpan>,
         kind: EventKind,
     ) -> EventSeq {
+        let source = location.and_then(|s| self.resolve_location(s));
         let ts = self.now();
         let mut inner = self.inner.lock().unwrap();
         let seq = inner.next_seq;
@@ -260,6 +274,7 @@ impl StructuredLogBuilder {
             span,
             shell: shell.map(String::from),
             shell_marker: shell_marker.map(String::from),
+            source,
             kind,
         });
         seq
@@ -314,12 +329,20 @@ impl StructuredLogBuilder {
 
     // Shell lifecycle ---------------------------------------------------
 
-    pub fn emit_shell_spawn(&self, span: SpanId, shell: &str, marker: &str, command: &str) {
+    pub fn emit_shell_spawn(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        command: &str,
+        location: Option<&IrSpan>,
+    ) {
         self.record_shell_spawn(marker, shell, command);
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::ShellSpawn {
                 name: shell.to_string(),
                 command: command.to_string(),
@@ -328,22 +351,36 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::ShellSpawn);
     }
 
-    pub fn emit_shell_ready(&self, span: SpanId, shell: &str, marker: &str) {
+    pub fn emit_shell_ready(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        location: Option<&IrSpan>,
+    ) {
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::ShellReady {
                 name: shell.to_string(),
             },
         );
     }
 
-    pub fn emit_shell_switch(&self, span: SpanId, shell: &str, marker: &str) {
+    pub fn emit_shell_switch(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        location: Option<&IrSpan>,
+    ) {
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::ShellSwitch {
                 name: shell.to_string(),
             },
@@ -351,12 +388,19 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::ShellSwitch(shell.to_string()));
     }
 
-    pub fn emit_shell_terminate(&self, span: SpanId, shell: &str, marker: &str) {
+    pub fn emit_shell_terminate(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        location: Option<&IrSpan>,
+    ) {
         self.record_shell_terminate(marker);
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::ShellTerminate {
                 name: shell.to_string(),
             },
@@ -371,11 +415,13 @@ impl StructuredLogBuilder {
         name: &str,
         target: &str,
         qualifier: Option<&str>,
+        location: Option<&IrSpan>,
     ) {
         self.push_event(
             span,
             None,
             None,
+            location,
             EventKind::EffectExposeShell {
                 name: name.to_string(),
                 target: target.to_string(),
@@ -391,11 +437,13 @@ impl StructuredLogBuilder {
         target: &str,
         qualifier: Option<&str>,
         value: &str,
+        location: Option<&IrSpan>,
     ) {
         self.push_event(
             span,
             None,
             None,
+            location,
             EventKind::EffectExposeVar {
                 name: name.to_string(),
                 target: target.to_string(),
@@ -407,11 +455,19 @@ impl StructuredLogBuilder {
 
     // I/O ---------------------------------------------------------------
 
-    pub fn emit_send(&self, span: SpanId, shell: &str, marker: &str, data: &str) {
+    pub fn emit_send(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        data: &str,
+        location: Option<&IrSpan>,
+    ) {
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::Send {
                 data: data.to_string(),
             },
@@ -419,11 +475,19 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::Send);
     }
 
-    pub fn emit_recv(&self, span: SpanId, shell: &str, marker: &str, data: &str) {
+    pub fn emit_recv(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        data: &str,
+        location: Option<&IrSpan>,
+    ) {
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::Recv {
                 data: data.to_string(),
             },
@@ -441,12 +505,14 @@ impl StructuredLogBuilder {
         pattern: &str,
         is_regex: bool,
         effective: &IrTimeout,
+        location: Option<&IrSpan>,
     ) {
         let effective = self.timeout_value(effective);
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::MatchStart {
                 pattern: pattern.to_string(),
                 is_regex,
@@ -471,11 +537,13 @@ impl StructuredLogBuilder {
         elapsed: Duration,
         captures: Option<HashMap<String, String>>,
         buffer_seq: EventSeq,
+        location: Option<&IrSpan>,
     ) {
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::MatchDone {
                 matched: matched.to_string(),
                 elapsed,
@@ -493,12 +561,14 @@ impl StructuredLogBuilder {
         marker: &str,
         pattern: &str,
         effective: &IrTimeout,
+        location: Option<&IrSpan>,
     ) {
         let effective = self.timeout_value(effective);
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::Timeout {
                 pattern: pattern.to_string(),
                 buffer_seq: None,
@@ -517,11 +587,13 @@ impl StructuredLogBuilder {
         marker: &str,
         pattern: &str,
         is_regex: bool,
+        location: Option<&IrSpan>,
     ) {
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::FailPatternSet {
                 pattern: pattern.to_string(),
                 is_regex,
@@ -529,11 +601,18 @@ impl StructuredLogBuilder {
         );
     }
 
-    pub fn emit_fail_pattern_cleared(&self, span: SpanId, shell: &str, marker: &str) {
+    pub fn emit_fail_pattern_cleared(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        location: Option<&IrSpan>,
+    ) {
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::FailPatternCleared,
         );
     }
@@ -547,11 +626,13 @@ impl StructuredLogBuilder {
         pattern: &str,
         is_regex: bool,
         matched_line: &str,
+        location: Option<&IrSpan>,
     ) {
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::FailPatternTriggered {
                 pattern: pattern.to_string(),
                 is_regex,
@@ -564,18 +645,38 @@ impl StructuredLogBuilder {
 
     // Control flow ------------------------------------------------------
 
-    pub fn emit_sleep_start(&self, span: SpanId, shell: &str, marker: &str, duration: Duration) {
+    pub fn emit_sleep_start(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        duration: Duration,
+        location: Option<&IrSpan>,
+    ) {
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::SleepStart { duration },
         );
         self.push_progress(ProgressEvent::SleepStart);
     }
 
-    pub fn emit_sleep_done(&self, span: SpanId, shell: &str, marker: &str) {
-        self.push_event(span, Some(shell), Some(marker), EventKind::SleepDone);
+    pub fn emit_sleep_done(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        location: Option<&IrSpan>,
+    ) {
+        self.push_event(
+            span,
+            Some(shell),
+            Some(marker),
+            location,
+            EventKind::SleepDone,
+        );
         self.push_progress(ProgressEvent::SleepDone);
     }
 
@@ -586,6 +687,7 @@ impl StructuredLogBuilder {
         marker: &str,
         timeout: &IrTimeout,
         previous: &IrTimeout,
+        location: Option<&IrSpan>,
     ) {
         let timeout = self.timeout_value(timeout);
         let previous = self.timeout_value(previous);
@@ -593,6 +695,7 @@ impl StructuredLogBuilder {
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::TimeoutSet { timeout, previous },
         );
     }
@@ -606,11 +709,13 @@ impl StructuredLogBuilder {
         marker: Option<&str>,
         name: &str,
         value: &str,
+        location: Option<&IrSpan>,
     ) {
         self.push_event(
             span,
             shell,
             marker,
+            location,
             EventKind::VarLet {
                 name: name.to_string(),
                 value: value.to_string(),
@@ -627,11 +732,13 @@ impl StructuredLogBuilder {
         name: &str,
         value: &str,
         previous: &str,
+        location: Option<&IrSpan>,
     ) {
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::VarAssign {
                 name: name.to_string(),
                 value: value.to_string(),
@@ -640,11 +747,19 @@ impl StructuredLogBuilder {
         );
     }
 
-    pub fn emit_string_eval(&self, span: SpanId, shell: &str, marker: &str, result: &str) {
+    pub fn emit_string_eval(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        result: &str,
+        location: Option<&IrSpan>,
+    ) {
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::StringEval {
                 result: result.to_string(),
             },
@@ -660,11 +775,13 @@ impl StructuredLogBuilder {
         template: &str,
         result: &str,
         bindings: &[(String, String)],
+        location: Option<&IrSpan>,
     ) {
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::Interpolation {
                 template: template.to_string(),
                 result: result.to_string(),
@@ -682,11 +799,13 @@ impl StructuredLogBuilder {
         template: &str,
         result: &str,
         bindings: &[(String, String)],
+        location: Option<&IrSpan>,
     ) {
         self.push_event(
             span,
             None,
             None,
+            location,
             EventKind::Interpolation {
                 template: template.to_string(),
                 result: result.to_string(),
@@ -698,11 +817,12 @@ impl StructuredLogBuilder {
     /// Pure variable-read event. Used by `LogSink` to surface bare
     /// `${X}`-style reads that resolve against scope/env. The result
     /// is the resolved string (`""` when the var is undefined).
-    pub fn emit_var_read(&self, span: SpanId, name: &str, value: &str) {
+    pub fn emit_var_read(&self, span: SpanId, name: &str, value: &str, location: Option<&IrSpan>) {
         self.push_event(
             span,
             None,
             None,
+            location,
             EventKind::VarRead {
                 name: name.to_string(),
                 value: value.to_string(),
@@ -721,11 +841,13 @@ impl StructuredLogBuilder {
         pattern: &str,
         result: &str,
         captures: &HashMap<String, String>,
+        location: Option<&IrSpan>,
     ) {
         self.push_event(
             span,
             None,
             None,
+            location,
             EventKind::PureMatch {
                 match_kind,
                 value: value.to_string(),
@@ -764,17 +886,36 @@ impl StructuredLogBuilder {
 
     /// Emit the final truthy/falsy outcome event inside a marker-eval
     /// span. Mirrors the shape stored on `MarkerRecording.evaluation`.
-    pub fn emit_bool_check(&self, span: SpanId, evaluation: super::span::MarkerEvalDetail) {
-        self.push_event(span, None, None, EventKind::BoolCheck { evaluation });
+    pub fn emit_bool_check(
+        &self,
+        span: SpanId,
+        evaluation: super::span::MarkerEvalDetail,
+        location: Option<&IrSpan>,
+    ) {
+        self.push_event(
+            span,
+            None,
+            None,
+            location,
+            EventKind::BoolCheck { evaluation },
+        );
     }
 
     // Diagnostics -------------------------------------------------------
 
-    pub fn emit_annotate(&self, span: SpanId, shell: &str, marker: &str, text: &str) {
+    pub fn emit_annotate(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        text: &str,
+        location: Option<&IrSpan>,
+    ) {
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::Annotate {
                 text: text.to_string(),
             },
@@ -782,22 +923,38 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::Annotation(text.to_string()));
     }
 
-    pub fn emit_log(&self, span: SpanId, shell: &str, marker: &str, message: &str) {
+    pub fn emit_log(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        message: &str,
+        location: Option<&IrSpan>,
+    ) {
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::Log {
                 message: message.to_string(),
             },
         );
     }
 
-    pub fn emit_warning(&self, span: SpanId, shell: &str, marker: &str, message: &str) {
+    pub fn emit_warning(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        message: &str,
+        location: Option<&IrSpan>,
+    ) {
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::Warning {
                 message: message.to_string(),
             },
@@ -805,11 +962,19 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::Warning(message.to_string()));
     }
 
-    pub fn emit_error(&self, span: SpanId, shell: &str, marker: &str, message: &str) {
+    pub fn emit_error(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        message: &str,
+        location: Option<&IrSpan>,
+    ) {
         self.push_event(
             span,
             Some(shell),
             Some(marker),
+            location,
             EventKind::Error {
                 message: message.to_string(),
             },
@@ -924,6 +1089,32 @@ impl StructuredLogBuilder {
                 }
             }
         };
+
+        let mut referenced: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for span in inner.spans.values() {
+            if let Some(loc) = &span.location {
+                referenced.insert(loc.file.clone());
+            }
+        }
+        for ev in &inner.events {
+            if let Some(loc) = &ev.source {
+                referenced.insert(loc.file.clone());
+            }
+        }
+
+        let mut sources: HashMap<String, String> = HashMap::new();
+        for (_, source_file) in self.sources.as_vec() {
+            let rel = source_file
+                .path
+                .strip_prefix(&*self.project_root)
+                .unwrap_or(&source_file.path)
+                .display()
+                .to_string();
+            if referenced.contains(&rel) {
+                sources.insert(rel, source_file.source.clone());
+            }
+        }
+
         StructuredLog {
             test,
             env,
@@ -932,6 +1123,7 @@ impl StructuredLogBuilder {
             events: inner.events,
             buffer_events: inner.buffer_events,
             failure,
+            sources,
         }
     }
 }
@@ -979,6 +1171,7 @@ mod tests {
             id,
             Some("sh"),
             Some("m"),
+            None,
             EventKind::Send { data: "a".into() },
         );
         let s2 = b.push_buffer_event("sh", "m", BufferEventKind::Grew { data: "b".into() });
@@ -986,6 +1179,7 @@ mod tests {
             id,
             Some("sh"),
             Some("m"),
+            None,
             EventKind::Recv { data: "c".into() },
         );
         assert_eq!(s1, 0);
@@ -1069,6 +1263,7 @@ mod tests {
             span.id(),
             Some("sh"),
             Some("m"),
+            None,
             EventKind::Send { data: "x".into() },
         );
         let inner = b.inner.lock().unwrap();
@@ -1084,6 +1279,7 @@ mod tests {
             id,
             Some("sh"),
             Some("m"),
+            None,
             EventKind::Send { data: "x".into() },
         );
         b.push_buffer_event("sh", "m", BufferEventKind::Grew { data: "y".into() });
@@ -1108,7 +1304,7 @@ mod tests {
     fn emit_send_pushes_event_and_progress() {
         let (b, mut rx) = make_builder();
         let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
-        b.emit_send(span.id(), "sh", "m", "hello");
+        b.emit_send(span.id(), "sh", "m", "hello", None);
         let inner = b.inner.lock().unwrap();
         assert!(matches!(
             &inner.events.last().unwrap().kind,
@@ -1141,6 +1337,7 @@ mod tests {
             Duration::from_millis(5),
             None,
             buffer_seq,
+            None,
         );
         let inner = b.inner.lock().unwrap();
         assert_eq!(inner.buffer_events.len(), 1);
@@ -1235,6 +1432,7 @@ mod tests {
             span.id(),
             Some("sh"),
             Some("m"),
+            None,
             EventKind::Send { data: "a".into() },
         );
         assert_eq!(b.current_seq(), 0);
@@ -1263,6 +1461,7 @@ mod tests {
             Duration::from_millis(1),
             None,
             buffer_seq,
+            None,
         );
         span.close();
         let log = b.build(
@@ -1280,5 +1479,149 @@ mod tests {
         assert_eq!(back.events.len(), log.events.len());
         assert_eq!(back.buffer_events.len(), log.buffer_events.len());
         assert_eq!(back.spans.len(), log.spans.len());
+    }
+
+    #[test]
+    fn push_event_records_source_when_irspan_provided() {
+        use relux_core::Span as CoreSpan;
+        use relux_core::diagnostics::IrSpan;
+        use relux_core::table::FileId;
+
+        let (builder, _rx) = make_builder();
+        let path = PathBuf::from("/project/t.relux");
+        let file_id = FileId::new(path.clone());
+        let src = relux_core::table::SourceFile::new(path, "abcdef\n".into());
+        builder.sources_for_tests().insert(file_id.clone(), src);
+
+        let span_guard = builder.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let ir = IrSpan::new(file_id, CoreSpan::new(1, 4));
+        builder.push_event(
+            span_guard.id(),
+            None,
+            None,
+            Some(&ir),
+            EventKind::Annotate { text: "hi".into() },
+        );
+        drop(span_guard);
+
+        let log = builder.build(
+            TestInfo {
+                name: "t".into(),
+                path: "t".into(),
+                outcome: "pass".into(),
+                duration_ms: 0,
+            },
+            EnvInfo::default(),
+            None,
+        );
+        let ev = log
+            .events
+            .iter()
+            .find(|e| matches!(e.kind, EventKind::Annotate { .. }))
+            .unwrap();
+        let src = ev.source.as_ref().expect("source present");
+        assert_eq!(src.start, 1);
+        assert_eq!(src.end, 4);
+    }
+
+    #[test]
+    fn build_populates_sources_for_referenced_files_only() {
+        use relux_core::Span as CoreSpan;
+        use relux_core::diagnostics::IrSpan;
+        use relux_core::table::FileId;
+
+        let (builder, _rx) = make_builder();
+        let path_used = PathBuf::from("/project/used.relux");
+        let path_unused = PathBuf::from("/project/unused.relux");
+        let fid_used = FileId::new(path_used.clone());
+        let fid_unused = FileId::new(path_unused.clone());
+        builder.sources_for_tests().insert(
+            fid_used.clone(),
+            relux_core::table::SourceFile::new(path_used, "u-content\n".into()),
+        );
+        builder.sources_for_tests().insert(
+            fid_unused,
+            relux_core::table::SourceFile::new(path_unused, "x-content\n".into()),
+        );
+
+        let test_span = builder.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let ir = IrSpan::new(fid_used, CoreSpan::new(0, 1));
+        builder.emit_annotate(test_span.id(), "sh", "m", "a", Some(&ir));
+        drop(test_span);
+
+        let log = builder.build(
+            TestInfo {
+                name: "t".into(),
+                path: "t".into(),
+                outcome: "pass".into(),
+                duration_ms: 0,
+            },
+            EnvInfo::default(),
+            None,
+        );
+
+        assert_eq!(log.sources.len(), 1, "only referenced files in sources");
+        assert_eq!(
+            log.sources.get("used.relux"),
+            Some(&"u-content\n".to_string())
+        );
+        assert!(!log.sources.contains_key("unused.relux"));
+    }
+
+    #[test]
+    fn emit_send_records_source_from_irspan() {
+        use relux_core::Span as CoreSpan;
+        use relux_core::diagnostics::IrSpan;
+        use relux_core::table::FileId;
+
+        let (builder, _rx) = make_builder();
+        let path = PathBuf::from("/project/t.relux");
+        let file_id = FileId::new(path.clone());
+        let src = relux_core::table::SourceFile::new(path, "send hello\n".into());
+        builder.sources_for_tests().insert(file_id.clone(), src);
+
+        let test_span = builder.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let ir = IrSpan::new(file_id, CoreSpan::new(0, 4));
+        builder.emit_send(test_span.id(), "sh", "m", "hello", Some(&ir));
+        drop(test_span);
+
+        let log = builder.build(
+            TestInfo {
+                name: "t".into(),
+                path: "t".into(),
+                outcome: "pass".into(),
+                duration_ms: 0,
+            },
+            EnvInfo::default(),
+            None,
+        );
+        let ev = log
+            .events
+            .iter()
+            .find(|e| matches!(e.kind, EventKind::Send { .. }))
+            .unwrap();
+        let s = ev.source.as_ref().expect("source set");
+        assert_eq!(s.start, 0);
+        assert_eq!(s.end, 4);
+    }
+
+    #[test]
+    fn source_location_carries_byte_range() {
+        use relux_core::Span as CoreSpan;
+        use relux_core::diagnostics::IrSpan;
+        use relux_core::table::FileId;
+
+        let (builder, _rx) = make_builder();
+        let path = PathBuf::from("/project/lib/x.relux");
+        let file_id = FileId::new(path.clone());
+        let src = relux_core::table::SourceFile::new(path, "line 1\nline 2\nline 3\n".into());
+        builder.sources_for_tests().insert(file_id.clone(), src);
+
+        let ir = IrSpan::new(file_id, CoreSpan::new(7, 13));
+        let loc = builder.resolve_location_for_tests(&ir).expect("resolve");
+        assert_eq!(loc.file, "lib/x.relux");
+        assert_eq!(loc.line, 2);
+        assert_eq!(loc.start, 7);
+        assert_eq!(loc.end, 13);
     }
 }
