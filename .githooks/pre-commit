@@ -16,8 +16,26 @@ cargo_fmt() {
     rustup run nightly rustfmt --edition 2024 --check $(find crates -name '*.rs')
 }
 
+sync_book_assets() {
+    # Per-book theme assets (highlight-relux.js, relux.css, theme/highlight.js)
+    # are gitignored copies — mdbook needs them present at build time, so
+    # sync first. Inlined here (rather than calling `just`) to match the CI
+    # workflows that build the books.
+    local hljs_gz=vendor/highlight-11.11.1.min.js.gz
+    local grammar=crates/relux-runtime/src/report/highlight-relux.js
+    local css=docs/_theme/relux.css
+    local book
+    for book in docs/dsl-tutorial docs/reference docs/suite-tutorial; do
+        mkdir -p "$book/theme"
+        gunzip -c "$hljs_gz" > "$book/theme/highlight.js"
+        cp "$grammar" "$book/highlight-relux.js"
+        cp "$css" "$book/relux.css"
+    done
+}
+
 mdbook_build() {
     echo "Building docs..."
+    sync_book_assets
     mdbook build docs/dsl-tutorial
     mdbook build docs/suite-tutorial
     mdbook build docs/reference
