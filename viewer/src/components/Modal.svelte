@@ -5,12 +5,16 @@
   let {
     title,
     subtitle = null,
+    width = null,
     onClose,
     actions,
     children,
   }: {
     title: string;
     subtitle?: string | null;
+    /** Optional CSS width override. When null, the dialog spans the viewport
+     *  (minus a 28px margin on each side). Use for narrower modals. */
+    width?: string | null;
     onClose: () => void;
     actions?: Snippet;
     children: Snippet;
@@ -45,6 +49,7 @@
     role="dialog"
     aria-label={title}
     tabindex="-1"
+    style:width={width}
     bind:this={dialogEl}
     onclick={(e) => e.stopPropagation()}
     onkeydown={(e) => {

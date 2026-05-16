@@ -10,6 +10,7 @@
 //! feature on this crate and running the auto-injected
 //! `export_bindings_*` tests; `just viewer-types` drives both.
 
+pub mod artifact;
 pub mod buffer;
 pub mod builder;
 pub mod event;
@@ -26,6 +27,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use ts_rs::TS;
 
+pub use artifact::ArtifactEntry;
 pub use buffer::BufferEvent;
 pub use buffer::BufferEventKind;
 pub use builder::StructuredLogBuilder;
@@ -88,6 +90,9 @@ pub struct StructuredLog {
     /// `.relux` file contents referenced by any span's `location` or any
     /// event's `source`. Keys are relative paths matching `SourceLocation.file`.
     pub sources: HashMap<String, String>,
+    /// Files written under the test's artifacts directory, sorted with
+    /// `cmp_artifact_paths` (files before subdirs within each directory).
+    pub artifacts: Vec<ArtifactEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

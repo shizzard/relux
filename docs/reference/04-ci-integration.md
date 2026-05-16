@@ -27,6 +27,10 @@ Each per-test directory under `logs/` contains two artifacts:
   `{ file, line, start, end }` where `start` / `end` are byte offsets into the
   matching entry of the top-level `sources` map (relative path -> file
   contents). Files referenced by no span or event are not embedded.
+  The top-level `artifacts` field lists every file the test wrote under its
+  `artifacts/` directory: each entry is `{ path, size, mime }` with `path`
+  forward-slash and relative to that directory. The list is sorted so files
+  precede subdirectory contents at every directory level.
 - `event.html` — self-contained Svelte SPA viewer with the JSON inlined as
   `window.RELUX_DATA`. Two additional inlined `<script>` tags carry
   the highlight.js core bundle and the Relux language definition so the
@@ -53,6 +57,15 @@ Tests skipped for other reasons (fail-fast cancellation, suite-timeout
 cancellation, "skipped because an earlier test failed") do not produce a
 log: there are no marker evaluations to show; the actionable information
 lives on the test that caused the cancellation.
+
+### Artifacts
+
+Anything a test writes under `$__RELUX_TEST_ARTIFACTS` is enumerated in
+`events.json` under `artifacts` and surfaced in the viewer through an
+`artifacts` modal (AppBar chip, hotkey `A`). Each entry is a relative link
+that opens in a new browser tab; this works whether `event.html` is opened
+directly via `file://` or served over HTTP. The chip is rendered as
+disabled when the test wrote no artifacts.
 
 The viewer bundle is committed at `vendor/relux-viewer.js.gz`; regenerate it
 (and the TypeScript schema bindings) with `just viewer-build`.

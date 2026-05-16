@@ -107,6 +107,7 @@
   <Modal
     title="environment"
     subtitle={`bootstrap \u00b7 captured at t = 0 \u00b7 ${total} vars`}
+    width="50%"
     onClose={() => state.closeEnv()}
   >
     {#snippet actions()}

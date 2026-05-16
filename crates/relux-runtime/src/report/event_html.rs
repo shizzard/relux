@@ -94,6 +94,7 @@ mod tests {
             events: Vec::new(),
             buffer_events: Vec::new(),
             sources: HashMap::new(),
+            artifacts: Vec::new(),
         }
     }
 
@@ -105,6 +106,31 @@ mod tests {
         // The Svelte bundle reads `window.RELUX_DATA` at mount time; if this
         // string disappears, decompression silently dropped the bundle body.
         assert!(html.contains("RELUX_DATA"));
+    }
+
+    #[test]
+    fn render_inlines_artifacts_into_window_relux_data() {
+        use crate::observe::structured::ArtifactEntry;
+        let mut log = sample_log("with-artifacts");
+        log.artifacts = vec![
+            ArtifactEntry {
+                path: "out.txt".to_string(),
+                size: 12,
+                mime: Some("text/plain".to_string()),
+            },
+            ArtifactEntry {
+                path: "sut/error.log".to_string(),
+                size: 4096,
+                mime: None,
+            },
+        ];
+        let html = render(&log).unwrap();
+        assert!(html.contains("\"artifacts\":["), "artifacts array missing");
+        assert!(html.contains("\"path\":\"out.txt\""));
+        assert!(html.contains("\"path\":\"sut/error.log\""));
+        assert!(html.contains("\"size\":4096"));
+        assert!(html.contains("\"mime\":\"text/plain\""));
+        assert!(html.contains("\"mime\":null") || html.contains("\"mime\": null"));
     }
 
     #[test]

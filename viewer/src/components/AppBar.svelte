@@ -11,6 +11,7 @@
   const cls = $derived(outcomeClass(outcomeKind));
   const duration = $derived(formatDuration(Number(info.duration_ms)));
   const shellCount = $derived(Object.keys(state.data.shells).length);
+  const artifactCount = $derived(state.data.artifacts.length);
   const eventCount = $derived(state.data.events.length);
   const spanCount = $derived(Object.keys(state.data.spans).length);
 
@@ -31,6 +32,12 @@
   <span class="chips">
     <Chip kbd="E" onclick={() => state.openEnv()} title="environment (E)">env</Chip>
     <Chip kbd="S" onclick={() => state.openShells()} title="all shells (S)">shells &middot; {shellCount}</Chip>
+    <Chip
+      kbd="A"
+      disabled={artifactCount === 0}
+      onclick={() => state.openArtifacts()}
+      title="artifacts (A)"
+    >artifacts &middot; {artifactCount}</Chip>
   </span>
   <span class="timing">{duration} &middot; {eventCount} events &middot; {spanCount} spans</span>
 </header>

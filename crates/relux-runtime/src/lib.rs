@@ -37,6 +37,7 @@ use crate::report::result::Failure;
 use crate::report::result::FailureContext;
 use crate::report::result::Outcome;
 use crate::report::result::TestResult;
+use crate::scan::scan_artifacts;
 use crate::vm::Vm;
 use crate::vm::context::ExecutionContext;
 use crate::vm::context::Scope;
@@ -61,6 +62,7 @@ pub(crate) mod marker_walk;
 pub mod observe;
 pub mod report;
 pub mod runtime_context;
+pub(crate) mod scan;
 pub mod viewer;
 pub mod vm;
 
@@ -804,6 +806,7 @@ async fn run_test(
         Ok(()) => TestOutcome::Pass,
         Err(failure) => TestOutcome::Fail(log.failure_record(failure)),
     };
+    let artifacts = scan_artifacts(&artifacts_dir);
     let structured = log.build(
         TestInfo {
             name: meta.name().to_string(),
@@ -812,6 +815,7 @@ async fn run_test(
         },
         EnvInfo { bootstrap },
         test_outcome,
+        artifacts,
     );
 
     let events_json_path = log_dir.join("events.json");
@@ -1281,6 +1285,7 @@ async fn log_skipped_test(
         },
         EnvInfo { bootstrap },
         outcome,
+        Vec::new(),
     );
 
     let events_json_path = log_dir.join("events.json");

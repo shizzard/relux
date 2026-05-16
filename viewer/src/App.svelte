@@ -6,6 +6,7 @@
   import DetailPanel from './components/DetailPanel.svelte';
   import EnvModal from './components/EnvModal.svelte';
   import ShellsModal from './components/ShellsModal.svelte';
+  import ArtifactsModal from './components/ArtifactsModal.svelte';
   import type { StructuredLog } from './types/StructuredLog';
 
   let { data }: { data: StructuredLog | null } = $props();
@@ -64,6 +65,11 @@
       event.preventDefault();
       if (state.openModal === 'shells') state.closeShells();
       else state.openShells();
+    } else if (key === 'a') {
+      event.preventDefault();
+      if (state.data.artifacts.length === 0) return;
+      if (state.openModal === 'artifacts') state.closeArtifacts();
+      else state.openArtifacts();
     } else if (key === 't') {
       event.preventDefault();
       state.toggleErrorPath();
@@ -90,6 +96,7 @@
   </div>
   <EnvModal {state} />
   <ShellsModal {state} />
+  <ArtifactsModal {state} />
 {:else}
   <p class="no-data">No data loaded. Set <code>window.RELUX_DATA</code> before this script runs.</p>
 {/if}

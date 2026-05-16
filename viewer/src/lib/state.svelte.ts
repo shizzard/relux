@@ -30,7 +30,7 @@ import {
   type Row,
 } from './flatten';
 
-export type OpenModal = 'env' | 'shells' | 'filter' | null;
+export type OpenModal = 'env' | 'shells' | 'filter' | 'artifacts' | null;
 export type EnvFilterScope = 'name' | 'value' | 'name-matches';
 
 const ERROR_PATH_VISIBLE: ReadonlySet<EventTypeId> = new Set<EventTypeId>([
@@ -78,6 +78,8 @@ export class ViewerState {
 
   envFilter = $state<string>('');
   envFilterScope = $state<EnvFilterScope>('name-matches');
+
+  artifactFilter = $state<string>('');
 
   errorPathSpanId = $derived<SpanId | null>(
     this.data.outcome.kind === 'fail' && this.data.outcome.span !== null
@@ -253,6 +255,14 @@ export class ViewerState {
 
   closeShells(): void {
     if (this.openModal === 'shells') this.openModal = null;
+  }
+
+  openArtifacts(): void {
+    this.openModal = 'artifacts';
+  }
+
+  closeArtifacts(): void {
+    if (this.openModal === 'artifacts') this.openModal = null;
   }
 
   openFilter(): void {

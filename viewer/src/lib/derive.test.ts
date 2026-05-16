@@ -21,6 +21,7 @@ function makeLog(buffer_events: BufferEvent[]): StructuredLog {
     events: [],
     buffer_events,
     sources: {},
+    artifacts: [],
   };
 }
 

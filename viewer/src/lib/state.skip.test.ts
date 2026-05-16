@@ -47,6 +47,7 @@ function makeSkipLog(): StructuredLog {
     ],
     buffer_events: [],
     sources: {},
+    artifacts: [],
   } as unknown as StructuredLog;
 }
 

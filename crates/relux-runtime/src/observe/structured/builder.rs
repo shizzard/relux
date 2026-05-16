@@ -9,6 +9,7 @@ use relux_core::diagnostics::IrSpan;
 use relux_core::table::SourceTable;
 use relux_ir::IrTimeout;
 
+use super::ArtifactEntry;
 use super::EnvInfo;
 use super::SourceLocation;
 use super::StructuredLog;
@@ -1072,7 +1073,13 @@ impl StructuredLogBuilder {
 
     // ─── Final assembly ───────────────────────────────────────────
 
-    pub fn build(self, info: TestInfo, env: EnvInfo, outcome: TestOutcome) -> StructuredLog {
+    pub fn build(
+        self,
+        info: TestInfo,
+        env: EnvInfo,
+        outcome: TestOutcome,
+        artifacts: Vec<ArtifactEntry>,
+    ) -> StructuredLog {
         let inner = match Arc::try_unwrap(self.inner) {
             Ok(mutex) => mutex.into_inner().unwrap(),
             Err(arc) => {
@@ -1122,6 +1129,7 @@ impl StructuredLogBuilder {
             events: inner.events,
             buffer_events: inner.buffer_events,
             sources,
+            artifacts,
         }
     }
 }
@@ -1290,6 +1298,7 @@ mod tests {
             },
             EnvInfo::default(),
             TestOutcome::Pass,
+            Vec::new(),
         );
         assert_eq!(log.events.len(), 1);
         assert_eq!(log.buffer_events.len(), 1);
@@ -1469,6 +1478,7 @@ mod tests {
             },
             EnvInfo::default(),
             TestOutcome::Pass,
+            Vec::new(),
         );
         let json = serde_json::to_string(&log).unwrap();
         let back: StructuredLog = serde_json::from_str(&json).unwrap();
@@ -1508,6 +1518,7 @@ mod tests {
             },
             EnvInfo::default(),
             TestOutcome::Pass,
+            Vec::new(),
         );
         let ev = log
             .events
@@ -1552,6 +1563,7 @@ mod tests {
             },
             EnvInfo::default(),
             TestOutcome::Pass,
+            Vec::new(),
         );
 
         assert_eq!(log.sources.len(), 1, "only referenced files in sources");
@@ -1587,6 +1599,7 @@ mod tests {
             },
             EnvInfo::default(),
             TestOutcome::Pass,
+            Vec::new(),
         );
         let ev = log
             .events
