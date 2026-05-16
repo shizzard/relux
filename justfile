@@ -79,9 +79,9 @@ _sync-book-assets:
 # Run all tests (unit + e2e)
 test: unit e2e
 
-# Run unit tests
+# Run unit + integration tests
 unit *ARGS:
-    cargo test --workspace --lib {{ARGS}}
+    cargo test --workspace {{ARGS}}
 
 # Run relux with arguments
 run *ARGS:

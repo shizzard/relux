@@ -206,23 +206,27 @@ pub fn eval_marker(
                     ))
                 })?;
 
-                let (result_str, captures): (String, std::collections::HashMap<String, String>) =
-                    if let Some(cap) = regex.captures(&value) {
-                        let mut caps = std::collections::HashMap::new();
-                        for i in 0..cap.len() {
-                            if let Some(m) = cap.get(i) {
-                                caps.insert(i.to_string(), m.as_str().to_string());
-                            }
+                let (met, result_str, captures): (
+                    bool,
+                    String,
+                    std::collections::HashMap<String, String>,
+                ) = if let Some(cap) = regex.captures(&value) {
+                    let mut caps = std::collections::HashMap::new();
+                    for i in 0..cap.len() {
+                        if let Some(m) = cap.get(i) {
+                            caps.insert(i.to_string(), m.as_str().to_string());
                         }
-                        (
-                            cap.get(0)
-                                .map(|m| m.as_str().to_string())
-                                .unwrap_or_default(),
-                            caps,
-                        )
-                    } else {
-                        (String::new(), std::collections::HashMap::new())
-                    };
+                    }
+                    (
+                        true,
+                        cap.get(0)
+                            .map(|m| m.as_str().to_string())
+                            .unwrap_or_default(),
+                        caps,
+                    )
+                } else {
+                    (false, String::new(), std::collections::HashMap::new())
+                };
 
                 use crate::pure_sink::PureEvalSink;
                 recording.record_match(
@@ -233,8 +237,6 @@ pub fn eval_marker(
                     &captures,
                     &IrSpan::new(file_id.clone(), *span),
                 );
-
-                let met = !result_str.is_empty();
                 (
                     met,
                     SkipEvaluation::Regex {
