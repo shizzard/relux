@@ -314,7 +314,6 @@ fn eval_call_user_defined() {
     fns.insert(
         fn_id.clone(),
         Ok(IrPureFn::UserDefined {
-            marker_recordings: Vec::new(),
             name: test_ident("greet"),
             params: vec![test_ident("who")],
             body: vec![IrPureStmt::Expr {
@@ -350,7 +349,6 @@ fn eval_call_nested() {
 #[test]
 fn eval_fn_identity() {
     let func = IrPureFn::UserDefined {
-        marker_recordings: Vec::new(),
         name: test_ident("id"),
         params: vec![test_ident("x")],
         body: vec![IrPureStmt::Expr {
@@ -374,7 +372,6 @@ fn eval_fn_identity() {
 #[test]
 fn eval_fn_with_let() {
     let func = IrPureFn::UserDefined {
-        marker_recordings: Vec::new(),
         name: test_ident("f"),
         params: vec![],
         body: vec![
@@ -398,7 +395,6 @@ fn eval_fn_with_let() {
 #[test]
 fn eval_fn_with_assign() {
     let func = IrPureFn::UserDefined {
-        marker_recordings: Vec::new(),
         name: test_ident("f"),
         params: vec![],
         body: vec![
@@ -426,7 +422,6 @@ fn eval_fn_with_assign() {
 #[test]
 fn eval_fn_with_multiple_lets() {
     let func = IrPureFn::UserDefined {
-        marker_recordings: Vec::new(),
         name: test_ident("f"),
         params: vec![],
         body: vec![
@@ -462,7 +457,6 @@ fn eval_fn_nested_call() {
     fns.insert(
         inner_id.clone(),
         Ok(IrPureFn::UserDefined {
-            marker_recordings: Vec::new(),
             name: test_ident("inner"),
             params: vec![],
             body: vec![IrPureStmt::Expr {
@@ -473,7 +467,6 @@ fn eval_fn_nested_call() {
         }),
     );
     let outer = IrPureFn::UserDefined {
-        marker_recordings: Vec::new(),
         name: test_ident("outer"),
         params: vec![],
         body: vec![IrPureStmt::Expr {
@@ -504,7 +497,6 @@ fn eval_fn_deeply_nested_call() {
     fns.insert(
         c_id.clone(),
         Ok(IrPureFn::UserDefined {
-            marker_recordings: Vec::new(),
             name: test_ident("c"),
             params: vec![],
             body: vec![IrPureStmt::Expr {
@@ -517,7 +509,6 @@ fn eval_fn_deeply_nested_call() {
     fns.insert(
         b_id.clone(),
         Ok(IrPureFn::UserDefined {
-            marker_recordings: Vec::new(),
             name: test_ident("b"),
             params: vec![],
             body: vec![IrPureStmt::Expr {
@@ -528,7 +519,6 @@ fn eval_fn_deeply_nested_call() {
         }),
     );
     let a = IrPureFn::UserDefined {
-        marker_recordings: Vec::new(),
         name: test_ident("a"),
         params: vec![],
         body: vec![IrPureStmt::Expr {
@@ -548,7 +538,6 @@ fn eval_fn_params_shadow_outer() {
     let mut outer_vars = VarScope::new();
     outer_vars.insert("x".into(), "outer".into());
     let func = IrPureFn::UserDefined {
-        marker_recordings: Vec::new(),
         name: test_ident("f"),
         params: vec![test_ident("x")],
         body: vec![IrPureStmt::Expr {
@@ -583,7 +572,6 @@ fn eval_fn_params_not_visible_after_return() {
     fns.insert(
         fn_id.clone(),
         Ok(IrPureFn::UserDefined {
-            marker_recordings: Vec::new(),
             name: test_ident("f"),
             params: vec![test_ident("x")],
             body: vec![IrPureStmt::Expr {
@@ -606,7 +594,6 @@ fn eval_fn_params_not_visible_after_return() {
 #[test]
 fn eval_fn_empty_body() {
     let func = IrPureFn::UserDefined {
-        marker_recordings: Vec::new(),
         name: test_ident("f"),
         params: vec![],
         body: vec![],
@@ -621,7 +608,6 @@ fn eval_fn_empty_body() {
 #[test]
 fn eval_fn_last_expr_is_return() {
     let func = IrPureFn::UserDefined {
-        marker_recordings: Vec::new(),
         name: test_ident("f"),
         params: vec![],
         body: vec![
@@ -646,7 +632,6 @@ fn eval_fn_last_expr_is_return() {
 fn eval_fn_multiple_params() {
     let fns = fns_with_builtins(&[("replace", 3)]);
     let func = IrPureFn::UserDefined {
-        marker_recordings: Vec::new(),
         name: test_ident("f"),
         params: vec![test_ident("a"), test_ident("b")],
         body: vec![IrPureStmt::Expr {
@@ -670,7 +655,6 @@ fn eval_fn_multiple_params() {
 #[test]
 fn eval_fn_param_overrides_outer_var() {
     let func = IrPureFn::UserDefined {
-        marker_recordings: Vec::new(),
         name: test_ident("f"),
         params: vec![test_ident("x")],
         body: vec![IrPureStmt::Expr {
@@ -694,7 +678,6 @@ fn eval_fn_param_overrides_outer_var() {
 #[test]
 fn eval_fn_last_stmt_is_let_returns_value() {
     let func = IrPureFn::UserDefined {
-        marker_recordings: Vec::new(),
         name: test_ident("f"),
         params: vec![],
         body: vec![IrPureStmt::Let {
@@ -712,7 +695,6 @@ fn eval_fn_last_stmt_is_let_returns_value() {
 #[test]
 fn eval_fn_last_stmt_is_assign_returns_value() {
     let func = IrPureFn::UserDefined {
-        marker_recordings: Vec::new(),
         name: test_ident("f"),
         params: vec![],
         body: vec![
@@ -736,7 +718,6 @@ fn eval_fn_last_stmt_is_assign_returns_value() {
 #[test]
 fn eval_fn_let_without_value() {
     let func = IrPureFn::UserDefined {
-        marker_recordings: Vec::new(),
         name: test_ident("f"),
         params: vec![],
         body: vec![

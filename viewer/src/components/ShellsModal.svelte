@@ -10,7 +10,7 @@
 
   const shells = $derived(buildShells());
   const ev = $derived(state.selected);
-  const test = $derived(state.data.test);
+  const info = $derived(state.data.info);
   const shellCount = $derived(shells.length);
 
   function buildShells(): Array<{
@@ -94,8 +94,8 @@
   const subtitle = $derived(buildSubtitle());
 
   function buildSubtitle(): string {
-    if (!ev) return `\u2014 \u00b7 in ${test.name}`;
-    return `@ event #${n(ev.seq)} \u00b7 ${ev.kind} \u00b7 t = ${formatDuration(ev.ts)} \u00b7 in ${test.name}`;
+    if (!ev) return `\u2014 \u00b7 in ${info.name}`;
+    return `@ event #${n(ev.seq)} \u00b7 ${ev.kind} \u00b7 t = ${formatDuration(ev.ts)} \u00b7 in ${info.name}`;
   }
 </script>
 

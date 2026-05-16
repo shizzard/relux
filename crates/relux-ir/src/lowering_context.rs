@@ -83,6 +83,7 @@ impl LoweringContext {
                 fns: relux_core::table::SharedTable::new(),
                 pure_fns: relux_core::table::SharedTable::new(),
                 effects: relux_core::table::SharedTable::new(),
+                marker_recordings: relux_core::table::SharedTable::new(),
             },
             causes,
             warnings,
@@ -698,22 +699,13 @@ impl LoweringContext {
         // Evaluate markers
         let env = self.env.clone();
         let definition = DefinitionRef::Fn(fn_id.clone());
-        let marker_recordings =
-            match crate::marker::eval_marker(&def.markers, definition, &env, &file_id, self) {
-                Ok(result) => {
-                    if let Some(skip) = result.skip {
-                        let bail = LoweringBail::skip(skip);
-                        let cause_id = bail.cause_id();
-                        self.register_cause(cause_id, Cause::from_bail(&bail));
-                        self.pop_scope();
-                        self.pop_fn();
-                        self.tables.fns.insert(fn_id.clone(), Err(bail.clone()));
-                        return Err(bail);
-                    }
-                    // Flaky on fns is ignored (only meaningful on tests)
-                    result.recordings
-                }
-                Err(bail) => {
+        match crate::marker::eval_marker(&def.markers, definition.clone(), &env, &file_id, self) {
+            Ok(result) => {
+                self.tables
+                    .marker_recordings
+                    .insert(definition.clone(), result.recordings);
+                if let Some(skip) = result.skip {
+                    let bail = LoweringBail::skip(skip);
                     let cause_id = bail.cause_id();
                     self.register_cause(cause_id, Cause::from_bail(&bail));
                     self.pop_scope();
@@ -721,26 +713,21 @@ impl LoweringContext {
                     self.tables.fns.insert(fn_id.clone(), Err(bail.clone()));
                     return Err(bail);
                 }
-            };
+                // Flaky on fns is ignored (only meaningful on tests)
+            }
+            Err(bail) => {
+                let cause_id = bail.cause_id();
+                self.register_cause(cause_id, Cause::from_bail(&bail));
+                self.pop_scope();
+                self.pop_fn();
+                self.tables.fns.insert(fn_id.clone(), Err(bail.clone()));
+                return Err(bail);
+            }
+        };
 
-        // Lower body and attach the fn's marker recordings so the
-        // runtime can replay them under the FnCall span at call time.
-        let result = IrFn::lower(def, &file_id, self).map(|ir_fn| match ir_fn {
-            IrFn::UserDefined {
-                name,
-                params,
-                body,
-                span,
-                ..
-            } => IrFn::UserDefined {
-                name,
-                params,
-                body,
-                marker_recordings,
-                span,
-            },
-            other => other,
-        });
+        // Lower body. Marker recordings are stored in the side table
+        // keyed by DefinitionRef; the runtime looks them up there.
+        let result = IrFn::lower(def, &file_id, self);
 
         // Pop scope and in-progress
         self.pop_scope();
@@ -811,23 +798,13 @@ impl LoweringContext {
         // Evaluate markers
         let env = self.env.clone();
         let definition = DefinitionRef::Fn(fn_id.clone());
-        let marker_recordings =
-            match crate::marker::eval_marker(&def.markers, definition, &env, &file_id, self) {
-                Ok(result) => {
-                    if let Some(skip) = result.skip {
-                        let bail = LoweringBail::skip(skip);
-                        let cause_id = bail.cause_id();
-                        self.register_cause(cause_id, Cause::from_bail(&bail));
-                        self.pop_scope();
-                        self.pop_fn();
-                        self.tables
-                            .pure_fns
-                            .insert(fn_id.clone(), Err(bail.clone()));
-                        return Err(bail);
-                    }
-                    result.recordings
-                }
-                Err(bail) => {
+        match crate::marker::eval_marker(&def.markers, definition.clone(), &env, &file_id, self) {
+            Ok(result) => {
+                self.tables
+                    .marker_recordings
+                    .insert(definition.clone(), result.recordings);
+                if let Some(skip) = result.skip {
+                    let bail = LoweringBail::skip(skip);
                     let cause_id = bail.cause_id();
                     self.register_cause(cause_id, Cause::from_bail(&bail));
                     self.pop_scope();
@@ -837,27 +814,22 @@ impl LoweringContext {
                         .insert(fn_id.clone(), Err(bail.clone()));
                     return Err(bail);
                 }
-            };
+            }
+            Err(bail) => {
+                let cause_id = bail.cause_id();
+                self.register_cause(cause_id, Cause::from_bail(&bail));
+                self.pop_scope();
+                self.pop_fn();
+                self.tables
+                    .pure_fns
+                    .insert(fn_id.clone(), Err(bail.clone()));
+                return Err(bail);
+            }
+        };
 
-        // Lower body and attach marker recordings to the pure fn so
-        // the runtime can replay them under the FnCall span when the
-        // function is invoked.
-        let result = IrPureFn::lower(def, &file_id, self).map(|ir_fn| match ir_fn {
-            IrPureFn::UserDefined {
-                name,
-                params,
-                body,
-                span,
-                ..
-            } => IrPureFn::UserDefined {
-                name,
-                params,
-                body,
-                marker_recordings,
-                span,
-            },
-            other => other,
-        });
+        // Lower body. Marker recordings live in the side table keyed by
+        // DefinitionRef; the runtime looks them up there.
+        let result = IrPureFn::lower(def, &file_id, self);
 
         // Pop scope and in-progress
         self.pop_scope();
@@ -924,23 +896,13 @@ impl LoweringContext {
         // Evaluate markers
         let env = self.env.clone();
         let definition = DefinitionRef::Effect(effect_id.clone());
-        let marker_recordings =
-            match crate::marker::eval_marker(&def.markers, definition, &env, &file_id, self) {
-                Ok(result) => {
-                    if let Some(skip) = result.skip {
-                        let bail = LoweringBail::skip(skip);
-                        let cause_id = bail.cause_id();
-                        self.register_cause(cause_id, Cause::from_bail(&bail));
-                        self.pop_scope();
-                        self.pop_effect();
-                        self.tables
-                            .effects
-                            .insert(effect_id.clone(), Err(bail.clone()));
-                        return Err(bail);
-                    }
-                    result.recordings
-                }
-                Err(bail) => {
+        match crate::marker::eval_marker(&def.markers, definition.clone(), &env, &file_id, self) {
+            Ok(result) => {
+                self.tables
+                    .marker_recordings
+                    .insert(definition.clone(), result.recordings);
+                if let Some(skip) = result.skip {
+                    let bail = LoweringBail::skip(skip);
                     let cause_id = bail.cause_id();
                     self.register_cause(cause_id, Cause::from_bail(&bail));
                     self.pop_scope();
@@ -950,13 +912,22 @@ impl LoweringContext {
                         .insert(effect_id.clone(), Err(bail.clone()));
                     return Err(bail);
                 }
-            };
+            }
+            Err(bail) => {
+                let cause_id = bail.cause_id();
+                self.register_cause(cause_id, Cause::from_bail(&bail));
+                self.pop_scope();
+                self.pop_effect();
+                self.tables
+                    .effects
+                    .insert(effect_id.clone(), Err(bail.clone()));
+                return Err(bail);
+            }
+        };
 
-        // Lower body
-        let result = IrEffect::lower(def, &file_id, self).map(|mut ir_effect| {
-            ir_effect.set_marker_recordings(marker_recordings);
-            ir_effect
-        });
+        // Lower body. Marker recordings live in the side table keyed by
+        // DefinitionRef; the runtime looks them up there.
+        let result = IrEffect::lower(def, &file_id, self);
 
         // Pop scope and in-progress
         self.pop_scope();

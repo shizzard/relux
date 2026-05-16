@@ -80,8 +80,8 @@ export class ViewerState {
   envFilterScope = $state<EnvFilterScope>('name-matches');
 
   errorPathSpanId = $derived<SpanId | null>(
-    this.data.failure && this.data.failure.span !== null
-      ? n(this.data.failure.span)
+    this.data.outcome.kind === 'fail' && this.data.outcome.span !== null
+      ? n(this.data.outcome.span)
       : null,
   );
 
@@ -146,9 +146,18 @@ export class ViewerState {
       }
     }
 
-    if (data.failure && data.failure.event_seq !== null && data.failure.span !== null) {
-      this.selectedEventSeq = n(data.failure.event_seq);
-      for (const ancestor of ancestors(this.data, n(data.failure.span))) {
+    if (
+      data.outcome.kind === 'fail' &&
+      data.outcome.event_seq !== null &&
+      data.outcome.span !== null
+    ) {
+      this.selectedEventSeq = n(data.outcome.event_seq);
+      for (const ancestor of ancestors(this.data, n(data.outcome.span))) {
+        initial.add(n(ancestor.id));
+      }
+    } else if (data.outcome.kind === 'skip') {
+      this.selectedEventSeq = n(data.outcome.event_seq);
+      for (const ancestor of ancestors(this.data, n(data.outcome.span))) {
         initial.add(n(ancestor.id));
       }
     }

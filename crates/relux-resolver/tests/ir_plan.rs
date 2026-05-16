@@ -32,10 +32,17 @@ fn test_span() -> IrSpan {
     IrSpan::new(test_file_id(), relux_core::Span::new(0, 10))
 }
 
+fn test_def() -> DefinitionRef {
+    DefinitionRef::Test {
+        name: "test1".into(),
+        module: ModulePath("tests".into()),
+    }
+}
+
 #[test]
 fn plan_runnable_variant() {
     let s = test_span();
-    let meta = TestMeta::new("test1", None, None, s.clone());
+    let meta = TestMeta::new("test1", None, None, test_def(), s.clone());
     let test = IrTest::new("test1", vec![], vec![], s);
     let plan = Plan::Runnable {
         meta,
@@ -48,7 +55,7 @@ fn plan_runnable_variant() {
 #[test]
 fn plan_runnable_with_warnings() {
     let s = test_span();
-    let meta = TestMeta::new("test1", None, None, s.clone());
+    let meta = TestMeta::new("test1", None, None, test_def(), s.clone());
     let test = IrTest::new("test1", vec![], vec![], s);
     let w = WarningId {
         id: "test-warn-0001".into(),
@@ -65,7 +72,7 @@ fn plan_runnable_with_warnings() {
 
 #[test]
 fn plan_skipped_variant() {
-    let meta = TestMeta::new("test1", None, None, test_span());
+    let meta = TestMeta::new("test1", None, None, test_def(), test_span());
     let cause = CauseId::generate("test", "skip", 0, "skip");
     let plan = Plan::Skipped {
         meta,
@@ -77,7 +84,7 @@ fn plan_skipped_variant() {
 
 #[test]
 fn plan_skipped_multiple_causes() {
-    let meta = TestMeta::new("test1", None, None, test_span());
+    let meta = TestMeta::new("test1", None, None, test_def(), test_span());
     let c1 = CauseId::generate("test", "a", 0, "skip");
     let c2 = CauseId::generate("test", "b", 1, "skip");
     let plan = Plan::Skipped {
@@ -92,7 +99,7 @@ fn plan_skipped_multiple_causes() {
 
 #[test]
 fn plan_invalid_variant() {
-    let meta = TestMeta::new("test1", None, None, test_span());
+    let meta = TestMeta::new("test1", None, None, test_def(), test_span());
     let cause = CauseId::generate("test", "err", 0, "invalid");
     let plan = Plan::Invalid {
         meta,
@@ -104,7 +111,7 @@ fn plan_invalid_variant() {
 
 #[test]
 fn plan_invalid_multiple_causes() {
-    let meta = TestMeta::new("test1", None, None, test_span());
+    let meta = TestMeta::new("test1", None, None, test_def(), test_span());
     let c1 = CauseId::generate("test", "a", 0, "err1");
     let c2 = CauseId::generate("test", "b", 1, "err2");
     let plan = Plan::Invalid {
@@ -125,7 +132,7 @@ fn test_meta_with_all_fields() {
         multiplier: 1.0,
         span: s.clone(),
     };
-    let meta = TestMeta::new("test1", Some("docs".into()), Some(timeout), s);
+    let meta = TestMeta::new("test1", Some("docs".into()), Some(timeout), test_def(), s);
     assert_eq!(meta.name(), "test1");
     assert_eq!(meta.docstring(), Some("docs"));
     assert!(meta.timeout().is_some());
@@ -133,7 +140,7 @@ fn test_meta_with_all_fields() {
 
 #[test]
 fn test_meta_minimal() {
-    let meta = TestMeta::new("test1", None, None, test_span());
+    let meta = TestMeta::new("test1", None, None, test_def(), test_span());
     assert_eq!(meta.name(), "test1");
     assert_eq!(meta.docstring(), None);
     assert!(meta.timeout().is_none());

@@ -13,13 +13,13 @@ import {
 // replayBufferRegionsAtMarker, so every other field is stubbed.
 function makeLog(buffer_events: BufferEvent[]): StructuredLog {
   return {
-    test: { name: 't', path: 'p', outcome: 'pass', duration_ms: 0n },
+    info: { name: 't', path: 'p', duration_ms: 0n },
+    outcome: { kind: 'pass' },
     env: { bootstrap: [] },
     shells: {},
     spans: {},
     events: [],
     buffer_events,
-    failure: null,
     sources: {},
   };
 }

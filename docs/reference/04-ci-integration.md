@@ -19,8 +19,11 @@ that support attachments (Jenkins, GitLab) can link directly to per-test
 Each per-test directory under `logs/` contains two artifacts:
 
 - `events.json` — canonical structured payload (spans, events, buffer events,
-  failure record, embedded source files). Stable schema, consumable by
-  external tooling. Each `Span.location` and `Event.source` carries
+  outcome record, embedded source files). Stable schema, consumable by
+  external tooling. The top-level `outcome` field is a tagged enum
+  (`{ "kind": "pass" }`, `{ "kind": "fail", ... }`, `{ "kind": "skip", ... }`)
+  that carries the verdict alongside failure-specific or skip-specific
+  context. Each `Span.location` and `Event.source` carries
   `{ file, line, start, end }` where `start` / `end` are byte offsets into the
   matching entry of the top-level `sources` map (relative path -> file
   contents). Files referenced by no span or event are not embedded.
@@ -32,6 +35,24 @@ Each per-test directory under `logs/` contains two artifacts:
   `file://`; no server required. This is the recommended human entry
   point and the link target used by the run-summary `index.html`, JUnit
   `[[ATTACHMENT|...]]` markers, and TAP `log:` fields.
+
+### Skipped-test logs
+
+Tests skipped by a marker — either `# skip if X` evaluating true or
+`# run if X` evaluating false, on the test itself or on any effect/function
+it depends on — produce a per-test log alongside passed and failed tests.
+The skipped-test log contains only the MARKERS section: the synthetic
+`markers` span tree with one `marker-eval` child per evaluated marker
+(including any flaky markers that ran before the skip-causing one).
+Opening `event.html` focuses the marker that triggered the skip and expands
+its ancestors so the tree is unfolded. For a skip propagated from a fn or
+effect, the focused marker is the originating one on that fn/effect, not
+on the test.
+
+Tests skipped for other reasons (fail-fast cancellation, suite-timeout
+cancellation, "skipped because an earlier test failed") do not produce a
+log: there are no marker evaluations to show; the actionable information
+lives on the test that caused the cancellation.
 
 The viewer bundle is committed at `vendor/relux-viewer.js.gz`; regenerate it
 (and the TypeScript schema bindings) with `just viewer-build`.

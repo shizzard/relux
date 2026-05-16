@@ -78,21 +78,21 @@ mod tests {
     use crate::observe::structured::EnvInfo;
     use crate::observe::structured::StructuredLog;
     use crate::observe::structured::TestInfo;
+    use crate::observe::structured::TestOutcome;
 
     fn sample_log(test_name: &str) -> StructuredLog {
         StructuredLog {
-            test: TestInfo {
+            info: TestInfo {
                 name: test_name.to_string(),
                 path: "tests/foo.relux".to_string(),
-                outcome: "pass".to_string(),
                 duration_ms: 42,
             },
+            outcome: TestOutcome::Pass,
             env: EnvInfo::default(),
             shells: HashMap::new(),
             spans: HashMap::new(),
             events: Vec::new(),
             buffer_events: Vec::new(),
-            failure: None,
             sources: HashMap::new(),
         }
     }
@@ -112,7 +112,7 @@ mod tests {
         let mut log = sample_log("hostile");
         // A test name carrying a literal `</script>` would otherwise
         // terminate the surrounding <script> tag and break the page.
-        log.test.name = "evil</script>name".to_string();
+        log.info.name = "evil</script>name".to_string();
 
         let html = render(&log).unwrap();
 

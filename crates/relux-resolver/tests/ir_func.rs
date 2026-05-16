@@ -35,7 +35,6 @@ fn test_ident(name: &str) -> IrIdent {
 fn ir_fn_user_defined() {
     let s = test_span();
     let f = IrFn::UserDefined {
-        marker_recordings: Vec::new(),
         name: test_ident("greet"),
         params: vec![test_ident("name")],
         body: vec![IrShellStmt::BufferReset { span: s.clone() }],
@@ -47,7 +46,6 @@ fn ir_fn_user_defined() {
 #[test]
 fn ir_fn_user_defined_empty_body() {
     let f = IrFn::UserDefined {
-        marker_recordings: Vec::new(),
         name: test_ident("noop"),
         params: vec![],
         body: vec![],
@@ -61,7 +59,6 @@ fn ir_fn_user_defined_empty_body() {
 #[test]
 fn ir_fn_user_defined_zero_params() {
     let f = IrFn::UserDefined {
-        marker_recordings: Vec::new(),
         name: test_ident("noop"),
         params: vec![],
         body: vec![],
@@ -93,7 +90,6 @@ fn ir_fn_builtin_arity_zero() {
 #[test]
 fn ir_pure_fn_user_defined() {
     let f = IrPureFn::UserDefined {
-        marker_recordings: Vec::new(),
         name: test_ident("concat"),
         params: vec![test_ident("a"), test_ident("b")],
         body: vec![],

@@ -19,6 +19,7 @@
 //! the resolved fn/effect tables, so two runs of the same suite
 //! produce identical marker traces.
 
+use relux_core::diagnostics::DefinitionRef;
 use relux_core::diagnostics::EffectId;
 use relux_core::diagnostics::FnId;
 use relux_ir::IrEffect;
@@ -42,9 +43,9 @@ pub fn collect_test_marker_recordings(
     tables: &Tables,
 ) -> Vec<MarkerRecording> {
     let mut visitor = Visitor::new(tables);
-    visitor
-        .recordings
-        .extend(test_meta.marker_recordings().iter().cloned());
+    if let Some(recs) = tables.marker_recordings.get(test_meta.definition()) {
+        visitor.recordings.extend(recs.iter().cloned());
+    }
     for start in test.starts() {
         visitor.visit_effect_start(start);
     }
@@ -88,8 +89,13 @@ impl<'a> Visitor<'a> {
             return;
         };
         let effect = effect.clone();
-        self.recordings
-            .extend(effect.marker_recordings().iter().cloned());
+        if let Some(recs) = self
+            .tables
+            .marker_recordings
+            .get(&DefinitionRef::Effect(effect_id.clone()))
+        {
+            self.recordings.extend(recs.iter().cloned());
+        }
         self.visit_effect(&effect);
     }
 
@@ -222,13 +228,14 @@ impl<'a> Visitor<'a> {
         let Ok(ir_fn) = result.as_ref() else {
             return;
         };
-        if let IrFn::UserDefined {
-            body,
-            marker_recordings,
-            ..
-        } = ir_fn.clone()
-        {
-            self.recordings.extend(marker_recordings);
+        if let IrFn::UserDefined { body, .. } = ir_fn.clone() {
+            if let Some(recs) = self
+                .tables
+                .marker_recordings
+                .get(&DefinitionRef::Fn(fn_id.clone()))
+            {
+                self.recordings.extend(recs.iter().cloned());
+            }
             for stmt in body {
                 self.visit_shell_stmt(&stmt);
             }
@@ -245,13 +252,14 @@ impl<'a> Visitor<'a> {
         let Ok(ir_fn) = result.as_ref() else {
             return;
         };
-        if let IrPureFn::UserDefined {
-            body,
-            marker_recordings,
-            ..
-        } = ir_fn.clone()
-        {
-            self.recordings.extend(marker_recordings);
+        if let IrPureFn::UserDefined { body, .. } = ir_fn.clone() {
+            if let Some(recs) = self
+                .tables
+                .marker_recordings
+                .get(&DefinitionRef::Fn(fn_id.clone()))
+            {
+                self.recordings.extend(recs.iter().cloned());
+            }
             for stmt in body {
                 self.visit_pure_stmt(&stmt);
             }

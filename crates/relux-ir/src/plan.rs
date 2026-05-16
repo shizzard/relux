@@ -18,7 +18,6 @@ use relux_core::table::FileId;
 use super::IrNode;
 use super::IrNodeLowering;
 use super::LoweringContext;
-use super::marker::MarkerRecording;
 use super::tables::Tables;
 use super::test_def::IrTest;
 use super::timeout::IrTimeout;
@@ -31,7 +30,7 @@ pub struct TestMeta {
     docstring: Option<String>,
     timeout: Option<IrTimeout>,
     flaky: bool,
-    marker_recordings: Vec<MarkerRecording>,
+    definition: DefinitionRef,
     span: IrSpan,
 }
 
@@ -40,6 +39,7 @@ impl TestMeta {
         name: impl Into<String>,
         docstring: Option<String>,
         timeout: Option<IrTimeout>,
+        definition: DefinitionRef,
         span: IrSpan,
     ) -> Self {
         Self {
@@ -47,7 +47,7 @@ impl TestMeta {
             docstring,
             timeout,
             flaky: false,
-            marker_recordings: Vec::new(),
+            definition,
             span,
         }
     }
@@ -72,12 +72,8 @@ impl TestMeta {
         self.flaky = flaky;
     }
 
-    pub fn marker_recordings(&self) -> &[MarkerRecording] {
-        &self.marker_recordings
-    }
-
-    pub fn set_marker_recordings(&mut self, recordings: Vec<MarkerRecording>) {
-        self.marker_recordings = recordings;
+    pub fn definition(&self) -> &DefinitionRef {
+        &self.definition
     }
 }
 
@@ -145,10 +141,15 @@ pub(crate) fn build_plan(
         .timeout
         .as_ref()
         .map(|t| IrTimeout::lower(&t.node, file_id, ctx).unwrap());
+    let definition = DefinitionRef::Test {
+        name: def.name.node.clone(),
+        module: module_path.clone(),
+    };
     let mut meta = TestMeta::new(
         def.name.node.clone(),
         docstring,
         timeout,
+        definition.clone(),
         IrSpan::new(file_id.clone(), def.span),
     );
 
@@ -174,12 +175,11 @@ pub(crate) fn build_plan(
 
     // Evaluate markers
     let env = ctx.env().clone();
-    let definition = DefinitionRef::Test {
-        name: def.name.node.clone(),
-        module: module_path.clone(),
-    };
-    match super::marker::eval_marker(&def.markers, definition, &env, file_id, ctx) {
+    match super::marker::eval_marker(&def.markers, definition.clone(), &env, file_id, ctx) {
         Ok(result) => {
+            ctx.tables()
+                .marker_recordings
+                .insert(definition.clone(), result.recordings);
             if let Some(skip) = result.skip {
                 let cause_id = skip.cause_id();
                 ctx.register_cause(cause_id.clone(), Cause::skip(skip));
@@ -191,7 +191,6 @@ pub(crate) fn build_plan(
                 };
             }
             meta.set_flaky(result.flaky);
-            meta.set_marker_recordings(result.recordings);
         }
         Err(bail) => {
             let cause_id = bail.cause_id();

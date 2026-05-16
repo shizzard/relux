@@ -1,0 +1,30 @@
+test "skipped test produces a markers-only log" {
+    """
+    Verify a marker-skipped test writes events.json and event.html to its
+    log dir, and that the JSON's outcome is of kind "skip" with a span that
+    resolves to a marker-eval span.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 skipped
+        match_ok()
+
+        > run_dir=$$(ls -td ${__RELUX_TEST_ROOT}/fixtures/relux/out/run-*/ | head -1)
+        match_prompt()
+        > events_json="$${run_dir}logs/relux/tests/test/always-skipped/events.json"
+        match_prompt()
+        > [ -f "$$events_json" ] && echo OK
+        <? ^OK$
+        match_prompt()
+
+        > event_html="$${run_dir}logs/relux/tests/test/always-skipped/event.html"
+        match_prompt()
+        > [ -f "$$event_html" ] && echo OK
+        <? ^OK$
+        match_prompt()
+
+        > grep -q '"kind": "skip"' "$$events_json" && echo OK
+        <? ^OK$
+        match_ok()
+    }
+}

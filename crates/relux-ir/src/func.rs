@@ -18,7 +18,6 @@ pub enum IrFn {
         name: IrIdent,
         params: Vec<IrIdent>,
         body: Vec<IrShellStmt>,
-        marker_recordings: Vec<crate::marker::MarkerRecording>,
         span: IrSpan,
     },
     Builtin {
@@ -35,7 +34,6 @@ pub enum IrPureFn {
         name: IrIdent,
         params: Vec<IrIdent>,
         body: Vec<IrPureStmt>,
-        marker_recordings: Vec<crate::marker::MarkerRecording>,
         span: IrSpan,
     },
     Builtin {
@@ -67,7 +65,6 @@ impl IrNodeLowering for IrFn {
             name,
             params,
             body,
-            marker_recordings: Vec::new(),
             span: IrSpan::new(file.clone(), ast.span),
         })
     }
@@ -96,7 +93,6 @@ impl IrNodeLowering for IrPureFn {
             name,
             params,
             body,
-            marker_recordings: Vec::new(),
             span: IrSpan::new(file.clone(), ast.span),
         })
     }

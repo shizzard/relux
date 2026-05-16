@@ -6,14 +6,15 @@
 
   let { state }: { state: ViewerState } = $props();
 
-  const test = $derived(state.data.test);
-  const cls = $derived(outcomeClass(test.outcome));
-  const duration = $derived(formatDuration(Number(test.duration_ms)));
+  const info = $derived(state.data.info);
+  const outcomeKind = $derived(state.data.outcome.kind);
+  const cls = $derived(outcomeClass(outcomeKind));
+  const duration = $derived(formatDuration(Number(info.duration_ms)));
   const shellCount = $derived(Object.keys(state.data.shells).length);
   const eventCount = $derived(state.data.events.length);
   const spanCount = $derived(Object.keys(state.data.spans).length);
 
-  const breadcrumb = $derived(splitPath(test.path));
+  const breadcrumb = $derived(splitPath(info.path));
 
   function splitPath(path: string): { dir: string; file: string } {
     const slash = path.lastIndexOf('/');
@@ -24,9 +25,9 @@
 
 <header class="appbar">
   <span class="crumbs">
-    {#if breadcrumb.dir.length > 0}<b class="dir">{breadcrumb.dir}</b><span class="sep">/</span>{/if}<span class="file">{breadcrumb.file}</span><span class="sep">&rsaquo;</span><b>{test.name}</b>
+    {#if breadcrumb.dir.length > 0}<b class="dir">{breadcrumb.dir}</b><span class="sep">/</span>{/if}<span class="file">{breadcrumb.file}</span><span class="sep">&rsaquo;</span><b>{info.name}</b>
   </span>
-  <span class="pill {cls}">{test.outcome}</span>
+  <span class="pill {cls}">{outcomeKind}</span>
   <span class="chips">
     <Chip kbd="E" onclick={() => state.openEnv()} title="environment (E)">env</Chip>
     <Chip kbd="S" onclick={() => state.openShells()} title="all shells (S)">shells &middot; {shellCount}</Chip>

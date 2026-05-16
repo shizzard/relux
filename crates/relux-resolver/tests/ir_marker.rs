@@ -809,3 +809,141 @@ test "t" {
     // CI not set → run condition unmet → fn skipped → test skipped
     assert!(is_skipped(&suite.plans[0]));
 }
+
+// ─── Plan::Skipped retains marker recordings ───────────────
+
+#[test]
+fn skipped_plan_retains_unconditional_skip_recording() {
+    let suite = resolve_source_no_env(&[(
+        "tests/a",
+        r#"# skip
+test "skipped" {
+  shell sh {
+    > echo hi
+  }
+}
+"#,
+    )]);
+    assert_eq!(suite.plans.len(), 1);
+    assert!(is_skipped(&suite.plans[0]));
+    let recs = suite
+        .tables
+        .marker_recordings
+        .get(suite.plans[0].meta().definition())
+        .expect("recordings present for skipped test");
+    assert_eq!(recs.len(), 1, "expected one recording for `# skip`");
+    assert_eq!(recs[0].kind, MarkerEvalKind::Skip);
+    assert_eq!(recs[0].decision, MarkerEvalDecision::Mark);
+}
+
+#[test]
+fn skipped_plan_retains_run_if_falsy_recording() {
+    let suite = resolve_source_no_env(&[(
+        "tests/a",
+        r#"# run if MY_VAR
+test "skipped" {
+  shell sh {
+    > echo hi
+  }
+}
+"#,
+    )]);
+    assert_eq!(suite.plans.len(), 1);
+    assert!(is_skipped(&suite.plans[0]));
+    let recs = suite
+        .tables
+        .marker_recordings
+        .get(suite.plans[0].meta().definition())
+        .expect("recordings present for skipped test");
+    assert_eq!(
+        recs.len(),
+        1,
+        "expected one recording for `# run if MY_VAR`"
+    );
+    assert_eq!(recs[0].kind, MarkerEvalKind::Run);
+    // `# run if MY_VAR` with MY_VAR unset → condition not met → Run-marker
+    // does NOT apply (decision = Pass) → the test is skipped because no
+    // run-mark fired.
+    assert_eq!(recs[0].decision, MarkerEvalDecision::Pass);
+}
+
+#[test]
+fn skipped_plan_retains_full_marker_chain() {
+    let mut env = HashMap::new();
+    env.insert("TRIGGER".into(), "yes".into());
+    let suite = resolve_source(
+        &[(
+            "tests/a",
+            r#"# flaky
+# skip if TRIGGER
+test "skipped" {
+  shell sh {
+    > echo hi
+  }
+}
+"#,
+        )],
+        env,
+    );
+    assert_eq!(suite.plans.len(), 1);
+    assert!(is_skipped(&suite.plans[0]));
+    let recs = suite
+        .tables
+        .marker_recordings
+        .get(suite.plans[0].meta().definition())
+        .expect("recordings present for skipped test");
+    assert_eq!(recs.len(), 2, "expected two recordings (flaky + skip-if)");
+    // Order matches source order: flaky first, skip-if second (the triggering one).
+    assert_eq!(recs[0].kind, MarkerEvalKind::Flaky);
+    assert_eq!(recs[1].kind, MarkerEvalKind::Skip);
+    assert_eq!(recs[1].decision, MarkerEvalDecision::Mark);
+}
+
+#[test]
+fn propagated_skip_from_fn_lands_under_originating_def() {
+    // CI not set → `# run if CI` on helper() unmet → helper bails skip →
+    // test depending on helper inherits the skip. The originating recordings
+    // live under DefinitionRef::Fn(helper), not under the test's own def.
+    let suite = resolve_source_no_env(&[(
+        "tests/a",
+        r#"# run if CI
+fn helper() {
+  > echo hello
+}
+
+test "t" {
+  shell sh {
+    helper()
+  }
+}
+"#,
+    )]);
+    assert!(is_skipped(&suite.plans[0]));
+
+    // Test's own definition has no markers (no `#` lines), so its entry is
+    // either absent or an empty vec — the propagating recording lives under
+    // the fn's definition, not the test's.
+    let test_recs = suite
+        .tables
+        .marker_recordings
+        .get(suite.plans[0].meta().definition());
+    assert!(
+        test_recs.map(|v| v.is_empty()).unwrap_or(true),
+        "test definition should have no recordings on propagated skip, got: {test_recs:?}",
+    );
+
+    // Find the fn's definition in the recordings table.
+    let fn_def = relux_core::diagnostics::DefinitionRef::Fn(relux_core::diagnostics::FnId {
+        module: relux_core::diagnostics::ModulePath("tests/a".into()),
+        name: "helper".into(),
+        arity: 0,
+    });
+    let recs = suite
+        .tables
+        .marker_recordings
+        .get(&fn_def)
+        .expect("originating fn recordings present");
+    assert_eq!(recs.len(), 1);
+    assert_eq!(recs[0].kind, MarkerEvalKind::Run);
+    assert_eq!(recs[0].decision, MarkerEvalDecision::Pass);
+}

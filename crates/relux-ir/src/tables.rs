@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 use relux_ast::AstModule;
+use relux_core::diagnostics::DefinitionRef;
 use relux_core::diagnostics::EffectId as IrEffectId;
 use relux_core::diagnostics::EffectName;
 use relux_core::diagnostics::FnId as IrFnId;
@@ -51,16 +52,19 @@ pub type AstTable = SharedTable<ModulePath, (FileId, AstModule)>;
 pub type FnTable = SharedTable<IrFnId, Result<IrFn, LoweringBail>>;
 pub type PureFnTable = SharedTable<IrFnId, Result<IrPureFn, LoweringBail>>;
 pub type EffectTable = SharedTable<IrEffectId, Result<IrEffect, LoweringBail>>;
+pub type MarkerRecordingsTable = SharedTable<DefinitionRef, Vec<crate::marker::MarkerRecording>>;
 
 // ─── Tables ─────────────────────────────────────────────────
 
-/// Shared (global) resolution tables — sources, functions, pure functions, effects.
+/// Shared (global) resolution tables — sources, functions, pure functions,
+/// effects, plus marker recordings keyed by the definition that produced them.
 #[derive(Debug, Clone)]
 pub struct Tables {
     pub sources: SourceTable,
     pub fns: FnTable,
     pub pure_fns: PureFnTable,
     pub effects: EffectTable,
+    pub marker_recordings: MarkerRecordingsTable,
 }
 
 impl Tables {
@@ -70,6 +74,7 @@ impl Tables {
             fns: SharedTable::new(),
             pure_fns: SharedTable::new(),
             effects: SharedTable::new(),
+            marker_recordings: SharedTable::new(),
         }
     }
 }

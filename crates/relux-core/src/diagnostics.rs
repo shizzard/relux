@@ -648,7 +648,7 @@ impl SkipReport {
 
 impl std::error::Error for SkipReport {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DefinitionRef {
     Fn(FnId),
     Effect(EffectId),

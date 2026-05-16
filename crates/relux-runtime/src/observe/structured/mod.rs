@@ -16,6 +16,7 @@ pub mod event;
 pub mod failure;
 pub mod log_sink;
 pub mod shell;
+pub mod skip;
 pub mod span;
 pub mod utf8_stream;
 
@@ -34,6 +35,7 @@ pub use event::EventSeq;
 pub use failure::FailureRecord;
 pub use failure::StackFrame;
 pub use shell::ShellRecord;
+pub use skip::SkipRecord;
 pub use span::FnCallKind;
 pub use span::MarkerEvalDecision;
 pub use span::MarkerEvalDetail;
@@ -73,7 +75,8 @@ impl std::fmt::Display for SourceLocation {
     ts(export, export_to = "../../../viewer/src/types/")
 )]
 pub struct StructuredLog {
-    pub test: TestInfo,
+    pub info: TestInfo,
+    pub outcome: TestOutcome,
     pub env: EnvInfo,
     pub shells: HashMap<String, ShellRecord>,
     /// JSON-serializes `SpanId` keys as strings (per JSON object-key rules),
@@ -82,7 +85,6 @@ pub struct StructuredLog {
     pub spans: HashMap<SpanId, Span>,
     pub events: Vec<Event>,
     pub buffer_events: Vec<BufferEvent>,
-    pub failure: Option<FailureRecord>,
     /// `.relux` file contents referenced by any span's `location` or any
     /// event's `source`. Keys are relative paths matching `SourceLocation.file`.
     pub sources: HashMap<String, String>,
@@ -96,8 +98,25 @@ pub struct StructuredLog {
 pub struct TestInfo {
     pub name: String,
     pub path: String,
-    pub outcome: String,
     pub duration_ms: u64,
+}
+
+/// Tagged verdict carried by `StructuredLog`. Replaces the older pair of
+/// `TestInfo.outcome: String` + `StructuredLog.failure: Option<_>` so the
+/// schema cannot represent contradictory states.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
+// Tag is `kind` (not `type`) because `FailureRecord` is itself a tagged
+// enum on `type`; flattening with `tag = "type"` here would collide and
+// collapse the TS-side narrowing to `never`.
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum TestOutcome {
+    Pass,
+    Fail(FailureRecord),
+    Skip(SkipRecord),
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]

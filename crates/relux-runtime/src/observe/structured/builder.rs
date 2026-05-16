@@ -13,6 +13,7 @@ use super::EnvInfo;
 use super::SourceLocation;
 use super::StructuredLog;
 use super::TestInfo;
+use super::TestOutcome;
 use super::buffer::BufferEvent;
 use super::buffer::BufferEventKind;
 use super::event::Event;
@@ -886,19 +887,21 @@ impl StructuredLogBuilder {
 
     /// Emit the final truthy/falsy outcome event inside a marker-eval
     /// span. Mirrors the shape stored on `MarkerRecording.evaluation`.
+    /// Returns the emitted event's `EventSeq` so callers (e.g. `replay_markers`)
+    /// can use it as a focus pointer.
     pub fn emit_bool_check(
         &self,
         span: SpanId,
         evaluation: super::span::MarkerEvalDetail,
         location: Option<&IrSpan>,
-    ) {
+    ) -> EventSeq {
         self.push_event(
             span,
             None,
             None,
             location,
             EventKind::BoolCheck { evaluation },
-        );
+        )
     }
 
     // Diagnostics -------------------------------------------------------
@@ -1069,12 +1072,7 @@ impl StructuredLogBuilder {
 
     // ─── Final assembly ───────────────────────────────────────────
 
-    pub fn build(
-        self,
-        test: TestInfo,
-        env: EnvInfo,
-        failure: Option<FailureRecord>,
-    ) -> StructuredLog {
+    pub fn build(self, info: TestInfo, env: EnvInfo, outcome: TestOutcome) -> StructuredLog {
         let inner = match Arc::try_unwrap(self.inner) {
             Ok(mutex) => mutex.into_inner().unwrap(),
             Err(arc) => {
@@ -1116,13 +1114,13 @@ impl StructuredLogBuilder {
         }
 
         StructuredLog {
-            test,
+            info,
+            outcome,
             env,
             shells: inner.shells,
             spans: inner.spans,
             events: inner.events,
             buffer_events: inner.buffer_events,
-            failure,
             sources,
         }
     }
@@ -1288,16 +1286,15 @@ mod tests {
             TestInfo {
                 name: "t".into(),
                 path: "t.relux".into(),
-                outcome: "pass".into(),
                 duration_ms: 1,
             },
             EnvInfo::default(),
-            None,
+            TestOutcome::Pass,
         );
         assert_eq!(log.events.len(), 1);
         assert_eq!(log.buffer_events.len(), 1);
         assert_eq!(log.spans.len(), 1);
-        assert!(log.failure.is_none());
+        assert!(matches!(log.outcome, TestOutcome::Pass));
     }
 
     #[test]
@@ -1468,11 +1465,10 @@ mod tests {
             TestInfo {
                 name: "t".into(),
                 path: "t.relux".into(),
-                outcome: "pass".into(),
                 duration_ms: 1,
             },
             EnvInfo::default(),
-            None,
+            TestOutcome::Pass,
         );
         let json = serde_json::to_string(&log).unwrap();
         let back: StructuredLog = serde_json::from_str(&json).unwrap();
@@ -1508,11 +1504,10 @@ mod tests {
             TestInfo {
                 name: "t".into(),
                 path: "t".into(),
-                outcome: "pass".into(),
                 duration_ms: 0,
             },
             EnvInfo::default(),
-            None,
+            TestOutcome::Pass,
         );
         let ev = log
             .events
@@ -1553,11 +1548,10 @@ mod tests {
             TestInfo {
                 name: "t".into(),
                 path: "t".into(),
-                outcome: "pass".into(),
                 duration_ms: 0,
             },
             EnvInfo::default(),
-            None,
+            TestOutcome::Pass,
         );
 
         assert_eq!(log.sources.len(), 1, "only referenced files in sources");
@@ -1589,11 +1583,10 @@ mod tests {
             TestInfo {
                 name: "t".into(),
                 path: "t".into(),
-                outcome: "pass".into(),
                 duration_ms: 0,
             },
             EnvInfo::default(),
-            None,
+            TestOutcome::Pass,
         );
         let ev = log
             .events
@@ -1623,5 +1616,32 @@ mod tests {
         assert_eq!(loc.line, 2);
         assert_eq!(loc.start, 7);
         assert_eq!(loc.end, 13);
+    }
+
+    #[test]
+    fn test_outcome_skip_serde_round_trip() {
+        use super::super::skip::SkipRecord;
+        use super::super::span::MarkerEvalDetail;
+        use super::super::span::MarkerEvalKind;
+
+        let original = TestOutcome::Skip(SkipRecord {
+            span: 42u64,
+            event_seq: 7u64,
+            marker_kind: MarkerEvalKind::Skip,
+            evaluation: MarkerEvalDetail::Unconditional,
+        });
+        let json = serde_json::to_string(&original).unwrap();
+        assert!(
+            json.contains("\"kind\":\"skip\""),
+            "expected `\"kind\":\"skip\"` in JSON, got: {json}"
+        );
+        let parsed: TestOutcome = serde_json::from_str(&json).unwrap();
+        match parsed {
+            TestOutcome::Skip(rec) => {
+                assert_eq!(rec.span, 42u64);
+                assert_eq!(rec.event_seq, 7u64);
+            }
+            other => panic!("expected TestOutcome::Skip, got {other:?}"),
+        }
     }
 }

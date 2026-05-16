@@ -31,6 +31,7 @@ use crate::observe::structured::SpanId;
 use crate::observe::structured::SpanKind;
 use crate::observe::structured::StructuredLogBuilder;
 use crate::observe::structured::TestInfo;
+use crate::observe::structured::TestOutcome;
 use crate::observe::structured::log_sink::LogSink;
 use crate::report::result::Failure;
 use crate::report::result::FailureContext;
@@ -464,16 +465,16 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                 let _ = ctx
                     .tui_tx
                     .send(observe::tui::TuiEvent::Skipped { result_line });
-                TestResult {
-                    test_name: meta.name().to_string(),
-                    test_path: test_path.clone(),
-                    outcome: Outcome::Skipped("skipped".to_string()),
-                    duration: Duration::ZERO,
-                    progress: String::new(),
-                    log_dir: None,
-                    warnings: Vec::new(),
-                    flaky_retries: 0,
-                }
+                log_skipped_test(
+                    meta,
+                    causes,
+                    &ctx.suite.causes,
+                    ctx.run_ctx,
+                    ctx.base_env.clone(),
+                    &test_path,
+                    &ctx.suite.tables,
+                )
+                .await
             }
             Plan::Invalid {
                 meta,
@@ -735,7 +736,7 @@ async fn run_test(
     // root — no nesting under fn-call or effect-setup, since markers
     // run before any test execution.
     let recordings = crate::marker_walk::collect_test_marker_recordings(test, meta, tables);
-    replay_markers(&log, &recordings);
+    let _ = replay_markers(&log, &recordings);
 
     // Open the root span for this test. Every emission inside the test body
     // (effect setup, shell block, fn call, cleanup block) is parented on this.
@@ -796,21 +797,21 @@ async fn run_test(
         .collect();
     bootstrap.sort_by(|a, b| a.0.cmp(&b.0));
 
-    // Build the structured log. Failure record is a stub for now — commit 4
-    // populates it from the outcome with call-stack / buffer-tail / vars.
-    let failure = outcome.as_ref().err().map(|f| log.failure_record(f));
+    // Build the structured log. The verdict is now a single tagged enum:
+    // Pass / Fail(FailureRecord) / Skip(SkipRecord). Runnable tests can only
+    // produce Pass or Fail here; Skip is emitted by `log_skipped_test`.
+    let test_outcome = match &outcome {
+        Ok(()) => TestOutcome::Pass,
+        Err(failure) => TestOutcome::Fail(log.failure_record(failure)),
+    };
     let structured = log.build(
         TestInfo {
             name: meta.name().to_string(),
             path: test_path.to_string(),
-            outcome: match &outcome {
-                Ok(()) => "pass".to_string(),
-                Err(_) => "fail".to_string(),
-            },
             duration_ms: duration.as_millis() as u64,
         },
         EnvInfo { bootstrap },
-        failure,
+        test_outcome,
     );
 
     let events_json_path = log_dir.join("events.json");
@@ -1192,14 +1193,157 @@ pub(crate) fn marker_detail_from_evaluation(
     }
 }
 
+// ─── log_skipped_test ──────────────────────────────────────
+
+/// Emit a markers-only `event.html` and `events.json` for a `Plan::Skipped`
+/// test. Does NOT run the test (no PTY, no shells, no body); the structured
+/// log contains only the synthetic `markers` root and its `marker-eval`
+/// children. The triggering marker (`(Skip, Mark)` or `(Run, Pass)`) is
+/// pointed to by `TestOutcome::Skip(SkipRecord { ... })`.
+async fn log_skipped_test(
+    meta: &relux_ir::TestMeta,
+    causes: &[relux_core::diagnostics::CauseId],
+    suite_causes: &relux_core::diagnostics::CauseTable,
+    run_ctx: &RunContext,
+    base_env: Arc<LayeredEnv>,
+    test_path: &str,
+    tables: &relux_ir::Tables,
+) -> TestResult {
+    let test_start = Instant::now();
+    let source_table = &tables.sources;
+    let log_dir = test_log_dir(&run_ctx.run_dir, source_table, meta, &run_ctx.project_root);
+    let _ = std::fs::create_dir_all(&log_dir);
+
+    let (progress_tx, _progress_rx) = crate::observe::progress::channel();
+    let log = StructuredLogBuilder::new(
+        progress_tx,
+        test_start,
+        source_table.clone(),
+        Arc::from(run_ctx.project_root.as_path()),
+    );
+
+    // Look up the originating definition's recordings via the cause's
+    // SkipReport.definition. Works uniformly for test-level skips (key:
+    // DefinitionRef::Test{..}) and for skips propagated from fn/effect
+    // (key: DefinitionRef::Fn(..) / DefinitionRef::Effect(..)).
+    let report = causes
+        .iter()
+        .find_map(|id| match suite_causes.get(id) {
+            Some(relux_core::diagnostics::Cause::Skip(r)) => Some(r.clone()),
+            _ => None,
+        })
+        .expect("Plan::Skipped must carry a Cause::Skip");
+    let recordings_owned: Vec<relux_ir::marker::MarkerRecording> = tables
+        .marker_recordings
+        .get(&report.definition)
+        .map(|v| (*v).clone())
+        .unwrap_or_default();
+    let recordings: &[relux_ir::marker::MarkerRecording] = &recordings_owned;
+    let handles = replay_markers(&log, recordings);
+
+    // Locate the triggering marker. eval_marker returns early on trigger,
+    // so the triggering recording is always the last one — but scan
+    // defensively in case future changes alter recording order.
+    let trigger_idx = recordings
+        .iter()
+        .position(|r| {
+            use relux_ir::marker::MarkerEvalDecision;
+            use relux_ir::marker::MarkerEvalKind;
+            matches!(
+                (r.kind, r.decision),
+                (MarkerEvalKind::Skip, MarkerEvalDecision::Mark)
+                    | (MarkerEvalKind::Run, MarkerEvalDecision::Pass)
+            )
+        })
+        .expect("marker_recordings entry for skipped definition must contain a triggering marker");
+    let handle = &handles[trigger_idx];
+    let rec = &recordings[trigger_idx];
+
+    let outcome = TestOutcome::Skip(crate::observe::structured::SkipRecord {
+        span: handle.span,
+        event_seq: handle.event_seq,
+        marker_kind: marker_kind_to_runtime(rec.kind),
+        evaluation: marker_detail_from_evaluation(&rec.evaluation),
+    });
+
+    // Bootstrap env snapshot (sorted for deterministic JSON).
+    let mut bootstrap: Vec<(String, String)> = base_env
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    bootstrap.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let structured = log.build(
+        TestInfo {
+            name: meta.name().to_string(),
+            path: test_path.to_string(),
+            duration_ms: 0,
+        },
+        EnvInfo { bootstrap },
+        outcome,
+    );
+
+    let events_json_path = log_dir.join("events.json");
+    match serde_json::to_vec_pretty(&structured) {
+        Ok(bytes) => {
+            if let Err(e) = std::fs::write(&events_json_path, &bytes) {
+                eprintln!(
+                    "warning: failed to write {}: {}",
+                    events_json_path.display(),
+                    e
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "warning: failed to serialize structured log for {}: {}",
+                events_json_path.display(),
+                e
+            );
+        }
+    }
+
+    if let Err(e) = crate::report::event_html::write(&log_dir, &structured) {
+        eprintln!(
+            "warning: failed to write {}: {}",
+            log_dir.join("event.html").display(),
+            e
+        );
+    }
+
+    TestResult {
+        test_name: meta.name().to_string(),
+        test_path: test_path.to_string(),
+        outcome: Outcome::Skipped("skipped".to_string()),
+        duration: Duration::ZERO,
+        progress: String::new(),
+        log_dir: Some(log_dir),
+        warnings: Vec::new(),
+        flaky_retries: 0,
+    }
+}
+
+// ─── Marker replay ─────────────────────────────────────────
+
+/// Output of `replay_markers`: one handle per input recording, positionally
+/// aligned. `span` is the `marker-eval` span; `event_seq` is the bool-check
+/// event under it. Used by `log_skipped_test` to build the `SkipRecord`
+/// focus pointer for the triggering marker.
+pub(crate) struct MarkerHandle {
+    pub span: crate::observe::structured::SpanId,
+    pub event_seq: crate::observe::structured::EventSeq,
+}
+
 /// Lay down the synthetic `markers` root span and every recorded
 /// `marker-eval` child. Always emits the root (even when empty); the
-/// viewer filters it.
+/// viewer filters it. Returns one `MarkerHandle` per input recording,
+/// positionally aligned.
 pub(crate) fn replay_markers(
     log: &StructuredLogBuilder,
     recordings: &[relux_ir::marker::MarkerRecording],
-) {
+) -> Vec<MarkerHandle> {
     let markers_guard = log.open_markers_span(None);
+    let mut handles = Vec::with_capacity(recordings.len());
     for rec in recordings {
         let me_guard = log.open_marker_eval_span(
             markers_guard.id(),
@@ -1208,17 +1352,20 @@ pub(crate) fn replay_markers(
             marker_decision_to_runtime(rec.decision),
             Some(&rec.marker_span),
         );
-        let mut sink = LogSink::new(log, me_guard.id());
+        let span = me_guard.id();
+        let mut sink = LogSink::new(log, span);
         sink.replay(&rec.ops);
         // Final truthy/falsy outcome event, after the sink-op trail.
-        log.emit_bool_check(
-            me_guard.id(),
+        let event_seq = log.emit_bool_check(
+            span,
             marker_detail_from_evaluation(&rec.evaluation),
             Some(&rec.marker_span),
         );
+        handles.push(MarkerHandle { span, event_seq });
         // me_guard drops here, closing the marker-eval span.
     }
     // markers_guard drops here, closing the markers root.
+    handles
 }
 
 #[cfg(test)]
@@ -1251,5 +1398,344 @@ mod tests {
             test_display_id("basic/test.relux", "my test"),
             "basic/test.relux/my-test"
         );
+    }
+
+    #[tokio::test]
+    async fn log_skipped_test_writes_skip_record_artifact() {
+        use crate::observe::structured::StructuredLog;
+        use crate::observe::structured::TestOutcome;
+        use relux_core::diagnostics::Cause;
+        use relux_core::diagnostics::DefinitionRef;
+        use relux_core::diagnostics::IrSpan;
+        use relux_core::diagnostics::ModulePath;
+        use relux_core::diagnostics::SkipEvaluation;
+        use relux_core::diagnostics::SkipReport;
+        use relux_core::pure::Env;
+        use relux_core::pure::LayeredEnv;
+        use relux_core::table::SharedTable;
+        use relux_ir::IrTimeout;
+        use relux_ir::TestMeta;
+        use relux_ir::marker::MarkerEvalDecision;
+        use relux_ir::marker::MarkerEvalKind;
+        use relux_ir::marker::MarkerEvalModifier;
+        use relux_ir::marker::MarkerRecording;
+
+        // Synthesize the test-level definition + meta.
+        let definition = DefinitionRef::Test {
+            name: "always-skipped".into(),
+            module: ModulePath("tests/synthetic".into()),
+        };
+        let meta = TestMeta::new(
+            "always-skipped",
+            None,
+            None as Option<IrTimeout>,
+            definition.clone(),
+            IrSpan::synthetic(),
+        );
+
+        // Pre-populate the side table with the test's recordings plus a
+        // flaky entry to assert flaky markers survive into the rendered tree.
+        let recordings = vec![
+            MarkerRecording {
+                marker_span: IrSpan::synthetic(),
+                kind: MarkerEvalKind::Flaky,
+                modifier: MarkerEvalModifier::If,
+                evaluation: SkipEvaluation::Unconditional,
+                decision: MarkerEvalDecision::Mark,
+                ops: Vec::new(),
+            },
+            MarkerRecording {
+                marker_span: IrSpan::synthetic(),
+                kind: MarkerEvalKind::Skip,
+                modifier: MarkerEvalModifier::If,
+                evaluation: SkipEvaluation::Unconditional,
+                decision: MarkerEvalDecision::Mark,
+                ops: Vec::new(),
+            },
+        ];
+
+        let tables = relux_ir::Tables::new();
+        tables
+            .marker_recordings
+            .insert(definition.clone(), recordings);
+
+        // Register a Cause::Skip whose definition points at the meta. The
+        // production register_cause path uses `skip.cause_id()` as the key,
+        // so do the same here for symmetry.
+        let report = SkipReport {
+            definition: definition.clone(),
+            marker_span: IrSpan::synthetic(),
+            evaluation: SkipEvaluation::Unconditional,
+        };
+        let cause_id = report.cause_id();
+        let suite_causes: relux_core::diagnostics::CauseTable = SharedTable::new();
+        suite_causes.insert(cause_id.clone(), Cause::skip(report));
+
+        let scratch = std::env::temp_dir().join(format!(
+            "relux-log-skipped-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+        std::fs::create_dir_all(&scratch).unwrap();
+
+        let run_ctx = RunContext {
+            run_id: "test".into(),
+            run_dir: scratch.clone(),
+            artifacts_dir: scratch.join("artifacts"),
+            project_root: scratch.clone(),
+            shell_command: "/bin/sh".into(),
+            shell_prompt: "$ ".into(),
+            default_timeout: IrTimeout::tolerance(std::time::Duration::from_secs(5)),
+            test_timeout: IrTimeout::tolerance(std::time::Duration::from_secs(60)),
+            suite_timeout: std::time::Duration::from_secs(300),
+            strategy: RunStrategy::FailFast,
+            flaky: relux_core::config::FlakyConfig::default(),
+            jobs: 1,
+            progress: ProgressMode::Plain,
+        };
+        let base_env = std::sync::Arc::new(LayeredEnv::root(Env::new()));
+
+        let result = log_skipped_test(
+            &meta,
+            std::slice::from_ref(&cause_id),
+            &suite_causes,
+            &run_ctx,
+            base_env,
+            "tests/synthetic.relux",
+            &tables,
+        )
+        .await;
+
+        assert!(matches!(result.outcome, Outcome::Skipped(_)));
+        let log_dir = result
+            .log_dir
+            .clone()
+            .expect("skipped test must have log_dir");
+        assert!(
+            log_dir.join("events.json").exists(),
+            "events.json must exist"
+        );
+        assert!(log_dir.join("event.html").exists(), "event.html must exist");
+
+        // Verify the JSON: outcome.kind == "skip" and SkipRecord.span resolves
+        // to a marker-eval span in the spans map.
+        let bytes = std::fs::read(log_dir.join("events.json")).unwrap();
+        let log: StructuredLog = serde_json::from_slice(&bytes).unwrap();
+        match &log.outcome {
+            TestOutcome::Skip(rec) => {
+                let span = log
+                    .spans
+                    .get(&rec.span)
+                    .expect("SkipRecord.span must exist in spans");
+                assert!(
+                    matches!(
+                        span.kind,
+                        crate::observe::structured::SpanKind::MarkerEval { .. }
+                    ),
+                    "SkipRecord.span must point to a marker-eval span, got: {:?}",
+                    span.kind
+                );
+            }
+            other => panic!("expected TestOutcome::Skip, got {other:?}"),
+        }
+
+        // Flaky markers must reach the rendered MARKERS tree alongside the
+        // skip-triggering one — even on a skipped test.
+        let has_flaky = log.spans.values().any(|s| {
+            matches!(
+                s.kind,
+                crate::observe::structured::SpanKind::MarkerEval {
+                    marker_kind: crate::observe::structured::MarkerEvalKind::Flaky,
+                    ..
+                }
+            )
+        });
+        assert!(
+            has_flaky,
+            "expected a flaky marker-eval span in the skipped-test artifact"
+        );
+
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+
+    #[tokio::test]
+    async fn log_skipped_test_handles_propagated_skip_from_effect() {
+        // Propagated case: the test's own definition has no recordings; the
+        // cause's SkipReport.definition points at the originating effect,
+        // and the effect's recordings live in the side table under that key.
+        use crate::observe::structured::StructuredLog;
+        use crate::observe::structured::TestOutcome;
+        use relux_core::diagnostics::Cause;
+        use relux_core::diagnostics::DefinitionRef;
+        use relux_core::diagnostics::EffectId;
+        use relux_core::diagnostics::EffectName;
+        use relux_core::diagnostics::IrSpan;
+        use relux_core::diagnostics::ModulePath;
+        use relux_core::diagnostics::SkipEvaluation;
+        use relux_core::diagnostics::SkipReport;
+        use relux_core::pure::Env;
+        use relux_core::pure::LayeredEnv;
+        use relux_core::table::SharedTable;
+        use relux_ir::IrTimeout;
+        use relux_ir::TestMeta;
+        use relux_ir::marker::MarkerEvalDecision;
+        use relux_ir::marker::MarkerEvalKind;
+        use relux_ir::marker::MarkerEvalModifier;
+        use relux_ir::marker::MarkerRecording;
+
+        let test_def = DefinitionRef::Test {
+            name: "depends-on-skipped-effect".into(),
+            module: ModulePath("tests/synthetic".into()),
+        };
+        let effect_id = EffectId {
+            module: ModulePath("tests/synthetic".into()),
+            name: EffectName("Mock".into()),
+        };
+        let effect_def = DefinitionRef::Effect(effect_id);
+
+        let meta = TestMeta::new(
+            "depends-on-skipped-effect",
+            None,
+            None as Option<IrTimeout>,
+            test_def.clone(),
+            IrSpan::synthetic(),
+        );
+
+        // Effect's recordings (the originating skip lives here, not on the test).
+        let recordings = vec![MarkerRecording {
+            marker_span: IrSpan::synthetic(),
+            kind: MarkerEvalKind::Skip,
+            modifier: MarkerEvalModifier::If,
+            evaluation: SkipEvaluation::Bare {
+                value: "yes".into(),
+                met: true,
+            },
+            decision: MarkerEvalDecision::Mark,
+            ops: Vec::new(),
+        }];
+        let tables = relux_ir::Tables::new();
+        tables
+            .marker_recordings
+            .insert(effect_def.clone(), recordings);
+
+        let report = SkipReport {
+            definition: effect_def,
+            marker_span: IrSpan::synthetic(),
+            evaluation: SkipEvaluation::Bare {
+                value: "yes".into(),
+                met: true,
+            },
+        };
+        let cause_id = report.cause_id();
+        let suite_causes: relux_core::diagnostics::CauseTable = SharedTable::new();
+        suite_causes.insert(cause_id.clone(), Cause::skip(report));
+
+        let scratch = std::env::temp_dir().join(format!(
+            "relux-log-skipped-propagated-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+        std::fs::create_dir_all(&scratch).unwrap();
+
+        let run_ctx = RunContext {
+            run_id: "test".into(),
+            run_dir: scratch.clone(),
+            artifacts_dir: scratch.join("artifacts"),
+            project_root: scratch.clone(),
+            shell_command: "/bin/sh".into(),
+            shell_prompt: "$ ".into(),
+            default_timeout: IrTimeout::tolerance(std::time::Duration::from_secs(5)),
+            test_timeout: IrTimeout::tolerance(std::time::Duration::from_secs(60)),
+            suite_timeout: std::time::Duration::from_secs(300),
+            strategy: RunStrategy::FailFast,
+            flaky: relux_core::config::FlakyConfig::default(),
+            jobs: 1,
+            progress: ProgressMode::Plain,
+        };
+        let base_env = std::sync::Arc::new(LayeredEnv::root(Env::new()));
+
+        let result = log_skipped_test(
+            &meta,
+            &[cause_id],
+            &suite_causes,
+            &run_ctx,
+            base_env,
+            "tests/synthetic.relux",
+            &tables,
+        )
+        .await;
+
+        let log_dir = result
+            .log_dir
+            .clone()
+            .expect("propagated-skip artifact must have log_dir");
+        let bytes = std::fs::read(log_dir.join("events.json")).unwrap();
+        let log: StructuredLog = serde_json::from_slice(&bytes).unwrap();
+        match &log.outcome {
+            TestOutcome::Skip(rec) => {
+                let span = log
+                    .spans
+                    .get(&rec.span)
+                    .expect("SkipRecord.span must exist");
+                assert!(matches!(
+                    span.kind,
+                    crate::observe::structured::SpanKind::MarkerEval { .. }
+                ));
+            }
+            other => panic!("expected TestOutcome::Skip, got {other:?}"),
+        }
+
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+
+    #[test]
+    fn replay_markers_returns_handles_aligned_with_recordings() {
+        use crate::observe::structured::StructuredLogBuilder;
+        use relux_core::diagnostics::SkipEvaluation;
+        use relux_ir::marker::MarkerEvalDecision;
+        use relux_ir::marker::MarkerEvalKind;
+        use relux_ir::marker::MarkerEvalModifier;
+        use relux_ir::marker::MarkerRecording;
+
+        let (tx, _rx) = crate::observe::progress::channel();
+        let sources = relux_core::table::SharedTable::new();
+        let log = StructuredLogBuilder::new(
+            tx,
+            std::time::Instant::now(),
+            sources,
+            std::sync::Arc::from(std::path::Path::new(".")),
+        );
+
+        let span = relux_core::diagnostics::IrSpan::synthetic();
+        let recordings = vec![
+            MarkerRecording {
+                marker_span: span.clone(),
+                kind: MarkerEvalKind::Skip,
+                modifier: MarkerEvalModifier::If,
+                evaluation: SkipEvaluation::Unconditional,
+                decision: MarkerEvalDecision::Mark,
+                ops: Vec::new(),
+            },
+            MarkerRecording {
+                marker_span: span.clone(),
+                kind: MarkerEvalKind::Flaky,
+                modifier: MarkerEvalModifier::If,
+                evaluation: SkipEvaluation::Unconditional,
+                decision: MarkerEvalDecision::Mark,
+                ops: Vec::new(),
+            },
+        ];
+
+        let handles = replay_markers(&log, &recordings);
+        assert_eq!(handles.len(), recordings.len(), "handles must align 1:1");
+        // Distinct marker-eval spans and distinct bool-check events.
+        assert_ne!(handles[0].span, handles[1].span);
+        assert_ne!(handles[0].event_seq, handles[1].event_seq);
     }
 }
