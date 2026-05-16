@@ -38,6 +38,7 @@ jobs:
           cp -r target/book/suite-tutorial deploy/${VERSION}/suite-tutorial
           cp -r target/book/reference deploy/${VERSION}/reference
           cp docs/landing.html deploy/${VERSION}/index.html
+          cp -r docs/_theme deploy/${VERSION}/_theme
 
       - name: Checkout gh-pages
         uses: actions/checkout@v6

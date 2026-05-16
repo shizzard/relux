@@ -392,3 +392,39 @@ hljs.registerLanguage("relux", function (hljs) {
     ]
   };
 });
+
+// Re-highlight `code.language-relux` blocks. mdBook's `book.js` calls
+// `hljs.highlightBlock` on every `<code>` element BEFORE this script
+// runs (additional-js loads after book.js), so Relux blocks get
+// processed as plain text — hljs marks them with the `hljs` class and
+// `data-highlighted` and refuses to retry. Strip both markers and
+// re-run with the now-registered grammar.
+//
+// In the viewer runtime report this loop is a no-op: SourceView calls
+// `hljs.highlight(src, { language: 'relux' })` on a raw string and
+// never produces `<code class="language-relux">` DOM nodes.
+(function rehighlightRelux() {
+  // mdBook's `book.js` calls `hljs.highlightBlock` on every `<code>`
+  // element BEFORE this script runs (additional-js loads after
+  // book.js), so `language-relux` blocks get processed as plain text
+  // — hljs marks them with the `hljs` class and `data-highlighted`
+  // and refuses to retry. Strip both markers and re-highlight with
+  // the now-registered grammar. `highlightBlock` is deprecated in
+  // v11.11.1 but still functional.
+  //
+  // In the viewer runtime report this loop is a no-op: SourceView
+  // calls `hljs.highlight(src, { language: 'relux' })` on a raw string
+  // and never produces `<code class="language-relux">` DOM nodes.
+  function run() {
+    document.querySelectorAll("code.language-relux").forEach(function (block) {
+      block.classList.remove("hljs");
+      delete block.dataset.highlighted;
+      hljs.highlightBlock(block);
+    });
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", run);
+  } else {
+    run();
+  }
+})();

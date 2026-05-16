@@ -51,20 +51,29 @@ fix:
     rustup run nightly rustfmt --edition 2024 $(find crates -name '*.rs')
 
 # Build tutorial books
-books: _sync-highlight-js
+books: _sync-book-assets
     mdbook build docs/dsl-tutorial
     mdbook build docs/suite-tutorial
     mdbook build docs/reference
 
-# Copy the canonical hljs grammar into each book directory.
-# The per-book copies are gitignored; this step regenerates them
-# before mdbook reads them.
-_sync-highlight-js:
+# Copy the canonical hljs grammar, theme CSS, and the vendored
+# highlight.js v11 into each book directory. The vendored hljs goes
+# into `theme/highlight.js` — mdBook's theme-override mechanism
+# replaces its built-in v10.1.1 with our v11 so the runtime report and
+# the books use the same hljs version (and grammar). The per-book
+# copies are all gitignored; this step regenerates them before mdbook
+# reads them.
+_sync-book-assets:
     #!/usr/bin/env bash
     set -euo pipefail
-    src=crates/relux-runtime/src/report/highlight-relux.js
+    hljs_gz=vendor/highlight-11.11.1.min.js.gz
+    grammar=crates/relux-runtime/src/report/highlight-relux.js
+    css=docs/_theme/relux.css
     for book in docs/dsl-tutorial docs/reference docs/suite-tutorial; do
-        cp "$src" "$book/highlight-relux.js"
+        mkdir -p "$book/theme"
+        gunzip -c "$hljs_gz" > "$book/theme/highlight.js"
+        cp "$grammar" "$book/highlight-relux.js"
+        cp "$css" "$book/relux.css"
     done
 
 # Run all tests (unit + e2e)
