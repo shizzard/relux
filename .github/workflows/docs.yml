@@ -19,6 +19,21 @@ jobs:
         with:
           mdbook-version: latest
 
+      # Mirror of the `_sync-book-assets` recipe in justfile: each
+      # book needs the canonical hljs grammar, the theme CSS, and a
+      # `theme/highlight.js` override (the vendored v11 hljs, since
+      # mdBook bundles v10.1.1). Per-book copies are gitignored, so
+      # they must be regenerated before mdbook reads them.
+      - name: Sync book assets
+        run: |
+          set -euo pipefail
+          for book in docs/dsl-tutorial docs/reference docs/suite-tutorial; do
+            mkdir -p "$book/theme"
+            gunzip -c vendor/highlight-11.11.1.min.js.gz > "$book/theme/highlight.js"
+            cp crates/relux-runtime/src/report/highlight-relux.js "$book/highlight-relux.js"
+            cp docs/_theme/relux.css "$book/relux.css"
+          done
+
       - name: Build DSL tutorial
         run: mdbook build docs/dsl-tutorial
 
