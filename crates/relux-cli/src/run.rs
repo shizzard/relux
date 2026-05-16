@@ -183,7 +183,7 @@ pub async fn cmd_run(matches: &clap::ArgMatches) {
     report.eprint();
 
     // Run summary (index.html)
-    relux_runtime::report::run_index::generate(&run_dir, &results);
+    relux_runtime::report::run_index::generate(&run_dir, &results, exec.wall_duration, jobs);
 
     // Optional artifact formats
     let suite_name = cfg.name.as_deref().unwrap_or("relux");
