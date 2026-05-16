@@ -51,10 +51,21 @@ fix:
     rustup run nightly rustfmt --edition 2024 $(find crates -name '*.rs')
 
 # Build tutorial books
-books:
+books: _sync-highlight-js
     mdbook build docs/dsl-tutorial
     mdbook build docs/suite-tutorial
     mdbook build docs/reference
+
+# Copy the canonical hljs grammar into each book directory.
+# The per-book copies are gitignored; this step regenerates them
+# before mdbook reads them.
+_sync-highlight-js:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    src=crates/relux-runtime/src/report/highlight-relux.js
+    for book in docs/dsl-tutorial docs/reference docs/suite-tutorial; do
+        cp "$src" "$book/highlight-relux.js"
+    done
 
 # Run all tests (unit + e2e)
 test: unit e2e

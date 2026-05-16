@@ -326,22 +326,28 @@
       opacity: 0.3;
     }
   }
-  .code :global(.hljs-keyword),
-  .code :global(.hljs-built_in),
-  .code :global(.hljs-meta) {
+  .code :global(.hljs-keyword) {
     color: var(--accent);
+    font-weight: 700;
   }
-  .code :global(.hljs-string) {
-    color: var(--accent-2);
+  .code :global(.hljs-duration) {
+    font-weight: 400;
   }
+  .code :global(.hljs-variable),
   .code :global(.hljs-subst) {
     color: var(--info);
   }
-  .code :global(.hljs-number) {
-    color: var(--danger);
-  }
   .code :global(.hljs-type) {
-    color: var(--info);
+    color: var(--accent-3);
+    font-weight: 700;
+  }
+  .code :global(.hljs-title),
+  .code :global(.hljs-built_in) {
+    color: var(--accent-3);
+  }
+  .code :global(.hljs-string),
+  .code :global(.hljs-number) {
+    color: var(--accent-2);
   }
   .code :global(.hljs-comment) {
     color: var(--ink-faint);
