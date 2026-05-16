@@ -2,6 +2,7 @@
   import type { ViewerState } from '../lib/state.svelte';
   import { formatDuration } from '../lib/format';
   import { outcomeClass } from '../lib/theme';
+  import Chip from './Chip.svelte';
 
   let { state }: { state: ViewerState } = $props();
 
@@ -27,15 +28,8 @@
   </span>
   <span class="pill {cls}">{test.outcome}</span>
   <span class="chips">
-    <button class="chip warn" onclick={() => state.openEnv()} title="environment (cmd-E)">
-      env <span class="kbd">&#x2318;E</span>
-    </button>
-    <button class="chip ok" onclick={() => state.openShells()} title="all shells (cmd-\\)">
-      shells &middot; {shellCount} <span class="kbd">&#x2318;\</span>
-    </button>
-    <span class="chip search" aria-disabled="true" title={`search (cmd-K) \u2014 deferred`}>
-      search <span class="kbd">&#x2318;K</span>
-    </span>
+    <Chip kbd="E" onclick={() => state.openEnv()} title="environment (E)">env</Chip>
+    <Chip kbd="S" onclick={() => state.openShells()} title="all shells (S)">shells &middot; {shellCount}</Chip>
   </span>
   <span class="timing">{duration} &middot; {eventCount} events &middot; {spanCount} spans</span>
 </header>
@@ -97,47 +91,6 @@
   .chips {
     display: flex;
     gap: var(--gap-xs);
-  }
-  .chip {
-    appearance: none;
-    background: transparent;
-    border: 1px solid var(--ink-faint);
-    color: var(--ink-dim);
-    font: inherit;
-    font-size: 0.75rem;
-    border-radius: 100px;
-    padding: 2px 10px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: baseline;
-    gap: 6px;
-  }
-  .chip:hover {
-    color: var(--ink);
-    border-color: var(--ink-dim);
-  }
-  .chip.warn {
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-  .chip.warn:hover {
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-  }
-  .chip.ok {
-    color: var(--accent-2);
-    border-color: var(--accent-2);
-  }
-  .chip.ok:hover {
-    background: color-mix(in srgb, var(--accent-2) 12%, transparent);
-  }
-  .chip.search {
-    cursor: not-allowed;
-    opacity: 0.6;
-  }
-  .kbd {
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    opacity: 0.75;
   }
   .timing {
     margin-left: auto;

@@ -50,6 +50,9 @@
   const total = $derived(rows.length);
   const filteredCount = $derived(filtered.length);
 
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+  const kbdLabel = isMac ? '\u2318S' : 'Ctrl+S';
+
   function buildRows(): EnvRow[] {
     return state.data.env.bootstrap.map(([k, v]) => ({
       key: k,
@@ -116,11 +119,13 @@
           <span class="glyph">&#x2315;</span>
           <input
             type="search"
+            data-search-input
             placeholder={`filter\u2026`}
             bind:value={state.envFilter}
             aria-label="filter env vars"
           />
           <span class="count">{filteredCount} / {total}</span>
+          <kbd class="kbd" title="cycle search inputs">{kbdLabel}</kbd>
         </div>
         <div class="scope-toggle">
           <button class:active={state.envFilterScope === 'name'} onclick={() => (state.envFilterScope = 'name')}>name</button>
@@ -192,6 +197,17 @@
     font-family: var(--font-mono);
     color: var(--ink-faint);
     font-size: 0.72rem;
+  }
+  .search-input .kbd {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 600;
+    line-height: 1;
+    padding: 2px 4px;
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
   }
   .scope-toggle {
     display: flex;

@@ -1,47 +1,20 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { ViewerState } from '../lib/state.svelte';
-  import type { FoldedEvent, Row } from '../lib/flatten';
+  import type { Row } from '../lib/flatten';
   import { foldedSeqs, leadEvent } from '../lib/flatten';
   import { toNumber as n } from '../lib/derive';
-  import { foldedFamily } from '../lib/format';
   import BifRow from './BifRow.svelte';
   import EventRow from './EventRow.svelte';
   import SpanEntryRow from './SpanEntryRow.svelte';
   import GapRow from './GapRow.svelte';
   import LogBar from './LogBar.svelte';
+  import Chip from './Chip.svelte';
+  import FilterPopup from './FilterPopup.svelte';
 
   let { state }: { state: ViewerState } = $props();
 
-  const allRows = $derived(state.rows);
-  const visibleRows = $derived(filterRows(allRows));
-
-  function isSendMatch(f: FoldedEvent): boolean {
-    if (f.kind === 'match') return true;
-    if (f.kind === 'single') {
-      const k = f.event.kind;
-      return k === 'send' || k === 'match-start' || k === 'match-done' || k === 'timeout';
-    }
-    return false;
-  }
-
-  function filterRows(rows: Row[]): Row[] {
-    switch (state.filter) {
-      case 'all':
-        return rows;
-      case 'errors':
-        return rows.filter((r) => {
-          if (r.kind === 'event') return foldedFamily(r.folded) === 'danger';
-          if (r.kind === 'log-bar') return r.level === 'error';
-          return false;
-        });
-      case 'send-match':
-        return rows.filter((r) => {
-          if (r.kind !== 'event') return false;
-          return isSendMatch(r.folded);
-        });
-    }
-  }
+  const visibleRows = $derived(state.visibleRows);
 
   function rowKey(row: Row, index: number): string {
     if (row.kind === 'event') return `e:${n(leadEvent(row.folded).seq)}`;
@@ -161,9 +134,30 @@
     {/each}
   </ol>
   <footer class="chips">
-    <button class="chip" class:active={state.filter === 'all'} onclick={() => (state.filter = 'all')}>filter</button>
-    <button class="chip warn" class:active={state.filter === 'errors'} onclick={() => (state.filter = state.filter === 'errors' ? 'all' : 'errors')}>errors only</button>
-    <button class="chip" class:active={state.filter === 'send-match'} onclick={() => (state.filter = state.filter === 'send-match' ? 'all' : 'send-match')}>send / match</button>
+    <span class="chip-anchor">
+      <Chip
+        kbd="F"
+        active={state.hiddenEventTypes.size > 0}
+        onclick={() => state.toggleFilter()}
+        title="filter events (F)"
+      >filter</Chip>
+      {#if state.openModal === 'filter'}
+        <FilterPopup {state} />
+      {/if}
+    </span>
+    <Chip
+      kbd="T"
+      active={state.isErrorPathPresetActive}
+      disabled={!state.hasErrorPath}
+      onclick={() => state.toggleErrorPath()}
+      title={state.hasErrorPath ? 'error path (T)' : 'no errors in this run'}
+    >error path</Chip>
+    <Chip
+      kbd="M"
+      active={state.isSendMatchPresetActive}
+      onclick={() => state.toggleSendMatch()}
+      title="send / match only (M)"
+    >send / match only</Chip>
   </footer>
 </section>
 
@@ -176,12 +170,13 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: visible;
   }
   .rows {
     flex: 1 1 0;
     min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     list-style: none;
     margin: 0;
     padding: 0;
@@ -197,28 +192,8 @@
     border-top: 1px dashed var(--border);
     flex: 0 0 auto;
   }
-  .chip {
-    appearance: none;
-    background: transparent;
-    border: 1px solid var(--ink-faint);
-    color: var(--ink-dim);
-    font: inherit;
-    font-size: 0.72rem;
-    border-radius: 100px;
-    padding: 1px 8px;
-    cursor: pointer;
-  }
-  .chip:hover {
-    color: var(--ink);
-    border-color: var(--ink-dim);
-  }
-  .chip.warn {
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-  .chip.active {
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-    color: var(--accent);
-    border-color: var(--accent);
+  .chip-anchor {
+    position: relative;
+    display: inline-flex;
   }
 </style>

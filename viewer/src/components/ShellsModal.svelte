@@ -3,7 +3,7 @@
   import { formatBytes, formatDuration } from '../lib/format';
   import { toNumber as n } from '../lib/derive';
   import Modal from './Modal.svelte';
-  import BufferRegions from './sections/BufferRegions.svelte';
+  import SearchableBuffer from './sections/SearchableBuffer.svelte';
   import ValueCell from './ValueCell.svelte';
 
   let { state }: { state: ViewerState } = $props();
@@ -57,7 +57,7 @@
     if (!live) return { label: 'unknown', cls: 'dead' };
     switch (live.state) {
       case 'ready':
-        return { label: 'ready', cls: 'ok' };
+        return { label: 'running', cls: 'ok' };
       case 'busy':
         return { label: 'awaiting input', cls: 'busy' };
       case 'ended':
@@ -112,31 +112,32 @@
         {@const stateInfo = shellStateLabel(sh.marker)}
         {@const regions = state.bufferRegionsAt.get(sh.marker) ?? null}
         <div class="sh-card" class:current={isCurrent} class:ended={isEnded}>
-          <div class="meta-col">
-            <div class="sh-name">
-              {sh.name}
+          <div class="meta-band">
+            <div class="head-line">
+              <span class="sh-name">{sh.name}</span>
+              <span class="sh-cmd">
+                <ValueCell value={sh.command} {state} expandKey={`sh:${sh.marker}:cmd`} />
+              </span>
               {#if isCurrent}<span class="badge">&#x2605; this event</span>{/if}
+              <span class="sh-state {stateInfo.cls}">
+                <span class="dot"></span>
+                <span class="state-label">{stateInfo.label}</span>
+              </span>
             </div>
-            <div class="sh-cmd">
-              <ValueCell value={sh.command} {state} expandKey={`sh:${sh.marker}:cmd`} />
+            <div class="stats-line">
+              <span>spawned <b>{formatDuration(sh.spawn_ts)}</b></span>
+              <span class="sep">&middot;</span>
+              <span><b>{formatBytes(bufferSize(sh.marker))}</b></span>
+              <span class="sep">&middot;</span>
+              <span><b>{bufferEventCount(sh.marker)}</b> ev</span>
+              {#if isEnded && sh.terminate_ts !== null}
+                <span class="sep">&middot;</span>
+                <span>ended <b>{formatDuration(sh.terminate_ts)}</b></span>
+              {/if}
             </div>
-            <div class="sh-state {stateInfo.cls}">
-              <span class="dot"></span>
-              <span class="state-label">{stateInfo.label}</span>
-            </div>
-            <div class="filler"></div>
-            <div class="sh-row"><span>spawned</span><b>{formatDuration(sh.spawn_ts)}</b></div>
-            {#if isEnded && sh.terminate_ts !== null}
-              <div class="sh-row"><span>ended</span><b>{formatDuration(sh.terminate_ts)}</b></div>
-            {/if}
-            <div class="sh-row"><span>buffer size</span><b>{formatBytes(bufferSize(sh.marker))}</b></div>
-            <div class="sh-row"><span>buffer events</span><b>{bufferEventCount(sh.marker)}</b></div>
           </div>
           <div class="buf-col">
-            <BufferRegions {regions} />
-            {#if isEnded && sh.terminate_ts !== null}
-              <p class="ended-note">&mdash; shell ended at t = {formatDuration(sh.terminate_ts)} (before this event) &mdash;</p>
-            {/if}
+            <SearchableBuffer {regions} />
           </div>
         </div>
       {/each}
@@ -155,19 +156,21 @@
     min-height: 0;
     overflow-y: auto;
     padding: var(--gap-md) var(--gap-lg);
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-rows: calc((100% - var(--gap-md)) / 2);
     gap: var(--gap-md);
   }
   .sh-card {
     display: grid;
-    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     gap: 0;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--paper-2);
     overflow: hidden;
-    min-height: 168px;
+    min-height: 0;
+    min-width: 0;
   }
   .sh-card.current {
     border-color: var(--accent);
@@ -176,13 +179,19 @@
   .sh-card.ended {
     opacity: 0.62;
   }
-  .meta-col {
+  .meta-band {
     padding: var(--gap-sm) var(--gap-md);
-    border-right: 1px dashed var(--border);
+    border-bottom: 1px dashed var(--border);
     background: rgba(0, 0, 0, 0.18);
     display: flex;
     flex-direction: column;
     gap: 4px;
+    min-width: 0;
+  }
+  .head-line {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-sm);
     min-width: 0;
   }
   .sh-name {
@@ -190,12 +199,16 @@
     font-size: 1.05rem;
     font-weight: 600;
     color: var(--ink);
-    display: flex;
-    align-items: baseline;
-    gap: var(--gap-xs);
+    flex: 0 0 auto;
   }
   .sh-card.current .sh-name {
     color: var(--accent);
+  }
+  .sh-cmd {
+    font-size: 0.76rem;
+    color: var(--ink-dim);
+    flex: 1 1 auto;
+    min-width: 0;
   }
   .badge {
     font-size: 0.65rem;
@@ -203,11 +216,7 @@
     border: 1px solid var(--accent);
     padding: 1px 6px;
     border-radius: 100px;
-  }
-  .sh-cmd {
-    font-size: 0.76rem;
-    color: var(--ink-dim);
-    min-width: 0;
+    flex: 0 0 auto;
   }
   .sh-state {
     display: inline-flex;
@@ -215,6 +224,8 @@
     gap: 6px;
     font-family: var(--font-mono);
     font-size: 0.78rem;
+    flex: 0 0 auto;
+    margin-left: auto;
   }
   .sh-state .dot {
     width: 8px;
@@ -248,35 +259,29 @@
   .sh-state.err .dot {
     background: var(--danger);
   }
-  .filler {
-    flex: 1 1 auto;
-  }
-  .sh-row {
+  .stats-line {
     font-family: var(--font-mono);
     font-size: 0.72rem;
     color: var(--ink-faint);
     display: flex;
-    justify-content: space-between;
-    gap: var(--gap-sm);
+    flex-wrap: wrap;
+    gap: var(--gap-xs);
   }
-  .sh-row b {
+  .stats-line b {
     color: var(--ink-dim);
     font-weight: 500;
+  }
+  .stats-line .sep {
+    color: var(--ink-faint);
   }
   .buf-col {
     position: relative;
     min-width: 0;
+    min-height: 0;
     overflow: hidden;
     padding: var(--gap-xs) var(--gap-sm);
     display: flex;
     flex-direction: column;
     align-items: stretch;
-  }
-  .ended-note {
-    margin: 4px 0 0;
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    color: var(--ink-faint);
-    font-style: italic;
   }
 </style>

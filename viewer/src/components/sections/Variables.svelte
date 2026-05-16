@@ -2,6 +2,7 @@
   import type { ViewerState } from '../../lib/state.svelte';
   import Panel from '../Panel.svelte';
   import ValueCell from '../ValueCell.svelte';
+  import Chip from '../Chip.svelte';
 
   let { state }: { state: ViewerState } = $props();
 
@@ -46,7 +47,7 @@
     {/if}
     <footer class="env-pointer">
       <span class="muted">env vars live in the</span>
-      <button class="chip warn" onclick={() => state.openEnv()}>env <span class="kbd">&#x2318;E</span></button>
+      <Chip kbd="E" onclick={() => state.openEnv()} title="environment (E)">env</Chip>
       <span class="muted">modal</span>
     </footer>
   </div>
@@ -97,33 +98,11 @@
     border-top: 1px dashed var(--border);
     display: flex;
     gap: var(--gap-xs);
-    align-items: baseline;
+    align-items: center;
     color: var(--ink-faint);
     font-size: 0.75rem;
   }
   .muted {
     color: var(--ink-faint);
-  }
-  .chip {
-    appearance: none;
-    background: transparent;
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    font: inherit;
-    font-size: 0.7rem;
-    border-radius: 100px;
-    padding: 1px 8px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: baseline;
-    gap: 4px;
-  }
-  .chip:hover {
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-  }
-  .kbd {
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
-    opacity: 0.85;
   }
 </style>

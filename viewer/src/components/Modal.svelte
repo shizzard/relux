@@ -51,8 +51,6 @@
       if (e.key === 'Escape') {
         e.preventDefault();
         onClose();
-      } else {
-        e.stopPropagation();
       }
     }}
   >

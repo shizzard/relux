@@ -15,6 +15,99 @@ export type FoldedEvent =
 
 export type LogLevel = 'log' | 'warning' | 'error';
 
+// Stable identifiers for the event types as the user perceives them in the
+// events list (post-flattening). Folded pairs (match, sleep) collapse to a
+// single id; the match fold splits on outcome so presets can target only
+// the timeout case. Raw kinds that never render (HIDDEN_EVENT_KINDS) have
+// no id.
+export type EventTypeId =
+  | 'send'
+  | 'match'
+  | 'match-timeout'
+  | 'sleep'
+  | 'fail-pattern-set'
+  | 'fail-pattern-cleared'
+  | 'fail-pattern-triggered'
+  | 'timeout-set'
+  | 'var-let'
+  | 'var-assign'
+  | 'var-read'
+  | 'interpolation'
+  | 'pure-match'
+  | 'bool-check'
+  | 'log'
+  | 'warning'
+  | 'error';
+
+export const ALL_EVENT_TYPE_IDS: readonly EventTypeId[] = [
+  'send',
+  'match',
+  'match-timeout',
+  'sleep',
+  'fail-pattern-set',
+  'fail-pattern-cleared',
+  'fail-pattern-triggered',
+  'timeout-set',
+  'var-let',
+  'var-assign',
+  'var-read',
+  'interpolation',
+  'pure-match',
+  'bool-check',
+  'log',
+  'warning',
+  'error',
+];
+
+export function foldedTypeId(f: FoldedEvent): EventTypeId | null {
+  if (f.kind === 'sleep') return 'sleep';
+  if (f.kind === 'match') return f.outcome.kind === 'timeout' ? 'match-timeout' : 'match';
+  return singleEventTypeId(f.event.kind);
+}
+
+export function singleEventTypeId(k: Event['kind']): EventTypeId | null {
+  switch (k) {
+    case 'send':
+      return 'send';
+    case 'match-start':
+    case 'match-done':
+      return 'match';
+    case 'timeout':
+      return 'match-timeout';
+    case 'sleep-start':
+    case 'sleep-done':
+      return 'sleep';
+    case 'fail-pattern-set':
+      return 'fail-pattern-set';
+    case 'fail-pattern-cleared':
+      return 'fail-pattern-cleared';
+    case 'fail-pattern-triggered':
+      return 'fail-pattern-triggered';
+    case 'timeout-set':
+      return 'timeout-set';
+    case 'var-let':
+      return 'var-let';
+    case 'var-assign':
+      return 'var-assign';
+    case 'var-read':
+      return 'var-read';
+    case 'interpolation':
+      return 'interpolation';
+    case 'pure-match':
+      return 'pure-match';
+    case 'bool-check':
+      return 'bool-check';
+    case 'log':
+      return 'log';
+    case 'warning':
+      return 'warning';
+    case 'error':
+      return 'error';
+    default:
+      return null;
+  }
+}
+
 export type Row =
   | { kind: 'span-entry'; span: Span; depth: number }
   | { kind: 'event'; folded: FoldedEvent; depth: number }

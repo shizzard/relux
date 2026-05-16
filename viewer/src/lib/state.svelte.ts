@@ -19,11 +19,46 @@ import {
   type SpanId,
 } from './derive';
 import { capturesAtSeq, capturesAtSpan, varsAtSeq, varsAtSpan } from './scope';
-import { flattenRows, foldCloseIndex, type Row } from './flatten';
+import {
+  ALL_EVENT_TYPE_IDS,
+  flattenRows,
+  foldCloseIndex,
+  foldEvents,
+  foldedTypeId,
+  leadEvent,
+  type EventTypeId,
+  type Row,
+} from './flatten';
 
-export type OpenModal = 'env' | 'shells' | null;
-export type TreeFilter = 'all' | 'errors' | 'send-match';
+export type OpenModal = 'env' | 'shells' | 'filter' | null;
 export type EnvFilterScope = 'name' | 'value' | 'name-matches';
+
+const ERROR_PATH_VISIBLE: ReadonlySet<EventTypeId> = new Set<EventTypeId>([
+  'error',
+  'fail-pattern-triggered',
+  'match-timeout',
+]);
+
+const SEND_MATCH_VISIBLE: ReadonlySet<EventTypeId> = new Set<EventTypeId>([
+  'send',
+  'match',
+  'match-timeout',
+]);
+
+const ERROR_PATH_HIDDEN: ReadonlySet<EventTypeId> = complementOf(ERROR_PATH_VISIBLE);
+const SEND_MATCH_HIDDEN: ReadonlySet<EventTypeId> = complementOf(SEND_MATCH_VISIBLE);
+
+function complementOf(visible: ReadonlySet<EventTypeId>): ReadonlySet<EventTypeId> {
+  const out = new Set<EventTypeId>();
+  for (const id of ALL_EVENT_TYPE_IDS) if (!visible.has(id)) out.add(id);
+  return out;
+}
+
+function setEquals<T>(a: ReadonlySet<T>, b: ReadonlySet<T>): boolean {
+  if (a.size !== b.size) return false;
+  for (const v of a) if (!b.has(v)) return false;
+  return true;
+}
 
 export class ViewerState {
   // Definite-assignment assertion (`!`): set by the constructor before any
@@ -39,12 +74,32 @@ export class ViewerState {
   expandedValueRows = $state<Set<string>>(new Set());
 
   openModal = $state<OpenModal>(null);
-  filter = $state<TreeFilter>('all');
+  hiddenEventTypes = $state<Set<EventTypeId>>(new Set());
 
   envFilter = $state<string>('');
   envFilterScope = $state<EnvFilterScope>('name-matches');
 
+  errorPathSpanId = $derived<SpanId | null>(
+    this.data.failure && this.data.failure.span !== null
+      ? n(this.data.failure.span)
+      : null,
+  );
+
+  hasErrorPath = $derived<boolean>(this.errorPathSpanId !== null);
+
+  aliveSpans = $derived<Set<SpanId>>(this.computeAliveSpans());
+
+  isErrorPathPresetActive = $derived<boolean>(
+    setEquals(this.hiddenEventTypes, ERROR_PATH_HIDDEN),
+  );
+
+  isSendMatchPresetActive = $derived<boolean>(
+    setEquals(this.hiddenEventTypes, SEND_MATCH_HIDDEN),
+  );
+
   rows = $derived<Row[]>(flattenRows(this.data, this.expandedSpans));
+
+  visibleRows = $derived<Row[]>(this.computeVisibleRows());
 
   selected = $derived<Event | null>(
     this.selectedEventSeq === null ? null : eventBySeq(this.data, this.selectedEventSeq),
@@ -132,6 +187,34 @@ export class ViewerState {
     this.selectedEventSeq = null;
   }
 
+  toggleErrorPath(): void {
+    if (!this.hasErrorPath) return;
+    this.hiddenEventTypes = this.isErrorPathPresetActive
+      ? new Set()
+      : new Set(ERROR_PATH_HIDDEN);
+  }
+
+  toggleSendMatch(): void {
+    this.hiddenEventTypes = this.isSendMatchPresetActive
+      ? new Set()
+      : new Set(SEND_MATCH_HIDDEN);
+  }
+
+  toggleEventType(id: EventTypeId): void {
+    const next = new Set(this.hiddenEventTypes);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    this.hiddenEventTypes = next;
+  }
+
+  showAllEventTypes(): void {
+    this.hiddenEventTypes = new Set();
+  }
+
+  hideAllEventTypes(): void {
+    this.hiddenEventTypes = new Set(ALL_EVENT_TYPE_IDS);
+  }
+
   toggleSpan(id: SpanId): void {
     const next = new Set(this.expandedSpans);
     if (next.has(id)) next.delete(id);
@@ -163,8 +246,54 @@ export class ViewerState {
     if (this.openModal === 'shells') this.openModal = null;
   }
 
+  openFilter(): void {
+    this.openModal = 'filter';
+  }
+
+  closeFilter(): void {
+    if (this.openModal === 'filter') this.openModal = null;
+  }
+
+  toggleFilter(): void {
+    if (this.openModal === 'filter') this.openModal = null;
+    else this.openModal = 'filter';
+  }
+
   closeModal(): void {
     this.openModal = null;
+  }
+
+  private computeAliveSpans(): Set<SpanId> {
+    const out = new Set<SpanId>();
+    if (this.hiddenEventTypes.size === 0) return out;
+    const hidden = this.hiddenEventTypes;
+    const folded = foldEvents(this.data.events);
+    for (const fe of folded) {
+      const id = foldedTypeId(fe);
+      if (id === null) continue;
+      if (hidden.has(id)) continue;
+      const spanId = n(leadEvent(fe).span);
+      for (const a of ancestors(this.data, spanId)) {
+        out.add(n(a.id));
+      }
+    }
+    return out;
+  }
+
+  private computeVisibleRows(): Row[] {
+    if (this.hiddenEventTypes.size === 0) return this.rows;
+    const hidden = this.hiddenEventTypes;
+    const alive = this.aliveSpans;
+    return this.rows.filter((r) => {
+      if (r.kind === 'span-entry') return alive.has(n(r.span.id));
+      if (r.kind === 'bif-row') return alive.has(n(r.span.id));
+      if (r.kind === 'event') {
+        const id = foldedTypeId(r.folded);
+        return id !== null && !hidden.has(id);
+      }
+      if (r.kind === 'log-bar') return !hidden.has(r.level as EventTypeId);
+      return false;
+    });
   }
 
   private computeBufferRegions(): Map<string, BufferRegions> {

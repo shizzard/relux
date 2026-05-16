@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ViewerState } from '../../lib/state.svelte';
   import Panel from '../Panel.svelte';
-  import BufferRegions from './BufferRegions.svelte';
+  import SearchableBuffer from './SearchableBuffer.svelte';
   import { formatDuration, formatTimeout } from '../../lib/format';
 
   let { state }: { state: ViewerState } = $props();
@@ -56,7 +56,7 @@
     <p class="empty">this event has no shell context.</p>
   {:else}
     <div class="wrap">
-      <BufferRegions {regions} />
+      <SearchableBuffer {regions} />
     </div>
   {/if}
 </Panel>
