@@ -2,6 +2,7 @@
   import type { ViewerState } from '../lib/state.svelte';
   import { copy } from '../lib/clipboard';
   import Modal from './Modal.svelte';
+  import NameCell from './NameCell.svelte';
   import ValueCell from './ValueCell.svelte';
 
   let { state }: { state: ViewerState } = $props();
@@ -143,7 +144,7 @@
           <div class="group-header">&mdash; {GROUP_LABEL[group.group]} ({group.rows.length})</div>
           {#each group.rows as row (row.key)}
             <div class="env-row">
-              <span class="k">{row.key}</span>
+              <span class="k"><NameCell name={row.key} /></span>
               <span class="v">
                 <ValueCell value={row.value} {state} expandKey={`env:${row.key}`} />
               </span>
@@ -261,12 +262,6 @@
     font-family: var(--font-mono);
     font-size: 0.78rem;
     color: var(--ink);
-  }
-  .env-row .k {
-    color: var(--ink);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .env-row .v {
     color: var(--ink-dim);

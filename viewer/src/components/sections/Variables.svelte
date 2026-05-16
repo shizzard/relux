@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ViewerState } from '../../lib/state.svelte';
   import Panel from '../Panel.svelte';
+  import NameCell from '../NameCell.svelte';
   import ValueCell from '../ValueCell.svelte';
   import Chip from '../Chip.svelte';
 
@@ -28,7 +29,7 @@
         <tbody>
           {#each captures as [name, value] (`cap:${name}`)}
             <tr>
-              <th class="cap">${name}</th>
+              <th class="cap"><NameCell name={`$${name}`} accent /></th>
               <td>
                 <ValueCell {value} {state} expandKey={`var:cap:${name}`} accent />
               </td>
@@ -36,7 +37,7 @@
           {/each}
           {#each vars as [name, value] (`var:${name}`)}
             <tr>
-              <th>{name}</th>
+              <th><NameCell name={name} /></th>
               <td>
                 <ValueCell {value} {state} expandKey={`var:${name}`} />
               </td>
@@ -80,7 +81,7 @@
     font-weight: 400;
     padding: 2px 8px 2px 0;
     vertical-align: top;
-    white-space: nowrap;
+    max-width: 12em;
   }
   .kv th.cap {
     color: var(--accent);

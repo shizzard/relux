@@ -26,6 +26,7 @@
     formatDuration,
     formatTimeoutLine,
   } from '../lib/format';
+  import NameCell from './NameCell.svelte';
   import ValueCell from './ValueCell.svelte';
 
   type Mode =
@@ -521,7 +522,7 @@
       {:else}
         {@const key = expandedKey(row, i)}
         <div class="kv-row">
-          <div class="k">{row.key}</div>
+          <div class="k"><NameCell name={row.key} /></div>
           <div class="v" class:accent={row.accent}>
             {#if row.mono}
               <ValueCell value={row.value} {state} expandKey={key} accent={row.accent} />

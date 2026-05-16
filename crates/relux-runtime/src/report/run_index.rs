@@ -199,9 +199,7 @@ a.row:hover > .duration {
 .row .test .name {
   color: var(--ink);
   font-size: 0.95rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-word;
 }
 .row .test .path {
   color: var(--ink-faint);
