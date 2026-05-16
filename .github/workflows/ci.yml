@@ -82,6 +82,8 @@ jobs:
             ${{ runner.os }}-cargo-test-
 
       - name: Unit tests
+        env:
+          RUST_BACKTRACE: "1"
         run: cargo test --workspace
 
   build:
