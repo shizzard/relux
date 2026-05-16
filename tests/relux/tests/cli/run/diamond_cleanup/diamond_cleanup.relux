@@ -23,9 +23,15 @@ test "diamond shared dep cleans up after both parents, exactly once" ~60s {
         match_ok()
 
         // E0 line number > E1 line number AND > E2 line number.
+        // Assignment-only sends produce no stdout, so each one needs an
+        // explicit `match_prompt()` — otherwise the prompts stack onto
+        // one line and `^OK$` can't anchor against the final echo.
         > e0=$(grep -n '^E0$' ${marker} | cut -d: -f1)
+        match_prompt()
         > e1=$(grep -n '^E1$' ${marker} | cut -d: -f1)
+        match_prompt()
         > e2=$(grep -n '^E2$' ${marker} | cut -d: -f1)
+        match_prompt()
         > [ "$e0" -gt "$e1" ] && [ "$e0" -gt "$e2" ] && echo OK
         <? ^OK$
         match_ok()

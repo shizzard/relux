@@ -3,6 +3,7 @@
 .idea
 .worktrees
 .worktrees
+.claude
 /viewer/node_modules
 /viewer/dist
 /viewer/src/types
