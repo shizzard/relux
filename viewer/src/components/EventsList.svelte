@@ -199,7 +199,7 @@
   .chips {
     display: flex;
     gap: var(--gap-xs);
-    padding: var(--gap-xs) var(--gap-sm);
+    padding: var(--gap-sm) var(--gap-md);
     border-top: 1px dashed var(--border);
     flex: 0 0 auto;
   }
