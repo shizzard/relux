@@ -148,7 +148,7 @@ test "double echo" {
 
 Run this test in your head. For each of the four operations, trace the buffer contents and the cursor position. How many commands would actually be executed in the shell? Write down your predictions.
 
-Then run the test with `relux run` and open the event log at `relux/out/latest/index.html`. Compare the event log against your predictions.
+Then run the test with `relux run` and open the run index at `relux/out/latest/index.html`, then drill into the test's viewer. Compare the events against your predictions.
 
 Now think about what the right way to write this test would be.
 

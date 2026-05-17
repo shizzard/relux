@@ -266,7 +266,7 @@ test "wait for service startup" {
 
 The test starts a service in the background, waits two seconds for it to initialize, then checks its health endpoint.
 
-**`log(message)`** writes a message to the test's event log — the same log you see in the HTML report at `relux/out/latest/`. It appears as a log event row in the event timeline, timestamped alongside sends and matches. This is useful for marking phases of a complex test, recording diagnostic information, or leaving notes for whoever reads the report after a failure.
+**`log(message)`** writes a message to the test's event log — visible as a log event row in the per-test viewer's events list, timestamped alongside sends and matches. This is useful for marking phases of a complex test, recording diagnostic information, or leaving notes for whoever reads the report after a failure.
 
 ```relux
 log("about to start the server")
