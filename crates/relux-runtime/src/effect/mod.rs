@@ -356,7 +356,10 @@ impl EffectManager {
         // 4. Recursively instantiate sub-dependencies. Each pair = (export, guard).
         //    The `?` below is safe without guard release: `dep_guards` hasn't
         //    been populated yet, and `instantiate`'s own partial-batch
-        //    rollback handles anything it acquired before failing.
+        //    rollback handles anything it acquired before failing. The
+        //    effect's own cleanup body is also not invoked here — it can
+        //    reference dep-exposed vars, and at this point deps don't exist,
+        //    so there is nothing for cleanup to act on.
         let effect_vars = scope.vars().lock().await.clone();
         let exported_deps = self
             .instantiate(effect.starts(), &effect_vars, &effect_env, setup_span_id)
@@ -365,8 +368,11 @@ impl EffectManager {
         // From here on, `dep_guards` accumulates the guards for the
         // successfully-instantiated deps. Every fallible step between this
         // point and the final `Ok(EffectHandle { ... dep_guards ... })` is
-        // wrapped in `try_guards!`, which releases the accumulated guards
-        // via `release_and_teardown` before propagating the error.
+        // wrapped in `try_guards!`, which runs this effect's own cleanup
+        // body (if declared) and releases the accumulated dep guards via
+        // `run_effect_cleanup` before propagating the error — matching the
+        // success-path teardown order (effect's own cleanup before its
+        // deps').
 
         let mut dep_shells: HashMap<String, ShellMap> = HashMap::new();
         let mut dep_vars: HashMap<String, VarMap> = HashMap::new();
@@ -381,21 +387,18 @@ impl EffectManager {
             }
         }
 
-        // Local helper: every fallible step below releases any dep_guards
-        // collected so far before propagating the failure.
-        macro_rules! try_guards {
-            ($e:expr) => {{
-                match $e {
-                    Ok(v) => v,
-                    Err(failure) => {
-                        for g in std::mem::take(&mut dep_guards) {
-                            self.release_and_teardown(g, parent_span).await;
-                        }
-                        return Err(failure);
-                    }
-                }
-            }};
-        }
+        // Pre-extract the cleanup block so it is available to `try_guards!`
+        // failures that fire inside the body walk below (a shell-block
+        // statement that fails before the body walk reaches the
+        // `IrEffectItem::Cleanup` arm). The body walk no longer captures
+        // this — see step 6.
+        let cleanup_block: Option<IrCleanupBlock> = effect.body().iter().find_map(|item| {
+            if let IrEffectItem::Cleanup { block, .. } = item {
+                Some(block.clone())
+            } else {
+                None
+            }
+        });
 
         // 5b. Reset imported VMs into this scope's POV.
         let mut reset_seen = HashSet::new();
@@ -426,6 +429,38 @@ impl EffectManager {
             }
         }
 
+        // Local helper: on any failure below, run this effect's own cleanup
+        // body (best-effort) and release dep guards under that cleanup
+        // span, then propagate. Warnings from the partial-teardown are
+        // discarded — the test is failing anyway; surfacing extra cleanup
+        // noise on top would obscure the root failure. Defined after the
+        // `shells` binding because macro hygiene resolves `&shells`
+        // against the binding visible at the macro's definition site.
+        macro_rules! try_guards {
+            ($e:expr) => {{
+                match $e {
+                    Ok(v) => v,
+                    Err(failure) => {
+                        let guards_taken = std::mem::take(&mut dep_guards);
+                        self.run_effect_cleanup(
+                            effect.name().name(),
+                            start.alias().map(String::from),
+                            setup_span_id,
+                            &marker,
+                            key,
+                            &scope,
+                            &shells,
+                            cleanup_block.as_ref(),
+                            guards_taken,
+                            parent_span,
+                        )
+                        .await;
+                        return Err(failure);
+                    }
+                }
+            }};
+        }
+
         // 5c. Inject dependency-exposed variables into the effect scope so
         //      they're accessible via ${Alias.var_name} in shell blocks.
         {
@@ -437,15 +472,16 @@ impl EffectManager {
             }
         }
 
-        // 6. Walk IrEffectItems (lets already evaluated, starts already instantiated)
-        let mut cleanup_block = None;
+        // 6. Walk IrEffectItems (lets already evaluated, starts already
+        //    instantiated, cleanup block already extracted above).
         for item in effect.body() {
             match item {
                 IrEffectItem::Comment { .. }
                 | IrEffectItem::Expect { .. }
                 | IrEffectItem::Start { .. }
                 | IrEffectItem::Expose { .. }
-                | IrEffectItem::Let { .. } => continue,
+                | IrEffectItem::Let { .. }
+                | IrEffectItem::Cleanup { .. } => continue,
                 IrEffectItem::Shell { block, .. } => {
                     let switch_span = block.name().span();
                     if let Some(qualifier) = block.qualifier() {
@@ -543,9 +579,6 @@ impl EffectManager {
                         try_guards!(exec_result);
                         // block_span drops here, closing the span.
                     }
-                }
-                IrEffectItem::Cleanup { block, .. } => {
-                    cleanup_block = Some(block.clone());
                 }
             }
         }
@@ -805,27 +838,68 @@ impl EffectManager {
 
     /// Run cleanup for one effect we now exclusively own.
     ///
+    /// Thin wrapper around `run_effect_cleanup`: destructures the handle
+    /// and forwards the components. The partial-setup-failure path in
+    /// `bootstrap_effect` calls `run_effect_cleanup` directly with the
+    /// same fields collected from local state.
+    async fn teardown_effect(&self, handle: EffectHandle, parent_span: SpanId) -> Vec<Warning> {
+        let effect_name = handle.scope.name().to_string();
+        self.run_effect_cleanup(
+            &effect_name,
+            handle.alias,
+            handle.setup_span,
+            &handle.marker,
+            &handle.key,
+            &handle.scope,
+            &handle.shells,
+            handle.cleanup.as_ref(),
+            handle.dep_guards,
+            parent_span,
+        )
+        .await
+    }
+
+    /// Run an effect's cleanup sequence.
+    ///
     /// Sequence:
     ///   1. Open `EffectCleanup` span (parent = `parent_span`).
     ///   2. Shut down all owned VMs (deduplicated by Arc pointer).
     ///   3. If a cleanup block exists, run it inside a `CleanupBlock`
     ///      span; collect `Warning::CleanupFailed` on error.
-    ///   4. Close cleanup span.
-    ///   5. Concurrently `release_and_teardown` every dep guard the
-    ///      handle was holding.
-    async fn teardown_effect(&self, handle: EffectHandle, parent_span: SpanId) -> Vec<Warning> {
-        let effect_name = handle.scope.name().to_string();
-        let setup_span = handle.setup_span;
-        let alias = handle.alias.clone();
-        let marker = handle.marker.clone();
+    ///   4. Concurrently `release_and_teardown` every dep guard the
+    ///      handle was holding (parented under the cleanup span).
+    ///   5. Close cleanup span (after step 4 so deferred-cleanup spans
+    ///      emitted by dep releases are well-ordered children).
+    ///
+    /// Used by both the success path (`teardown_effect`, via an
+    /// `EffectHandle`) and the partial-setup-failure path
+    /// (`bootstrap_effect`'s `try_guards!` macro, with the in-flight
+    /// local state). The two call sites pass the same kind of
+    /// information; collecting it once here keeps the cleanup
+    /// semantics identical regardless of how the effect's lifecycle
+    /// ended.
+    #[allow(clippy::too_many_arguments)]
+    async fn run_effect_cleanup(
+        &self,
+        effect_name: &str,
+        alias: Option<String>,
+        setup_span: SpanId,
+        marker: &str,
+        key: &EffectInstanceKey,
+        scope: &Scope,
+        shells: &HashMap<String, Arc<TokioMutex<Vm>>>,
+        cleanup_block: Option<&IrCleanupBlock>,
+        dep_guards: Vec<EffectGuard>,
+        parent_span: SpanId,
+    ) -> Vec<Warning> {
         let mut warnings = Vec::new();
 
         let cleanup_span = self.rt_ctx.log.open_span(
             SpanKind::EffectCleanup {
-                effect: effect_name.clone(),
+                effect: effect_name.to_string(),
                 alias,
                 setup_span,
-                marker,
+                marker: marker.to_string(),
                 is_deferred: false,
             },
             Some(parent_span),
@@ -835,7 +909,7 @@ impl EffectManager {
 
         // Shut down all VMs (exposed and non-exposed, deduplicated).
         let mut seen = HashSet::new();
-        for vm_arc in handle.shells.values() {
+        for vm_arc in shells.values() {
             let ptr = Arc::as_ptr(vm_arc) as usize;
             if seen.insert(ptr) {
                 vm_arc.lock().await.shutdown().await;
@@ -843,7 +917,7 @@ impl EffectManager {
         }
 
         // Run cleanup block in fresh shell (best-effort).
-        if let Some(cleanup_block) = &handle.cleanup {
+        if let Some(cleanup_block) = cleanup_block {
             let block_loc = cleanup_block.span();
             let block_span = self.rt_ctx.log.open_span(
                 SpanKind::CleanupBlock,
@@ -852,12 +926,12 @@ impl EffectManager {
             );
             let block_span_id = block_span.id();
             let cleanup_shell_key = ShellInstanceKey::Effect {
-                effect: handle.key.clone(),
+                effect: key.clone(),
                 shell_name: "__cleanup".into(),
             };
             let cleanup_marker = cleanup_shell_key.marker();
             let cleanup_result = self
-                .run_cleanup_block(cleanup_block, &handle.scope, &cleanup_marker, block_span_id)
+                .run_cleanup_block(cleanup_block, scope, &cleanup_marker, block_span_id)
                 .await;
             if let Err(failure) = cleanup_result {
                 self.rt_ctx.log.emit_warning(
@@ -869,7 +943,7 @@ impl EffectManager {
                 );
                 warnings.push(Warning::CleanupFailed {
                     source: CleanupSource::Effect {
-                        name: effect_name.clone(),
+                        name: effect_name.to_string(),
                     },
                     failure,
                 });
@@ -883,8 +957,7 @@ impl EffectManager {
         // under our caller. The diamond serialization still happens
         // inside `release` (atomic decrement under slot mutex);
         // join_all lets independent branches make progress.
-        let dep_futures = handle
-            .dep_guards
+        let dep_futures = dep_guards
             .into_iter()
             .map(|g| self.release_and_teardown(g, cleanup_span_id));
         let dep_warnings: Vec<Warning> =
