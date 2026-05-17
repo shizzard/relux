@@ -29,6 +29,7 @@ import {
   type EventTypeId,
   type Row,
 } from './flatten';
+import { testTimeRange, type TimeRange } from './timeline';
 
 export type OpenModal = 'env' | 'shells' | 'filter' | 'artifacts' | null;
 export type EnvFilterScope = 'name' | 'value' | 'name-matches';
@@ -76,6 +77,17 @@ export class ViewerState {
   openModal = $state<OpenModal>(null);
   hiddenEventTypes = $state<Set<EventTypeId>>(new Set());
 
+  // Timeline-bar transient state. `timelineHover` is set after the 500 ms
+  // hover delay fires; holds the candidate set at the cursor's percent
+  // position. `timelinePin` is the click-pinned variant for multi-
+  // candidate zones &mdash; stays visible until the user picks a card or
+  // clicks outside. `timelineCardFocus` tracks which card the cursor is
+  // currently over (drives the secondary "intensified" preview style on
+  // the bar slice).
+  timelineHover = $state<{ percent: number; spans: Span[] } | null>(null);
+  timelinePin = $state<{ percent: number; spans: Span[] } | null>(null);
+  timelineCardFocus = $state<SpanId | null>(null);
+
   envFilter = $state<string>('');
   envFilterScope = $state<EnvFilterScope>('name-matches');
 
@@ -110,6 +122,8 @@ export class ViewerState {
   selectedSpan = $derived<Span | null>(
     this.selectedSpanId === null ? null : spanById(this.data, this.selectedSpanId),
   );
+
+  timeRange = $derived<TimeRange>(testTimeRange(this.data));
 
   callStack = $derived(
     this.selected

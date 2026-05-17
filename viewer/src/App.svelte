@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { ViewerState } from './lib/state.svelte';
   import AppBar from './components/AppBar.svelte';
+  import TimelineBar from './components/TimelineBar.svelte';
   import EventsList from './components/EventsList.svelte';
   import DetailPanel from './components/DetailPanel.svelte';
   import EnvModal from './components/EnvModal.svelte';
@@ -90,6 +91,7 @@
 
 {#if state}
   <AppBar {state} />
+  <TimelineBar {state} />
   <div class="layout">
     <EventsList {state} />
     <DetailPanel {state} />
