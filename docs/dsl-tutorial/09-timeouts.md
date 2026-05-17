@@ -128,6 +128,8 @@ test "mixing tolerance and assertion" {
 
 The startup match uses a 3-second tolerance. The `echo fast` match uses a 1-second assertion. The final match switches back to a 5-second tolerance.
 
+Each `~` or `@` operator emits a **timeout-set event** in the [test log viewer](03-send-match-and-logs.md) — its own row in the events list. Select the row and the detail panel shows the new value alongside the previous one, both rendered with their kind and source location. The events list becomes a running history of every timeout change, so you can scan a long test and see at a glance where the timeout regime shifts.
+
 ## Inline overrides
 
 Sometimes a single operation needs a different timeout without changing the shell's default. The `<~` and `<@` prefixes add a one-shot timeout to any match operator:
@@ -194,6 +196,8 @@ test "assertion timeout inline regex match" {
 
 The `<@3s?` asserts the system responds within 3 seconds. The multiplier will not stretch it.
 
+On the match itself, the test log viewer shows which timeout actually applied. Click any match event and the detail panel includes a `timeout` row with the **effective duration** and its source — like `5s (smoke.relux:12)`, or `... (default)` when the value came straight from `Relux.toml`. For a scaled tolerance, the row spells out the multiplier breakdown — `5s × 1.5 = 7.5s` — so you can see how `--timeout-multiplier` reshaped the budget. The precedence chain that resolves config defaults, shell scopes, and inline overrides is opaque in the source; the effective value tells you which one won.
+
 ## Test-level timeout
 
 A test can declare its own timeout directly in the definition, using either prefix:
@@ -229,6 +233,8 @@ test "shell timeout fires within bound" @5s {
 ```
 
 The inner `~1s` timeout should fire after 1 second when the match fails. The outer `@5s` test timeout is the assertion: if 5 seconds pass and the inner timeout somehow did not fire, the system is broken. Without the test-level assertion timeout, a bug in the timeout mechanism would cause the test to hang forever.
+
+This is the moment the test log viewer pays off the most. Open the test log viewer after the inner timeout fires and look in the events list: alongside the match rows you'll see a dedicated **timeout** event — its own row, the danger color, with a `pattern` and a `timeout` field showing what was being waited for and what limit was in effect. The buffer pane (the one from the [output buffer article](04-the-output-buffer.md)) shows whatever bytes had arrived before time ran out — often the answer to "what was the shell *actually* doing while we waited?" A timeout that points at the wrong pattern, or a buffer that should have been clear but wasn't, both show up here without needing a debugger.
 
 If neither prefix is used on the test definition, the config `test` timeout applies (default: `5m`). A test-level timeout — whether `~` or `@` — overrides the config value.
 

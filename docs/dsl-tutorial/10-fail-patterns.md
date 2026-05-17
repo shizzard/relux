@@ -60,6 +60,8 @@ This watches for the exact substring `FATAL ERROR` in the output. No regex inter
 
 Both `!?` and `!=` behave identically in every other way: same checking points, same single-slot rule, same scoping.
 
+Setting a fail pattern emits its own row in the [test log viewer](03-send-match-and-logs.md), marked with a flag glyph, showing the pattern that was installed. If that pattern ever triggers, you get a second row in the danger color — a **fail-pattern-triggered** event with `pattern` showing what was watched for and (for regex patterns) a `matched` row holding the exact line of output that tripped it.
+
 ## One pattern at a time
 
 Each shell has a single fail pattern slot. Setting a new fail pattern — whether regex or literal — replaces whatever was there before:
@@ -109,6 +111,8 @@ The `<=` on line 3 scans forward from the cursor and finds `something went wrong
 
 The takeaway: set your fail pattern *before* generating output that might match it. The natural place is at the top of a shell block.
 
+This sequence is one of the easiest to diagnose with the test log viewer. Run a failing test like this one and open its events list: you'll see the `<=` and `match_prompt()` rows pass normally, then a fail-pattern-set row sitting right before the failure, then a fail-pattern-triggered row in the danger color — its `pattern` is `ERROR` and its `matched` row holds the exact line of output that tripped the rescan. The buffer pane (the one from the [output buffer article](04-the-output-buffer.md)) shows what was sitting unconsumed when `!?` ran — the same `ERROR: something went wrong` text the message just named. The chain "what we asked to watch → what we found → where it lived in the buffer" is a single click away.
+
 ## Variable interpolation
 
 Fail pattern payloads support [variable interpolation](06-variables.md), just like other operators:
@@ -147,6 +151,8 @@ shell s {
 Line 2 sets the fail pattern. Lines 3–5 work normally under its protection. Line 6 clears it — from this point on, there is no active fail pattern. Lines 7–9 can safely produce `BOOM` without triggering a failure.
 
 Either `!?` or `!=` can clear the pattern, regardless of which type was used to set it. They both clear the same single slot.
+
+Clearing emits a row of its own — an empty-flag glyph, distinguishable from the filled flag of the set event. Scanning the events list, you can see the protected and unprotected stretches of the test at a glance.
 
 ## Scoping across function calls
 

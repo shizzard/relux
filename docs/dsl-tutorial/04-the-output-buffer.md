@@ -63,10 +63,14 @@ echo hello<newline>hello<newline>relux>
 
 ```text
 echo hello<newline>hello<newline>relux>
-                                      ^cursor
+                                       ^cursor
 ```
 
 The buffer is fully consumed. The next command's echo will be the first thing the cursor sees.
+
+The test log viewer renders this same picture for any event you select. Open the test's [test log viewer](03-send-match-and-logs.md) and click the first match row in the events list: the detail panel's **buffer pane** shows the buffer with `echo hello` highlighted in the accent color — the freshly matched bytes — and `<newline>hello<newline>relux>` in the lighter tail color, still in the buffer waiting to be matched. Click the second match row: the highlight jumps forward to `hello`, and `echo hello<newline>` before it has dimmed into the consumed region. Click the third: the prompt becomes the highlight, everything before it is dimmed, and the tail is empty. The diagrams above and the buffer pane are the same picture in two formats.
+
+One subtlety: the highlighted region always shows the *most recent* match up to the selected event. Selecting a non-match event — a send, or a moment before any match has fired — does not change the highlight. The consumed and tail regions still reflect the buffer state at that exact moment.
 
 ### What the cursor skips
 
@@ -86,7 +90,7 @@ The output buffer is the single most important concept of the Relux DSL and runt
 
 ### Buffer reset
 
-Sometimes you genuinely do not care about the output — a command prints a long startup banner, or verbose logging that is irrelevant to the test. For these cases, Relux provides a **buffer reset**: a `<=` operator with no pattern. It consumes everything currently in the buffer. It is the equivalent of saying "I don't care what happened, skip to now."
+Sometimes you genuinely do not care about the output — a command prints a long startup banner, or verbose logging that is irrelevant to the test. For these cases, Relux provides a **buffer reset**: a `<=` operator with no pattern. It consumes everything currently in the buffer. It is the equivalent of saying "I don't care what happened, skip to now." In the test log viewer, a reset shows up as every byte folding into the consumed region — no highlight, no tail.
 
 We will see in the best practices section below why this operator should be used with caution.
 
@@ -148,7 +152,7 @@ test "double echo" {
 
 Run this test in your head. For each of the four operations, trace the buffer contents and the cursor position. How many commands would actually be executed in the shell? Write down your predictions.
 
-Then run the test with `relux run` and open the run index at `relux/out/latest/index.html`, then drill into the test's viewer. Compare the events against your predictions.
+Then run the test with `relux run` and open the test log viewer. Click each of the four operation rows in turn. For each match row, look at the buffer pane: where did the highlighted region actually land? Compare what you see against the predictions you wrote down.
 
 Now think about what the right way to write this test would be.
 

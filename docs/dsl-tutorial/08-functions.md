@@ -306,6 +306,8 @@ test "nested function return value chains" {
 
 `depth_a` calls `depth_b`, which calls `depth_c`. Each function appends its suffix to the result. The final value, `root-c-b-a`, traces the entire call chain.
 
+In the [test log viewer](03-send-match-and-logs.md), each function call shows up as its own **span** in the events list — a foldable row that wraps all the events the function emitted; expand it to dive in, collapse it to skim past. With nested calls like these, the **call stack** pane in the detail panel earns its keep: it lists every active frame at the selected event — `depth_c` at the top, `depth_b` and `depth_a` below it, the test and shell at the bottom — with the arguments each was called with. When something deep in a chain goes wrong, the call stack tells you who got you there.
+
 ## Best practices
 
 ### Captures do not survive function calls

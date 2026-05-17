@@ -211,6 +211,8 @@ test "only on 64-bit architectures" {
 }
 ```
 
+Each marker on a test produces a **marker-eval span** in the [test log viewer](03-send-match-and-logs.md) — the detail panel shows the marker kind (`@skip`, `@run`, or `@flaky`), the modifier (`if` or `unless`), and the decision (`pass` to let the test run or `mark` to mark it skipped or flaky). Inside that span is a **bool-check event** carrying the actual condition that was tested. The event's content varies by shape: a truthiness check (`# skip if "${X}"`) shows the value and a `met: true/false` flag; an equality check shows `lhs`, `rhs`, and `met`; a regex check shows `value`, `pattern`, and `met`. One row tells you the marker's verdict; the next tells you exactly what was compared to reach it.
+
 ## Pure function calls in markers
 
 Marker expressions are not limited to variable interpolation. You can call [pure functions](12-pure-functions.md) to compute values or perform checks. This is where markers become truly powerful for asserting environment preconditions.
@@ -305,6 +307,8 @@ test "extract name from JSON" {
 
 The key behavior: **when a function is skipped, all tests that call it are also skipped.** In the example above, if `jq` is not installed, the `parse_json` function is skipped, which propagates to every test that calls it. The test is reported as skipped — no shell is spawned, no confusing failure appears. This works the same way for both `fn` and `pure fn`.
 
+In the test log viewer, a skip that cascades from a marker on a function or effect is traceable in a few clicks. The test that got skipped shows the dependency in its span tree — you can follow the chain from the test back to the marked function (or effect), then into the marker-eval span and its bool-check, to see the original condition that failed. Even when the marker lives in a library file far from the test, the trail leads you there.
+
 ## Markers on effects
 
 Markers work on [effects](11-effects-and-dependencies.md) too. This is particularly useful for effects that provision heavy infrastructure:
@@ -336,6 +340,8 @@ There is one important rule: **when an effect is skipped, all tests that depend 
 Markers evaluate **before** any shells are spawned. For test-level markers, this happens before the test's effects are even set up. For effect-level markers, it happens before the effect's own shells are created.
 
 Because of this early evaluation, marker expressions can only see **environment variables** — the base environment that Relux inherits from the system plus any variables set in `Relux.toml`. Variables declared with `let` inside tests or effects do not exist yet at marker evaluation time. This is why marker syntax uses `"${VAR}"` to reference the environment, the same [interpolation syntax](06-variables.md#string-interpolation) you already know.
+
+When a test is skipped, the test log viewer surfaces this with a synthetic **MARKERS root** at the top of the test's span tree — it stands in for the test body that never ran. Open the MARKERS span and you find the marker-eval and bool-check rows describing exactly which marker triggered the skip and what condition it tested. The view is the same one-click answer to "why was this skipped" for an unconditional `# skip`, a `# skip unless "${CI}"`, or a complex regex check on a pure function's result.
 
 ## Best practices
 

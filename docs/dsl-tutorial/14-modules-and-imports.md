@@ -111,6 +111,8 @@ test "wildcard import makes all functions available" {
 
 Wildcard imports are convenient for small, focused modules where you know you want everything. For larger modules, selective imports make the dependencies clearer.
 
+In the [test log viewer](03-send-match-and-logs.md), an imported function call behaves like any other: it shows up as a span in the events list, foldable to reveal its body's events. The difference comes in the **source** panel of the detail panel — when you click an event inside `greet()`, the source panel jumps to `lib/utils/greeter.relux` and highlights the line, not the test file that contained the call. The test log viewer treats module boundaries as plain navigation: the events execute wherever they were defined, and the source view follows them there.
+
 ## Aliases
 
 Sometimes an imported name collides with something in your file, or you simply want a shorter or more descriptive name. The `as` keyword renames an import:

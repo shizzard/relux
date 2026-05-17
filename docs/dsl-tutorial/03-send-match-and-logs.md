@@ -67,9 +67,9 @@ relux/out/
 
 Each run gets its own directory, named with a timestamp and a random ID. The `latest` symlink always points to the most recent run — so `relux/out/latest/index.html` is always the quickest way to the results.
 
-Open `relux/out/latest/index.html` in a browser. The index page shows a summary table with one row per test: the test name, its result (pass/fail/skip), and the duration. For a single passing test this is underwhelming, but when you have dozens of tests and one fails, the index is where you start — scan the results, click the failing test to drill into its viewer.
+Open `relux/out/latest/index.html` in a browser. The index page shows a summary table with one row per test: the test name, its result (pass/fail/skip), and the duration. For a single passing test this is underwhelming, but when you have dozens of tests and one fails, the index is where you start — scan the results, click the failing test to drill into its test log viewer.
 
-### The per-test viewer
+### The test log viewer
 
 Each test gets an `event.html` file: a self-contained page you can open from anywhere, no server required.
 
@@ -80,7 +80,7 @@ Each test gets an `event.html` file: a self-contained page you can open from any
 
 Next to `event.html` you'll also find `events.json` — the same data in a machine-readable form, useful when you want to feed test runs into your own tooling.
 
-As you work through the rest of this tutorial, each article will introduce the viewer functionality relevant to its topic. For now, open the viewer for your test and click around — there's no pressure to understand everything yet.
+As you work through the rest of this tutorial, each article will introduce the test log viewer functionality relevant to its topic. For now, open the test log viewer for your test and click around — there's no pressure to understand everything yet.
 
 ## Error logs
 
@@ -117,7 +117,7 @@ test hello.relux/echo-and-match: |... ok (9.7 ms)
 test result: ok. 1 passed; 0 failed; finished in 9.7 ms
 ```
 
-Wait, what? That is definitely a bug, this should not have worked — where did the second `hello-relux` come from? Let's open the per-test viewer for this test (`relux/out/latest/logs/relux/tests/hello/echo-and-match/event.html`) and look at the two match rows in its events list.
+Wait, what? That is definitely a bug, this should not have worked — where did the second `hello-relux` come from? Let's open the test log viewer for this test (`relux/out/latest/logs/relux/tests/hello/echo-and-match/event.html`) and look at the two match rows in its events list.
 
 The first match did not hit the output line `hello-relux` — it hit the echoed **command** `echo hello-relux`, which contains the substring `hello-relux`. The second match then found the actual output.
 

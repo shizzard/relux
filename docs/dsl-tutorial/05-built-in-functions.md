@@ -266,7 +266,9 @@ test "wait for service startup" {
 
 The test starts a service in the background, waits two seconds for it to initialize, then checks its health endpoint.
 
-**`log(message)`** writes a message to the test's event log — visible as a log event row in the per-test viewer's events list, timestamped alongside sends and matches. This is useful for marking phases of a complex test, recording diagnostic information, or leaving notes for whoever reads the report after a failure.
+In the [test log viewer](03-send-match-and-logs.md), each `sleep` shows up as its own event row with the elapsed duration — useful for checking pacing or understanding why a test took as long as it did.
+
+**`log(message)`** writes a message to the test's event log — visible as a log event row in the test log viewer's events list, timestamped alongside sends and matches. This is useful for marking phases of a complex test, recording diagnostic information, or leaving notes for whoever reads the report after a failure.
 
 ```relux
 log("about to start the server")
@@ -286,7 +288,7 @@ test my_test.relux/server-startup: |...[setup complete]....[server ready].. ok (
 
 The annotation text appears between the dots, marking the point in the test where it was called.
 
-The distinction between `log` and `annotate` is where the output goes: `log` writes to the persistent HTML report, `annotate` writes to the live terminal progress line.
+The distinction between `log` and `annotate` is where the output goes. `log` writes to the persistent HTML report — its own row in the events list. `annotate` writes to the live terminal progress line *only*; it leaves no trace in the test log viewer. Use `log` when you want a record alongside the events; use `annotate` for live progress markers.
 
 ---
 

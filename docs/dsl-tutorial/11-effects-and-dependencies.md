@@ -217,6 +217,8 @@ test "two effects both accessible via alias" {
 
 Both effects expose a shell called `service`, but the test accesses them through different aliases — `A.service` and `B.service`. The alias disambiguates which effect instance you mean.
 
+Each `start` produces an **effect-setup span** in the [test log viewer](03-send-match-and-logs.md) — its own foldable row in the events list, marked with a `setup` badge and titled by the effect name and alias (for example, `Counter as C1`). Expand the row to see every setup statement nested inside; collapse it to skim past the infrastructure and focus on the test body. The span's detail panel pulls the whole picture into one place: the effect name, the alias under which it was started, the shells it exposes, and (as you'll see later in this article) the variables and overlays bound to it.
+
 ## Bare `start`
 
 Sometimes you need an effect for its side effects — creating files, setting up external state, or just running the service in the background — but do not need access to its shells. Use `start` without `as`:
@@ -399,6 +401,8 @@ test "same effect started twice shares one instance" {
 
 Both `c1` and `c2` are aliases for the **same** effect instance. The `Counter` effect ran once — the counter was incremented to 1. If it had run twice, the count would be 2.
 
+In the test log viewer this story is hard to miss. The first `start Counter as C1` shows a `setup` span with the full setup nested inside. The second `start Counter as C2` shows another `setup` row — this one tagged **`reused`**, with a click-through to the original setup. No second run, just a pointer to the work that was already done. If the count ever bumps past 1, you know the dedup logic broke; if the second span isn't marked reused, you know the identity didn't match.
+
 ## Overlay variables
 
 So far, every effect has been a fixed recipe — the same setup every time. But what if you need two databases with different names, or the same service on different ports? The `FailTail` example in the introduction hinted at the answer: `expect` declares what the effect requires, and the `{ FAILTAIL_TRIGGER = ... }` syntax at the `start` site provides it. These are **overlay variables** — key-value pairs passed at the `start` site that parameterize the effect:
@@ -437,6 +441,8 @@ The `Labeled` effect declares `expect LABEL` — a required variable that must b
 `expect` is a **contract**, not a sandbox. It declares which variables the effect *requires* — the ones the resolver validates. It does not prevent the effect from reading other variables. An effect always inherits the full parent environment: the base system environment, plus any variables set in the caller's scope. The overlay adds to or overrides specific entries in that inherited environment. This means most configuration flows through naturally, and only the values that vary per-instance need to be listed in `expect` and passed via overlays.
 
 This is where overlays connect to deduplication. The full identity of an effect instance is **(effect name, evaluated overlay values)**. Same name with same overlay = shared instance. Same name with different overlay = separate instances. Two `start Labeled as X { LABEL = "alpha" }` with the same overlay value would share one instance, regardless of the alias name.
+
+The test log viewer makes this concrete. Click each `setup` span and the detail panel shows an `expects` subsection listing the overlay values the effect was started with — `LABEL = alpha` for one instance, `LABEL = beta` for another. Two starts with the same `LABEL` would dedupe to one full setup and one `reused` span; two with different `LABEL`s produce two full setups. The identity tuple — `(effect name, overlay values)` — is right there in the events list, one row per identity.
 
 When the overlay key and the variable being passed have the same name, you can use the shorthand syntax — a bare key without `= value`:
 

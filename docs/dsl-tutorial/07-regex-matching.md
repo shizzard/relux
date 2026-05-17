@@ -63,6 +63,8 @@ test "full match via capture group zero" {
 
 `$0` is `hello world` (the entire matched text), `$1` is `hello`, and `$2` is `world`.
 
+In the test log viewer, captures appear in the **variables in scope** pane (the one from the [previous article](06-variables.md)) with a `$` prefix and an accent color, in their own block above regular `let` variables. Click the regex match event in the events list and `$0`, `$1`, `$2` are there with their captured values, visually distinct from named variables — the prefix and color make captures impossible to confuse with anything else.
+
 If you access a capture group that does not exist — say `$5` when the regex only has one group — it resolves to the empty string, just like an [undefined variable](06-variables.md):
 
 ```relux
@@ -96,6 +98,8 @@ test "captures overwritten by next match" {
 ```
 
 After the second `<?`, `$1` is `one` and `$2` is gone. The captures from the first match are completely discarded.
+
+Click each `<?` row in the events list and the captures block in the pane swaps to whatever that match produced. The replacement that's silent in the source — and a frequent source of confused debugging — is impossible to miss when you can see the pane empty out between matches.
 
 ## Saving captures to named variables
 
@@ -181,6 +185,8 @@ let port = $1
 
 The named variable survives any number of subsequent matches. It makes the code self-documenting (the name `port` says more than `$1`), and it insulates the test from future edits.
 
+In the test log viewer, you can see both at once: `$1` sits in the captures block (accent-colored), `port` sits below in the regular vars block. Click a later regex match and `$1` is gone or shows something new — but `port` stays. The durability lesson is right there in the pane.
+
 ### Anchor your patterns
 
 A regex without anchors will match anywhere in the remaining buffer — the echoed command, a fragment of the prompt, leftover output from a previous step. This is the same problem as with [literal match](04-the-output-buffer.md), but worse, because regex metacharacters like `.` and `*` match more broadly.
@@ -196,6 +202,8 @@ Use `^` and `$` to pin your match to a specific line:
 ```
 
 This does not mean you should anchor every pattern — sometimes a substring regex is what you need. But when you have a choice, anchoring is safer: it documents your intent and prevents accidental matches.
+
+This is one of the easiest mistakes to make and one of the easiest to diagnose. When a pattern matches in the wrong place, two things show it: the buffer pane highlights the bytes the regex actually consumed (the wrong substring), and the captures block in the variables-in-scope pane fills with values you didn't expect. Click the match event and the answer is usually visible without reading any source — the highlight tells you "I latched onto the echoed command, not the output," or "I caught a fragment of the previous line."
 
 ### Be careful with interpolated regex patterns
 
