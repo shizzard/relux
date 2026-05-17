@@ -247,6 +247,20 @@ export class ViewerState {
     this.expandedSpans = next;
   }
 
+  collapseAll(): void {
+    this.expandedSpans = new Set();
+  }
+
+  expandAll(): void {
+    const next = new Set<SpanId>();
+    const map = this.data.spans as unknown as Record<string, { id: bigint } | undefined>;
+    for (const key of Object.keys(map)) {
+      const span = map[key];
+      if (span) next.add(n(span.id));
+    }
+    this.expandedSpans = next;
+  }
+
   toggleExpandedValueRow(key: string): void {
     const next = new Set(this.expandedValueRows);
     if (next.has(key)) next.delete(key);

@@ -34,13 +34,15 @@
   data-fold-other-seq={otherSeq}
   data-fold-extra-seq={extraSeq}
 >
-  <button class="row" type="button" onclick={() => state.selectEvent(leadSeq)}>
+  <div class="row">
     {#each rails as i (i)}<span class="rail" aria-hidden="true"></span>{/each}
-    <span class="glyph {family}" aria-hidden="true">{glyph}</span>
-    <span class="kind">{label}</span>
-    <span class="summary">{summary}</span>
-    <span class="ts">{ts}</span>
-  </button>
+    <button class="row-body" type="button" onclick={() => state.selectEvent(leadSeq)}>
+      <span class="glyph {family}" aria-hidden="true">{glyph}</span>
+      <span class="kind">{label}</span>
+      <span class="summary">{summary}</span>
+      <span class="ts">{ts}</span>
+    </button>
+  </div>
   {#if selected}
     <div class="card-slot" style:padding-left="{depth * 24}px">
       <StyleBCard {state} mode={{ kind: 'event', folded }} />
@@ -58,19 +60,26 @@
     display: flex;
     align-items: stretch;
     width: 100%;
+    min-height: 24px;
+  }
+  .row-body {
+    display: flex;
+    align-items: stretch;
+    flex: 1 1 auto;
+    min-width: 0;
     background: transparent;
     border: none;
+    border-bottom: 1px solid var(--border);
     padding: 0;
     cursor: pointer;
     text-align: left;
     color: inherit;
     font: inherit;
-    min-height: 24px;
   }
-  .row:hover {
+  .row-body:hover {
     background: color-mix(in srgb, var(--accent) 8%, transparent);
   }
-  .selected > .row {
+  .selected .row-body {
     outline: 1px solid var(--accent);
     outline-offset: -1px;
     border-radius: var(--radius);

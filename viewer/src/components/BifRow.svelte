@@ -53,7 +53,7 @@
     width: 100%;
     min-height: 24px;
   }
-  .selected > .row {
+  .selected .select-btn {
     outline: 1px solid var(--accent);
     outline-offset: -1px;
     border-radius: var(--radius);
@@ -67,6 +67,7 @@
     appearance: none;
     background: transparent;
     border: none;
+    border-bottom: 1px solid var(--border);
     color: inherit;
     font: inherit;
     text-align: left;

@@ -64,30 +64,32 @@
 <li class="span-row" class:selected data-span-id={id}>
   <div class="row">
     {#each rails as i (i)}<span class="rail" aria-hidden="true"></span>{/each}
-    <button
-      class="chevron-btn"
-      type="button"
-      aria-label={expanded ? 'collapse' : 'expand'}
-      onclick={() => state.toggleSpan(id)}
-    >
-      <span class="chevron" aria-hidden="true">
-        {expanded ? '\u25BC' : '\u25B6'}
-      </span>
-    </button>
-    <button class="select-btn" type="button" onclick={() => state.selectSpan(id)}>
-      <span class="kind">{displaySpanCallKind(span)}</span>
-      <span class="title">{title}</span>
-    </button>
-    {#if pillProps}
-      <span class="pill-slot">
-        <MarkerPill
-          {state}
-          marker={pillProps.marker}
-          prefix={pillProps.prefix}
-          jumpTo={pillProps.jumpTo}
-        />
-      </span>
-    {/if}
+    <div class="row-body">
+      <button
+        class="chevron-btn"
+        type="button"
+        aria-label={expanded ? 'collapse' : 'expand'}
+        onclick={() => state.toggleSpan(id)}
+      >
+        <span class="chevron" aria-hidden="true">
+          {expanded ? '\u25BC' : '\u25B6'}
+        </span>
+      </button>
+      <button class="select-btn" type="button" onclick={() => state.selectSpan(id)}>
+        <span class="kind">{displaySpanCallKind(span)}</span>
+        <span class="title">{title}</span>
+      </button>
+      {#if pillProps}
+        <span class="pill-slot">
+          <MarkerPill
+            {state}
+            marker={pillProps.marker}
+            prefix={pillProps.prefix}
+            jumpTo={pillProps.jumpTo}
+          />
+        </span>
+      {/if}
+    </div>
   </div>
   {#if selected}
     <div class="card-slot" style:padding-left="{depth * 24}px">
@@ -108,7 +110,15 @@
     width: 100%;
     min-height: 26px;
   }
-  .selected > .row {
+  .row-body {
+    display: flex;
+    align-items: stretch;
+    flex: 1 1 auto;
+    min-width: 0;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .selected .row-body {
     outline: 1px solid var(--accent);
     outline-offset: -1px;
     border-radius: var(--radius);

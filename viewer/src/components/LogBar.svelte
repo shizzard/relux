@@ -32,9 +32,11 @@
 
 <li class="log-bar {level}">
   {#each rails as i (i)}<span class="rail" aria-hidden="true"></span>{/each}
-  <span class="pictogram" aria-hidden="true">{PICTOGRAMS[level]}</span>
-  <span class="message">{message}</span>
-  <span class="ts">{ts}</span>
+  <div class="row-body">
+    <span class="pictogram" aria-hidden="true">{PICTOGRAMS[level]}</span>
+    <span class="message">{message}</span>
+    <span class="ts">{ts}</span>
+  </div>
 </li>
 
 <style>
@@ -45,14 +47,21 @@
     margin: 0;
     padding: 0;
     min-height: 24px;
+  }
+  .row-body {
+    display: flex;
+    align-items: stretch;
+    flex: 1 1 auto;
+    min-width: 0;
+    border-bottom: 1px solid var(--border);
     box-shadow: inset 2px 0 0 var(--accent-2);
     background: color-mix(in srgb, var(--accent-2) 5%, transparent);
   }
-  .log-bar.warning {
+  .log-bar.warning .row-body {
     box-shadow: inset 2px 0 0 var(--accent);
     background: color-mix(in srgb, var(--accent) 10%, transparent);
   }
-  .log-bar.error {
+  .log-bar.error .row-body {
     box-shadow: inset 2px 0 0 var(--danger);
     background: color-mix(in srgb, var(--danger) 10%, transparent);
   }

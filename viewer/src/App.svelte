@@ -80,6 +80,12 @@
     } else if (key === 'f') {
       event.preventDefault();
       state.toggleFilter();
+    } else if (key === 'c') {
+      event.preventDefault();
+      state.collapseAll();
+    } else if (key === 'x') {
+      event.preventDefault();
+      state.expandAll();
     }
   }
 

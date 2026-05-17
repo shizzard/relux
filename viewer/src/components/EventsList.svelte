@@ -158,6 +158,17 @@
       onclick={() => state.toggleSendMatch()}
       title="send / match only (M)"
     >send / match only</Chip>
+    <span class="spacer"></span>
+    <Chip
+      kbd="C"
+      onclick={() => state.collapseAll()}
+      title="collapse all spans (C)"
+    >collapse all</Chip>
+    <Chip
+      kbd="X"
+      onclick={() => state.expandAll()}
+      title="expand all spans (X)"
+    >expand all</Chip>
   </footer>
 </section>
 
@@ -195,5 +206,8 @@
   .chip-anchor {
     position: relative;
     display: inline-flex;
+  }
+  .spacer {
+    flex: 1 1 auto;
   }
 </style>
