@@ -64,3 +64,4 @@ elsa            = "~1.11"
 tokio-util      = { version = "~0.7", features = ["rt"] }
 futures         = "~0.3"
 flate2          = { version = "~1", default-features = false, features = ["rust_backend"] }
+base64          = "~0.22"

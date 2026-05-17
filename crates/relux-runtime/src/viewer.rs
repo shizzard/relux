@@ -23,6 +23,27 @@ pub fn hljs_gz() -> &'static [u8] {
     include_bytes!("../../../vendor/highlight-11.11.1.min.js.gz")
 }
 
+/// Gzipped bytes of `HLJS_RELUX_INIT` (the Relux hljs grammar). Computed
+/// lazily once per process and cached. The raw source is committed at
+/// `report/highlight-relux.js`; compressing at runtime avoids carrying a
+/// separately-vendored `.gz` for an asset that already lives in-tree.
+pub fn hljs_init_gz() -> &'static [u8] {
+    use std::io::Write;
+    use std::sync::OnceLock;
+
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+
+    static CELL: OnceLock<Vec<u8>> = OnceLock::new();
+    CELL.get_or_init(|| {
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::best());
+        encoder
+            .write_all(crate::report::hljs_init::HLJS_RELUX_INIT.as_bytes())
+            .expect("write to Vec cannot fail");
+        encoder.finish().expect("finish to Vec cannot fail")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

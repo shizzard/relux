@@ -33,5 +33,6 @@ futures         = { workspace = true }
 terminal_size   = { workspace = true }
 humantime       = { workspace = true }
 flate2          = { workspace = true }
+base64          = { workspace = true }
 walkdir         = { workspace = true }
 mime_guess      = { workspace = true }

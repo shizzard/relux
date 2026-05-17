@@ -1,32 +1,64 @@
 //! Per-test `event.html` emitter.
 //!
-//! Writes a single self-contained HTML file beside `events.json`. The
-//! `StructuredLog` payload is inlined as `window.RELUX_DATA`; the
-//! highlight.js core + Relux language definition are inlined as a
-//! second / third `<script>` so the source pane can render syntax-
-//! highlighted code without a separate served asset; finally the
-//! gzipped Svelte bundle (`relux_runtime::viewer::bundle_gz()`) is
-//! decompressed into a fourth `<script>` tag — no `fetch`, no CORS,
-//! opens directly via `file://`.
+//! Writes a single self-contained HTML file beside `events.json`. Four
+//! payloads — the `StructuredLog` JSON, the highlight.js core, the Relux
+//! hljs grammar, and the Svelte viewer bundle — are each gzipped and
+//! base64-encoded into `<script type="application/octet-stream">` tags.
+//! A small bootstrap `<script>` decompresses them with the browser-native
+//! `DecompressionStream`, sets `window.RELUX_DATA`, and synchronously
+//! evaluates the three JS payloads in order (hljs core → Relux grammar →
+//! viewer bundle).
+//!
+//! No `fetch`, no CORS, opens directly via `file://`. Requires a browser
+//! with `DecompressionStream` (Chrome 80+ / Firefox 113+ / Safari 16.4+);
+//! older browsers see a one-line message and nothing else.
 
-use std::io::Read;
+use std::io::Write;
 use std::path::Path;
 
-use flate2::read::GzDecoder;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use flate2::Compression;
+use flate2::write::GzEncoder;
 
 use crate::observe::structured::StructuredLog;
-use crate::report::hljs_init::HLJS_RELUX_INIT;
 use crate::viewer;
 
-const HEADER: &str = "<!doctype html>\n\
+const PREFIX: &str = "<!doctype html>\n\
     <html lang=\"en\">\n\
     <head><meta charset=\"utf-8\"><title>Relux test report</title>\
     <style>html,body{margin:0;padding:0}</style></head>\n\
-    <body><div id=\"app\"></div>\n\
-    <script>window.RELUX_DATA = ";
-const SCRIPT_BREAK: &str = ";</script>\n<script>";
-const SCRIPT_GAP: &str = "</script>\n<script>";
-const FOOTER: &str = "</script>\n</body></html>\n";
+    <body><div id=\"app\"></div>\n";
+
+// Bootstrap script. The IDs `d` / `h` / `i` / `v` match the four payload
+// tag IDs emitted below. Order of execution mirrors the prior inline-script
+// layout (data first so the viewer can read `window.RELUX_DATA` at mount).
+const BOOTSTRAP: &str = "<script>\n\
+(async () => {\n\
+  if (!window.DecompressionStream) {\n\
+    document.body.textContent = \
+\"This report needs Chrome 80+, Firefox 113+, or Safari 16.4+.\";\n\
+    return;\n\
+  }\n\
+  const unzip = async id => {\n\
+    const b64 = document.getElementById(id).textContent;\n\
+    const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));\n\
+    const s = new Blob([bin]).stream().pipeThrough(new DecompressionStream(\"gzip\"));\n\
+    return await new Response(s).text();\n\
+  };\n\
+  const runJs = code => {\n\
+    const s = document.createElement(\"script\");\n\
+    s.textContent = code;\n\
+    document.head.appendChild(s);\n\
+  };\n\
+  window.RELUX_DATA = JSON.parse(await unzip(\"d\"));\n\
+  runJs(await unzip(\"h\"));\n\
+  runJs(await unzip(\"i\"));\n\
+  runJs(await unzip(\"v\"));\n\
+})();\n\
+</script>\n";
+
+const SUFFIX: &str = "</body></html>\n";
 
 pub fn write(log_dir: &Path, structured: &StructuredLog) -> std::io::Result<()> {
     let html = render(structured)?;
@@ -34,45 +66,65 @@ pub fn write(log_dir: &Path, structured: &StructuredLog) -> std::io::Result<()> 
 }
 
 fn render(structured: &StructuredLog) -> std::io::Result<String> {
-    let mut json = serde_json::to_string(structured).map_err(std::io::Error::other)?;
-    // Defuse `</` so a Recv/Annotate/etc. payload cannot terminate the
-    // surrounding <script> tag. Standard JSON-in-HTML-script escape.
-    if json.contains("</") {
-        json = json.replace("</", "<\\/");
-    }
+    let json = serde_json::to_vec(structured).map_err(std::io::Error::other)?;
 
-    let mut hljs = String::new();
-    GzDecoder::new(viewer::hljs_gz()).read_to_string(&mut hljs)?;
-
-    let mut bundle = String::new();
-    GzDecoder::new(viewer::bundle_gz()).read_to_string(&mut bundle)?;
+    let data_b64 = encode_gz(&json)?;
+    let hljs_b64 = BASE64.encode(viewer::hljs_gz());
+    let init_b64 = BASE64.encode(viewer::hljs_init_gz());
+    let bundle_b64 = BASE64.encode(viewer::bundle_gz());
 
     let mut html = String::with_capacity(
-        HEADER.len()
-            + json.len()
-            + SCRIPT_BREAK.len()
-            + hljs.len()
-            + SCRIPT_GAP.len()
-            + HLJS_RELUX_INIT.len()
-            + SCRIPT_GAP.len()
-            + bundle.len()
-            + FOOTER.len(),
+        PREFIX.len()
+            + payload_tag_len("d", data_b64.len())
+            + payload_tag_len("h", hljs_b64.len())
+            + payload_tag_len("i", init_b64.len())
+            + payload_tag_len("v", bundle_b64.len())
+            + BOOTSTRAP.len()
+            + SUFFIX.len(),
     );
-    html.push_str(HEADER);
-    html.push_str(&json);
-    html.push_str(SCRIPT_BREAK);
-    html.push_str(&hljs);
-    html.push_str(SCRIPT_GAP);
-    html.push_str(HLJS_RELUX_INIT);
-    html.push_str(SCRIPT_GAP);
-    html.push_str(&bundle);
-    html.push_str(FOOTER);
+    html.push_str(PREFIX);
+    push_payload_tag(&mut html, "d", &data_b64);
+    push_payload_tag(&mut html, "h", &hljs_b64);
+    push_payload_tag(&mut html, "i", &init_b64);
+    push_payload_tag(&mut html, "v", &bundle_b64);
+    html.push_str(BOOTSTRAP);
+    html.push_str(SUFFIX);
     Ok(html)
+}
+
+/// Gzip-compress raw bytes, then base64-encode the result.
+fn encode_gz(bytes: &[u8]) -> std::io::Result<String> {
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::best());
+    encoder.write_all(bytes)?;
+    let gz = encoder.finish()?;
+    Ok(BASE64.encode(gz))
+}
+
+fn push_payload_tag(html: &mut String, id: &str, b64: &str) {
+    html.push_str("<script type=\"application/octet-stream\" id=\"");
+    html.push_str(id);
+    html.push_str("\">");
+    html.push_str(b64);
+    html.push_str("</script>\n");
+}
+
+fn payload_tag_len(id: &str, b64_len: usize) -> usize {
+    // <script type="application/octet-stream" id="X">...</script>\n
+    "<script type=\"application/octet-stream\" id=\"".len()
+        + id.len()
+        + "\">".len()
+        + b64_len
+        + "</script>\n".len()
 }
 
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::io::Read;
+
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64;
+    use flate2::read::GzDecoder;
 
     use super::*;
     use crate::observe::structured::EnvInfo;
@@ -98,18 +150,40 @@ mod tests {
         }
     }
 
-    #[test]
-    fn html_inlines_payload_and_bundle_entry_hook() {
-        let html = render(&sample_log("hello-world")).unwrap();
-        assert!(html.contains("window.RELUX_DATA = "));
-        assert!(html.contains("\"name\":\"hello-world\""));
-        // The Svelte bundle reads `window.RELUX_DATA` at mount time; if this
-        // string disappears, decompression silently dropped the bundle body.
-        assert!(html.contains("RELUX_DATA"));
+    /// Extract the body of the `<script type="application/octet-stream"
+    /// id="...">` tag with the given id, then base64-decode + gunzip its
+    /// contents into raw bytes. Used to assert on payloads round-trip.
+    fn decode_payload(html: &str, id: &str) -> Vec<u8> {
+        let opener = format!("<script type=\"application/octet-stream\" id=\"{id}\">");
+        let start = html.find(&opener).expect("payload tag opener missing") + opener.len();
+        let end = html[start..]
+            .find("</script>")
+            .expect("payload tag closer missing")
+            + start;
+        let b64 = &html[start..end];
+        let gz = BASE64.decode(b64).expect("payload base64 decode failed");
+        let mut out = Vec::new();
+        GzDecoder::new(gz.as_slice())
+            .read_to_end(&mut out)
+            .expect("payload gunzip failed");
+        out
     }
 
     #[test]
-    fn render_inlines_artifacts_into_window_relux_data() {
+    fn html_inlines_payload_and_bundle_entry_hook() {
+        let html = render(&sample_log("hello-world")).unwrap();
+        let data: serde_json::Value = serde_json::from_slice(&decode_payload(&html, "d")).unwrap();
+        assert_eq!(data["info"]["name"], "hello-world");
+
+        let bundle = decode_payload(&html, "v");
+        // The Svelte bundle reads `window.RELUX_DATA` at mount time; if this
+        // string disappears, decompression silently dropped the bundle body.
+        let bundle_str = std::str::from_utf8(&bundle).unwrap();
+        assert!(bundle_str.contains("RELUX_DATA"));
+    }
+
+    #[test]
+    fn render_inlines_artifacts_into_data_payload() {
         use crate::observe::structured::ArtifactEntry;
         let mut log = sample_log("with-artifacts");
         log.artifacts = vec![
@@ -125,34 +199,41 @@ mod tests {
             },
         ];
         let html = render(&log).unwrap();
-        assert!(html.contains("\"artifacts\":["), "artifacts array missing");
-        assert!(html.contains("\"path\":\"out.txt\""));
-        assert!(html.contains("\"path\":\"sut/error.log\""));
-        assert!(html.contains("\"size\":4096"));
-        assert!(html.contains("\"mime\":\"text/plain\""));
-        assert!(html.contains("\"mime\":null") || html.contains("\"mime\": null"));
+        let data: serde_json::Value = serde_json::from_slice(&decode_payload(&html, "d")).unwrap();
+        let artifacts = data["artifacts"].as_array().expect("artifacts array");
+        assert_eq!(artifacts.len(), 2);
+        assert_eq!(artifacts[0]["path"], "out.txt");
+        assert_eq!(artifacts[0]["size"], 12);
+        assert_eq!(artifacts[0]["mime"], "text/plain");
+        assert_eq!(artifacts[1]["path"], "sut/error.log");
+        assert_eq!(artifacts[1]["size"], 4096);
+        assert!(artifacts[1]["mime"].is_null());
     }
 
     #[test]
-    fn closing_tag_in_payload_is_escaped() {
+    fn closing_tag_in_payload_is_isolated_from_html() {
+        // A test name carrying a literal `</script>` would, under the old
+        // inline-JSON design, terminate the surrounding <script> tag. Under
+        // the new design the payload sits inside a base64 string in a
+        // `type="application/octet-stream"` tag, so `</script>` cannot
+        // appear there by construction. Verify the literal round-trips and
+        // does not leak unescaped into the HTML outside the payload tag.
         let mut log = sample_log("hostile");
-        // A test name carrying a literal `</script>` would otherwise
-        // terminate the surrounding <script> tag and break the page.
         log.info.name = "evil</script>name".to_string();
 
         let html = render(&log).unwrap();
 
-        // The exact byte sequence `</script>` must not appear inside the
-        // RELUX_DATA assignment — only `<\/script>` is allowed.
-        let payload_end = html
-            .find(";</script>\n<script>")
-            .expect("SCRIPT_BREAK separator");
-        let payload = &html[..payload_end];
-        assert!(
-            !payload.contains("</script>"),
-            "unescaped </script> leaked into RELUX_DATA payload"
-        );
-        assert!(payload.contains("evil<\\/script>name"));
+        let data: serde_json::Value = serde_json::from_slice(&decode_payload(&html, "d")).unwrap();
+        assert_eq!(data["info"]["name"], "evil</script>name");
+
+        // Outside the four payload tags, the only `</script>` allowed is
+        // the bootstrap's closer. The payload tags contain pure base64,
+        // which has no `<` characters at all.
+        let opener = "<script type=\"application/octet-stream\" id=\"d\">";
+        let start = html.find(opener).unwrap() + opener.len();
+        let end = html[start..].find("</script>").unwrap() + start;
+        let payload = &html[start..end];
+        assert!(payload.bytes().all(|b| b != b'<'));
     }
 
     #[test]
@@ -181,6 +262,7 @@ mod tests {
         let html = std::fs::read_to_string(&path).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
         assert!(html.starts_with("<!doctype html>"));
-        assert!(html.contains("\"name\":\"disk\""));
+        let data: serde_json::Value = serde_json::from_slice(&decode_payload(&html, "d")).unwrap();
+        assert_eq!(data["info"]["name"], "disk");
     }
 }

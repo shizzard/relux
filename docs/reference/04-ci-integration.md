@@ -31,14 +31,19 @@ Each per-test directory under `logs/` contains two artifacts:
   `artifacts/` directory: each entry is `{ path, size, mime }` with `path`
   forward-slash and relative to that directory. The list is sorted so files
   precede subdirectory contents at every directory level.
-- `event.html` — self-contained Svelte SPA viewer with the JSON inlined as
-  `window.RELUX_DATA`. Two additional inlined `<script>` tags carry
-  the highlight.js core bundle and the Relux language definition so the
-  source pane renders syntax-highlighted code; the viewer bundle itself
-  is decompressed into a final `<script>` tag. Opens directly via
-  `file://`; no server required. This is the recommended human entry
-  point and the link target used by the run-summary `index.html`, JUnit
-  `[[ATTACHMENT|...]]` markers, and TAP `log:` fields.
+- `event.html` — self-contained Svelte SPA viewer. The structured log,
+  highlight.js core, Relux language definition, and the viewer bundle
+  are each gzipped, base64-encoded, and inlined into
+  `<script type="application/octet-stream">` payload tags. A small
+  bootstrap script decompresses them in-browser via
+  [`DecompressionStream`](https://developer.mozilla.org/docs/Web/API/DecompressionStream),
+  sets `window.RELUX_DATA`, and runs the three JS payloads in order
+  (hljs core → Relux grammar → viewer). Opens directly via `file://`;
+  no server required. Requires Chrome 80+ / Firefox 113+ / Safari 16.4+;
+  older browsers see a one-line message and nothing else. This is the
+  recommended human entry point and the link target used by the
+  run-summary `index.html`, JUnit `[[ATTACHMENT|...]]` markers, and
+  TAP `log:` fields.
 
 ### Skipped-test logs
 
