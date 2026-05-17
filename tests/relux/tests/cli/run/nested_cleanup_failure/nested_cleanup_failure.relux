@@ -1,0 +1,47 @@
+test "nested setup-failure: cleanup spans anchor to test span" ~60s {
+    """
+    Guard against regression of 85eef51 on the recursive sub-effect path.
+    With E0 <- E1 <- E2 and E1's setup tripping a fail pattern, E1's
+    EffectCleanup span must parent under the test span, not under the
+    parent effect's still-open EffectSetup span.
+    """
+    let marker = "${__RELUX_TEST_ARTIFACTS}/order"
+
+    shell s {
+        > export MARKER_FILE=${marker}
+        match_ok()
+        > rm -f ${marker}
+        match_ok()
+
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 failed
+        match_prompt()
+        match_exit_code(1)
+
+        > events=$(ls -dt ${__RELUX_TEST_ROOT}/fixtures/relux/out/*/logs/relux/tests/nested_fail/nested-fail-path/events.json 2>/dev/null | head -1)
+        match_prompt()
+        > echo FOUND=$events
+        <? ^FOUND=/
+        match_ok()
+
+        > test_id=$(jq -Mr '.spans[] | select(.kind == "test") | .id' $events)
+        match_prompt()
+        > echo TEST=$test_id
+        <? ^TEST=[0-9]
+        match_ok()
+
+        > jq -Mr --arg t "$test_id" '.spans[] | select(.kind == "effect-cleanup" and .effect == "E1" and .is_deferred == false) | if .parent == ($t | tonumber) then "OK" else ("WRONG_PARENT=" + (.parent | tostring)) end' $events
+        <? ^OK$
+        match_ok()
+
+        > e1_cleanup_id=$(jq -Mr '.spans[] | select(.kind == "effect-cleanup" and .effect == "E1" and .is_deferred == false) | .id' $events)
+        match_prompt()
+        > jq -Mr --arg p "$e1_cleanup_id" '.spans[] | select(.kind == "effect-cleanup" and .effect == "E0" and .is_deferred == false) | if .parent == ($p | tonumber) then "OK" else ("WRONG_PARENT=" + (.parent | tostring)) end' $events
+        <? ^OK$
+        match_ok()
+
+        > jq -M '[.spans[] | select(.kind == "effect-cleanup" and .effect == "E2")] | length' $events
+        <? ^0$
+        match_ok()
+    }
+}

@@ -763,7 +763,11 @@ async fn run_test(
     };
 
     // Create a per-test EffectManager
-    let test_manager = EffectManager::new(Arc::new(EffectRegistry::new()), rt_ctx.clone());
+    let test_manager = EffectManager::new(
+        Arc::new(EffectRegistry::new()),
+        rt_ctx.clone(),
+        test_span_id,
+    );
 
     let outcome = run_test_body(
         meta,
@@ -780,7 +784,7 @@ async fn run_test(
     }
 
     // Release effects (always runs, even after cancellation)
-    let effect_warnings = test_manager.cleanup_all(test_span_id).await;
+    let effect_warnings = test_manager.cleanup_all().await;
     warnings.extend(effect_warnings);
 
     // Drop all remaining ProgressTx holders so the forwarder task can finish.
@@ -916,7 +920,7 @@ async fn run_test_body(
     let caller_vars = scope.vars().lock().await.clone();
     let root_env = rt_ctx.env.clone();
     let exported = manager
-        .instantiate_top_level(test.starts(), &caller_vars, &root_env, test_span)
+        .instantiate_top_level(test.starts(), &caller_vars, &root_env)
         .await?;
 
     // 4. Build shell map from exposed effect shells

@@ -64,14 +64,23 @@ pub struct EffectManager {
     /// at the top of a test). Drained by `cleanup_all`. Per-test by
     /// construction: each test instantiates its own `EffectManager`.
     top_level_guards: TokioMutex<Vec<EffectGuard>>,
+    /// Root anchor for every `EffectCleanup` span emitted during this
+    /// test's lifetime — happy-path teardown, mid-setup rollback, and
+    /// `try_guards!`-driven partial teardown alike. Per-test by
+    /// construction (same lifetime as `top_level_guards`). Threading
+    /// this from `lib.rs` once at construction lets failure paths
+    /// reach `test_span` directly without having to thread it through
+    /// every recursive call alongside the setup-hierarchy parent.
+    test_span: SpanId,
 }
 
 impl EffectManager {
-    pub fn new(registry: Arc<EffectRegistry>, rt_ctx: RuntimeContext) -> Self {
+    pub fn new(registry: Arc<EffectRegistry>, rt_ctx: RuntimeContext, test_span: SpanId) -> Self {
         Self {
             registry,
             rt_ctx,
             top_level_guards: TokioMutex::new(Vec::new()),
+            test_span,
         }
     }
 
@@ -133,8 +142,13 @@ impl EffectManager {
                     Err(failure) => {
                         // Release everything we already acquired in this batch
                         // before propagating the error. Sequential for simplicity.
+                        // Cleanup spans anchor under `self.test_span`, never the
+                        // caller's setup span — on the recursive path
+                        // `parent_span` is the parent effect's open EffectSetup
+                        // span, and nesting cleanups inside it violates the
+                        // 85eef51 invariant.
                         for (_exported, guard) in results.drain(..) {
-                            self.release_and_teardown(guard, parent_span).await;
+                            self.release_and_teardown(guard, self.test_span).await;
                         }
                         return Err(failure);
                     }
@@ -153,10 +167,9 @@ impl EffectManager {
         starts: &[IrEffectStart],
         caller_vars: &VarScope,
         caller_env: &Arc<LayeredEnv>,
-        test_span: SpanId,
     ) -> Result<Vec<ExportedEffect>, Failure> {
         let pairs = self
-            .instantiate(starts, caller_vars, caller_env, test_span)
+            .instantiate(starts, caller_vars, caller_env, self.test_span)
             .await?;
         let mut top = self.top_level_guards.lock().await;
         let mut exported = Vec::with_capacity(pairs.len());
@@ -173,14 +186,14 @@ impl EffectManager {
     /// body; other releasers return `None` and short-circuit.
     ///
     /// Every `EffectCleanup` span opened here is parented under
-    /// `test_span`. Cleanups are operationally test-level activity
+    /// `self.test_span`. Cleanups are operationally test-level activity
     /// (scheduled at test teardown), and the `EffectSetup` span has
     /// long since closed.
-    pub async fn cleanup_all(&self, test_span: SpanId) -> Vec<Warning> {
+    pub async fn cleanup_all(&self) -> Vec<Warning> {
         let guards: Vec<EffectGuard> = std::mem::take(&mut *self.top_level_guards.lock().await);
         let futures = guards
             .into_iter()
-            .map(|g| self.release_and_teardown(g, test_span));
+            .map(|g| self.release_and_teardown(g, self.test_span));
         join_all(futures).await.into_iter().flatten().collect()
     }
 
@@ -436,6 +449,11 @@ impl EffectManager {
         // noise on top would obscure the root failure. Defined after the
         // `shells` binding because macro hygiene resolves `&shells`
         // against the binding visible at the macro's definition site.
+        //
+        // The final argument is `self.test_span`, NOT the local
+        // `parent_span` — on the recursive sub-effect path, `parent_span`
+        // is the grandparent effect's open EffectSetup span. Cleanup
+        // spans must always anchor under the test span (85eef51).
         macro_rules! try_guards {
             ($e:expr) => {{
                 match $e {
@@ -452,7 +470,7 @@ impl EffectManager {
                             &shells,
                             cleanup_block.as_ref(),
                             guards_taken,
-                            parent_span,
+                            self.test_span,
                         )
                         .await;
                         return Err(failure);
