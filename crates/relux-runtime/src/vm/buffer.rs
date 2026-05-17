@@ -373,25 +373,30 @@ impl OutputBuffer {
         check_fail_in_buffer(&text, fp)
     }
 
-    /// Drain all buffered data, advancing base. Emit a `Reset` buffer
-    /// event with the discarded text (before releasing the lock).
-    /// Returns the discarded text.
+    /// Drain the cleanly-decoded prefix of the buffer, advancing base.
+    /// Trailing bytes of an incomplete UTF-8 sequence stay in the buffer
+    /// (held back by `Utf8Stream`), to be completed by a future `append`.
+    /// Emits a `Reset` buffer event carrying the decoded prefix — byte
+    /// identical to the concatenation of `Grew` payloads emitted since
+    /// the previous reset — before releasing the lock.
+    /// Returns the decoded prefix.
     pub async fn clear(&self) -> String {
         let mut inner = self.inner.lock().await;
-        let len = inner.data.len();
-        let chunk = inner.data.split_to(len);
-        inner.base += len;
-        let discarded = String::from_utf8_lossy(&chunk).to_string();
+        let pending_len = inner.utf8.pending_len();
+        let decoded_len = inner.data.len().saturating_sub(pending_len);
+        let chunk = inner.data.split_to(decoded_len);
+        inner.base += decoded_len;
+        let consumed = String::from_utf8_lossy(&chunk).to_string();
         if let Some(log) = &self.log {
             log.push_buffer_event(
                 &self.shell_name,
                 &self.shell_marker,
                 BufferEventKind::Reset {
-                    discarded: discarded.clone(),
+                    consumed: consumed.clone(),
                 },
             );
         }
-        discarded
+        consumed
     }
 
     /// Return the tail of the current buffer (last `n` chars) as a string.
@@ -483,6 +488,27 @@ mod tests {
             } => Some((before.clone(), matched.clone(), after.clone())),
             _ => None,
         })
+    }
+
+    /// Inspect the last `Reset` buffer event the builder accumulated.
+    fn last_reset(builder: &StructuredLogBuilder) -> Option<String> {
+        let events = builder.buffer_events_for_tests();
+        events.last().and_then(|ev| match &ev.kind {
+            BufferEventKind::Reset { consumed } => Some(consumed.clone()),
+            _ => None,
+        })
+    }
+
+    /// Collect every `Grew` payload the builder has accumulated, in order.
+    fn all_grew(builder: &StructuredLogBuilder) -> Vec<String> {
+        builder
+            .buffer_events_for_tests()
+            .iter()
+            .filter_map(|ev| match &ev.kind {
+                BufferEventKind::Grew { data } => Some(data.clone()),
+                _ => None,
+            })
+            .collect()
     }
 
     // ── truncate_before ──────────────────────────────────────────────
@@ -711,6 +737,48 @@ mod tests {
         // base should be 11 (from clear) + 4 (from "abc ") = absolute offset 15
         assert_eq!(m.start, 15);
         assert_eq!(m.end, 18);
+    }
+
+    #[tokio::test]
+    async fn clear_drops_incomplete_utf8_trailing_sequence() {
+        let (buf, builder, _rx) = wired_buffer();
+        // U+1F389 PARTY POPPER, encoded as F0 9F 8E 89. Feed "ok" then only
+        // the first two bytes of the codepoint — Utf8Stream holds them back.
+        buf.append(b"ok").await;
+        buf.append(&[0xF0, 0x9F]).await;
+        let _ = buf.clear().await;
+        let consumed = last_reset(&builder).expect("reset event");
+        // Only the decoded prefix is emitted; the partial bytes are silently
+        // held back (verified separately in clear_preserves_partial_utf8_in_buffer).
+        assert_eq!(consumed, "ok");
+    }
+
+    #[tokio::test]
+    async fn clear_consumed_equals_sum_of_grew_payloads() {
+        let (buf, builder, _rx) = wired_buffer();
+        buf.append(b"alpha ").await;
+        buf.append(b"beta ").await;
+        buf.append("gamma\n".as_bytes()).await;
+        let grew_sum: String = all_grew(&builder).concat();
+        let _ = buf.clear().await;
+        let consumed = last_reset(&builder).expect("reset event");
+        assert_eq!(consumed, grew_sum);
+        assert_eq!(consumed, "alpha beta gamma\n");
+    }
+
+    #[tokio::test]
+    async fn clear_preserves_partial_utf8_in_buffer() {
+        let (buf, builder, _rx) = wired_buffer();
+        // First two bytes of U+1F389 only — entire buffer is `pending`.
+        buf.append(&[0xF0, 0x9F]).await;
+        let _ = buf.clear().await;
+        let consumed = last_reset(&builder).expect("reset event");
+        assert_eq!(consumed, "");
+        // Now finish the codepoint — Grew should fire with the completed char,
+        // proving the partial bytes survived the reset.
+        buf.append(&[0x8E, 0x89]).await;
+        let grew: Vec<String> = all_grew(&builder);
+        assert_eq!(grew.last().map(String::as_str), Some("\u{1F389}"));
     }
 
     // ── OutputBuffer::snapshot_tail ─────────────────────────────────

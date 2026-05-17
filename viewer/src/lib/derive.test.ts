@@ -54,14 +54,14 @@ function matched(
   };
 }
 
-function reset(seq: number, shell: string, discarded = ''): BufferEvent {
+function reset(seq: number, shell: string, consumed = ''): BufferEvent {
   return {
     seq: BigInt(seq),
     ts: 0,
     shell,
     shell_marker: shell,
     kind: 'reset',
-    discarded,
+    consumed,
   };
 }
 
@@ -139,27 +139,68 @@ describe('replayBufferRegionsAtMarker', () => {
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
-  it('clears all regions on reset', () => {
+  it('folds tail and active matched into consumed on reset', () => {
     const log = makeLog([
       grew(1, 's', 'abc'),
       matched(2, 's', '', 'a', 'bc'),
-      reset(3, 's', 'whatever'),
+      reset(3, 's', 'bc'),
     ]);
     expect(replayBufferRegionsAtMarker(log, 100, 's')).toEqual({
-      consumed: '',
+      consumed: 'abc',
       matched: null,
       tail: '',
     });
   });
 
-  it('resumes growth after a reset using only post-reset bytes', () => {
+  it('folds tail into consumed on reset with no active match', () => {
+    const log = makeLog([
+      grew(1, 's', 'abc'),
+      reset(2, 's', 'abc'),
+    ]);
+    expect(replayBufferRegionsAtMarker(log, 100, 's')).toEqual({
+      consumed: 'abc',
+      matched: null,
+      tail: '',
+    });
+  });
+
+  it('preserves earlier consumed history through a reset', () => {
+    const log = makeLog([
+      grew(1, 's', 'first '),
+      matched(2, 's', '', 'first ', ''),
+      grew(3, 's', 'second'),
+      reset(4, 's', 'second'),
+    ]);
+    expect(replayBufferRegionsAtMarker(log, 100, 's')).toEqual({
+      consumed: 'first second',
+      matched: null,
+      tail: '',
+    });
+  });
+
+  it('clamps tail to empty when reset consumed exceeds reconstructed tail', () => {
+    // Defensive case: emitter shipped more bytes in `consumed` than the
+    // viewer accumulated in `tail`. Shouldn't happen with the aligned
+    // emitter, but the trim must not throw.
+    const log = makeLog([
+      grew(1, 's', 'ab'),
+      reset(2, 's', 'abcdef'),
+    ]);
+    expect(replayBufferRegionsAtMarker(log, 100, 's')).toEqual({
+      consumed: 'abcdef',
+      matched: null,
+      tail: '',
+    });
+  });
+
+  it('resumes growth after a reset, preserving pre-reset bytes in consumed', () => {
     const log = makeLog([
       grew(1, 's', 'pre'),
-      reset(2, 's'),
+      reset(2, 's', 'pre'),
       grew(3, 's', 'post'),
     ]);
     expect(replayBufferRegionsAtMarker(log, 100, 's')).toEqual({
-      consumed: '',
+      consumed: 'pre',
       matched: null,
       tail: 'post',
     });
@@ -277,7 +318,7 @@ describe('replayBufferRegionsAtMarker', () => {
       matched(3, 's', '', 'hello ', 'world\n'),
       grew(4, 's', 'more text\n'),
       matched(5, 's', 'world\n', 'more', ' text\n'),
-      reset(6, 's'),
+      reset(6, 's', ' text\n'),
       grew(7, 's', 'after reset'),
     ];
     const log = makeLog(events);
@@ -289,8 +330,8 @@ describe('replayBufferRegionsAtMarker', () => {
       [3, { consumed: '', matched: { bytes: 'hello ', seq: 3 }, tail: 'world\n' }],
       [4, { consumed: '', matched: { bytes: 'hello ', seq: 3 }, tail: 'world\nmore text\n' }],
       [5, { consumed: 'hello world\n', matched: { bytes: 'more', seq: 5 }, tail: ' text\n' }],
-      [6, { consumed: '', matched: null, tail: '' }],
-      [7, { consumed: '', matched: null, tail: 'after reset' }],
+      [6, { consumed: 'hello world\nmore text\n', matched: null, tail: '' }],
+      [7, { consumed: 'hello world\nmore text\n', matched: null, tail: 'after reset' }],
     ];
 
     for (const [seq, want] of expected) {

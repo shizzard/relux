@@ -39,6 +39,6 @@ pub enum BufferEventKind {
         after: String,
     },
     Reset {
-        discarded: String,
+        consumed: String,
     },
 }

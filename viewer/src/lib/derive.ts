@@ -262,11 +262,13 @@ export function replayBufferRegionsAtMarker(
         tail = ev.after;
         break;
       }
-      case 'reset':
-        consumed = '';
+      case 'reset': {
+        if (matched !== null) consumed += matched.bytes;
+        consumed += ev.consumed;
         matched = null;
-        tail = '';
+        tail = tail.length > ev.consumed.length ? tail.slice(ev.consumed.length) : '';
         break;
+      }
     }
   }
   return { consumed, matched, tail };

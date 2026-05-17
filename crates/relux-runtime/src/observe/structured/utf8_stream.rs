@@ -61,6 +61,12 @@ impl Utf8Stream {
         }
     }
 
+    /// Number of carryover bytes currently held back (an incomplete trailing
+    /// multi-byte sequence waiting for completion). Always `<= 3`.
+    pub fn pending_len(&self) -> usize {
+        self.pending.len()
+    }
+
     /// Flush any carryover at end-of-stream. Trailing partial bytes that never
     /// completed are treated as invalid and become a single `U+FFFD`.
     pub fn flush(&mut self) -> String {
@@ -135,6 +141,20 @@ mod tests {
         let out = s.feed(&[0x8E]);
         assert_eq!(out, "\u{FFFD}");
         assert!(s.pending.is_empty());
+    }
+
+    #[test]
+    fn pending_len_reports_carryover_size() {
+        let mut s = Utf8Stream::new();
+        assert_eq!(s.pending_len(), 0);
+        s.feed(b"hello");
+        assert_eq!(s.pending_len(), 0);
+        // First two bytes of U+1F389 (F0 9F 8E 89) — incomplete.
+        s.feed(&[0xF0, 0x9F]);
+        assert_eq!(s.pending_len(), 2);
+        // Finish the codepoint — pending drains.
+        s.feed(&[0x8E, 0x89]);
+        assert_eq!(s.pending_len(), 0);
     }
 
     #[test]
