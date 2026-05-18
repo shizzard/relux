@@ -198,7 +198,7 @@ relux/out/
 
 The `latest` symlink always points to the most recent run. The `run_summary.toml` file stores the run summary — this is what `--rerun` and `relux history` read.
 
-Inside each run directory, `relux/out/<run-id>/logs/...` mirrors your test layout and stores one [test log viewer](03-send-match-and-logs.md) page (`event.html` plus its companion `events.json`) per test. The top-level `index.html` is the human-facing summary that lists every test in the run with status and duration; each row links to its test log viewer. The `run_summary.toml` next to it is the machine-readable counterpart — that's what `--rerun` and `relux history` read.
+Inside each run directory, `relux/out/<run-id>/logs/...` mirrors your test layout and stores one [test log viewer](03-send-match-and-logs.md) page (`event.html` plus its companion `events.json`) per test. The top-level `index.html` is the human-facing summary that lists every test in the run with status and duration; each row links to its test log viewer. The `run_summary.toml` next to it is the machine-readable counterpart — that's what `--rerun` and `relux history` read. Each entry in that toml carries an optional `log_dir` field with the per-test log directory relative to the run dir, so external scripts can locate the test's `events.json` / `event.html` without reconstructing the slug.
 
 Two flags generate additional artifacts in the `artifacts/` subdirectory:
 

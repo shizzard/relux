@@ -705,6 +705,7 @@ pub(crate) mod tests {
             path: path.to_string(),
             outcome: outcome.to_string(),
             duration_ms,
+            log_dir: None,
             failure_type: if outcome == "fail" {
                 Some("MatchTimeout".to_string())
             } else {
