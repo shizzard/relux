@@ -238,6 +238,69 @@ mod tests {
     }
 
     #[test]
+    fn bootstrap_shows_browser_floor_when_decompression_stream_missing() {
+        // Without a headless-JS runtime we can't *execute* the fallback path,
+        // but the contract is small enough to lock in structurally. If any
+        // of these checks fail the fallback is broken — a Safari 15 user
+        // would see a blank page or a half-rendered failure instead of the
+        // documented one-liner.
+        let html = render(&sample_log("any")).unwrap();
+        let bootstrap = bootstrap_script(&html);
+
+        // (a) Guard exists.
+        assert!(
+            bootstrap.contains("!window.DecompressionStream"),
+            "bootstrap is missing the `!window.DecompressionStream` guard",
+        );
+
+        // (b) The fallback message names every supported browser floor
+        // documented in 04-ci-integration.md / 05-test-log-viewer.md.
+        for marker in ["Chrome 80+", "Firefox 113+", "Safari 16.4+"] {
+            assert!(
+                bootstrap.contains(marker),
+                "bootstrap fallback message is missing `{marker}`",
+            );
+        }
+
+        // (c) The message is set via `textContent` (not `innerHTML`) so
+        // any future change that interpolates user-controlled strings can't
+        // accidentally inject markup. Locks in the safer pattern.
+        assert!(
+            bootstrap.contains("document.body.textContent"),
+            "fallback assigns to something other than `document.body.textContent`",
+        );
+
+        // (d) The guard short-circuits before the unzip helpers are
+        // invoked. We verify by ordering: the `return` that exits the
+        // fallback branch comes before any `await unzip(`.
+        let return_idx = bootstrap
+            .find("return;")
+            .expect("fallback branch is missing an early `return`");
+        let first_unzip = bootstrap
+            .find("await unzip(")
+            .expect("bootstrap no longer calls unzip — refactor invalidates this test");
+        assert!(
+            return_idx < first_unzip,
+            "the fallback `return` no longer precedes the first `unzip` call \
+             — DecompressionStream-less browsers may try to decompress anyway",
+        );
+    }
+
+    /// Slice out the bootstrap `<script>` body (the bare `<script>...</script>`
+    /// pair following the four payload tags). The payload tags all use
+    /// `type="application/octet-stream"`, so the bootstrap is the first
+    /// `<script>` opener with no `type=` attribute.
+    fn bootstrap_script(html: &str) -> &str {
+        let opener = "<script>";
+        let start = html.find(opener).expect("bootstrap opener missing") + opener.len();
+        let end = html[start..]
+            .find("</script>")
+            .expect("bootstrap closer missing")
+            + start;
+        &html[start..end]
+    }
+
+    #[test]
     fn write_creates_event_html_under_log_dir() {
         let dir = std::env::temp_dir().join(format!(
             "relux-event-html-test-{}-{}",
