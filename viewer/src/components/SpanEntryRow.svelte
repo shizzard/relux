@@ -11,7 +11,7 @@
     toNumber as n,
   } from '../lib/derive';
   import type { SpanId } from '../lib/derive';
-  import StyleBCard from './StyleBCard.svelte';
+  import SelectionCard from './SelectionCard.svelte';
   import MarkerPill from './MarkerPill.svelte';
 
   let {
@@ -93,7 +93,7 @@
   </div>
   {#if selected}
     <div class="card-slot" style:padding-left="{depth * 24}px">
-      <StyleBCard {state} mode={{ kind: 'span', span }} />
+      <SelectionCard {state} mode={{ kind: 'span', span }} />
     </div>
   {/if}
 </li>

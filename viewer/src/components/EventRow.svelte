@@ -3,7 +3,7 @@
   import type { FoldedEvent } from '../lib/flatten';
   import { foldedSeqs, leadEvent } from '../lib/flatten';
   import { foldedFamily, foldedGlyph, foldedKindLabel, foldedSummary, formatTimestamp } from '../lib/format';
-  import StyleBCard from './StyleBCard.svelte';
+  import SelectionCard from './SelectionCard.svelte';
 
   let {
     state,
@@ -45,7 +45,7 @@
   </div>
   {#if selected}
     <div class="card-slot" style:padding-left="{depth * 24}px">
-      <StyleBCard {state} mode={{ kind: 'event', folded }} />
+      <SelectionCard {state} mode={{ kind: 'event', folded }} />
     </div>
   {/if}
 </li>

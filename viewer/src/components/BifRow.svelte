@@ -3,7 +3,7 @@
   import type { ViewerState } from '../lib/state.svelte';
   import { toNumber as n } from '../lib/derive';
   import { escapeBytes, formatTimestamp } from '../lib/format';
-  import StyleBCard from './StyleBCard.svelte';
+  import SelectionCard from './SelectionCard.svelte';
 
   let {
     state,
@@ -36,7 +36,7 @@
   </div>
   {#if selected}
     <div class="card-slot" style:padding-left="{depth * 24}px">
-      <StyleBCard {state} mode={{ kind: 'span', span }} />
+      <SelectionCard {state} mode={{ kind: 'span', span }} />
     </div>
   {/if}
 </li>
