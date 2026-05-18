@@ -986,6 +986,30 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::Error(message.to_string()));
     }
 
+    /// Emit a `cancelled` event on the span the VM was in when it observed
+    /// the cancel token flipping. Carries the reason recorded by whoever
+    /// called `cancel_with(...)`. Pushes a `C` sigil into the per-test
+    /// progress sliding window so live TUI viewers see the cancel land
+    /// in the same place errors and timeouts do.
+    pub fn emit_cancelled(
+        &self,
+        span: SpanId,
+        shell: Option<&str>,
+        shell_marker: Option<&str>,
+        reason: &crate::cancel::CancelReason,
+    ) {
+        self.push_event(
+            span,
+            shell,
+            shell_marker,
+            None,
+            EventKind::Cancelled {
+                reason: super::event::CancelReasonRecord::from(reason),
+            },
+        );
+        self.push_progress(ProgressEvent::Cancellation);
+    }
+
     /// Push a `Failure` progress notification only. The structured failure
     /// information is carried in the `FailureRecord` passed to `build()`.
     pub fn emit_failure_progress(&self) {
@@ -1062,12 +1086,21 @@ impl StructuredLogBuilder {
                 call_stack: context.call_stack.clone(),
                 vars_in_scope: context.vars_in_scope.clone(),
             },
-            Failure::Cancelled { shell, context, .. } => FailureRecord::Cancelled {
-                span: context.span,
-                event_seq: context.event_seq,
-                shell: shell.clone(),
-                call_stack: context.call_stack.clone(),
-            },
+        }
+    }
+
+    /// Translate a runtime `Cancellation` into a `CancellationRecord`.
+    pub fn cancellation_record(
+        &self,
+        c: &crate::report::result::Cancellation,
+    ) -> super::CancellationRecord {
+        let ctx = &c.context;
+        super::CancellationRecord {
+            reason: super::event::CancelReasonRecord::from(&c.reason),
+            span: ctx.span,
+            event_seq: ctx.event_seq,
+            shell: None,
+            call_stack: ctx.call_stack.clone(),
         }
     }
 

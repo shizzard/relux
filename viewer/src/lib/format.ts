@@ -1,3 +1,4 @@
+import type { CancelReasonRecord } from '../types/CancelReasonRecord';
 import type { Event } from '../types/Event';
 import type { Span } from '../types/Span';
 import type { TimeoutValue } from '../types/TimeoutValue';
@@ -75,6 +76,7 @@ const KIND_GLYPHS: Record<string, string> = {
   log: '\u{00B7}',
   warning: '\u{0021}',
   error: '\u{2717}',
+  cancelled: '\u{23F9}',
 };
 
 export function kindGlyph(kind: Event['kind']): string {
@@ -91,6 +93,7 @@ const KIND_FAMILY: Partial<Record<Event['kind'], KindFamily>> = {
   timeout: 'danger',
   'fail-pattern-triggered': 'danger',
   error: 'danger',
+  cancelled: 'danger',
   log: 'info',
   warning: 'info',
   annotate: 'info',
@@ -212,6 +215,21 @@ export function eventSummary(event: Event): string {
         : event.name;
     case 'effect-expose-var':
       return `${event.name} = ${truncate(escapeBytes(event.value), SUMMARY_MAX)}`;
+    case 'cancelled':
+      return cancelReasonSummary(event.reason);
+  }
+}
+
+export function cancelReasonSummary(reason: CancelReasonRecord): string {
+  switch (reason.type) {
+    case 'test-timeout':
+      return `test-timeout (duration ${reason.duration_ms}ms)`;
+    case 'suite-timeout':
+      return `suite-timeout (duration ${reason.duration_ms}ms)`;
+    case 'fail-fast':
+      return `fail-fast (triggered by ${reason.trigger_test})`;
+    case 'sigint':
+      return 'sigint';
   }
 }
 

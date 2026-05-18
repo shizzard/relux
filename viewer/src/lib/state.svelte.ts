@@ -94,7 +94,8 @@ export class ViewerState {
   artifactFilter = $state<string>('');
 
   errorPathSpanId = $derived<SpanId | null>(
-    this.data.outcome.kind === 'fail' && this.data.outcome.span !== null
+    (this.data.outcome.kind === 'fail' || this.data.outcome.kind === 'cancelled') &&
+      this.data.outcome.span !== null
       ? n(this.data.outcome.span)
       : null,
   );
@@ -164,6 +165,15 @@ export class ViewerState {
 
     if (
       data.outcome.kind === 'fail' &&
+      data.outcome.event_seq !== null &&
+      data.outcome.span !== null
+    ) {
+      this.selectedEventSeq = n(data.outcome.event_seq);
+      for (const ancestor of ancestors(this.data, n(data.outcome.span))) {
+        initial.add(n(ancestor.id));
+      }
+    } else if (
+      data.outcome.kind === 'cancelled' &&
       data.outcome.event_seq !== null &&
       data.outcome.span !== null
     ) {

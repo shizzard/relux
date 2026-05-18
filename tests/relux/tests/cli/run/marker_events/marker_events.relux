@@ -1,4 +1,4 @@
-test "marker events: markers root with two marker-eval children" ~60s {
+test "marker events: markers root with two marker-eval children" {
     """
     Verifies that test-level marker evaluations (skip/flaky/run) are
     replayed under a synthetic `markers` root span at runtime:

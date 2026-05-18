@@ -8,6 +8,7 @@ use colored::Colorize;
 use relux_core::diagnostics::IrSpan;
 use relux_ir::IrTimeout;
 
+use crate::cancel::CancelReason;
 use crate::observe::structured::EventSeq;
 use crate::observe::structured::SpanId;
 use crate::observe::structured::StackFrame;
@@ -52,11 +53,6 @@ pub enum Failure {
     },
     Runtime {
         message: String,
-        span: Option<IrSpan>,
-        shell: Option<String>,
-        context: FailureContext,
-    },
-    Cancelled {
         span: Option<IrSpan>,
         shell: Option<String>,
         context: FailureContext,
@@ -107,12 +103,6 @@ impl Failure {
             } => {
                 format!("runtime error: {message}")
             }
-            Failure::Cancelled {
-                shell: Some(shell), ..
-            } => {
-                format!("cancelled in shell '{shell}'")
-            }
-            Failure::Cancelled { shell: None, .. } => "cancelled".to_string(),
         }
     }
 
@@ -122,7 +112,6 @@ impl Failure {
             Failure::FailPatternMatched { .. } => "FailPatternMatched",
             Failure::ShellExited { .. } => "ShellExited",
             Failure::Runtime { .. } => "Runtime",
-            Failure::Cancelled { .. } => "Cancelled",
         }
     }
 
@@ -131,8 +120,7 @@ impl Failure {
             Failure::MatchTimeout { context, .. }
             | Failure::FailPatternMatched { context, .. }
             | Failure::ShellExited { context, .. }
-            | Failure::Runtime { context, .. }
-            | Failure::Cancelled { context, .. } => context,
+            | Failure::Runtime { context, .. } => context,
         }
     }
 }
@@ -222,28 +210,6 @@ impl From<&Failure> for relux_core::error::DiagnosticReport {
                     },
                 }
             }
-            Failure::Cancelled { span, shell, .. } => {
-                let msg = match shell {
-                    Some(s) => format!("cancelled in shell `{s}`"),
-                    None => "cancelled".to_string(),
-                };
-                match span {
-                    Some(span) => DiagnosticReport {
-                        severity: Severity::Error,
-                        message: msg,
-                        labels: vec![(span.clone(), "cancelled here".to_string()).into()],
-                        help: None,
-                        note: None,
-                    },
-                    None => DiagnosticReport {
-                        severity: Severity::Error,
-                        message: msg,
-                        labels: vec![],
-                        help: None,
-                        note: None,
-                    },
-                }
-            }
         }
     }
 }
@@ -252,6 +218,85 @@ pub fn log_link(run_dir: &Path, result: &TestResult) -> Option<String> {
     let log_dir = result.log_dir.as_ref()?;
     let relative = log_dir.strip_prefix(run_dir).ok()?;
     Some(format!("{}/event.html", relative.display()))
+}
+
+/// Top-level marker that the test was interrupted before completing.
+/// Distinct from `Failure` because the test did not misbehave — it was
+/// stopped by an external event (the per-test watchdog, the suite-wide
+/// watchdog, fail-fast, or SIGINT).
+#[derive(Debug, Clone)]
+pub struct Cancellation {
+    pub reason: CancelReason,
+    pub context: FailureContext,
+}
+
+impl Cancellation {
+    pub fn summary(&self) -> String {
+        match &self.reason {
+            CancelReason::TestTimeout { duration } => {
+                format!("cancelled: test timed out after {duration:?}")
+            }
+            CancelReason::SuiteTimeout { duration } => {
+                format!("cancelled: suite timed out after {duration:?}")
+            }
+            CancelReason::FailFast { trigger_test } => {
+                format!("cancelled: suite stopped after `{trigger_test}` failed (fail-fast)")
+            }
+            CancelReason::Sigint => "cancelled: interrupted (SIGINT)".to_string(),
+        }
+    }
+
+    pub fn reason_tag(&self) -> &'static str {
+        match &self.reason {
+            CancelReason::TestTimeout { .. } => "test-timeout",
+            CancelReason::SuiteTimeout { .. } => "suite-timeout",
+            CancelReason::FailFast { .. } => "fail-fast",
+            CancelReason::Sigint => "sigint",
+        }
+    }
+}
+
+impl From<&Cancellation> for relux_core::error::DiagnosticReport {
+    fn from(c: &Cancellation) -> Self {
+        relux_core::error::DiagnosticReport {
+            severity: relux_core::error::Severity::Error,
+            message: c.summary(),
+            labels: vec![],
+            help: None,
+            note: None,
+        }
+    }
+}
+
+/// Internal error type used by the VM / BIF / effect machinery while a test
+/// is running. `Failure` is "the test misbehaved"; `Cancelled` is "we were
+/// stopped from the outside". `run_test` maps each variant onto the
+/// corresponding `Outcome`.
+#[derive(Debug, Clone)]
+pub enum ExecError {
+    Failure(Failure),
+    Cancelled(Cancellation),
+}
+
+impl From<Failure> for ExecError {
+    fn from(f: Failure) -> Self {
+        ExecError::Failure(f)
+    }
+}
+
+impl From<Cancellation> for ExecError {
+    fn from(c: Cancellation) -> Self {
+        ExecError::Cancelled(c)
+    }
+}
+
+impl ExecError {
+    pub fn summary(&self) -> String {
+        match self {
+            ExecError::Failure(f) => f.summary(),
+            ExecError::Cancelled(c) => c.summary(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -270,14 +315,52 @@ impl TestResult {
     pub fn is_failure(&self) -> bool {
         matches!(self.outcome, Outcome::Fail(_))
     }
+
+    pub fn is_cancelled(&self) -> bool {
+        matches!(self.outcome, Outcome::Cancelled(_))
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum Outcome {
     Pass,
     Fail(Failure),
+    Cancelled(Cancellation),
     Skipped(String),
     Invalid(String),
+}
+
+impl Outcome {
+    pub fn is_failure(&self) -> bool {
+        matches!(self, Outcome::Fail(_))
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        matches!(self, Outcome::Cancelled(_))
+    }
+
+    pub fn is_nonzero_outcome(&self) -> bool {
+        matches!(
+            self,
+            Outcome::Fail(_) | Outcome::Cancelled(_) | Outcome::Invalid(_)
+        )
+    }
+
+    /// Whether the flaky-retry loop should retry on this outcome. Real
+    /// failures and per-test-timeout cancellations are retryable (those are
+    /// the test's own clock running out — exactly what flaky retries with
+    /// scaled timeouts target). External cancellations (suite-timeout,
+    /// fail-fast, SIGINT) are not retryable: rerunning the same test isn't
+    /// going to make the external trigger disappear.
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            Outcome::Fail(_) => true,
+            Outcome::Cancelled(c) => {
+                matches!(c.reason, crate::cancel::CancelReason::TestTimeout { .. })
+            }
+            _ => false,
+        }
+    }
 }
 
 // ─── Run Report ─────────────────────────────────────────────
@@ -293,6 +376,7 @@ impl RunReport<'_> {
     pub fn eprint(&self) {
         let mut passed = 0usize;
         let mut failed = 0usize;
+        let mut cancelled = 0usize;
         let mut skipped = 0usize;
         let mut invalid = 0usize;
         let mut flaky_retries = 0u32;
@@ -304,12 +388,13 @@ impl RunReport<'_> {
             match &result.outcome {
                 Outcome::Pass => passed += 1,
                 Outcome::Fail(_) => failed += 1,
+                Outcome::Cancelled(_) => cancelled += 1,
                 Outcome::Skipped(_) => skipped += 1,
                 Outcome::Invalid(_) => invalid += 1,
             }
         }
 
-        let has_problems = failed > 0 || invalid > 0;
+        let has_problems = failed > 0 || cancelled > 0 || invalid > 0;
         let status = if has_problems {
             "FAILED".red().to_string()
         } else {
@@ -317,6 +402,9 @@ impl RunReport<'_> {
         };
 
         let mut summary = format!("\ntest result: {status}. {passed} passed; {failed} failed");
+        if cancelled > 0 {
+            summary.push_str(&format!("; {cancelled} cancelled"));
+        }
         if invalid > 0 {
             summary.push_str(&format!("; {invalid} invalid"));
         }
@@ -466,6 +554,49 @@ mod tests {
             log_link(run_dir, &result),
             Some("my_test/event.html".to_string())
         );
+    }
+
+    #[test]
+    fn cancellation_summary_test_timeout() {
+        let c = Cancellation {
+            reason: CancelReason::TestTimeout {
+                duration: Duration::from_millis(300),
+            },
+            context: FailureContext::default(),
+        };
+        assert_eq!(c.reason_tag(), "test-timeout");
+        assert!(c.summary().starts_with("cancelled: test timed out after"));
+    }
+
+    #[test]
+    fn cancellation_summary_fail_fast() {
+        let c = Cancellation {
+            reason: CancelReason::FailFast {
+                trigger_test: "foo".into(),
+            },
+            context: FailureContext::default(),
+        };
+        assert_eq!(c.reason_tag(), "fail-fast");
+        assert!(c.summary().contains("`foo`"));
+    }
+
+    #[test]
+    fn exec_error_from_conversions() {
+        let f = Failure::Runtime {
+            message: "x".into(),
+            span: None,
+            shell: None,
+            context: FailureContext::default(),
+        };
+        let e: ExecError = f.into();
+        assert!(matches!(e, ExecError::Failure(_)));
+
+        let c = Cancellation {
+            reason: CancelReason::Sigint,
+            context: FailureContext::default(),
+        };
+        let e: ExecError = c.into();
+        assert!(matches!(e, ExecError::Cancelled(_)));
     }
 
     #[test]

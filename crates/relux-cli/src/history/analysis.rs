@@ -58,10 +58,51 @@ pub(crate) struct TestMeta {
     pub duration_ms: u64,
     pub failure_type: Option<String>,
     pub failure_summary: Option<String>,
+    #[allow(dead_code)]
+    pub cancellation_reason: Option<String>,
     pub flaky_retries: u32,
 }
 
 impl TestMeta {
+    /// Build a `TestMeta` from a `TestEntry`, folding legacy outcome shapes
+    /// into the current schema. Pre-cutover summaries used
+    /// `outcome = "fail"` with `failure_type = "Cancelled"` (or
+    /// `failure_type = "Runtime"` + a "test timeout" failure_summary) to
+    /// express what is now a first-class `outcome = "cancelled"`. Folding
+    /// happens here so every downstream query sees a uniform shape.
+    pub(crate) fn from_legacy_entry(entry: relux_runtime::report::run_summary::TestEntry) -> Self {
+        let mut outcome = entry.outcome;
+        let mut cancellation_reason: Option<String> = entry.cancellation_reason;
+
+        if outcome == "fail" {
+            match (
+                entry.failure_type.as_deref(),
+                entry.failure_summary.as_deref(),
+            ) {
+                (Some("Cancelled"), _) => {
+                    outcome = "cancelled".to_string();
+                    cancellation_reason.get_or_insert_with(|| "legacy".to_string());
+                }
+                (Some("Runtime"), Some(summary))
+                    if summary.starts_with("runtime error: test timeout") =>
+                {
+                    outcome = "cancelled".to_string();
+                    cancellation_reason.get_or_insert_with(|| "test-timeout".to_string());
+                }
+                _ => {}
+            }
+        }
+
+        TestMeta {
+            outcome,
+            duration_ms: entry.duration_ms,
+            failure_type: entry.failure_type,
+            failure_summary: entry.failure_summary,
+            cancellation_reason,
+            flaky_retries: entry.flaky_retries,
+        }
+    }
+
     pub fn lower_outcome(&self) -> &str {
         if self.flaky_retries > 0 {
             "fail"
@@ -110,13 +151,7 @@ impl LoadedRunsCollection {
 
             for entry in run.summary.tests {
                 let key = TestKey::new(&entry);
-                let meta = TestMeta {
-                    outcome: entry.outcome,
-                    duration_ms: entry.duration_ms,
-                    failure_type: entry.failure_type,
-                    failure_summary: entry.failure_summary,
-                    flaky_retries: entry.flaky_retries,
-                };
+                let meta = TestMeta::from_legacy_entry(entry);
                 tests.entry(key).or_default().insert(run_id.clone(), meta);
             }
         }
@@ -680,6 +715,12 @@ pub(crate) mod tests {
             } else {
                 None
             },
+            cancellation_reason: if outcome == "cancelled" {
+                Some("test-timeout".to_string())
+            } else {
+                None
+            },
+            cancellation_detail: None,
             skip_reason: if outcome == "skipped" {
                 Some("os:linux".to_string())
             } else {

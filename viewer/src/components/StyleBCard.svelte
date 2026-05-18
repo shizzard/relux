@@ -354,6 +354,33 @@
           { type: 'kv', key: 'target', value: ev.target, mono: true },
           { type: 'kv', key: 'qualifier', value: ev.qualifier ?? '\u2014' },
         ];
+      case 'cancelled': {
+        const out: Row[] = [
+          { type: 'kv', key: 'reason', value: ev.reason.type, mono: true, accent: true },
+        ];
+        switch (ev.reason.type) {
+          case 'test-timeout':
+          case 'suite-timeout':
+            out.push({
+              type: 'kv',
+              key: 'duration',
+              value: `${ev.reason.duration_ms}ms`,
+              mono: true,
+            });
+            break;
+          case 'fail-fast':
+            out.push({
+              type: 'kv',
+              key: 'trigger',
+              value: ev.reason.trigger_test,
+              mono: true,
+            });
+            break;
+          case 'sigint':
+            break;
+        }
+        return out;
+      }
     }
   }
 

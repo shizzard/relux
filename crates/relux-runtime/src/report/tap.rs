@@ -28,7 +28,7 @@ fn failure_span(failure: &Failure) -> Option<&IrSpan> {
         Failure::MatchTimeout { span, .. }
         | Failure::FailPatternMatched { span, .. }
         | Failure::ShellExited { span, .. } => Some(span),
-        Failure::Runtime { span, .. } | Failure::Cancelled { span, .. } => span.as_ref(),
+        Failure::Runtime { span, .. } => span.as_ref(),
     }
 }
 
@@ -38,7 +38,7 @@ fn failure_shell(failure: &Failure) -> Option<&str> {
         Failure::MatchTimeout { shell, .. }
         | Failure::FailPatternMatched { shell, .. }
         | Failure::ShellExited { shell, .. } => Some(shell),
-        Failure::Runtime { shell, .. } | Failure::Cancelled { shell, .. } => shell.as_deref(),
+        Failure::Runtime { shell, .. } => shell.as_deref(),
     }
 }
 
@@ -99,6 +99,16 @@ fn render_tap(
                     )
                     .unwrap();
                 }
+                writeln!(out, "  duration_ms: {}", result.duration.as_millis()).unwrap();
+                if let Some(link) = log_link(run_dir, result) {
+                    writeln!(out, "  log: {link}").unwrap();
+                }
+                writeln!(out, "  ...").unwrap();
+            }
+            Outcome::Cancelled(c) => {
+                writeln!(out, "not ok {num} - {}", result.test_name).unwrap();
+                writeln!(out, "  ---").unwrap();
+                writeln!(out, "  cancellation: {}", c.reason_tag()).unwrap();
                 writeln!(out, "  duration_ms: {}", result.duration.as_millis()).unwrap();
                 if let Some(link) = log_link(run_dir, result) {
                     writeln!(out, "  log: {link}").unwrap();

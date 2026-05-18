@@ -74,10 +74,21 @@ pub enum FailureRecord {
         call_stack: Vec<StackFrame>,
         vars_in_scope: Vec<(String, String)>,
     },
-    Cancelled {
-        span: Option<SpanId>,
-        event_seq: Option<EventSeq>,
-        shell: Option<String>,
-        call_stack: Vec<StackFrame>,
-    },
+}
+
+/// Self-contained record of a test cancellation. Distinct from
+/// `FailureRecord` because cancellation is not a failure: the test was
+/// running fine when an external event (the per-test watchdog, the
+/// suite-wide watchdog, fail-fast, SIGINT) cut it short.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
+pub struct CancellationRecord {
+    pub reason: super::event::CancelReasonRecord,
+    pub span: Option<SpanId>,
+    pub event_seq: Option<EventSeq>,
+    pub shell: Option<String>,
+    pub call_stack: Vec<StackFrame>,
 }

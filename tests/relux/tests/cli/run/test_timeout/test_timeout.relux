@@ -1,13 +1,16 @@
-test "run reports inline test timeout exceeded" ~2s {
+test "run reports inline test timeout as cancelled" ~10s {
     """
-    Verify relux run fails when a test exceeds its inline per-test timeout.
+    Verify relux run reports a Cancelled outcome with the test-timeout
+    reason when a test exceeds its inline per-test timeout.
 
-    The inner fixture has a 100ms test timeout with a 200ms sleep,
-    so it must fail with a "test timeout" message.
+    The inner fixture has a 100ms test timeout with a 200ms sleep, so
+    it must end with `Outcome::Cancelled { reason: TestTimeout }` and
+    exit code 1.
     """
     shell s {
         > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
-        <? test timeout.*exceeded
+        <? test-timeout
+        <? 1 cancelled
         match_prompt()
         match_exit_code(1)
     }

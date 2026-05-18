@@ -24,7 +24,7 @@ The strip across the top of the viewer.
 Contents, left to right:
 
 - **Breadcrumb** — `<directory>/<file>` followed by the test name.
-- **Outcome pill** — `pass`, `fail`, `skip`, or `invalid`.
+- **Outcome pill** — `pass`, `fail`, `cancelled`, `skip`, or `invalid`. `cancelled` indicates the test was stopped before completion (test-timeout, suite-timeout, fail-fast, or SIGINT); the in-stream `cancelled` event tells you which one.
 - **Modal launcher chips** — `env`, `shells (N)`, `artifacts (N)`. The artifacts chip is disabled when the test produced no files.
 - **Timing summary** — total duration, event count, span count.
 

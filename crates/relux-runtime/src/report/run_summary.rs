@@ -32,6 +32,10 @@ pub struct TestEntry {
     pub failure_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cancellation_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cancellation_detail: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skip_reason: Option<String>,
     #[serde(default)]
@@ -67,6 +71,17 @@ pub fn failed_test_ids(summary: &RunSummary) -> Vec<(&str, &str)> {
         .collect()
 }
 
+/// Returns `(path, name)` pairs for all tests with a nonzero outcome
+/// (`fail`, `cancelled`, or `invalid`).
+pub fn nonzero_test_ids(summary: &RunSummary) -> Vec<(&str, &str)> {
+    summary
+        .tests
+        .iter()
+        .filter(|t| t.outcome == "fail" || t.outcome == "cancelled" || t.outcome == "invalid")
+        .map(|t| (t.path.as_str(), t.name.as_str()))
+        .collect()
+}
+
 fn build_summary(run_id: &str, results: &[TestResult], total_duration: Duration) -> RunSummary {
     let hostname = std::env::var("HOSTNAME")
         .or_else(|_| std::env::var("HOST"))
@@ -82,20 +97,62 @@ fn build_summary(run_id: &str, results: &[TestResult], total_duration: Duration)
     let tests = results
         .iter()
         .map(|r| {
-            let (outcome, failure_type, failure_summary, skip_reason) = match &r.outcome {
-                Outcome::Pass => ("pass".to_string(), None, None, None),
+            let (
+                outcome,
+                failure_type,
+                failure_summary,
+                cancellation_reason,
+                cancellation_detail,
+                skip_reason,
+            ) = match &r.outcome {
+                Outcome::Pass => ("pass".to_string(), None, None, None, None, None),
                 Outcome::Fail(f) => (
                     "fail".to_string(),
                     Some(f.failure_type().to_string()),
                     Some(f.summary()),
                     None,
+                    None,
+                    None,
                 ),
-                Outcome::Skipped(reason) => {
-                    ("skipped".to_string(), None, None, Some(reason.clone()))
+                Outcome::Cancelled(c) => {
+                    use crate::cancel::CancelReason;
+                    let detail = match &c.reason {
+                        CancelReason::TestTimeout { duration } => {
+                            Some(format!("duration_ms={}", duration.as_millis()))
+                        }
+                        CancelReason::SuiteTimeout { duration } => {
+                            Some(format!("duration_ms={}", duration.as_millis()))
+                        }
+                        CancelReason::FailFast { trigger_test } => {
+                            Some(format!("trigger_test={trigger_test}"))
+                        }
+                        CancelReason::Sigint => None,
+                    };
+                    (
+                        "cancelled".to_string(),
+                        None,
+                        None,
+                        Some(c.reason_tag().to_string()),
+                        detail,
+                        None,
+                    )
                 }
-                Outcome::Invalid(reason) => {
-                    ("invalid".to_string(), None, None, Some(reason.clone()))
-                }
+                Outcome::Skipped(reason) => (
+                    "skipped".to_string(),
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(reason.clone()),
+                ),
+                Outcome::Invalid(reason) => (
+                    "invalid".to_string(),
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(reason.clone()),
+                ),
             };
 
             TestEntry {
@@ -105,6 +162,8 @@ fn build_summary(run_id: &str, results: &[TestResult], total_duration: Duration)
                 duration_ms: r.duration.as_millis() as u64,
                 failure_type,
                 failure_summary,
+                cancellation_reason,
+                cancellation_detail,
                 skip_reason,
                 flaky_retries: r.flaky_retries,
             }

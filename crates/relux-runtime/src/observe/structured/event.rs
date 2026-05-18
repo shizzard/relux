@@ -215,6 +215,55 @@ pub enum EventKind {
     Error {
         message: String,
     },
+
+    // External interruption observed by the VM. Tagged with the reason
+    // (test-timeout, suite-timeout, fail-fast, sigint). Emitted on the
+    // span the VM was in when it noticed `cancel.is_cancelled()`.
+    Cancelled {
+        reason: CancelReasonRecord,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+pub enum CancelReasonRecord {
+    TestTimeout { duration_ms: u64 },
+    SuiteTimeout { duration_ms: u64 },
+    FailFast { trigger_test: String },
+    Sigint,
+}
+
+impl CancelReasonRecord {
+    pub fn tag(&self) -> &'static str {
+        match self {
+            Self::TestTimeout { .. } => "test-timeout",
+            Self::SuiteTimeout { .. } => "suite-timeout",
+            Self::FailFast { .. } => "fail-fast",
+            Self::Sigint => "sigint",
+        }
+    }
+}
+
+impl From<&crate::cancel::CancelReason> for CancelReasonRecord {
+    fn from(r: &crate::cancel::CancelReason) -> Self {
+        use crate::cancel::CancelReason;
+        match r {
+            CancelReason::TestTimeout { duration } => Self::TestTimeout {
+                duration_ms: duration.as_millis() as u64,
+            },
+            CancelReason::SuiteTimeout { duration } => Self::SuiteTimeout {
+                duration_ms: duration.as_millis() as u64,
+            },
+            CancelReason::FailFast { trigger_test } => Self::FailFast {
+                trigger_test: trigger_test.clone(),
+            },
+            CancelReason::Sigint => Self::Sigint,
+        }
+    }
 }
 
 #[cfg(test)]

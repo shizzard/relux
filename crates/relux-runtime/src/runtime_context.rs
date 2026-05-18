@@ -2,8 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
-use tokio_util::sync::CancellationToken;
-
+use crate::cancel::CancelToken;
 use crate::observe::structured::StructuredLogBuilder;
 use relux_core::pure::LayeredEnv;
 use relux_ir::IrTimeout;
@@ -23,7 +22,7 @@ pub struct RuntimeContext {
     pub log_dir: Arc<Path>,
     pub tables: Tables,
     pub env: Arc<LayeredEnv>,
-    pub cancel: CancellationToken,
+    pub cancel: CancelToken,
     pub test_start: Instant,
     pub flaky_timeout_multiplier: f64,
 }

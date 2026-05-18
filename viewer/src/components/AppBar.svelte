@@ -9,6 +9,8 @@
   const info = $derived(state.data.info);
   const outcomeKind = $derived(state.data.outcome.kind);
   const cls = $derived(outcomeClass(outcomeKind));
+  // Display label for the pill — kept short and parallel (PASS/FAIL/CANCEL).
+  const pillLabel = $derived(outcomeKind === 'cancelled' ? 'cancel' : outcomeKind);
   const duration = $derived(formatDuration(Number(info.duration_ms)));
   const shellCount = $derived(Object.keys(state.data.shells).length);
   const artifactCount = $derived(state.data.artifacts.length);
@@ -28,7 +30,7 @@
   <span class="crumbs">
     {#if breadcrumb.dir.length > 0}<b class="dir">{breadcrumb.dir}</b><span class="sep">/</span>{/if}<span class="file">{breadcrumb.file}</span><span class="sep">&rsaquo;</span><b>{info.name}</b>
   </span>
-  <span class="pill {cls}">{outcomeKind}</span>
+  <span class="pill {cls}">{pillLabel}</span>
   <span class="chips">
     <Chip kbd="E" onclick={() => state.openEnv()} title="environment (E)">env</Chip>
     <Chip kbd="S" onclick={() => state.openShells()} title="all shells (S)">shells &middot; {shellCount}</Chip>
@@ -89,6 +91,9 @@
   }
   .pill.fail {
     color: var(--fail);
+  }
+  .pill.cancel {
+    color: var(--cancel);
   }
   .pill.skip {
     color: var(--skip);

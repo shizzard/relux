@@ -6,7 +6,7 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio::sync::Notify;
 
 use crate::observe::structured::SpanId;
-use crate::report::result::Failure;
+use crate::report::result::ExecError;
 use crate::vm::Vm;
 use crate::vm::context::Scope;
 use relux_core::diagnostics::EffectId as DiagEffectId;
@@ -181,7 +181,7 @@ pub enum EffectSlot {
         refcount: usize,
         handle: Box<EffectHandle>,
     },
-    Failed(Failure),
+    Failed(ExecError),
 }
 
 // EffectGuard

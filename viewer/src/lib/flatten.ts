@@ -37,7 +37,8 @@ export type EventTypeId =
   | 'bool-check'
   | 'log'
   | 'warning'
-  | 'error';
+  | 'error'
+  | 'cancelled';
 
 export const ALL_EVENT_TYPE_IDS: readonly EventTypeId[] = [
   'send',
@@ -57,6 +58,7 @@ export const ALL_EVENT_TYPE_IDS: readonly EventTypeId[] = [
   'log',
   'warning',
   'error',
+  'cancelled',
 ];
 
 export function foldedTypeId(f: FoldedEvent): EventTypeId | null {
@@ -103,6 +105,8 @@ export function singleEventTypeId(k: Event['kind']): EventTypeId | null {
       return 'warning';
     case 'error':
       return 'error';
+    case 'cancelled':
+      return 'cancelled';
     default:
       return null;
   }

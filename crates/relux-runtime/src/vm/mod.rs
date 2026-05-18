@@ -6,9 +6,9 @@ mod pty;
 use std::collections::HashMap;
 use std::time::Instant;
 
+use crate::cancel::CancelToken;
 use regex::Regex;
 use regex::RegexBuilder;
-use tokio_util::sync::CancellationToken;
 
 use crate::RuntimeContext;
 use crate::observe::structured::EventSeq;
@@ -16,6 +16,8 @@ use crate::observe::structured::FnCallKind;
 use crate::observe::structured::SpanId;
 use crate::observe::structured::SpanKind;
 use crate::observe::structured::StructuredLogBuilder;
+use crate::report::result::Cancellation;
+use crate::report::result::ExecError;
 use crate::report::result::Failure;
 use crate::report::result::FailureContext;
 
@@ -105,7 +107,7 @@ pub struct Vm {
     tables: Tables,
     pub log: StructuredLogBuilder,
     shell_prompt: String,
-    pub(crate) cancel: CancellationToken,
+    pub(crate) cancel: CancelToken,
     flaky_timeout_multiplier: f64,
     terminated: bool,
     /// Stable identity for this shell. Same value for the entire VM
@@ -120,7 +122,7 @@ impl Vm {
         shell_marker: String,
         ctx: ExecutionContext,
         rt_ctx: &RuntimeContext,
-    ) -> Result<Self, Failure> {
+    ) -> Result<Self, ExecError> {
         let shell_command = rt_ctx.shell.command.to_string();
         let shell_prompt = rt_ctx.shell.prompt.to_string();
 
@@ -214,20 +216,35 @@ impl Vm {
         self.ctx.set_block_span(span);
     }
 
-    pub async fn exec_stmts(&mut self, stmts: &[IrShellStmt]) -> Result<String, Failure> {
+    pub async fn exec_stmts(&mut self, stmts: &[IrShellStmt]) -> Result<String, ExecError> {
         let mut last = String::new();
         for stmt in stmts {
             if self.cancel.is_cancelled() {
-                let context = self.capture_failure_context().await;
-                return Err(Failure::Cancelled {
-                    span: None,
-                    shell: Some(self.ctx.current_name().to_string()),
-                    context,
-                });
+                return Err(self.observed_cancel(None).await);
             }
             last = self.exec_stmt(stmt).await?;
         }
         Ok(last)
+    }
+
+    /// Build an `ExecError::Cancelled` from the current cancel-token state.
+    /// Emits the `cancelled` event on the current span before returning so
+    /// that the event ordering matches "VM observed cancel, then unwound".
+    pub(crate) async fn observed_cancel(&self, span: Option<IrSpan>) -> ExecError {
+        let context = self.capture_failure_context().await;
+        let reason = self
+            .cancel
+            .reason()
+            .expect("production cancels always carry a reason");
+        let shell = self.ctx.current_name();
+        self.log.emit_cancelled(
+            self.current_span(),
+            Some(&shell),
+            Some(&self.shell_marker),
+            &reason,
+        );
+        let _ = span;
+        ExecError::Cancelled(Cancellation { reason, context })
     }
 
     fn current_span(&self) -> SpanId {
@@ -292,7 +309,7 @@ impl Vm {
         }
     }
 
-    pub async fn exec_stmt(&mut self, stmt: &IrShellStmt) -> Result<String, Failure> {
+    pub async fn exec_stmt(&mut self, stmt: &IrShellStmt) -> Result<String, ExecError> {
         use relux_ir::IrNode;
         let span = stmt.span().clone();
         self.check_fail(span.clone()).await?;
@@ -322,7 +339,8 @@ impl Vm {
                             span: Some(ir_span.clone()),
                             shell: Some(self.ctx.current_name().to_string()),
                             context,
-                        });
+                        }
+                        .into());
                     }
                 };
                 let fp = Some(FailPattern::Regex(re));
@@ -404,7 +422,8 @@ impl Vm {
                         span: Some(assign.name().span().clone()),
                         shell: Some(self.ctx.current_name().to_string()),
                         context,
-                    });
+                    }
+                    .into());
                 };
                 let shell = self.ctx.current_name();
                 self.log.emit_var_assign(
@@ -492,7 +511,8 @@ impl Vm {
                             span: Some(pattern.span().clone()),
                             shell: Some(self.ctx.current_name().to_string()),
                             context,
-                        });
+                        }
+                        .into());
                     }
                 };
                 let shell = self.ctx.current_name();
@@ -571,7 +591,8 @@ impl Vm {
                             span: Some(pattern.span().clone()),
                             shell: Some(self.ctx.current_name().to_string()),
                             context,
-                        });
+                        }
+                        .into());
                     }
                 };
                 let shell = self.ctx.current_name();
@@ -622,7 +643,7 @@ impl Vm {
     }
 
     #[async_recursion::async_recursion]
-    async fn eval_expr(&mut self, expr: &IrExpr) -> Result<String, Failure> {
+    async fn eval_expr(&mut self, expr: &IrExpr) -> Result<String, ExecError> {
         use relux_ir::IrNode;
         let span = expr.span().clone();
         self.check_fail(span.clone()).await?;
@@ -652,7 +673,7 @@ impl Vm {
         }
     }
 
-    async fn eval_call(&mut self, call: &IrCallExpr, span: &IrSpan) -> Result<String, Failure> {
+    async fn eval_call(&mut self, call: &IrCallExpr, span: &IrSpan) -> Result<String, ExecError> {
         let fn_id = call.resolved().clone();
         let fn_name = call.name().name().to_string();
 
@@ -673,7 +694,8 @@ impl Vm {
                         span: Some(span.clone()),
                         shell: Some(self.ctx.current_name().to_string()),
                         context,
-                    });
+                    }
+                    .into());
                 }
             };
             match ir_fn {
@@ -759,7 +781,8 @@ impl Vm {
                         span: Some(span.clone()),
                         shell: Some(self.ctx.current_name().to_string()),
                         context,
-                    });
+                    }
+                    .into());
                 }
             };
             let named_args: Vec<(String, String)> = match ir_fn {
@@ -813,12 +836,17 @@ impl Vm {
             span: Some(span.clone()),
             shell: Some(self.ctx.current_name().to_string()),
             context,
-        })
+        }
+        .into())
     }
 
     // ─── Public methods for BIFs ────────────────────────────────
 
-    pub async fn match_literal(&mut self, pattern: &str, span: &IrSpan) -> Result<String, Failure> {
+    pub async fn match_literal(
+        &mut self,
+        pattern: &str,
+        span: &IrSpan,
+    ) -> Result<String, ExecError> {
         let shell = self.ctx.current_name();
         let timeout = self.ctx.timeout().clone();
         self.log.emit_match_start(
@@ -848,7 +876,7 @@ impl Vm {
         Ok(pattern.to_string())
     }
 
-    pub async fn send_line(&mut self, line: &str, span: &IrSpan) -> Result<(), Failure> {
+    pub async fn send_line(&mut self, line: &str, span: &IrSpan) -> Result<(), ExecError> {
         self.send_bytes(format!("{line}\n").as_bytes(), span.clone())
             .await?;
         let shell = self.ctx.current_name();
@@ -862,7 +890,7 @@ impl Vm {
         Ok(())
     }
 
-    pub async fn send_raw(&mut self, data: &[u8], span: &IrSpan) -> Result<(), Failure> {
+    pub async fn send_raw(&mut self, data: &[u8], span: &IrSpan) -> Result<(), ExecError> {
         self.send_bytes(data, span.clone()).await?;
         let display = data
             .iter()
@@ -886,7 +914,7 @@ impl Vm {
         pattern: &str,
         timeout: &IrTimeout,
         span: IrSpan,
-    ) -> Result<(buffer::Match<buffer::LiteralMatch>, EventSeq), Failure> {
+    ) -> Result<(buffer::Match<buffer::LiteralMatch>, EventSeq), ExecError> {
         let dur = timeout.adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
         let fut = async {
             loop {
@@ -902,7 +930,7 @@ impl Vm {
                         return Err(self.make_fail_pattern_error(hit, span.clone()).await);
                     }
                     Ok(Some(result)) => {
-                        return Ok::<(buffer::Match<buffer::LiteralMatch>, EventSeq), Failure>(
+                        return Ok::<(buffer::Match<buffer::LiteralMatch>, EventSeq), ExecError>(
                             result,
                         );
                     }
@@ -911,12 +939,7 @@ impl Vm {
                 tokio::select! {
                     _ = notified => {}
                     _ = self.cancel.cancelled() => {
-                        let context = self.capture_failure_context().await;
-                        return Err(Failure::Cancelled {
-                            span: Some(span.clone()),
-                            shell: Some(self.ctx.current_name().to_string()),
-                            context,
-                        });
+                        return Err(self.observed_cancel(Some(span.clone())).await);
                     }
                 }
             }
@@ -941,7 +964,8 @@ impl Vm {
                     shell: self.ctx.current_name().to_string(),
                     effective: Box::new(timeout.clone()),
                     context,
-                })
+                }
+                .into())
             }
         }
     }
@@ -952,7 +976,7 @@ impl Vm {
         re: &Regex,
         timeout: &IrTimeout,
         span: IrSpan,
-    ) -> Result<(buffer::Match<buffer::RegexMatch>, EventSeq), Failure> {
+    ) -> Result<(buffer::Match<buffer::RegexMatch>, EventSeq), ExecError> {
         let dur = timeout.adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
         let fut = async {
             loop {
@@ -968,7 +992,7 @@ impl Vm {
                         return Err(self.make_fail_pattern_error(hit, span.clone()).await);
                     }
                     Ok(Some(result)) => {
-                        return Ok::<(buffer::Match<buffer::RegexMatch>, EventSeq), Failure>(
+                        return Ok::<(buffer::Match<buffer::RegexMatch>, EventSeq), ExecError>(
                             result,
                         );
                     }
@@ -977,12 +1001,7 @@ impl Vm {
                 tokio::select! {
                     _ = notified => {}
                     _ = self.cancel.cancelled() => {
-                        let context = self.capture_failure_context().await;
-                        return Err(Failure::Cancelled {
-                            span: Some(span.clone()),
-                            shell: Some(self.ctx.current_name().to_string()),
-                            context,
-                        });
+                        return Err(self.observed_cancel(Some(span.clone())).await);
                     }
                 }
             }
@@ -1007,12 +1026,13 @@ impl Vm {
                     shell: self.ctx.current_name().to_string(),
                     effective: Box::new(timeout.clone()),
                     context,
-                })
+                }
+                .into())
             }
         }
     }
 
-    async fn check_fail(&self, span: IrSpan) -> Result<(), Failure> {
+    async fn check_fail(&self, span: IrSpan) -> Result<(), ExecError> {
         let fail_pat = self.ctx.fail_pattern();
         if let Some(hit) = self.pty.output_buf.check_fail_pattern(fail_pat).await {
             return Err(self.make_fail_pattern_error(hit, span).await);
@@ -1020,7 +1040,7 @@ impl Vm {
         Ok(())
     }
 
-    async fn make_fail_pattern_error(&self, hit: FailPatternHit, span: IrSpan) -> Failure {
+    async fn make_fail_pattern_error(&self, hit: FailPatternHit, span: IrSpan) -> ExecError {
         let shell = self.ctx.current_name();
         self.log.emit_fail_pattern_triggered(
             self.current_span(),
@@ -1039,9 +1059,10 @@ impl Vm {
             shell: self.ctx.current_name().to_string(),
             context,
         }
+        .into()
     }
 
-    async fn send_bytes(&mut self, data: &[u8], span: IrSpan) -> Result<(), Failure> {
+    async fn send_bytes(&mut self, data: &[u8], span: IrSpan) -> Result<(), ExecError> {
         match self.pty.send_bytes(data).await {
             Ok(()) => Ok(()),
             Err(e) => {
@@ -1051,7 +1072,8 @@ impl Vm {
                     exit_code: e.raw_os_error(),
                     span,
                     context,
-                })
+                }
+                .into())
             }
         }
     }

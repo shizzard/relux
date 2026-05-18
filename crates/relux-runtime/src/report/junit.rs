@@ -51,6 +51,12 @@ fn render_junit(
                 status.set_description(format_failure_detail(failure, source_table));
                 case.status = status;
             }
+            Outcome::Cancelled(c) => {
+                let mut status = TestCaseStatus::non_success(NonSuccessKind::Error);
+                status.set_message(format!("cancelled: {}", c.reason_tag()));
+                status.set_type("cancelled");
+                case.status = status;
+            }
             Outcome::Skipped(reason) => {
                 let mut status = TestCaseStatus::skipped();
                 status.set_message(reason.as_str());
@@ -125,17 +131,6 @@ fn format_failure_detail(failure: &Failure, source_table: &SourceTable) -> Strin
                 None => String::new(),
             };
             format!("{shell_line}message: {message}{loc_line}")
-        }
-        Failure::Cancelled { span, shell, .. } => {
-            let shell_line = match shell {
-                Some(s) => format!("shell: {s}\n"),
-                None => String::new(),
-            };
-            let loc_line = match span {
-                Some(s) => format!("\n{}", source_location(s, source_table)),
-                None => String::new(),
-            };
-            format!("{shell_line}cancelled{loc_line}")
         }
     }
 }

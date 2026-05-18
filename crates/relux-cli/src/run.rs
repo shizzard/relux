@@ -11,7 +11,6 @@ use relux_ir::IrTimeout;
 use relux_resolver::resolve;
 use relux_runtime::RunContext;
 use relux_runtime::RunStrategy;
-use relux_runtime::report::result::Outcome;
 
 use super::build_source_loader;
 use super::resolve_project;
@@ -204,9 +203,7 @@ pub async fn cmd_run(matches: &clap::ArgMatches) {
         );
     }
 
-    let has_problems = results
-        .iter()
-        .any(|r| matches!(r.outcome, Outcome::Fail(_) | Outcome::Invalid(_)));
+    let has_problems = results.iter().any(|r| r.outcome.is_nonzero_outcome());
     if has_problems {
         process::exit(1);
     }

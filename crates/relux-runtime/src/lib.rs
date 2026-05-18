@@ -7,16 +7,11 @@ use std::time::Duration;
 use std::time::Instant;
 
 use std::collections::VecDeque;
-use std::sync::OnceLock;
 
 use tokio::sync::Mutex as TokioMutex;
-use tokio_util::sync::CancellationToken;
 
-pub(crate) enum CancelReason {
-    SuiteTimeout,
-    FailFast,
-}
-
+use crate::cancel::CancelReason;
+use crate::cancel::CancelToken;
 use crate::effect::CleanupSource;
 use crate::effect::EffectManager;
 use crate::effect::Warning;
@@ -33,6 +28,7 @@ use crate::observe::structured::StructuredLogBuilder;
 use crate::observe::structured::TestInfo;
 use crate::observe::structured::TestOutcome;
 use crate::observe::structured::log_sink::LogSink;
+use crate::report::result::ExecError;
 use crate::report::result::Failure;
 use crate::report::result::FailureContext;
 use crate::report::result::Outcome;
@@ -57,6 +53,7 @@ use relux_ir::IrTimeout;
 use relux_ir::Plan;
 use relux_ir::Suite;
 
+pub mod cancel;
 pub mod effect;
 pub(crate) mod marker_walk;
 pub mod observe;
@@ -261,18 +258,28 @@ pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> ExecuteResult {
         eprintln!("\nrunning {} tests", suite.plans.len());
     }
 
-    let cancel = CancellationToken::new();
-    let cancel_reason: Arc<OnceLock<CancelReason>> = Arc::new(OnceLock::new());
+    let cancel = CancelToken::new();
+
+    // SIGINT handler: flip the run-wide cancel with `Sigint` reason. The
+    // task ends when ctrl_c fires once or when `execute()` returns
+    // (whichever comes first) — the spawned task is detached and dies with
+    // the runtime.
+    {
+        let sigint_cancel = cancel.clone();
+        tokio::spawn(async move {
+            if tokio::signal::ctrl_c().await.is_ok() {
+                sigint_cancel.cancel_with(CancelReason::Sigint);
+            }
+        });
+    }
 
     // Spawn suite timeout watchdog
     let watchdog = {
         let timeout = run_ctx.suite_timeout;
         let watchdog_cancel = cancel.clone();
-        let watchdog_reason = cancel_reason.clone();
         Some(tokio::spawn(async move {
             tokio::time::sleep(timeout).await;
-            let _ = watchdog_reason.set(CancelReason::SuiteTimeout);
-            watchdog_cancel.cancel();
+            watchdog_cancel.cancel_with(CancelReason::SuiteTimeout { duration: timeout });
         }))
     };
 
@@ -302,7 +309,6 @@ pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> ExecuteResult {
         let ctx = WorkerContext {
             queue: queue.clone(),
             cancel: cancel.clone(),
-            cancel_reason: cancel_reason.clone(),
             suite,
             run_ctx,
             base_env: base_env.clone(),
@@ -334,8 +340,7 @@ pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> ExecuteResult {
 
 struct WorkerContext<'a> {
     queue: Arc<std::sync::Mutex<VecDeque<(usize, &'a Plan)>>>,
-    cancel: CancellationToken,
-    cancel_reason: Arc<OnceLock<CancelReason>>,
+    cancel: CancelToken,
     suite: &'a Suite,
     run_ctx: &'a RunContext,
     base_env: Arc<LayeredEnv>,
@@ -398,7 +403,7 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
 
                 // Flaky retry loop
                 if meta.flaky()
-                    && result.is_failure()
+                    && result.outcome.is_retryable()
                     && ctx.run_ctx.flaky.max_retries > 0
                     && !ctx.cancel.is_cancelled()
                 {
@@ -426,7 +431,7 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                             generation,
                         )
                         .await;
-                        if !result.is_failure() {
+                        if !result.outcome.is_retryable() {
                             break;
                         }
                     }
@@ -506,20 +511,23 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
         };
 
         let failed = matches!(result.outcome, Outcome::Fail(_));
+        let trigger_test = result.test_name.clone();
         results.push((plan_idx, result));
 
         if failed && ctx.run_ctx.strategy == RunStrategy::FailFast {
-            let _ = ctx.cancel_reason.set(CancelReason::FailFast);
-            ctx.cancel.cancel();
+            ctx.cancel
+                .cancel_with(CancelReason::FailFast { trigger_test });
             break;
         }
     }
 
     // Drain remaining queue as skipped
     let skip_reason = if ctx.cancel.is_cancelled() {
-        match ctx.cancel_reason.get() {
-            Some(CancelReason::FailFast) => "fail fast",
-            Some(CancelReason::SuiteTimeout) => "suite timeout",
+        match ctx.cancel.reason() {
+            Some(CancelReason::FailFast { .. }) => "fail fast",
+            Some(CancelReason::SuiteTimeout { .. }) => "suite timeout",
+            Some(CancelReason::TestTimeout { .. }) => "test timeout",
+            Some(CancelReason::Sigint) => "sigint",
             None => "cancelled",
         }
     } else {
@@ -568,6 +576,7 @@ fn format_result_line(display_id: &str, result: &TestResult, cause_tags: &str) -
     let outcome_str = match &result.outcome {
         Outcome::Pass => format!("{}", "ok".green()),
         Outcome::Fail(_) => format!("{}", "FAILED".red()),
+        Outcome::Cancelled(c) => format!("{} ({})", "cancelled".yellow(), c.reason_tag()),
         Outcome::Skipped(_) => format!("{}", "skipped".yellow()),
         Outcome::Invalid(_) => format!("{}", "INVALID".red()),
     };
@@ -587,7 +596,7 @@ async fn run_test_cancellable(
     base_env: Arc<LayeredEnv>,
     test_path: &str,
     cause_tags: &str,
-    cancel: &CancellationToken,
+    cancel: &CancelToken,
     tables: &relux_ir::Tables,
     _causes: &CauseTable,
     flaky_timeout_multiplier: f64,
@@ -596,7 +605,7 @@ async fn run_test_cancellable(
     generation: u64,
 ) -> TestResult {
     // Create a child token for test-level timeout
-    let test_cancel = cancel.child_token();
+    let test_cancel = cancel.child();
 
     let effective_timeout = meta
         .timeout()
@@ -613,11 +622,11 @@ async fn run_test_cancellable(
         let timeout_cancel = test_cancel.clone();
         tokio::spawn(async move {
             tokio::time::sleep(timeout).await;
-            timeout_cancel.cancel();
+            timeout_cancel.cancel_with(CancelReason::TestTimeout { duration: timeout });
         })
     });
 
-    let mut result = run_test(
+    let result = run_test(
         meta,
         test,
         run_ctx,
@@ -636,26 +645,6 @@ async fn run_test_cancellable(
     // Abort test timeout watchdog if it's still running
     if let Some(handle) = test_watchdog {
         handle.abort();
-    }
-
-    // If the test was cancelled due to its own timeout (not the parent suite
-    // cancel), rewrite the Cancelled failure into a specific timeout message.
-    if test_cancel.is_cancelled()
-        && !cancel.is_cancelled()
-        && matches!(result.outcome, Outcome::Fail(Failure::Cancelled { .. }))
-    {
-        // Preserve any captured context from the original Cancelled.
-        let context = if let Outcome::Fail(Failure::Cancelled { context, .. }) = &result.outcome {
-            context.clone()
-        } else {
-            FailureContext::default()
-        };
-        result.outcome = Outcome::Fail(Failure::Runtime {
-            message: format!("test timeout ({effective_timeout:?}) exceeded"),
-            span: None,
-            shell: None,
-            context,
-        });
     }
 
     result
@@ -691,7 +680,7 @@ async fn run_test(
     base_env: Arc<LayeredEnv>,
     test_path: &str,
     _cause_tags: &str,
-    cancel: &CancellationToken,
+    cancel: &CancelToken,
     tables: &relux_ir::Tables,
     flaky_timeout_multiplier: f64,
     slot: usize,
@@ -803,12 +792,14 @@ async fn run_test(
         .collect();
     bootstrap.sort_by(|a, b| a.0.cmp(&b.0));
 
-    // Build the structured log. The verdict is now a single tagged enum:
-    // Pass / Fail(FailureRecord) / Skip(SkipRecord). Runnable tests can only
-    // produce Pass or Fail here; Skip is emitted by `log_skipped_test`.
+    // Build the structured log. The verdict is a tagged enum:
+    // Pass / Fail(FailureRecord) / Cancelled(CancellationRecord) / Skip.
+    // Runnable tests here produce Pass, Fail, or Cancelled — Skip is
+    // emitted by `log_skipped_test`.
     let test_outcome = match &outcome {
         Ok(()) => TestOutcome::Pass,
-        Err(failure) => TestOutcome::Fail(log.failure_record(failure)),
+        Err(ExecError::Failure(f)) => TestOutcome::Fail(log.failure_record(f)),
+        Err(ExecError::Cancelled(c)) => TestOutcome::Cancelled(log.cancellation_record(c)),
     };
     let artifacts = scan_artifacts(&artifacts_dir);
     let structured = log.build(
@@ -861,10 +852,20 @@ async fn run_test(
             warnings,
             flaky_retries: 0,
         },
-        Err(failure) => TestResult {
+        Err(ExecError::Failure(f)) => TestResult {
             test_name: meta.name().to_string(),
             test_path: test_path.to_string(),
-            outcome: Outcome::Fail(failure),
+            outcome: Outcome::Fail(f),
+            duration,
+            progress: String::new(),
+            log_dir: Some(log_dir),
+            warnings,
+            flaky_retries: 0,
+        },
+        Err(ExecError::Cancelled(c)) => TestResult {
+            test_name: meta.name().to_string(),
+            test_path: test_path.to_string(),
+            outcome: Outcome::Cancelled(c),
             duration,
             progress: String::new(),
             log_dir: Some(log_dir),
@@ -883,7 +884,7 @@ async fn run_test_body(
     warnings: &mut Vec<Warning>,
     rt_ctx: &RuntimeContext,
     test_span: SpanId,
-) -> Result<(), Failure> {
+) -> Result<(), ExecError> {
     // 1. Create test scope
     let scope = Scope::Test {
         name: meta.name().to_string(),
@@ -974,7 +975,7 @@ async fn run_test_body(
         IrTestItem::Cleanup { block, span } => Some((block.clone(), span.clone())),
         _ => None,
     });
-    let body_result: Result<(), Failure> = async {
+    let body_result: Result<(), ExecError> = async {
         for item in test.body() {
             match item {
                 IrTestItem::Comment { .. } | IrTestItem::DocString { .. } => continue,
@@ -1092,7 +1093,7 @@ async fn run_test_body(
         );
         // Cleanup uses its own uncancellable token
         let mut cleanup_rt_ctx = rt_ctx.clone();
-        cleanup_rt_ctx.cancel = CancellationToken::new();
+        cleanup_rt_ctx.cancel = CancelToken::new();
         let cleanup_shell_key = ShellInstanceKey::Test {
             shell_name: "__cleanup".into(),
         };
@@ -1136,7 +1137,8 @@ async fn run_test_body(
                         span: None,
                         shell: None,
                         context: FailureContext::default(),
-                    },
+                    }
+                    .into(),
                 });
             }
         }

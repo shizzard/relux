@@ -38,9 +38,9 @@ suite = "10m"
 
 **`match`** is the default timeout for every match operation — [`<=`](03-send-match-and-logs.md), [`<?`](07-regex-matching.md), and their variants. When a match operator waits for output, this is how long it waits. Defaults to `5s` if not specified.
 
-**`test`** is the maximum duration for a single test. If a test exceeds this limit, Relux aborts it and reports a timeout failure. Defaults to `5m`.
+**`test`** is the maximum duration for a single test. If a test exceeds this limit, Relux aborts it and reports the outcome as `cancelled` with reason `test-timeout` (distinct from a regular failure, but still nonzero in CI). Defaults to `5m`.
 
-**`suite`** is the maximum duration for the entire test run. If the suite exceeds this limit, Relux aborts the remaining tests. Defaults to `10m`.
+**`suite`** is the maximum duration for the entire test run. If the suite exceeds this limit, Relux aborts every still-running test with reason `suite-timeout`; their outcomes are recorded as `cancelled`. Defaults to `10m`.
 
 All three config timeouts are **tolerances** — they are scaled by `--timeout-multiplier`.
 

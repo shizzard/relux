@@ -1,8 +1,9 @@
-export type OutcomeClass = 'pass' | 'fail' | 'skip' | 'invalid';
+export type OutcomeClass = 'pass' | 'fail' | 'cancel' | 'skip' | 'invalid';
 
 const OUTCOME_MAP: Record<string, OutcomeClass> = {
   pass: 'pass',
   fail: 'fail',
+  cancelled: 'cancel',
   skipped: 'skip',
   skip: 'skip',
   invalid: 'invalid',

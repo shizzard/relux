@@ -25,6 +25,7 @@ const CSS: &str = r#"
   --info: #7aa7d9;
   --pass: var(--accent-2);
   --fail: var(--danger);
+  --cancel: var(--accent);
   --skip: var(--ink-faint);
   --invalid: var(--accent);
   --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -89,6 +90,7 @@ a { color: inherit; text-decoration: none; }
 }
 .appbar .pill.pass { color: var(--pass); }
 .appbar .pill.fail { color: var(--fail); }
+.appbar .pill.cancel { color: var(--cancel); }
 .appbar .timing {
   margin-left: auto;
   font-family: var(--font-mono);
@@ -223,6 +225,7 @@ a.row:hover > .duration {
 }
 .row .result .pill.pass { color: var(--pass); }
 .row .result .pill.fail { color: var(--fail); }
+.row .result .pill.cancel { color: var(--cancel); }
 .row .result .pill.invalid { color: var(--invalid); }
 .row .result .pill.skip { color: var(--skip); }
 .row .details {
@@ -460,6 +463,7 @@ fn total_duration(results: &[TestResult]) -> String {
 fn details_for(result: &TestResult) -> String {
     match &result.outcome {
         Outcome::Fail(f) => f.summary(),
+        Outcome::Cancelled(c) => c.summary(),
         Outcome::Invalid(reason) | Outcome::Skipped(reason) => reason.clone(),
         Outcome::Pass => String::new(),
     }
@@ -555,9 +559,12 @@ fn render(
     let run_name = run_dir.file_name().unwrap_or_default().to_string_lossy();
     let total = results.len();
     let flaky: u32 = results.iter().map(|r| r.flaky_retries).sum();
-    let overall_ok = !results
-        .iter()
-        .any(|r| matches!(r.outcome, Outcome::Fail(_) | Outcome::Invalid(_)));
+    let overall_ok = !results.iter().any(|r| {
+        matches!(
+            r.outcome,
+            Outcome::Fail(_) | Outcome::Cancelled(_) | Outcome::Invalid(_)
+        )
+    });
     let (pill_class, pill_label) = if overall_ok {
         ("pass", "OK")
     } else {
@@ -622,6 +629,10 @@ fn render(
         .iter()
         .filter(|r| matches!(r.outcome, Outcome::Fail(_)))
         .collect();
+    let cancelled_rows: Vec<&TestResult> = results
+        .iter()
+        .filter(|r| matches!(r.outcome, Outcome::Cancelled(_)))
+        .collect();
     let invalid_rows: Vec<&TestResult> = results
         .iter()
         .filter(|r| matches!(r.outcome, Outcome::Invalid(_)))
@@ -637,6 +648,14 @@ fn render(
 
     let _ = writeln!(html, "<main>");
     render_group(&mut html, run_dir, "failed", "fail", "FAIL", &failed_rows);
+    render_group(
+        &mut html,
+        run_dir,
+        "cancelled",
+        "cancel",
+        "CANCEL",
+        &cancelled_rows,
+    );
     render_group(
         &mut html,
         run_dir,

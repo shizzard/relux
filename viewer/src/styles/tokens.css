@@ -16,6 +16,7 @@
 
   --pass: var(--accent-2);
   --fail: var(--danger);
+  --cancel: var(--accent);
   --skip: var(--ink-faint);
   --invalid: var(--accent);
 

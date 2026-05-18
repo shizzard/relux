@@ -5,11 +5,11 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use tokio::sync::Mutex as TokioMutex;
-use tokio_util::sync::CancellationToken;
 
 use futures::future::join_all;
 
 use crate::RuntimeContext;
+use crate::cancel::CancelToken;
 use crate::effect::registry::AcquiredEffect;
 use crate::effect::registry::EffectGuard;
 use crate::effect::registry::EffectHandle;
@@ -23,6 +23,7 @@ use crate::effect::registry::ShellMap;
 use crate::effect::registry::VarMap;
 use crate::observe::structured::SpanId;
 use crate::observe::structured::SpanKind;
+use crate::report::result::ExecError;
 use crate::report::result::Failure;
 use crate::report::result::FailureContext;
 use crate::vm::Vm;
@@ -51,7 +52,7 @@ pub enum CleanupSource {
 pub enum Warning {
     CleanupFailed {
         source: CleanupSource,
-        failure: Failure,
+        failure: ExecError,
     },
 }
 
@@ -99,7 +100,7 @@ impl EffectManager {
         parent_span: SpanId,
     ) -> std::pin::Pin<
         Box<
-            dyn std::future::Future<Output = Result<Vec<(ExportedEffect, EffectGuard)>, Failure>>
+            dyn std::future::Future<Output = Result<Vec<(ExportedEffect, EffectGuard)>, ExecError>>
                 + Send
                 + 'a,
         >,
@@ -167,7 +168,7 @@ impl EffectManager {
         starts: &[IrEffectStart],
         caller_vars: &VarScope,
         caller_env: &Arc<LayeredEnv>,
-    ) -> Result<Vec<ExportedEffect>, Failure> {
+    ) -> Result<Vec<ExportedEffect>, ExecError> {
         let pairs = self
             .instantiate(starts, caller_vars, caller_env, self.test_span)
             .await?;
@@ -205,7 +206,7 @@ impl EffectManager {
         caller_env: &Arc<LayeredEnv>,
         evaluated_overlay: Env,
         parent_span: SpanId,
-    ) -> Result<(AcquiredEffect, EffectGuard), Failure> {
+    ) -> Result<(AcquiredEffect, EffectGuard), ExecError> {
         let slot = self.registry.slot(key);
         // The slot lock is held only across state inspection and transitions
         // (`Empty -> Loading`, `Loading -> Ready/Failed`). `bootstrap_effect`
@@ -313,7 +314,7 @@ impl EffectManager {
         caller_env: &Arc<LayeredEnv>,
         evaluated_overlay: Env,
         parent_span: SpanId,
-    ) -> Result<EffectHandle, Failure> {
+    ) -> Result<EffectHandle, ExecError> {
         let marker = key.marker();
         let overlay_pairs = Self::evaluated_overlay_pairs(&evaluated_overlay);
         let setup_span = self.rt_ctx.log.open_span(
@@ -473,7 +474,7 @@ impl EffectManager {
                             self.test_span,
                         )
                         .await;
-                        return Err(failure);
+                        return Err(failure.into());
                     }
                 }
             }};
@@ -769,7 +770,7 @@ impl EffectManager {
         caller_vars: &VarScope,
         caller_env: &Arc<LayeredEnv>,
         caller_span: SpanId,
-    ) -> Result<Env, Failure> {
+    ) -> Result<Env, ExecError> {
         let mut overlay = Env::new();
         let mut sink =
             crate::observe::structured::log_sink::LogSink::new(&self.rt_ctx.log, caller_span);
@@ -996,7 +997,7 @@ impl EffectManager {
         scope: &Scope,
         cleanup_marker: &str,
         block_span: SpanId,
-    ) -> Result<(), Failure> {
+    ) -> Result<(), ExecError> {
         let shell_state = ShellState::new("__cleanup".to_string());
         let ctx = ExecutionContext::new(
             scope.clone(),
@@ -1007,7 +1008,7 @@ impl EffectManager {
         );
         // Cleanup uses its own uncancellable token
         let mut cleanup_rt_ctx = self.rt_ctx.clone();
-        cleanup_rt_ctx.cancel = CancellationToken::new();
+        cleanup_rt_ctx.cancel = CancelToken::new();
         let mut vm = Vm::new(
             "__cleanup".to_string(),
             cleanup_marker.to_string(),

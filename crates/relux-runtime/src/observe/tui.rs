@@ -163,6 +163,7 @@ fn progress_char(event: &ProgressEvent) -> Option<char> {
         ProgressEvent::FailPattern => Some('!'),
         ProgressEvent::Timeout => Some('T'),
         ProgressEvent::Failure => Some('F'),
+        ProgressEvent::Cancellation => Some('C'),
         ProgressEvent::Error(_) => Some('E'),
         ProgressEvent::Warning(_) => Some('W'),
         ProgressEvent::Annotation(_) => None,

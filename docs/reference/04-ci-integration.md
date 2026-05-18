@@ -21,8 +21,10 @@ Each per-test directory under `logs/` contains two artifacts:
 - `events.json` — canonical structured payload (spans, events, buffer events,
   outcome record, embedded source files). Stable schema, consumable by
   external tooling. The top-level `outcome` field is a tagged enum
-  (`{ "kind": "pass" }`, `{ "kind": "fail", ... }`, `{ "kind": "skip", ... }`)
-  that carries the verdict alongside failure-specific or skip-specific
+  (`{ "kind": "pass" }`, `{ "kind": "fail", ... }`,
+  `{ "kind": "cancelled", reason: { type: "test-timeout" | "suite-timeout" |
+  "fail-fast" | "sigint", ... }, ... }`, `{ "kind": "skip", ... }`)
+  that carries the verdict alongside failure-, cancellation-, or skip-specific
   context. Each `Span.location` and `Event.source` carries
   `{ file, line, start, end }` where `start` / `end` are byte offsets into the
   matching entry of the top-level `sources` map (relative path -> file
@@ -58,10 +60,42 @@ its ancestors so the tree is unfolded. For a skip propagated from a fn or
 effect, the focused marker is the originating one on that fn/effect, not
 on the test.
 
-Tests skipped for other reasons (fail-fast cancellation, suite-timeout
-cancellation, "skipped because an earlier test failed") do not produce a
-log: there are no marker evaluations to show; the actionable information
-lives on the test that caused the cancellation.
+Tests skipped for other reasons (e.g., "skipped because an earlier test
+caused fail-fast and this test was never started") do not produce a log:
+there are no marker evaluations to show; the actionable information lives
+on the test that caused the cancellation.
+
+### Cancelled outcome
+
+A test that *was* started but did not run to completion produces a
+`Cancelled` outcome — distinct from `Fail`. Sources:
+
+- **Test timeout (`~T` on the test)**: the per-test watchdog fired.
+  Carried as `reason: { type: "test-timeout", duration_ms }`.
+- **Suite timeout**: the suite-wide watchdog fired. Other live tests are
+  cancelled with `reason: { type: "suite-timeout", duration_ms }`.
+- **Fail-fast**: a sibling test failed with `--strategy fail-fast`. Live
+  tests are cancelled with `reason: { type: "fail-fast", trigger_test }`.
+- **SIGINT**: the CLI process received SIGINT. Live tests are cancelled
+  with `reason: { type: "sigint" }`.
+
+Cancelled outcomes:
+
+- Exit nonzero from `relux run` (same as failures).
+- Render as `not ok` in TAP, with a diagnostic block carrying
+  `cancellation: <reason-tag>`.
+- Render as `<error type="cancelled" message="cancelled: <reason-tag>"/>`
+  in JUnit XML (distinct from `<failure>` and `<skipped>`).
+- Render as a `cancelled` row in the HTML run index and a `CANCELLED`
+  pill in the per-test viewer.
+- A `cancelled` event in `events.json` marks the exact point where the
+  VM observed the cancel, on the span execution was inside at that
+  moment.
+
+Flaky-retry semantics: a test marked `# flaky` is retried on `Fail` *and*
+on `Cancelled { reason: TestTimeout }` (the test's own clock running out —
+exactly what scaled-timeout retries target). Other cancellation reasons
+(suite-timeout, fail-fast, SIGINT) are *not* retried.
 
 ### Artifacts
 

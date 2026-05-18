@@ -1,12 +1,12 @@
-test "flaky marker with no retries fails on first attempt" {
+test "flaky marker with no retries cancels on first attempt" {
     """
     With max_retries=0 (default), flaky marker is documentary only.
-    The fixture test genuinely fails (50ms timeout, 90ms sleep),
-    so with no retries it should report a failure.
+    The fixture test exceeds its own ~50ms test timeout (90ms sleep),
+    so with no retries it reports a Cancelled outcome.
     """
     shell s {
         > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
-        <? 1 failed
+        <? 1 cancelled
         match_not_ok(1)
     }
 }

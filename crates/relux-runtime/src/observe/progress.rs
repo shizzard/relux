@@ -21,6 +21,7 @@ pub enum ProgressEvent {
     FailPattern,
     Timeout,
     Failure,
+    Cancellation,
     Error(String),
     Warning(String),
     Annotation(String),
@@ -126,6 +127,10 @@ pub fn spawn_printer(
                 ProgressEvent::Failure => {
                     timed = None;
                     emit(&mut collected, 'F');
+                }
+                ProgressEvent::Cancellation => {
+                    timed = None;
+                    emit(&mut collected, 'C');
                 }
                 ProgressEvent::Error(_) => {
                     timed = None;
