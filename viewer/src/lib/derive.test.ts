@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { BufferEvent } from '../types/BufferEvent';
 import type { StructuredLog } from '../types/StructuredLog';
 import {
@@ -67,14 +67,6 @@ function reset(seq: number, shell: string, consumed = ''): BufferEvent {
 }
 
 describe('replayBufferRegionsAtMarker', () => {
-  let warnSpy: ReturnType<typeof vi.spyOn>;
-  beforeEach(() => {
-    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-  });
-  afterEach(() => {
-    warnSpy.mockRestore();
-  });
-
   it('returns empty regions when no buffer events exist', () => {
     const log = makeLog([]);
     expect(replayBufferRegionsAtMarker(log, 100, 's')).toEqual({
@@ -82,7 +74,6 @@ describe('replayBufferRegionsAtMarker', () => {
       matched: null,
       tail: '',
     });
-    expect(warnSpy).not.toHaveBeenCalled();
   });
 
   it('returns empty regions when no events match the shell', () => {
@@ -114,7 +105,6 @@ describe('replayBufferRegionsAtMarker', () => {
       matched: { bytes: 'cd', seq: 2 },
       tail: 'ef',
     });
-    expect(warnSpy).not.toHaveBeenCalled();
   });
 
   it('folds previous matched bytes into consumed on the next match', () => {
@@ -137,7 +127,6 @@ describe('replayBufferRegionsAtMarker', () => {
       tail: 'hi',
     });
     expect(out.consumed + out.matched!.bytes + out.tail).toBe('abcdefghi');
-    expect(warnSpy).not.toHaveBeenCalled();
   });
 
   it('folds tail and active matched into consumed on reset', () => {
@@ -266,7 +255,6 @@ describe('replayBufferRegionsAtMarker', () => {
       matched: { bytes: 'B', seq: 5 },
       tail: 'bbb',
     });
-    expect(warnSpy).not.toHaveBeenCalled();
   });
 
   it('handles a match that consumes the entire tail (empty before and after)', () => {
@@ -292,22 +280,22 @@ describe('replayBufferRegionsAtMarker', () => {
     expect(out.consumed.length).toBe(9000);
     expect(out.matched).toEqual({ bytes: 'M', seq: 2 });
     expect(out.tail).toBe('');
-    expect(warnSpy).not.toHaveBeenCalled();
   });
 
-  it('warns when before+matched+after does not equal the current tail', () => {
-    // Inconsistent input: tail is "abcdef" but the match claims to have
-    // operated on "QZ"+matched+"".  The function must surface the
-    // mismatch via console.warn instead of silently producing garbage.
+  it('uses the matched event as authoritative when its pieces do not equal the current tail', () => {
+    // Inconsistent input: tail is "abcdef" but the matched event claims to
+    // have operated on "QZ"+"cd"+"".  The runtime invariant says this
+    // shouldn't happen, but the function still produces a well-formed
+    // result by trusting the matched event's pieces.
     const log = makeLog([
       grew(1, 's', 'abcdef'),
       matched(2, 's', 'QZ', 'cd', ''),
     ]);
-    replayBufferRegionsAtMarker(log, 100, 's');
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy.mock.calls[0]?.[0]).toContain('tail mismatch');
-    expect(warnSpy.mock.calls[0]?.[0]).toContain('seq=2');
-    expect(warnSpy.mock.calls[0]?.[0]).toContain('marker=s');
+    expect(replayBufferRegionsAtMarker(log, 100, 's')).toEqual({
+      consumed: 'QZ',
+      matched: { bytes: 'cd', seq: 2 },
+      tail: '',
+    });
   });
 
   it('produces the right regions at every intermediate seq prefix', () => {
@@ -338,7 +326,6 @@ describe('replayBufferRegionsAtMarker', () => {
     for (const [seq, want] of expected) {
       expect(replayBufferRegionsAtMarker(log, seq, 's'), `seq=${seq}`).toEqual(want);
     }
-    expect(warnSpy).not.toHaveBeenCalled();
   });
 });
 

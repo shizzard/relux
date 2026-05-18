@@ -128,13 +128,7 @@ function varsAtCutoff(
           const m = scopeVars.get(ctx.ambientScope);
           if (m && m.has(ev.name)) {
             m.set(ev.name, ev.value);
-            landed = true;
           }
-        }
-        if (!landed) {
-          console.warn(
-            `[viewer] var-assign for ${ev.name} at seq=${n(ev.seq)} did not find a binding to update`,
-          );
         }
         break;
       }

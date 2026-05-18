@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { Event } from '../types/Event';
 import type { Span } from '../types/Span';
 import type { StructuredLog } from '../types/StructuredLog';
@@ -268,14 +268,6 @@ describe('scopeContext', () => {
 // ─── varsAtSeq — shell mode ─────────────────────────────────────────
 
 describe('varsAtSeq (shell mode)', () => {
-  let warnSpy: ReturnType<typeof vi.spyOn>;
-  beforeEach(() => {
-    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-  });
-  afterEach(() => {
-    warnSpy.mockRestore();
-  });
-
   it('returns an empty map for an empty log', () => {
     const spans = [
       buildSpan({ kind: 'test', id: 1, parent: null }),
@@ -347,7 +339,7 @@ describe('varsAtSeq (shell mode)', () => {
     expect(varsAtSeq(log, events[4]!)).toEqual(new Map([['X', 'test-orig']]));
   });
 
-  it('warns and skips when var-assign cannot find a binding', () => {
+  it('skips silently when var-assign cannot find a binding', () => {
     const spans = [
       buildSpan({ kind: 'test', id: 1, parent: null }),
       buildSpan({ kind: 'shell-block', id: 2, parent: 1, shell: 'a' }),
@@ -357,7 +349,6 @@ describe('varsAtSeq (shell mode)', () => {
       marker(2, 2, 'a'),
     ];
     expect(varsAtSeq(makeLog(spans, events), events[1]!)).toEqual(new Map());
-    expect(warnSpy).toHaveBeenCalledOnce();
   });
 
   it('exposes effect-expose-var into the parent scope as `<alias>.<name>`', () => {
@@ -471,14 +462,6 @@ describe('varsAtSeq (shell mode)', () => {
 // ─── varsAtSeq — fn-call mode ───────────────────────────────────────
 
 describe('varsAtSeq (fn-call mode)', () => {
-  let warnSpy: ReturnType<typeof vi.spyOn>;
-  beforeEach(() => {
-    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-  });
-  afterEach(() => {
-    warnSpy.mockRestore();
-  });
-
   it('shows fn args at the very first event inside the fn-call', () => {
     const spans = [
       buildSpan({ kind: 'test', id: 1, parent: null }),

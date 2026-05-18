@@ -249,13 +249,6 @@ export function replayBufferRegionsAtMarker(
         tail += ev.data;
         break;
       case 'matched': {
-        const reconstructed = ev.before + ev.matched + ev.after;
-        if (reconstructed !== tail) {
-          console.warn(
-            `[viewer] buffer reconstruction: tail mismatch at seq=${n(ev.seq)} marker=${marker}; ` +
-              `tail.length=${tail.length} before+matched+after.length=${reconstructed.length}`,
-          );
-        }
         if (matched !== null) consumed += matched.bytes;
         consumed += ev.before;
         matched = { bytes: ev.matched, seq: n(ev.seq) };
