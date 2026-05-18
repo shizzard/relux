@@ -156,6 +156,7 @@ fn line_number(source: &str, offset: usize) -> usize {
 mod tests {
     use super::*;
     use crate::report::result::Failure;
+    use crate::report::result::FailureContext;
     use crate::report::result::Outcome;
     use crate::report::result::TestResult;
     use relux_core::diagnostics::IrSpan;
@@ -235,7 +236,7 @@ mod tests {
             span: test_span(12, 17),
             shell: "default".to_string(),
             effective: Box::new(relux_ir::IrTimeout::tolerance(Duration::from_secs(5))),
-            context: Default::default(),
+            context: FailureContext::pre_vm(),
         };
         let results = vec![make_result(
             "timeout test",

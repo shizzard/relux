@@ -1018,12 +1018,12 @@ impl StructuredLogBuilder {
 
     // ─── Failure record translation ───────────────────────────────
 
-    /// Translate a runtime `Failure` into a `FailureRecord`, lifting the
-    /// `FailureContext` captured at failure-construction time into the
-    /// structured log artifact. Sites that don't have a VM (effect-resolution
-    /// errors, pre-VM init) supply `FailureContext::default()`, which lands as
-    /// `span: 0` / `event_seq: 0` / empty stack — the artifact is still
-    /// well-formed but lacks call-stack detail for those cases.
+    /// Translate a runtime `Failure` into a `FailureRecord`, flattening the
+    /// `FailureContext` enum into the on-disk shape via its accessor
+    /// methods. `Vm` failures produce full diagnostic context; `PreVm`
+    /// failures (effect-resolution errors, pre-VM init, cleanup-shell
+    /// spawn) land with the surrounding span and empty stack / tail /
+    /// vars — the artifact stays well-formed.
     pub fn failure_record(&self, failure: &crate::report::result::Failure) -> FailureRecord {
         use crate::report::result::Failure;
         match failure {
@@ -1034,14 +1034,14 @@ impl StructuredLogBuilder {
                 context,
                 ..
             } => FailureRecord::MatchTimeout {
-                span: context.span.unwrap_or(0),
-                event_seq: context.event_seq.unwrap_or(0),
+                span: context.span().unwrap_or(0),
+                event_seq: context.event_seq().unwrap_or(0),
                 shell: shell.clone(),
                 pattern: pattern.clone(),
                 effective: self.timeout_value(effective),
-                call_stack: context.call_stack.clone(),
-                buffer_tail: context.buffer_tail.clone(),
-                vars_in_scope: context.vars_in_scope.clone(),
+                call_stack: context.call_stack().to_vec(),
+                buffer_tail: context.buffer_tail().to_string(),
+                vars_in_scope: context.vars_in_scope().to_vec(),
             },
             Failure::FailPatternMatched {
                 pattern,
@@ -1050,14 +1050,14 @@ impl StructuredLogBuilder {
                 context,
                 ..
             } => FailureRecord::FailPatternMatched {
-                span: context.span.unwrap_or(0),
-                event_seq: context.event_seq.unwrap_or(0),
+                span: context.span().unwrap_or(0),
+                event_seq: context.event_seq().unwrap_or(0),
                 shell: shell.clone(),
                 pattern: pattern.clone(),
                 matched_line: matched_line.clone(),
-                call_stack: context.call_stack.clone(),
-                buffer_tail: context.buffer_tail.clone(),
-                vars_in_scope: context.vars_in_scope.clone(),
+                call_stack: context.call_stack().to_vec(),
+                buffer_tail: context.buffer_tail().to_string(),
+                vars_in_scope: context.vars_in_scope().to_vec(),
             },
             Failure::ShellExited {
                 shell,
@@ -1065,13 +1065,13 @@ impl StructuredLogBuilder {
                 context,
                 ..
             } => FailureRecord::ShellExited {
-                span: context.span.unwrap_or(0),
-                event_seq: context.event_seq.unwrap_or(0),
+                span: context.span().unwrap_or(0),
+                event_seq: context.event_seq().unwrap_or(0),
                 shell: shell.clone(),
                 exit_code: *exit_code,
-                call_stack: context.call_stack.clone(),
-                buffer_tail: context.buffer_tail.clone(),
-                vars_in_scope: context.vars_in_scope.clone(),
+                call_stack: context.call_stack().to_vec(),
+                buffer_tail: context.buffer_tail().to_string(),
+                vars_in_scope: context.vars_in_scope().to_vec(),
             },
             Failure::Runtime {
                 message,
@@ -1079,12 +1079,12 @@ impl StructuredLogBuilder {
                 context,
                 ..
             } => FailureRecord::Runtime {
-                span: context.span,
-                event_seq: context.event_seq,
+                span: context.span(),
+                event_seq: context.event_seq(),
                 shell: shell.clone(),
                 message: message.clone(),
-                call_stack: context.call_stack.clone(),
-                vars_in_scope: context.vars_in_scope.clone(),
+                call_stack: context.call_stack().to_vec(),
+                vars_in_scope: context.vars_in_scope().to_vec(),
             },
         }
     }
@@ -1097,10 +1097,10 @@ impl StructuredLogBuilder {
         let ctx = &c.context;
         super::CancellationRecord {
             reason: super::event::CancelReasonRecord::from(&c.reason),
-            span: ctx.span,
-            event_seq: ctx.event_seq,
+            span: ctx.span(),
+            event_seq: ctx.event_seq(),
             shell: None,
-            call_stack: ctx.call_stack.clone(),
+            call_stack: ctx.call_stack().to_vec(),
         }
     }
 

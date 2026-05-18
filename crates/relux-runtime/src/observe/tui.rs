@@ -199,9 +199,9 @@ fn eprint_failure(
     DiagnosticReport::from(failure).eprint(source_table, Some(project_root));
     let ctx = failure.context();
     let blocks = [
-        console::format_call_stack(&ctx.call_stack),
-        console::format_buffer_tail(&ctx.buffer_tail, BUFFER_TAIL_LINES),
-        console::format_vars_in_scope(&ctx.vars_in_scope),
+        console::format_call_stack(ctx.call_stack()),
+        console::format_buffer_tail(ctx.buffer_tail(), BUFFER_TAIL_LINES),
+        console::format_vars_in_scope(ctx.vars_in_scope()),
     ];
     for block in blocks.into_iter().flatten() {
         eprintln!();

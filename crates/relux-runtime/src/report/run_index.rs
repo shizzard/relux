@@ -701,7 +701,7 @@ mod tests {
             message: "boom".into(),
             span: None,
             shell: Some("default".into()),
-            context: FailureContext::default(),
+            context: FailureContext::pre_vm(),
         });
         r
     }

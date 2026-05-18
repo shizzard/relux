@@ -338,13 +338,13 @@ impl EffectManager {
                 message: format!("effect {:?} not found in table", start.effect()),
                 span: None,
                 shell: None,
-                context: FailureContext::default(),
+                context: FailureContext::pre_vm_with_span(setup_span.id()),
             })?;
         let effect = effect_result.as_ref().map_err(|e| Failure::Runtime {
             message: format!("effect resolution failed: {e:?}"),
             span: None,
             shell: None,
-            context: FailureContext::default(),
+            context: FailureContext::pre_vm_with_span(setup_span.id()),
         })?;
         let setup_span_id = setup_span.id();
 
@@ -521,7 +521,7 @@ impl EffectManager {
                                 message: format!("unknown effect alias `{alias}`"),
                                 span: None,
                                 shell: None,
-                                context: FailureContext::default(),
+                                context: FailureContext::pre_vm_with_span(block_span_id),
                             }));
                         let vm_arc =
                             try_guards!(dep.get(shell_name).ok_or_else(|| Failure::Runtime {
@@ -530,7 +530,7 @@ impl EffectManager {
                                 ),
                                 span: None,
                                 shell: None,
-                                context: FailureContext::default(),
+                                context: FailureContext::pre_vm_with_span(block_span_id),
                             }));
                         let exec_result = {
                             let mut vm = vm_arc.lock().await;
@@ -621,7 +621,7 @@ impl EffectManager {
                                 ),
                                 span: None,
                                 shell: None,
-                                context: FailureContext::default(),
+                                context: FailureContext::pre_vm_with_span(setup_span_id),
                             }
                         }));
                         let vm_arc = try_guards!(dep.get(expose.target()).ok_or_else(|| {
@@ -634,7 +634,7 @@ impl EffectManager {
                                 ),
                                 span: None,
                                 shell: None,
-                                context: FailureContext::default(),
+                                context: FailureContext::pre_vm_with_span(setup_span_id),
                             }
                         }));
                         shells.insert(exposed_name.clone(), vm_arc.clone());
@@ -649,7 +649,7 @@ impl EffectManager {
                                 ),
                                 span: None,
                                 shell: None,
-                                context: FailureContext::default(),
+                                context: FailureContext::pre_vm_with_span(setup_span_id),
                             }));
                         }
                         if exposed_name != expose.target() {
@@ -679,7 +679,7 @@ impl EffectManager {
                                     ),
                                     span: None,
                                     shell: None,
-                                    context: FailureContext::default(),
+                                    context: FailureContext::pre_vm_with_span(setup_span_id),
                                 }
                             }));
                         try_guards!(qualifier_vars.get(expose.target()).ok_or_else(|| {
@@ -692,7 +692,7 @@ impl EffectManager {
                                 ),
                                 span: None,
                                 shell: None,
-                                context: FailureContext::default(),
+                                context: FailureContext::pre_vm_with_span(setup_span_id),
                             }
                         }))
                         .clone()

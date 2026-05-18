@@ -1000,7 +1000,7 @@ async fn run_test_body(
                             message: format!("unknown effect alias `{alias}`"),
                             span: None,
                             shell: None,
-                            context: FailureContext::default(),
+                            context: FailureContext::pre_vm_with_span(block_span_id),
                         })?;
                         let vm_arc = dep.get(shell_name).ok_or_else(|| Failure::Runtime {
                             message: format!(
@@ -1008,7 +1008,7 @@ async fn run_test_body(
                             ),
                             span: None,
                             shell: None,
-                            context: FailureContext::default(),
+                            context: FailureContext::pre_vm_with_span(block_span_id),
                         })?;
                         let mut vm = vm_arc.lock().await;
                         let vm_name = vm.current_name();
@@ -1136,7 +1136,7 @@ async fn run_test_body(
                         message: format!("failed to spawn cleanup shell: {e:?}"),
                         span: None,
                         shell: None,
-                        context: FailureContext::default(),
+                        context: FailureContext::pre_vm_with_span(cleanup_block_span_id),
                     }
                     .into(),
                 });

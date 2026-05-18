@@ -177,6 +177,7 @@ fn build_summary(run_id: &str, results: &[TestResult], total_duration: Duration)
 mod tests {
     use super::*;
     use crate::report::result::Failure;
+    use crate::report::result::FailureContext;
     use relux_core::diagnostics::IrSpan;
 
     fn make_result(name: &str, path: &str, outcome: Outcome) -> TestResult {
@@ -205,7 +206,7 @@ mod tests {
                     shell: "default".into(),
                     span: IrSpan::synthetic(),
                     effective: Box::new(relux_ir::IrTimeout::tolerance(Duration::from_secs(5))),
-                    context: Default::default(),
+                    context: FailureContext::pre_vm(),
                 }),
             ),
             make_result(
@@ -248,7 +249,7 @@ mod tests {
                     message: "boom".into(),
                     span: None,
                     shell: None,
-                    context: Default::default(),
+                    context: FailureContext::pre_vm(),
                 }),
             ),
             make_result(
@@ -258,7 +259,7 @@ mod tests {
                     message: "boom2".into(),
                     span: None,
                     shell: None,
-                    context: Default::default(),
+                    context: FailureContext::pre_vm(),
                 }),
             ),
             make_result(

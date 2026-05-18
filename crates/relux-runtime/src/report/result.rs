@@ -18,13 +18,74 @@ use crate::observe::structured::StackFrame;
 /// console error renderer) can render the call site, what arrived in the
 /// shell, and which user vars were live — without needing to reach back
 /// into a VM that is about to be dropped.
-#[derive(Debug, Clone, Default)]
-pub struct FailureContext {
-    pub span: Option<SpanId>,
-    pub event_seq: Option<EventSeq>,
-    pub call_stack: Vec<StackFrame>,
-    pub buffer_tail: String,
-    pub vars_in_scope: Vec<(String, String)>,
+///
+/// The variant makes the failure's provenance explicit. `Vm` carries the
+/// full diagnostic picture; `PreVm` represents failures raised outside any
+/// VM (effect resolution, shell-block lookup, cleanup-shell spawn,
+/// pre-init PTY spawn) and carries only the surrounding span, when one is
+/// known. The structured-log builder flattens both variants into a single
+/// on-disk shape via the accessor methods.
+#[derive(Debug, Clone)]
+pub enum FailureContext {
+    /// Captured by a running VM at failure-construction time.
+    Vm {
+        span: SpanId,
+        event_seq: EventSeq,
+        call_stack: Vec<StackFrame>,
+        buffer_tail: String,
+        vars_in_scope: Vec<(String, String)>,
+    },
+    /// Failure raised before/around any VM. `span` points at the
+    /// surrounding span when one is known (effect-setup span,
+    /// shell-block span, cleanup-block span), `None` otherwise.
+    PreVm { span: Option<SpanId> },
+}
+
+impl FailureContext {
+    /// Construct a `PreVm` context with no surrounding span.
+    pub fn pre_vm() -> Self {
+        Self::PreVm { span: None }
+    }
+
+    /// Construct a `PreVm` context tied to a known surrounding span.
+    pub fn pre_vm_with_span(span: SpanId) -> Self {
+        Self::PreVm { span: Some(span) }
+    }
+
+    pub fn span(&self) -> Option<SpanId> {
+        match self {
+            Self::Vm { span, .. } => Some(*span),
+            Self::PreVm { span } => *span,
+        }
+    }
+
+    pub fn event_seq(&self) -> Option<EventSeq> {
+        match self {
+            Self::Vm { event_seq, .. } => Some(*event_seq),
+            Self::PreVm { .. } => None,
+        }
+    }
+
+    pub fn call_stack(&self) -> &[StackFrame] {
+        match self {
+            Self::Vm { call_stack, .. } => call_stack,
+            Self::PreVm { .. } => &[],
+        }
+    }
+
+    pub fn buffer_tail(&self) -> &str {
+        match self {
+            Self::Vm { buffer_tail, .. } => buffer_tail,
+            Self::PreVm { .. } => "",
+        }
+    }
+
+    pub fn vars_in_scope(&self) -> &[(String, String)] {
+        match self {
+            Self::Vm { vars_in_scope, .. } => vars_in_scope,
+            Self::PreVm { .. } => &[],
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -460,7 +521,7 @@ mod tests {
             shell: "default".into(),
             span: dummy_span(),
             effective: Box::new(IrTimeout::tolerance(std::time::Duration::from_secs(5))),
-            context: FailureContext::default(),
+            context: FailureContext::pre_vm(),
         };
         assert_eq!(
             f.summary(),
@@ -475,7 +536,7 @@ mod tests {
             matched_line: "error: connection refused".into(),
             shell: "default".into(),
             span: dummy_span(),
-            context: FailureContext::default(),
+            context: FailureContext::pre_vm(),
         };
         assert_eq!(
             f.summary(),
@@ -489,7 +550,7 @@ mod tests {
             shell: "default".into(),
             exit_code: Some(1),
             span: dummy_span(),
-            context: FailureContext::default(),
+            context: FailureContext::pre_vm(),
         };
         assert_eq!(
             f.summary(),
@@ -503,7 +564,7 @@ mod tests {
             shell: "default".into(),
             exit_code: None,
             span: dummy_span(),
-            context: FailureContext::default(),
+            context: FailureContext::pre_vm(),
         };
         assert_eq!(
             f.summary(),
@@ -517,7 +578,7 @@ mod tests {
             message: "something broke".into(),
             shell: Some("default".into()),
             span: None,
-            context: FailureContext::default(),
+            context: FailureContext::pre_vm(),
         };
         assert_eq!(
             f.summary(),
@@ -531,7 +592,7 @@ mod tests {
             message: "something broke".into(),
             shell: None,
             span: None,
-            context: FailureContext::default(),
+            context: FailureContext::pre_vm(),
         };
         assert_eq!(f.summary(), "runtime error: something broke");
     }
@@ -562,7 +623,7 @@ mod tests {
             reason: CancelReason::TestTimeout {
                 duration: Duration::from_millis(300),
             },
-            context: FailureContext::default(),
+            context: FailureContext::pre_vm(),
         };
         assert_eq!(c.reason_tag(), "test-timeout");
         assert!(c.summary().starts_with("cancelled: test timed out after"));
@@ -574,7 +635,7 @@ mod tests {
             reason: CancelReason::FailFast {
                 trigger_test: "foo".into(),
             },
-            context: FailureContext::default(),
+            context: FailureContext::pre_vm(),
         };
         assert_eq!(c.reason_tag(), "fail-fast");
         assert!(c.summary().contains("`foo`"));
@@ -586,14 +647,14 @@ mod tests {
             message: "x".into(),
             span: None,
             shell: None,
-            context: FailureContext::default(),
+            context: FailureContext::pre_vm(),
         };
         let e: ExecError = f.into();
         assert!(matches!(e, ExecError::Failure(_)));
 
         let c = Cancellation {
             reason: CancelReason::Sigint,
-            context: FailureContext::default(),
+            context: FailureContext::pre_vm(),
         };
         let e: ExecError = c.into();
         assert!(matches!(e, ExecError::Cancelled(_)));

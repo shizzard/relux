@@ -138,7 +138,7 @@ impl Vm {
             message: format!("failed to spawn shell: {e}"),
             span: None,
             shell: Some(shell_name.clone()),
-            context: FailureContext::default(),
+            context: FailureContext::pre_vm_with_span(ctx.current_span()),
         })?;
 
         let cancel = rt_ctx.cancel.clone();
@@ -170,7 +170,7 @@ impl Vm {
                 message: "shell did not produce prompt during init".to_string(),
                 span: None,
                 shell: Some(shell_name),
-                context: FailureContext::default(),
+                context: FailureContext::pre_vm_with_span(vm.ctx.current_span()),
             })?;
 
         let ready_shell = vm.ctx.current_name();
@@ -258,9 +258,9 @@ impl Vm {
     /// dropped the buffer is gone.
     pub(crate) async fn capture_failure_context(&self) -> FailureContext {
         let span = self.ctx.current_span();
-        FailureContext {
-            span: Some(span),
-            event_seq: Some(self.log.current_seq()),
+        FailureContext::Vm {
+            span,
+            event_seq: self.log.current_seq(),
             call_stack: self.log.resolve_stack(span),
             buffer_tail: self.pty.output_buf.snapshot_tail(BUFFER_TAIL_BYTES).await,
             vars_in_scope: self.ctx.snapshot_user_vars().await,

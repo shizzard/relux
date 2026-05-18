@@ -148,6 +148,7 @@ pub fn generate_tap(
 mod tests {
     use super::*;
     use crate::report::result::Failure;
+    use crate::report::result::FailureContext;
     use crate::report::result::Outcome;
     use crate::report::result::TestResult;
     use relux_core::diagnostics::IrSpan;
@@ -271,7 +272,7 @@ mod tests {
             effective: Box::new(relux_ir::IrTimeout::tolerance(
                 std::time::Duration::from_secs(5),
             )),
-            context: Default::default(),
+            context: FailureContext::pre_vm(),
         };
         let results = vec![fail_result(
             "timeout-test",
@@ -302,7 +303,7 @@ mod tests {
             message: "something broke".into(),
             span: None,
             shell: None,
-            context: Default::default(),
+            context: FailureContext::pre_vm(),
         };
         let results = vec![fail_result("broken", 100, failure, None)];
         let tap = render_tap(run_dir(), "suite", &results, &st);
@@ -332,7 +333,7 @@ mod tests {
             shell: "main".into(),
             exit_code: Some(1),
             span: test_span(0, 5),
-            context: Default::default(),
+            context: FailureContext::pre_vm(),
         };
         let results = vec![
             pass_result("test-a", 100, None),
@@ -355,7 +356,7 @@ mod tests {
             matched_line: "got \"error\" here".into(),
             span: test_span(0, 5),
             shell: "default".into(),
-            context: Default::default(),
+            context: FailureContext::pre_vm(),
         };
         let results = vec![fail_result("quote-test", 100, failure, None)];
         let tap = render_tap(run_dir(), "suite", &results, &st);
