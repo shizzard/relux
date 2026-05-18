@@ -26,9 +26,11 @@ pub struct StackFrame {
 }
 
 /// Self-contained record of a test failure. Variant-specific fields plus
-/// pre-computed convenience fields (`call_stack`, `buffer_tail`, `vars_in_scope`)
-/// that mirror the umbrella design — these convenience fields are populated
-/// in a later commit; for now they are emitted empty.
+/// pre-computed convenience fields (`call_stack`, `buffer_tail`,
+/// `vars_in_scope`) lifted from the `FailureContext` captured at the
+/// failure site. Sites without a VM context (effect resolution, pre-VM
+/// init) lift `FailureContext::default()`, which lands as `span: 0` /
+/// `event_seq: 0` / empty stack — the artifact stays well-formed.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[cfg_attr(
     feature = "ts-export",
