@@ -20,23 +20,9 @@ Each per-test directory under `logs/` contains two artifacts:
 
 - `events.json` — canonical structured payload (spans, events, buffer events,
   outcome record, embedded source files), consumable by external tooling.
-  The top-level `schema_version` field is a `u32`; this document describes
-  schema version `1`. External consumers should verify it matches the
-  version they expect and fail loudly otherwise — the viewer that ships
-  with each `event.html` does this automatically. The top-level `outcome`
-  field is a tagged enum
-  (`{ "kind": "pass" }`, `{ "kind": "fail", ... }`,
-  `{ "kind": "cancelled", reason: { type: "test-timeout" | "suite-timeout" |
-  "fail-fast" | "sigint", ... }, ... }`, `{ "kind": "skip", ... }`)
-  that carries the verdict alongside failure-, cancellation-, or skip-specific
-  context. Each `Span.location` and `Event.source` carries
-  `{ file, line, start, end }` where `start` / `end` are byte offsets into the
-  matching entry of the top-level `sources` map (relative path -> file
-  contents). Files referenced by no span or event are not embedded.
-  The top-level `artifacts` field lists every file the test wrote under its
-  `artifacts/` directory: each entry is `{ path, size, mime }` with `path`
-  forward-slash and relative to that directory. The list is sorted so files
-  precede subdirectory contents at every directory level.
+  See [`events.json` Schema](06-events-json-schema.md) for the on-disk
+  shape, the tagged-enum variants for spans/events/buffer events/outcome,
+  and the schema-versioning policy.
 - `event.html` — self-contained Svelte SPA viewer. The structured log,
   highlight.js core, Relux language definition, and the viewer bundle
   are each gzipped, base64-encoded, and inlined into

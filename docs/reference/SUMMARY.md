@@ -6,3 +6,4 @@
 - [Built-in Functions](03-built-in-functions.md)
 - [CI Integration](04-ci-integration.md)
 - [Test Log Viewer](05-test-log-viewer.md)
+- [`events.json` Schema](06-events-json-schema.md)
