@@ -134,6 +134,7 @@ mod tests {
 
     fn sample_log(test_name: &str) -> StructuredLog {
         StructuredLog {
+            schema_version: crate::observe::structured::SCHEMA_VERSION,
             info: TestInfo {
                 name: test_name.to_string(),
                 path: "tests/foo.relux".to_string(),

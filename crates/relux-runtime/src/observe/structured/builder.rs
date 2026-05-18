@@ -1154,6 +1154,7 @@ impl StructuredLogBuilder {
         }
 
         StructuredLog {
+            schema_version: super::SCHEMA_VERSION,
             info,
             outcome,
             env,

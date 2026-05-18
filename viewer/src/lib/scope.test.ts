@@ -162,6 +162,7 @@ function marker(seq: number, span: number, shell: string | null): Event {
 
 function makeLog(spans: Span[], events: Event[]): StructuredLog {
   return {
+    schema_version: 1,
     info: { name: 't', path: 'p', duration_ms: 0n },
     outcome: { kind: 'pass' },
     env: { bootstrap: [] },

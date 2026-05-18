@@ -19,8 +19,12 @@ that support attachments (Jenkins, GitLab) can link directly to per-test
 Each per-test directory under `logs/` contains two artifacts:
 
 - `events.json` — canonical structured payload (spans, events, buffer events,
-  outcome record, embedded source files). Stable schema, consumable by
-  external tooling. The top-level `outcome` field is a tagged enum
+  outcome record, embedded source files), consumable by external tooling.
+  The top-level `schema_version` field is a `u32`; this document describes
+  schema version `1`. External consumers should verify it matches the
+  version they expect and fail loudly otherwise — the viewer that ships
+  with each `event.html` does this automatically. The top-level `outcome`
+  field is a tagged enum
   (`{ "kind": "pass" }`, `{ "kind": "fail", ... }`,
   `{ "kind": "cancelled", reason: { type: "test-timeout" | "suite-timeout" |
   "fail-fast" | "sigint", ... }, ... }`, `{ "kind": "skip", ... }`)

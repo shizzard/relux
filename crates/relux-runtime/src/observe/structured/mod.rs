@@ -71,6 +71,11 @@ impl std::fmt::Display for SourceLocation {
     }
 }
 
+/// `events.json` schema version. Bump on any backwards-incompatible
+/// change to the on-disk shape. External consumers should verify this
+/// matches the version they expect.
+pub const SCHEMA_VERSION: u32 = 1;
+
 /// Top-level structured log for a single test run. Produced by
 /// `StructuredLogBuilder::build`.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -79,6 +84,8 @@ impl std::fmt::Display for SourceLocation {
     ts(export, export_to = "../../../viewer/src/types/")
 )]
 pub struct StructuredLog {
+    /// Schema version of this artifact. See `SCHEMA_VERSION`.
+    pub schema_version: u32,
     pub info: TestInfo,
     pub outcome: TestOutcome,
     pub env: EnvInfo,
