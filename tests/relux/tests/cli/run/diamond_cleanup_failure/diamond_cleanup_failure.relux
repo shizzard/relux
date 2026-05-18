@@ -16,8 +16,7 @@ test "failure mid-setup still releases acquired dependencies" ~60s {
 
         > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? 1 failed
-        match_prompt()
-        match_exit_code(1)
+        match_not_ok(1)
 
         // Both cleanups ran, even though E1's setup failed before the
         // test body ever started. E1's own cleanup runs first (effect

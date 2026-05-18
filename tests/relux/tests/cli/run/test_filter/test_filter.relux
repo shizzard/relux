@@ -27,7 +27,6 @@ test "--test errors with multiple --file flags" {
     shell s {
         > ${__RELUX} run --progress plain -f ${__RELUX_TEST_ROOT}/fixtures/relux/tests/two_tests.relux -f ${__RELUX_TEST_ROOT}/fixtures/relux/tests/two_tests.relux -t alpha --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? --test requires exactly one --file
-        match_prompt()
-        match_exit_code(1)
+        match_not_ok(1)
     }
 }

@@ -15,8 +15,7 @@ test "nested setup-failure: cleanup spans anchor to test span" ~60s {
 
         > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? 1 failed
-        match_prompt()
-        match_exit_code(1)
+        match_not_ok(1)
 
         > events=$(ls -dt ${__RELUX_TEST_ROOT}/fixtures/relux/out/*/logs/relux/tests/nested_fail/nested-fail-path/events.json 2>/dev/null | head -1)
         match_prompt()

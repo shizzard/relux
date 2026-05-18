@@ -11,7 +11,6 @@ test "run reports inline test timeout as cancelled" ~10s {
         > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? test-timeout
         <? 1 cancelled
-        match_prompt()
-        match_exit_code(1)
+        match_not_ok(1)
     }
 }

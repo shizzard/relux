@@ -5,7 +5,6 @@ test "run exits 1 when a test fails" ~300ms {
     shell s {
         > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? 1 failed
-        match_prompt()
-        match_exit_code(1)
+        match_not_ok(1)
     }
 }

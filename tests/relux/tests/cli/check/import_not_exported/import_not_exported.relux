@@ -5,7 +5,6 @@ test "check detects import not exported" {
     shell s {
         > ${__RELUX} check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         <? not exported
-        match_prompt()
-        match_exit_code(1)
+        match_not_ok(1)
     }
 }
