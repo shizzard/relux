@@ -1,3 +1,23 @@
+//! Concurrent accumulator for `StructuredLog`.
+//!
+//! `StructuredLogBuilder` is the writer end of the structured-event stream.
+//! It is cheap to `Clone` (storage is `Arc<Mutex<_>>`-shared) and is threaded
+//! through `RuntimeContext`; every emission site forwards through it.
+//!
+//! The per-event-kind emitters live in concern-grouped submodules
+//! (`lifecycle`, `io`, `matching`, `values`, `diagnostics`) — each one
+//! adds an `impl StructuredLogBuilder` block. This file owns the core:
+//! the struct itself, the `SpanGuard` RAII handle, helper resolvers
+//! (`now`, `resolve_location`, `timeout_value`, `push_progress`), the
+//! two raw push entry points (`push_event`, `push_buffer_event`), and
+//! the final `build()` assembly.
+
+mod diagnostics;
+mod io;
+mod lifecycle;
+mod matching;
+mod values;
+
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -21,12 +41,8 @@ use super::event::Event;
 use super::event::EventKind;
 use super::event::EventSeq;
 use super::event::TimeoutValue;
-use super::failure::FailureRecord;
-use super::failure::StackFrame;
-use super::shell::ShellRecord;
 use super::span::Span;
 use super::span::SpanId;
-use super::span::SpanKind;
 use crate::observe::progress::ProgressEvent;
 use crate::observe::progress::ProgressTx;
 
@@ -35,11 +51,11 @@ use crate::observe::progress::ProgressTx;
 /// every emission site forwards through it.
 #[derive(Clone)]
 pub struct StructuredLogBuilder {
-    inner: Arc<Mutex<BuilderInner>>,
-    test_start: Instant,
-    sources: SourceTable,
-    project_root: Arc<Path>,
-    progress_tx: ProgressTx,
+    pub(super) inner: Arc<Mutex<BuilderInner>>,
+    pub(super) test_start: Instant,
+    pub(super) sources: SourceTable,
+    pub(super) project_root: Arc<Path>,
+    pub(super) progress_tx: ProgressTx,
 }
 
 /// RAII handle for a span. `Drop` calls `close_span_inner` on the underlying
@@ -53,6 +69,10 @@ pub struct SpanGuard {
 }
 
 impl SpanGuard {
+    pub(super) fn new(id: SpanId, log: StructuredLogBuilder) -> Self {
+        Self { id: Some(id), log }
+    }
+
     pub fn id(&self) -> SpanId {
         self.id.expect("span guard already closed")
     }
@@ -72,13 +92,13 @@ impl Drop for SpanGuard {
     }
 }
 
-struct BuilderInner {
-    next_seq: EventSeq,
-    next_span_id: SpanId,
-    spans: HashMap<SpanId, Span>,
-    events: Vec<Event>,
-    buffer_events: Vec<BufferEvent>,
-    shells: HashMap<String, ShellRecord>,
+pub(super) struct BuilderInner {
+    pub(super) next_seq: EventSeq,
+    pub(super) next_span_id: SpanId,
+    pub(super) spans: HashMap<SpanId, Span>,
+    pub(super) events: Vec<Event>,
+    pub(super) buffer_events: Vec<BufferEvent>,
+    pub(super) shells: HashMap<String, super::shell::ShellRecord>,
 }
 
 impl StructuredLogBuilder {
@@ -104,11 +124,11 @@ impl StructuredLogBuilder {
         }
     }
 
-    fn now(&self) -> Duration {
+    pub(super) fn now(&self) -> Duration {
         self.test_start.elapsed()
     }
 
-    fn resolve_location(&self, span: &IrSpan) -> Option<SourceLocation> {
+    pub(super) fn resolve_location(&self, span: &IrSpan) -> Option<SourceLocation> {
         let file_id = span.file();
         let source_file = self.sources.get(file_id)?;
         let line = source_file.line_at(span.span().start());
@@ -124,7 +144,7 @@ impl StructuredLogBuilder {
         })
     }
 
-    fn timeout_value(&self, t: &IrTimeout) -> TimeoutValue {
+    pub(super) fn timeout_value(&self, t: &IrTimeout) -> TimeoutValue {
         match t {
             IrTimeout::Tolerance {
                 duration,
@@ -143,91 +163,8 @@ impl StructuredLogBuilder {
         }
     }
 
-    fn push_progress(&self, event: ProgressEvent) {
+    pub(super) fn push_progress(&self, event: ProgressEvent) {
         let _ = self.progress_tx.send(event);
-    }
-
-    // ─── Span lifecycle ───────────────────────────────────────────
-
-    /// Open a span and return a guard that closes it on drop. The caller
-    /// must keep the guard alive for the span's lifetime; passing the id
-    /// (`guard.id()`) to children is fine. Drop on `?` propagation closes
-    /// cleanly; for a tighter `end_ts`, use `SpanGuard::close()` explicitly.
-    pub fn open_span(
-        &self,
-        kind: SpanKind,
-        parent: Option<SpanId>,
-        location: Option<&IrSpan>,
-    ) -> SpanGuard {
-        let location = location.and_then(|s| self.resolve_location(s));
-        let start_ts = self.now();
-        let id = {
-            let mut inner = self.inner.lock().unwrap();
-            let id = inner.next_span_id;
-            inner.next_span_id += 1;
-            inner.spans.insert(
-                id,
-                Span {
-                    id,
-                    kind,
-                    parent,
-                    start_ts,
-                    end_ts: None,
-                    location,
-                },
-            );
-            id
-        };
-        SpanGuard {
-            id: Some(id),
-            log: self.clone(),
-        }
-    }
-
-    fn close_span_inner(&self, id: SpanId) {
-        let end_ts = self.now();
-        let mut inner = self.inner.lock().unwrap();
-        if let Some(span) = inner.spans.get_mut(&id) {
-            span.end_ts = Some(end_ts);
-        }
-    }
-
-    /// Attach a return value to an in-flight `FnCall` span. Called from
-    /// `exec_call` on the success path before the span closes; failed calls
-    /// leave `result` as `None` so the row title falls back to `name/arity`.
-    pub fn set_fn_call_result(&self, id: SpanId, result: &str) {
-        let mut inner = self.inner.lock().unwrap();
-        if let Some(span) = inner.spans.get_mut(&id)
-            && let SpanKind::FnCall { result: slot, .. } = &mut span.kind
-        {
-            *slot = Some(result.to_string());
-        }
-    }
-
-    /// Walk parent pointers from `leaf` back to a root span and return the
-    /// frames in root-to-leaf order. Used at failure-construction time to
-    /// snapshot the active call chain.
-    pub fn resolve_stack(&self, leaf: SpanId) -> Vec<StackFrame> {
-        let inner = self.inner.lock().unwrap();
-        let mut chain: Vec<StackFrame> = Vec::new();
-        let mut next = Some(leaf);
-        while let Some(id) = next {
-            let Some(span) = inner.spans.get(&id) else {
-                break;
-            };
-            let (name, args) = span.kind.frame_data();
-            chain.push(StackFrame {
-                span: id,
-                kind: span.kind.kind_str().to_string(),
-                name,
-                args,
-                alias: span.kind.frame_alias(),
-                location: span.location.clone(),
-            });
-            next = span.parent;
-        }
-        chain.reverse();
-        chain
     }
 
     /// Latest emitted seq, or `0` if no event has fired yet. Failures use
@@ -237,8 +174,6 @@ impl StructuredLogBuilder {
         let inner = self.inner.lock().unwrap();
         inner.next_seq.saturating_sub(1)
     }
-
-    // ─── Raw event/buffer-event push ──────────────────────────────
 
     /// Test-only: a snapshot of the accumulated buffer events, in the
     /// order they were pushed.
@@ -301,810 +236,6 @@ impl StructuredLogBuilder {
         });
         seq
     }
-
-    // ─── Shells glossary ──────────────────────────────────────────
-
-    pub fn record_shell_spawn(&self, marker: &str, name: &str, command: &str) {
-        let spawn_ts = self.now();
-        let mut inner = self.inner.lock().unwrap();
-        inner.shells.insert(
-            marker.to_string(),
-            ShellRecord {
-                marker: marker.to_string(),
-                name: name.to_string(),
-                spawn_ts,
-                terminate_ts: None,
-                command: command.to_string(),
-            },
-        );
-    }
-
-    pub fn record_shell_terminate(&self, marker: &str) {
-        let terminate_ts = self.now();
-        let mut inner = self.inner.lock().unwrap();
-        if let Some(rec) = inner.shells.get_mut(marker) {
-            rec.terminate_ts = Some(terminate_ts);
-        }
-    }
-
-    // ─── Convenience emitters (mirror EventSink shape) ────────────
-
-    // Shell lifecycle ---------------------------------------------------
-
-    pub fn emit_shell_spawn(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        command: &str,
-        location: Option<&IrSpan>,
-    ) {
-        self.record_shell_spawn(marker, shell, command);
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::ShellSpawn {
-                name: shell.to_string(),
-                command: command.to_string(),
-            },
-        );
-        self.push_progress(ProgressEvent::ShellSpawn);
-    }
-
-    pub fn emit_shell_ready(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::ShellReady {
-                name: shell.to_string(),
-            },
-        );
-    }
-
-    pub fn emit_shell_switch(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::ShellSwitch {
-                name: shell.to_string(),
-            },
-        );
-        self.push_progress(ProgressEvent::ShellSwitch(shell.to_string()));
-    }
-
-    pub fn emit_shell_terminate(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        location: Option<&IrSpan>,
-    ) {
-        self.record_shell_terminate(marker);
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::ShellTerminate {
-                name: shell.to_string(),
-            },
-        );
-    }
-
-    // Effect exposes ----------------------------------------------------
-
-    pub fn emit_effect_expose_shell(
-        &self,
-        span: SpanId,
-        name: &str,
-        target: &str,
-        qualifier: Option<&str>,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            None,
-            None,
-            location,
-            EventKind::EffectExposeShell {
-                name: name.to_string(),
-                target: target.to_string(),
-                qualifier: qualifier.map(String::from),
-            },
-        );
-    }
-
-    pub fn emit_effect_expose_var(
-        &self,
-        span: SpanId,
-        name: &str,
-        target: &str,
-        qualifier: Option<&str>,
-        value: &str,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            None,
-            None,
-            location,
-            EventKind::EffectExposeVar {
-                name: name.to_string(),
-                target: target.to_string(),
-                qualifier: qualifier.map(String::from),
-                value: value.to_string(),
-            },
-        );
-    }
-
-    // I/O ---------------------------------------------------------------
-
-    pub fn emit_send(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        data: &str,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::Send {
-                data: data.to_string(),
-            },
-        );
-        self.push_progress(ProgressEvent::Send);
-    }
-
-    pub fn emit_recv(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        data: &str,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::Recv {
-                data: data.to_string(),
-            },
-        );
-    }
-
-    // Matching ----------------------------------------------------------
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn emit_match_start(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        pattern: &str,
-        is_regex: bool,
-        effective: &IrTimeout,
-        location: Option<&IrSpan>,
-    ) {
-        let effective = self.timeout_value(effective);
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::MatchStart {
-                pattern: pattern.to_string(),
-                is_regex,
-                effective,
-            },
-        );
-        self.push_progress(ProgressEvent::MatchStart);
-    }
-
-    /// Record a structured `MatchDone` event referencing a buffer event
-    /// that was pushed (atomically with the consume operation) by
-    /// `OutputBuffer::consume_*`. The buffer event push is the consumer's
-    /// responsibility — this method only emits the structured event +
-    /// progress notification.
-    #[allow(clippy::too_many_arguments)]
-    pub fn emit_match_done_record(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        matched: &str,
-        elapsed: Duration,
-        captures: Option<HashMap<String, String>>,
-        buffer_seq: EventSeq,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::MatchDone {
-                matched: matched.to_string(),
-                elapsed,
-                captures,
-                buffer_seq,
-            },
-        );
-        self.push_progress(ProgressEvent::MatchDone);
-    }
-
-    pub fn emit_timeout(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        pattern: &str,
-        effective: &IrTimeout,
-        location: Option<&IrSpan>,
-    ) {
-        let effective = self.timeout_value(effective);
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::Timeout {
-                pattern: pattern.to_string(),
-                buffer_seq: None,
-                effective,
-            },
-        );
-        self.push_progress(ProgressEvent::Timeout);
-    }
-
-    // Fail patterns -----------------------------------------------------
-
-    pub fn emit_fail_pattern_set(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        pattern: &str,
-        is_regex: bool,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::FailPatternSet {
-                pattern: pattern.to_string(),
-                is_regex,
-            },
-        );
-    }
-
-    pub fn emit_fail_pattern_cleared(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::FailPatternCleared,
-        );
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn emit_fail_pattern_triggered(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        pattern: &str,
-        is_regex: bool,
-        matched_line: &str,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::FailPatternTriggered {
-                pattern: pattern.to_string(),
-                is_regex,
-                matched_line: matched_line.to_string(),
-                buffer_seq: None,
-            },
-        );
-        self.push_progress(ProgressEvent::FailPattern);
-    }
-
-    // Control flow ------------------------------------------------------
-
-    pub fn emit_sleep_start(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        duration: Duration,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::SleepStart { duration },
-        );
-        self.push_progress(ProgressEvent::SleepStart);
-    }
-
-    pub fn emit_sleep_done(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::SleepDone,
-        );
-        self.push_progress(ProgressEvent::SleepDone);
-    }
-
-    pub fn emit_timeout_set(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        timeout: &IrTimeout,
-        previous: &IrTimeout,
-        location: Option<&IrSpan>,
-    ) {
-        let timeout = self.timeout_value(timeout);
-        let previous = self.timeout_value(previous);
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::TimeoutSet { timeout, previous },
-        );
-    }
-
-    // Values ------------------------------------------------------------
-
-    pub fn emit_var_let(
-        &self,
-        span: SpanId,
-        shell: Option<&str>,
-        marker: Option<&str>,
-        name: &str,
-        value: &str,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            shell,
-            marker,
-            location,
-            EventKind::VarLet {
-                name: name.to_string(),
-                value: value.to_string(),
-            },
-        );
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn emit_var_assign(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        name: &str,
-        value: &str,
-        previous: &str,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::VarAssign {
-                name: name.to_string(),
-                value: value.to_string(),
-                previous: previous.to_string(),
-            },
-        );
-    }
-
-    pub fn emit_string_eval(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        result: &str,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::StringEval {
-                result: result.to_string(),
-            },
-        );
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn emit_interpolation(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        template: &str,
-        result: &str,
-        bindings: &[(String, String)],
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::Interpolation {
-                template: template.to_string(),
-                result: result.to_string(),
-                bindings: bindings.to_vec(),
-            },
-        );
-    }
-
-    /// Interpolation event emitted from a pure-eval context (no shell,
-    /// no shell marker). Used by `LogSink` for marker replay and for
-    /// test/effect-level lets.
-    pub fn emit_pure_interpolation(
-        &self,
-        span: SpanId,
-        template: &str,
-        result: &str,
-        bindings: &[(String, String)],
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            None,
-            None,
-            location,
-            EventKind::Interpolation {
-                template: template.to_string(),
-                result: result.to_string(),
-                bindings: bindings.to_vec(),
-            },
-        );
-    }
-
-    /// Pure variable-read event. Used by `LogSink` to surface bare
-    /// `${X}`-style reads that resolve against scope/env. The result
-    /// is the resolved string (`""` when the var is undefined).
-    pub fn emit_var_read(&self, span: SpanId, name: &str, value: &str, location: Option<&IrSpan>) {
-        self.push_event(
-            span,
-            None,
-            None,
-            location,
-            EventKind::VarRead {
-                name: name.to_string(),
-                value: value.to_string(),
-            },
-        );
-    }
-
-    /// Pure string-match event. Used by `LogSink` for marker `?`
-    /// regex conditions and the future runtime string-match syntax.
-    #[allow(clippy::too_many_arguments)]
-    pub fn emit_pure_match(
-        &self,
-        span: SpanId,
-        match_kind: super::span::MatchKind,
-        value: &str,
-        pattern: &str,
-        result: &str,
-        captures: &HashMap<String, String>,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            None,
-            None,
-            location,
-            EventKind::PureMatch {
-                match_kind,
-                value: value.to_string(),
-                pattern: pattern.to_string(),
-                result: result.to_string(),
-                captures: captures.clone(),
-            },
-        );
-    }
-
-    /// Open the synthetic `markers` root span. Always opened (per
-    /// design); viewer filters out empty markers roots.
-    pub fn open_markers_span(&self, location: Option<&IrSpan>) -> SpanGuard {
-        self.open_span(SpanKind::Markers, None, location)
-    }
-
-    /// Open a `marker-eval` span as a child of a `markers` root.
-    pub fn open_marker_eval_span(
-        &self,
-        parent: SpanId,
-        marker_kind: super::span::MarkerEvalKind,
-        modifier: super::span::MarkerEvalModifier,
-        decision: super::span::MarkerEvalDecision,
-        location: Option<&IrSpan>,
-    ) -> SpanGuard {
-        self.open_span(
-            SpanKind::MarkerEval {
-                marker_kind,
-                modifier,
-                decision,
-            },
-            Some(parent),
-            location,
-        )
-    }
-
-    /// Emit the final truthy/falsy outcome event inside a marker-eval
-    /// span. Mirrors the shape stored on `MarkerRecording.evaluation`.
-    /// Returns the emitted event's `EventSeq` so callers (e.g. `replay_markers`)
-    /// can use it as a focus pointer.
-    pub fn emit_bool_check(
-        &self,
-        span: SpanId,
-        evaluation: super::span::MarkerEvalDetail,
-        location: Option<&IrSpan>,
-    ) -> EventSeq {
-        self.push_event(
-            span,
-            None,
-            None,
-            location,
-            EventKind::BoolCheck { evaluation },
-        )
-    }
-
-    // Diagnostics -------------------------------------------------------
-
-    pub fn emit_annotate(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        text: &str,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::Annotate {
-                text: text.to_string(),
-            },
-        );
-        self.push_progress(ProgressEvent::Annotation(text.to_string()));
-    }
-
-    pub fn emit_log(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        message: &str,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::Log {
-                message: message.to_string(),
-            },
-        );
-    }
-
-    pub fn emit_warning(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        message: &str,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::Warning {
-                message: message.to_string(),
-            },
-        );
-        self.push_progress(ProgressEvent::Warning(message.to_string()));
-    }
-
-    pub fn emit_error(
-        &self,
-        span: SpanId,
-        shell: &str,
-        marker: &str,
-        message: &str,
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::Error {
-                message: message.to_string(),
-            },
-        );
-        self.push_progress(ProgressEvent::Error(message.to_string()));
-    }
-
-    /// Emit a `cancelled` event on the span the VM was in when it observed
-    /// the cancel token flipping. Carries the reason recorded by whoever
-    /// called `cancel_with(...)`. Pushes a `C` sigil into the per-test
-    /// progress sliding window so live TUI viewers see the cancel land
-    /// in the same place errors and timeouts do.
-    pub fn emit_cancelled(
-        &self,
-        span: SpanId,
-        shell: Option<&str>,
-        shell_marker: Option<&str>,
-        reason: &crate::cancel::CancelReason,
-    ) {
-        self.push_event(
-            span,
-            shell,
-            shell_marker,
-            None,
-            EventKind::Cancelled {
-                reason: super::event::CancelReasonRecord::from(reason),
-            },
-        );
-        self.push_progress(ProgressEvent::Cancellation);
-    }
-
-    /// Push a `Failure` progress notification only. The structured failure
-    /// information is carried in the `FailureRecord` passed to `build()`.
-    pub fn emit_failure_progress(&self) {
-        self.push_progress(ProgressEvent::Failure);
-    }
-
-    // ─── Failure record translation ───────────────────────────────
-
-    /// Translate a runtime `Failure` into a `FailureRecord`, flattening the
-    /// `FailureContext` enum into the on-disk shape via its accessor
-    /// methods. `Vm` failures produce full diagnostic context; `PreVm`
-    /// failures (effect-resolution errors, pre-VM init, cleanup-shell
-    /// spawn) land with the surrounding span and empty stack / tail /
-    /// vars — the artifact stays well-formed.
-    pub fn failure_record(&self, failure: &crate::report::result::Failure) -> FailureRecord {
-        use crate::report::result::Failure;
-        match failure {
-            Failure::MatchTimeout {
-                pattern,
-                shell,
-                effective,
-                context,
-                ..
-            } => FailureRecord::MatchTimeout {
-                span: context.span().unwrap_or(0),
-                event_seq: context.event_seq().unwrap_or(0),
-                shell: shell.clone(),
-                pattern: pattern.clone(),
-                effective: self.timeout_value(effective),
-                call_stack: context.call_stack().to_vec(),
-                buffer_tail: context.buffer_tail().to_string(),
-                vars_in_scope: context.vars_in_scope().to_vec(),
-            },
-            Failure::FailPatternMatched {
-                pattern,
-                matched_line,
-                shell,
-                context,
-                ..
-            } => FailureRecord::FailPatternMatched {
-                span: context.span().unwrap_or(0),
-                event_seq: context.event_seq().unwrap_or(0),
-                shell: shell.clone(),
-                pattern: pattern.clone(),
-                matched_line: matched_line.clone(),
-                call_stack: context.call_stack().to_vec(),
-                buffer_tail: context.buffer_tail().to_string(),
-                vars_in_scope: context.vars_in_scope().to_vec(),
-            },
-            Failure::ShellExited {
-                shell,
-                exit_code,
-                context,
-                ..
-            } => FailureRecord::ShellExited {
-                span: context.span().unwrap_or(0),
-                event_seq: context.event_seq().unwrap_or(0),
-                shell: shell.clone(),
-                exit_code: *exit_code,
-                call_stack: context.call_stack().to_vec(),
-                buffer_tail: context.buffer_tail().to_string(),
-                vars_in_scope: context.vars_in_scope().to_vec(),
-            },
-            Failure::Runtime {
-                message,
-                shell,
-                context,
-                ..
-            } => FailureRecord::Runtime {
-                span: context.span(),
-                event_seq: context.event_seq(),
-                shell: shell.clone(),
-                message: message.clone(),
-                call_stack: context.call_stack().to_vec(),
-                vars_in_scope: context.vars_in_scope().to_vec(),
-            },
-        }
-    }
-
-    /// Translate a runtime `Cancellation` into a `CancellationRecord`.
-    pub fn cancellation_record(
-        &self,
-        c: &crate::report::result::Cancellation,
-    ) -> super::CancellationRecord {
-        let ctx = &c.context;
-        super::CancellationRecord {
-            reason: super::event::CancelReasonRecord::from(&c.reason),
-            span: ctx.span(),
-            event_seq: ctx.event_seq(),
-            shell: None,
-            call_stack: ctx.call_stack().to_vec(),
-        }
-    }
-
-    // ─── Final assembly ───────────────────────────────────────────
 
     pub fn build(
         self,
@@ -1184,6 +315,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::super::span::FnCallKind;
+    use super::super::span::SpanKind;
     use super::*;
     use crate::observe::progress;
 
