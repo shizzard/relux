@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use bytes::BytesMut;
 use regex::Regex;
-use tokio::sync::Mutex;
+use std::sync::Mutex;
 use tokio::sync::Notify;
 
 use crate::observe::structured::BufferEventKind;
@@ -101,8 +100,16 @@ pub struct Match<T: MatchKind> {
 // ─── OutputBuffer ───────────────────────────────────────────────
 
 struct BufferInner {
-    data: BytesMut,
+    /// Cleanly-decoded bytes available for matching. Always valid UTF-8.
+    /// Invalid input bytes are surfaced as `U+FFFD` here via `Utf8Stream`,
+    /// so byte offsets and char-aware slicing coincide for drains.
+    decoded: String,
+    /// Absolute byte offset (in decoded coordinates) of the first byte
+    /// currently held in `decoded`. Advanced on every drain; used to
+    /// compute `Match.start` / `Match.end` across the shell's lifetime.
     base: usize,
+    /// Streaming UTF-8 decoder; holds back the trailing bytes of any
+    /// incomplete multi-byte sequence until the next `append`.
     utf8: Utf8Stream,
 }
 
@@ -120,13 +127,15 @@ pub struct OutputBuffer {
 
 impl OutputBuffer {
     /// Construct an `OutputBuffer` wired to the given log builder.
-    /// `append`/`consume_*`/`clear` will emit their corresponding
-    /// buffer events on `log` while still holding the inner mutex,
-    /// preventing a race between byte appends and event order.
+    /// `append`/`consume_*`/`clear` emit their corresponding buffer events
+    /// on `log` while still holding the inner mutex, preventing a race
+    /// between byte appends and event order. The inner mutex is a
+    /// `std::sync::Mutex` — every critical section is pure CPU work, so no
+    /// `.await` ever happens under the guard and a blocking lock is correct.
     pub fn new(log: StructuredLogBuilder, shell_name: String, shell_marker: String) -> Self {
         Self {
             inner: Arc::new(Mutex::new(BufferInner {
-                data: BytesMut::new(),
+                decoded: String::new(),
                 base: 0,
                 utf8: Utf8Stream::new(),
             })),
@@ -143,7 +152,7 @@ impl OutputBuffer {
     pub fn for_tests() -> Self {
         Self {
             inner: Arc::new(Mutex::new(BufferInner {
-                data: BytesMut::new(),
+                decoded: String::new(),
                 base: 0,
                 utf8: Utf8Stream::new(),
             })),
@@ -155,32 +164,32 @@ impl OutputBuffer {
     }
 
     pub async fn append(&self, bytes: &[u8]) {
-        let mut inner = self.inner.lock().await;
-        inner.data.extend_from_slice(bytes);
+        let mut inner = self.inner.lock().unwrap();
         let decoded = inner.utf8.feed(bytes);
-        if !decoded.is_empty()
-            && let Some(log) = &self.log
-        {
-            log.push_buffer_event(
-                &self.shell_name,
-                &self.shell_marker,
-                BufferEventKind::Grew { data: decoded },
-            );
+        if !decoded.is_empty() {
+            inner.decoded.push_str(&decoded);
+            if let Some(log) = &self.log {
+                log.push_buffer_event(
+                    &self.shell_name,
+                    &self.shell_marker,
+                    BufferEventKind::Grew { data: decoded },
+                );
+            }
         }
         drop(inner);
         self.notify.notify_waiters();
     }
 
-    /// Find literal, drain via split_to, push the `Matched` buffer event
-    /// while still holding the inner lock, and return the match plus the
-    /// `EventSeq` of the just-pushed buffer event. All under one lock.
+    /// Find literal, drain the decoded prefix up to the match end, push the
+    /// `Matched` buffer event while still holding the inner lock, and return
+    /// the match plus the `EventSeq` of the just-pushed buffer event. All
+    /// under one lock.
     pub async fn consume_literal(&self, needle: &str) -> Option<(Match<LiteralMatch>, EventSeq)> {
-        let mut inner = self.inner.lock().await;
-        let text = String::from_utf8_lossy(&inner.data);
-        let pos = text.find(needle)?;
+        let mut inner = self.inner.lock().unwrap();
+        let pos = inner.decoded.find(needle)?;
         let end_pos = pos + needle.len();
 
-        let (before, matched_str, after) = match_context(&text, pos, end_pos, needle);
+        let (before, matched_str, after) = match_context(&inner.decoded, pos, end_pos, needle);
 
         let consumed = end_pos;
         let m = Match {
@@ -190,8 +199,7 @@ impl OutputBuffer {
             value: LiteralMatch(needle.to_string()),
         };
 
-        drop(text);
-        let _ = inner.data.split_to(end_pos);
+        inner.decoded.drain(..end_pos);
         inner.base += end_pos;
 
         let buffer_seq = self.emit_matched(before, matched_str, after);
@@ -207,26 +215,26 @@ impl OutputBuffer {
     /// still be arriving. In that case we return `None` so the caller waits
     /// for more data rather than consuming an incomplete line.
     pub async fn consume_regex(&self, re: &Regex) -> Option<(Match<RegexMatch>, EventSeq)> {
-        let mut inner = self.inner.lock().await;
-        let text = String::from_utf8_lossy(&inner.data);
-        let cap = re.captures(&text)?;
-        let whole = cap.get(0)?;
-        let pos = whole.start();
-        let end_pos = whole.end();
-
-        if is_partial_line_match(re, end_pos, &text) {
-            return None;
-        }
-
-        let matched_str = whole.as_str().to_string();
-        let (before, _, after) = match_context(&text, pos, end_pos, &matched_str);
-
-        let mut captures = HashMap::new();
-        for i in 0..cap.len() {
-            if let Some(m) = cap.get(i) {
-                captures.insert(i.to_string(), m.as_str().to_string());
+        let mut inner = self.inner.lock().unwrap();
+        let (pos, end_pos, matched_str, captures) = {
+            let cap = re.captures(&inner.decoded)?;
+            let whole = cap.get(0)?;
+            let pos = whole.start();
+            let end_pos = whole.end();
+            if is_partial_line_match(re, end_pos, &inner.decoded) {
+                return None;
             }
-        }
+            let matched_str = whole.as_str().to_string();
+            let mut captures = HashMap::new();
+            for i in 0..cap.len() {
+                if let Some(m) = cap.get(i) {
+                    captures.insert(i.to_string(), m.as_str().to_string());
+                }
+            }
+            (pos, end_pos, matched_str, captures)
+        };
+
+        let (before, _, after) = match_context(&inner.decoded, pos, end_pos, &matched_str);
 
         let consumed = end_pos;
         let m = Match {
@@ -236,8 +244,7 @@ impl OutputBuffer {
             value: RegexMatch(captures),
         };
 
-        drop(text);
-        let _ = inner.data.split_to(end_pos);
+        inner.decoded.drain(..end_pos);
         inner.base += end_pos;
 
         let buffer_seq = self.emit_matched(before, matched_str, after);
@@ -252,23 +259,22 @@ impl OutputBuffer {
         needle: &str,
         fail_pattern: Option<&FailPattern>,
     ) -> Result<Option<(Match<LiteralMatch>, EventSeq)>, FailPatternHit> {
-        let mut inner = self.inner.lock().await;
-        let text = String::from_utf8_lossy(&inner.data);
+        let mut inner = self.inner.lock().unwrap();
 
         // Check fail pattern first
         if let Some(fp) = fail_pattern
-            && let Some(hit) = check_fail_in_buffer(&text, fp)
+            && let Some(hit) = check_fail_in_buffer(&inner.decoded, fp)
         {
             return Err(hit);
         }
 
         // Try to consume the literal
-        let Some(pos) = text.find(needle) else {
+        let Some(pos) = inner.decoded.find(needle) else {
             return Ok(None);
         };
         let end_pos = pos + needle.len();
 
-        let (before, matched_str, after) = match_context(&text, pos, end_pos, needle);
+        let (before, matched_str, after) = match_context(&inner.decoded, pos, end_pos, needle);
 
         let consumed = end_pos;
         let m = Match {
@@ -278,8 +284,7 @@ impl OutputBuffer {
             value: LiteralMatch(needle.to_string()),
         };
 
-        drop(text);
-        let _ = inner.data.split_to(end_pos);
+        inner.decoded.drain(..end_pos);
         inner.base += end_pos;
 
         let buffer_seq = self.emit_matched(before, matched_str, after);
@@ -294,39 +299,38 @@ impl OutputBuffer {
         re: &Regex,
         fail_pattern: Option<&FailPattern>,
     ) -> Result<Option<(Match<RegexMatch>, EventSeq)>, FailPatternHit> {
-        let mut inner = self.inner.lock().await;
-        let text = String::from_utf8_lossy(&inner.data);
+        let mut inner = self.inner.lock().unwrap();
 
         // Check fail pattern first
         if let Some(fp) = fail_pattern
-            && let Some(hit) = check_fail_in_buffer(&text, fp)
+            && let Some(hit) = check_fail_in_buffer(&inner.decoded, fp)
         {
             return Err(hit);
         }
 
-        // Try to consume the regex
-        let Some(cap) = re.captures(&text) else {
-            return Ok(None);
-        };
-        let Some(whole) = cap.get(0) else {
-            return Ok(None);
-        };
-        let pos = whole.start();
-        let end_pos = whole.end();
-
-        if is_partial_line_match(re, end_pos, &text) {
-            return Ok(None);
-        }
-
-        let matched_str = whole.as_str().to_string();
-        let (before, _, after) = match_context(&text, pos, end_pos, &matched_str);
-
-        let mut captures = HashMap::new();
-        for i in 0..cap.len() {
-            if let Some(m) = cap.get(i) {
-                captures.insert(i.to_string(), m.as_str().to_string());
+        let (pos, end_pos, matched_str, captures) = {
+            let Some(cap) = re.captures(&inner.decoded) else {
+                return Ok(None);
+            };
+            let Some(whole) = cap.get(0) else {
+                return Ok(None);
+            };
+            let pos = whole.start();
+            let end_pos = whole.end();
+            if is_partial_line_match(re, end_pos, &inner.decoded) {
+                return Ok(None);
             }
-        }
+            let matched_str = whole.as_str().to_string();
+            let mut captures = HashMap::new();
+            for i in 0..cap.len() {
+                if let Some(m) = cap.get(i) {
+                    captures.insert(i.to_string(), m.as_str().to_string());
+                }
+            }
+            (pos, end_pos, matched_str, captures)
+        };
+
+        let (before, _, after) = match_context(&inner.decoded, pos, end_pos, &matched_str);
 
         let consumed = end_pos;
         let m = Match {
@@ -336,8 +340,7 @@ impl OutputBuffer {
             value: RegexMatch(captures),
         };
 
-        drop(text);
-        let _ = inner.data.split_to(end_pos);
+        inner.decoded.drain(..end_pos);
         inner.base += end_pos;
 
         let buffer_seq = self.emit_matched(before, matched_str, after);
@@ -368,25 +371,20 @@ impl OutputBuffer {
         fail_pattern: Option<&FailPattern>,
     ) -> Option<FailPatternHit> {
         let fp = fail_pattern?;
-        let inner = self.inner.lock().await;
-        let text = String::from_utf8_lossy(&inner.data);
-        check_fail_in_buffer(&text, fp)
+        let inner = self.inner.lock().unwrap();
+        check_fail_in_buffer(&inner.decoded, fp)
     }
 
-    /// Drain the cleanly-decoded prefix of the buffer, advancing base.
-    /// Trailing bytes of an incomplete UTF-8 sequence stay in the buffer
-    /// (held back by `Utf8Stream`), to be completed by a future `append`.
-    /// Emits a `Reset` buffer event carrying the decoded prefix — byte
-    /// identical to the concatenation of `Grew` payloads emitted since
-    /// the previous reset — before releasing the lock.
-    /// Returns the decoded prefix.
+    /// Drain the cleanly-decoded portion of the buffer, advancing base.
+    /// Trailing bytes of an incomplete UTF-8 sequence stay carried over inside
+    /// `Utf8Stream`, to be completed by a future `append`. Emits a `Reset`
+    /// buffer event carrying the consumed prefix — byte-identical to the
+    /// concatenation of `Grew` payloads emitted since the previous reset —
+    /// before releasing the lock. Returns the consumed prefix.
     pub async fn clear(&self) -> String {
-        let mut inner = self.inner.lock().await;
-        let pending_len = inner.utf8.pending_len();
-        let decoded_len = inner.data.len().saturating_sub(pending_len);
-        let chunk = inner.data.split_to(decoded_len);
-        inner.base += decoded_len;
-        let consumed = String::from_utf8_lossy(&chunk).to_string();
+        let mut inner = self.inner.lock().unwrap();
+        let consumed = std::mem::take(&mut inner.decoded);
+        inner.base += consumed.len();
         if let Some(log) = &self.log {
             log.push_buffer_event(
                 &self.shell_name,
@@ -401,15 +399,16 @@ impl OutputBuffer {
 
     /// Return the tail of the current buffer (last `n` chars) as a string.
     pub async fn snapshot_tail(&self, n: usize) -> String {
-        let inner = self.inner.lock().await;
-        let text = String::from_utf8_lossy(&inner.data);
-        truncate_before(&text, n)
+        let inner = self.inner.lock().unwrap();
+        truncate_before(&inner.decoded, n)
     }
 
-    /// Return remaining unmatched buffer data.
+    /// Return remaining unmatched buffer data (decoded prefix as bytes).
+    /// Pending bytes of an incomplete UTF-8 sequence held back by
+    /// `Utf8Stream` are not returned.
     pub async fn remaining(&self) -> Vec<u8> {
-        let inner = self.inner.lock().await;
-        inner.data.to_vec()
+        let inner = self.inner.lock().unwrap();
+        inner.decoded.as_bytes().to_vec()
     }
 }
 
@@ -417,11 +416,22 @@ impl OutputBuffer {
 /// where the buffer does not end with a newline — meaning the last line may
 /// still be arriving and `$` matched end-of-string rather than end-of-line.
 ///
-/// Only applies when the regex source ends with an explicit `$` anchor.
-/// Patterns without `$` (e.g. prompt matching with `^relux> `) are never
-/// deferred, since they don't depend on line completeness.
+/// Only applies when the regex source ends with an *unescaped* `$` anchor.
+/// Patterns ending in `\$` (literal dollar sign) are not anchored. Patterns
+/// without a trailing `$` are never deferred.
 fn is_partial_line_match(re: &Regex, match_end: usize, text: &str) -> bool {
-    re.as_str().ends_with('$') && match_end == text.len() && !text.ends_with('\n')
+    has_trailing_anchor(re.as_str()) && match_end == text.len() && !text.ends_with('\n')
+}
+
+/// `true` iff `src` ends in an unescaped `$` anchor. Counts the run of
+/// trailing backslashes before the final `$`: an even count (including zero)
+/// means the `$` is not escaped.
+fn has_trailing_anchor(src: &str) -> bool {
+    let Some(stripped) = src.strip_suffix('$') else {
+        return false;
+    };
+    let trailing_backslashes = stripped.bytes().rev().take_while(|&b| b == b'\\').count();
+    trailing_backslashes % 2 == 0
 }
 
 /// Check if a fail pattern matches in the given text. Returns (pattern_str, matched_text).
@@ -619,6 +629,21 @@ mod tests {
         assert_eq!(after, huge_suffix);
     }
 
+    #[tokio::test]
+    async fn consume_literal_handles_invalid_utf8_in_buffer() {
+        // Regression test: invalid bytes (here 0xFF) must not corrupt offsets
+        // for the drain after the match — `Utf8Stream` surfaces them as a
+        // U+FFFD replacement and matching works in decoded coordinates.
+        let buf = OutputBuffer::for_tests();
+        let mut bytes = b"prefix".to_vec();
+        bytes.push(0xFF);
+        bytes.extend_from_slice(b"MATCH suffix");
+        buf.append(&bytes).await;
+        let (m, _) = buf.consume_literal("MATCH").await.expect("found");
+        assert_eq!(m.value.0, "MATCH");
+        assert_eq!(buf.remaining().await, " suffix".as_bytes());
+    }
+
     // ── OutputBuffer::consume_regex ──────────────────────────────────
 
     #[tokio::test]
@@ -715,14 +740,64 @@ mod tests {
         assert_eq!(m.value.0.get("0").unwrap(), "partial data");
     }
 
+    #[tokio::test]
+    async fn consume_regex_handles_invalid_utf8_in_buffer() {
+        let buf = OutputBuffer::for_tests();
+        let mut bytes = b"abc".to_vec();
+        bytes.push(0xFF);
+        bytes.extend_from_slice(b" 123 def");
+        buf.append(&bytes).await;
+        let re = Regex::new(r"\d+").unwrap();
+        let (m, _) = buf.consume_regex(&re).await.expect("found");
+        assert_eq!(m.value.0.get("0").unwrap(), "123");
+        assert_eq!(buf.remaining().await, " def".as_bytes());
+    }
+
+    #[tokio::test]
+    async fn consume_regex_does_not_defer_on_escaped_trailing_dollar() {
+        let buf = OutputBuffer::for_tests();
+        buf.append(b"price: $9").await;
+        // Pattern source ends with `$` literally, but it is escaped (`\$`),
+        // so it is NOT an anchor. Must not be treated as a partial-line match.
+        let re = Regex::new(r"price: \$\d+").unwrap();
+        let (m, _) = buf
+            .consume_regex(&re)
+            .await
+            .expect("escaped trailing dollar must not defer");
+        assert_eq!(m.value.0.get("0").unwrap(), "price: $9");
+    }
+
+    // ── has_trailing_anchor ─────────────────────────────────────────
+
+    #[test]
+    fn has_trailing_anchor_unescaped() {
+        assert!(super::has_trailing_anchor("foo$"));
+        assert!(super::has_trailing_anchor(r"^(.+)$"));
+        // Two backslashes = an escaped backslash followed by an anchor.
+        assert!(super::has_trailing_anchor(r"foo\\$"));
+    }
+
+    #[test]
+    fn has_trailing_anchor_escaped() {
+        assert!(!super::has_trailing_anchor(r"price: \$"));
+        // Three backslashes = escaped backslash + escaped dollar.
+        assert!(!super::has_trailing_anchor(r"foo\\\$"));
+    }
+
+    #[test]
+    fn has_trailing_anchor_no_dollar() {
+        assert!(!super::has_trailing_anchor("foo"));
+        assert!(!super::has_trailing_anchor(""));
+    }
+
     // ── OutputBuffer::clear ─────────────────────────────────────────
 
     #[tokio::test]
-    async fn clear_empties_buffer_and_returns_discarded() {
+    async fn clear_empties_buffer_and_returns_consumed() {
         let buf = OutputBuffer::for_tests();
         buf.append(b"hello world").await;
-        let discarded = buf.clear().await;
-        assert_eq!(discarded, "hello world");
+        let consumed = buf.clear().await;
+        assert_eq!(consumed, "hello world");
         assert!(buf.remaining().await.is_empty());
     }
 

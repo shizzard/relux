@@ -441,8 +441,6 @@ impl Vm {
             IrShellStmt::Send { payload, .. } => {
                 let data = interpolate_ir(payload, &self.ctx).await;
                 self.emit_interpolation(payload, &data, Some(&span)).await;
-                self.send_bytes(format!("{data}\n").as_bytes(), span.clone())
-                    .await?;
                 let shell = self.ctx.current_name();
                 self.log.emit_send(
                     self.current_span(),
@@ -451,12 +449,13 @@ impl Vm {
                     &data,
                     Some(&span),
                 );
+                self.send_bytes(format!("{data}\n").as_bytes(), span.clone())
+                    .await?;
                 Ok(data)
             }
             IrShellStmt::SendRaw { payload, .. } => {
                 let data = interpolate_ir(payload, &self.ctx).await;
                 self.emit_interpolation(payload, &data, Some(&span)).await;
-                self.send_bytes(data.as_bytes(), span.clone()).await?;
                 let shell = self.ctx.current_name();
                 self.log.emit_send(
                     self.current_span(),
@@ -465,6 +464,7 @@ impl Vm {
                     &data,
                     Some(&span),
                 );
+                self.send_bytes(data.as_bytes(), span.clone()).await?;
                 Ok(data)
             }
             IrShellStmt::MatchLiteral { pattern, .. } => {
@@ -628,7 +628,7 @@ impl Vm {
             IrShellStmt::BufferReset { .. } => {
                 // `clear` emits the `Reset` buffer event internally under
                 // the output_buf lock, so no separate emit is needed here.
-                let _discarded = self.pty.output_buf.clear().await;
+                let _consumed = self.pty.output_buf.clear().await;
                 Ok(String::new())
             }
         }
