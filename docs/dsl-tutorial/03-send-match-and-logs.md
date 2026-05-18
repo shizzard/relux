@@ -80,7 +80,9 @@ Each test gets an `event.html` file: a self-contained page you can open from any
 
 Next to `event.html` you'll also find `events.json` — the same data in a machine-readable form, useful when you want to feed test runs into your own tooling.
 
-As you work through the rest of this tutorial, each article will introduce the test log viewer functionality relevant to its topic. For now, open the test log viewer for your test and click around — there's no pressure to understand everything yet.
+The viewer needs a fairly modern browser — Chrome / Edge 80+, Firefox 113+, or Safari 16.4+. Older browsers see a one-line fallback message instead of the report; open `events.json` directly in that case.
+
+As you work through the rest of this tutorial, each article will introduce the test log viewer functionality relevant to its topic. For a full catalog of regions, panels, and hotkeys, see the [Test Log Viewer reference](../reference/05-test-log-viewer.html). For now, open the test log viewer for your test and click around — there's no pressure to understand everything yet.
 
 ## Error logs
 

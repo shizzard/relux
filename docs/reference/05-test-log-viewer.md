@@ -212,3 +212,18 @@ A consolidated reference. Keys without a modifier are ignored while a text input
 | `Enter` | searchable buffer | Cycle to the next hit |
 | `Shift+Enter` | searchable buffer | Cycle to the previous hit |
 | `Esc` | searchable buffer | Clear the query; blur if already empty |
+
+## Browser support
+
+The bootstrap script in `event.html` uses
+[`DecompressionStream`](https://developer.mozilla.org/docs/Web/API/DecompressionStream)
+to unpack the inlined gzip payloads. Supported floors:
+
+- **Chrome / Edge** 80+
+- **Firefox** 113+
+- **Safari** 16.4+
+
+Older browsers (Safari 15, ancient Chromium forks) cannot decode the
+payloads and see a one-line fallback message in place of the viewer.
+The underlying `events.json` is unaffected — open it directly or feed
+it to your own tooling.
