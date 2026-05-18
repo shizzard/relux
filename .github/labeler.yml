@@ -26,6 +26,12 @@ runtime:
   - changed-files:
       - any-glob-to-any-file: crates/relux-runtime/**
 
+viewer:
+  - changed-files:
+      - any-glob-to-any-file:
+          - viewer/**
+          - vendor/relux-viewer.js.gz
+
 cli:
   - changed-files:
       - any-glob-to-any-file: crates/relux-cli/**
