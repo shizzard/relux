@@ -23,6 +23,8 @@ use self::format::format_first_fail_human;
 use self::format::format_first_fail_toml;
 use self::format::format_flaky_human;
 use self::format::format_flaky_toml;
+use self::format::format_run_index_human;
+use self::format::format_run_index_toml;
 use relux_runtime::report::run_summary::RunSummary;
 use relux_runtime::report::run_summary::read_run_summary;
 
@@ -79,7 +81,7 @@ pub enum OutputFormat {
 
 pub fn run_history(
     project_root: &Path,
-    command: HistoryCommand,
+    command: Option<HistoryCommand>,
     test_paths: &[PathBuf],
     last_n: Option<usize>,
     top_n: Option<usize>,
@@ -101,6 +103,15 @@ pub fn run_history(
         let filters = resolve_test_filters(project_root, test_paths);
         filter_summaries(&mut runs, &filters);
     }
+
+    let Some(command) = command else {
+        let output = match format {
+            OutputFormat::Human => format_run_index_human(&runs),
+            OutputFormat::Toml => format_run_index_toml(&runs),
+        };
+        print!("{output}");
+        return;
+    };
 
     let mut coll = LoadedRunsCollection::new(runs);
 
@@ -152,13 +163,15 @@ pub fn cmd_history(matches: &clap::ArgMatches) {
     let (project_root, _config) = crate::resolve_project(matches);
 
     let command = if matches.get_flag("flaky") {
-        HistoryCommand::Flaky
+        Some(HistoryCommand::Flaky)
     } else if matches.get_flag("failures") {
-        HistoryCommand::Failures
+        Some(HistoryCommand::Failures)
     } else if matches.get_flag("first-fail") {
-        HistoryCommand::FirstFail
+        Some(HistoryCommand::FirstFail)
+    } else if matches.get_flag("durations") {
+        Some(HistoryCommand::Durations)
     } else {
-        HistoryCommand::Durations
+        None
     };
 
     let test_paths: Vec<PathBuf> = matches

@@ -174,6 +174,30 @@ pub fn complete_shell(_current: &OsStr) -> Vec<CompletionCandidate> {
     ]
 }
 
+pub fn complete_history_last(_current: &OsStr) -> Vec<CompletionCandidate> {
+    [
+        (5, "last 5 runs"),
+        (10, "last 10 runs (default)"),
+        (25, "last 25 runs"),
+        (50, "last 50 runs"),
+        (100, "last 100 runs"),
+    ]
+    .iter()
+    .map(|(n, label)| {
+        CompletionCandidate::new(n.to_string()).help(Some((*label).to_string().into()))
+    })
+    .collect()
+}
+
+pub fn complete_history_top(_current: &OsStr) -> Vec<CompletionCandidate> {
+    [(5, "top 5"), (10, "top 10"), (20, "top 20")]
+        .iter()
+        .map(|(n, label)| {
+            CompletionCandidate::new(n.to_string()).help(Some((*label).to_string().into()))
+        })
+        .collect()
+}
+
 pub fn complete_test_names(_current: &OsStr) -> Vec<CompletionCandidate> {
     // ArgValueCompleter only receives the current partial value, not other parsed args.
     // We re-parse std::env::args() with ignore_errors to access the --file value.

@@ -1,12 +1,10 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
-use std::path::Path;
 use std::path::PathBuf;
 
 use serde::Serialize;
 
-use relux_core::config;
 use relux_runtime::report::run_summary::TestEntry;
 use relux_runtime::slugify;
 
@@ -61,6 +59,10 @@ pub(crate) struct TestMeta {
     #[allow(dead_code)]
     pub cancellation_reason: Option<String>,
     pub flaky_retries: u32,
+    /// Per-test log directory relative to the run directory, as written
+    /// in `run_summary.toml`. Absent when the runtime did not produce a
+    /// log directory for the test (e.g. some invalid-test paths).
+    pub log_dir: Option<String>,
 }
 
 impl TestMeta {
@@ -100,6 +102,7 @@ impl TestMeta {
             failure_summary: entry.failure_summary,
             cancellation_reason,
             flaky_retries: entry.flaky_retries,
+            log_dir: entry.log_dir,
         }
     }
 
@@ -196,6 +199,17 @@ impl LoadedRunsCollection {
 
     pub fn aggregate<T: Aggregate>(&self) -> T::Item {
         T::aggregate(self)
+    }
+
+    /// Build a `file://` URI for the per-test `event.html` of a specific
+    /// run, using the `log_dir` recorded in `run_summary.toml`. Returns
+    /// `None` if the run id is unknown, the test is unknown for that run,
+    /// or the entry has no `log_dir` (e.g. some invalid-test paths).
+    pub fn event_html_uri(&self, key: &TestKey, run_id: &str) -> Option<String> {
+        let run_dir = self.run_dirs.get(run_id)?;
+        let log_dir = self.tests.get(key)?.get(run_id)?.log_dir.as_ref()?;
+        let event_html = run_dir.join(log_dir).join("event.html");
+        Some(format!("file://{}", event_html.display()))
     }
 }
 
@@ -313,6 +327,10 @@ pub struct FailureRecord {
     pub fails: usize,
     pub runs: usize,
     pub rate: f64,
+    /// Run id of the most recent run in which this test failed. Used by
+    /// formatters to render a `file://` link to that run's `event.html`.
+    /// Independent of ordering — failures are sorted by rate/count.
+    pub latest_fail_run_id: Option<String>,
 }
 
 impl PartialEq for FailureRecord {
@@ -360,12 +378,19 @@ impl Preaggregate for FailurePreaggregate {
                     return None;
                 }
                 let rate = (fails as f64 / total as f64) * 100.0;
+                let latest_fail_run_id = coll
+                    .run_order
+                    .iter()
+                    .rev()
+                    .find(|rid| runs_map.get(*rid).is_some_and(|m| m.outcome == "fail"))
+                    .cloned();
                 Some((
                     key.clone(),
                     FailureRecord {
                         fails,
                         runs: total,
                         rate,
+                        latest_fail_run_id,
                     },
                 ))
             })
@@ -450,14 +475,7 @@ impl Preaggregate for FirstFailPreaggregate {
                 if let Some(meta) = runs_map.get(run_id) {
                     let prev = prev_outcome.get(key).copied();
                     if meta.outcome == "fail" && prev == Some("pass") {
-                        let test_log = Path::new("logs")
-                            .join(config::RELUX_DIR)
-                            .join(config::TESTS_DIR)
-                            .join(Path::new(key.path()).with_extension(""))
-                            .join(slugify(key.name()))
-                            .join("event.html");
-                        let run_dir = &coll.run_dirs[run_id];
-                        let report = run_dir.join(test_log).display().to_string();
+                        let report = coll.event_html_uri(key, run_id).unwrap_or_default();
                         let timestamp = coll.run_timestamps[run_id].clone();
                         first_fails.insert(
                             key,
@@ -700,12 +718,13 @@ pub(crate) mod tests {
     }
 
     fn make_test(path: &str, outcome: &str, duration_ms: u64) -> TestEntry {
+        let stem = path.strip_suffix(".relux").unwrap_or(path);
         TestEntry {
             name: path.split('/').next_back().unwrap_or(path).to_string(),
             path: path.to_string(),
             outcome: outcome.to_string(),
             duration_ms,
-            log_dir: None,
+            log_dir: Some(format!("logs/{stem}")),
             failure_type: if outcome == "fail" {
                 Some("MatchTimeout".to_string())
             } else {
@@ -849,13 +868,55 @@ pub(crate) mod tests {
         let entries = coll.truncate::<FirstFailPreaggregate>(None);
 
         let (_, a) = find_entry(&entries, "a.relux/a-relux").unwrap();
+        assert!(a.report.starts_with("file://"));
         assert!(a.report.contains("run2"));
+        assert!(a.report.ends_with("/event.html"));
 
         let (_, b) = find_entry(&entries, "b.relux/b-relux").unwrap();
+        assert!(b.report.starts_with("file://"));
         assert!(b.report.contains("run3"));
 
         let (_, c) = find_entry(&entries, "c.relux/c-relux").unwrap();
+        assert!(c.report.starts_with("file://"));
         assert!(c.report.contains("run4"));
+    }
+
+    #[test]
+    fn failures_track_latest_fail_run_id() {
+        let runs = sample_runs();
+        let mut coll = LoadedRunsCollection::new(runs);
+        let entries = coll.truncate::<FailurePreaggregate>(None);
+
+        // c.relux fails in run1, run2, run4 → latest is run4.
+        let (_, c) = find_entry(&entries, "c.relux/c-relux").unwrap();
+        assert_eq!(c.latest_fail_run_id.as_deref(), Some("run4"));
+
+        // a.relux fails only in run2.
+        let (_, a) = find_entry(&entries, "a.relux/a-relux").unwrap();
+        assert_eq!(a.latest_fail_run_id.as_deref(), Some("run2"));
+    }
+
+    #[test]
+    fn event_html_uri_uses_log_dir() {
+        let mut entry = make_test("a.relux", "fail", 100);
+        entry.log_dir = Some("custom/path".to_string());
+        let runs = vec![make_run("runX", "2026-03-01T00:00:00Z", vec![entry])];
+        let coll = LoadedRunsCollection::new(runs);
+
+        let key = coll.tests.keys().next().unwrap().clone();
+        let uri = coll.event_html_uri(&key, "runX").unwrap();
+        assert_eq!(uri, "file:///tmp/out/runX/custom/path/event.html");
+    }
+
+    #[test]
+    fn event_html_uri_returns_none_without_log_dir() {
+        let mut entry = make_test("a.relux", "fail", 100);
+        entry.log_dir = None;
+        let runs = vec![make_run("runY", "2026-03-01T00:00:00Z", vec![entry])];
+        let coll = LoadedRunsCollection::new(runs);
+
+        let key = coll.tests.keys().next().unwrap().clone();
+        assert!(coll.event_html_uri(&key, "runY").is_none());
     }
 
     #[test]

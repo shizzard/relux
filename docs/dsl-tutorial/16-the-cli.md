@@ -259,7 +259,13 @@ These accept the same humantime format as the config file (`5s`, `1m30s`, `2h`).
 
 The `history` subcommand analyzes data from previous runs. It reads the `run_summary.toml` files stored in each run directory under `relux/out/` and computes statistics across them.
 
-You must specify exactly one analysis type:
+Invoked without an analysis flag, it prints a chronological index of the most recent runs (newest first), one block per run: local-time start, pass/fail/skip/cancel summary (categories with zero count are omitted), and a `file://` link to that run's `index.html` viewer:
+
+```text
+relux history
+```
+
+Pick an analysis lens by passing one of the flags below:
 
 ### `--flaky`
 
@@ -281,6 +287,8 @@ relux history --failures
 
 This helps you spot patterns. If most failures are timeouts, you may need to adjust your timeout strategy. If they cluster around a specific assertion, there is a targeted bug.
 
+The output ends with a `Latest fail:` block — one row per failing test, each carrying a `file://` URI to the most recent failing run's `event.html` viewer. Cmd-click in a modern terminal opens the viewer directly. The TOML output exposes the same URI as a `latest_fail` field on each entry.
+
 ### `--first-fail`
 
 Shows the most recent pass-to-fail regression per test:
@@ -289,7 +297,7 @@ Shows the most recent pass-to-fail regression per test:
 relux history --first-fail
 ```
 
-Useful for pinpointing when a test started breaking. Combined with your version control history, this helps trace failures back to specific changes.
+Useful for pinpointing when a test started breaking. Combined with your version control history, this helps trace failures back to specific changes. Each entry's `Report:` field is a `file://` URI to that run's `event.html` viewer.
 
 ### `--durations`
 
@@ -312,7 +320,7 @@ relux history --flaky --tests relux/tests/auth/ --last 10 --top 5
 | Flag              | Purpose                                                                                     |
 |-------------------|---------------------------------------------------------------------------------------------|
 | `--tests PATH...` | Filter to specific test files or directories                                                |
-| `--last N`        | Limit to the N most recent runs                                                             |
+| `--last N`        | Limit to the N most recent runs (default: 10)                                               |
 | `--top N`         | Show only the top N results                                                                 |
 | `--format`        | Output format: `human` (default, formatted tables) or `toml` (structured, machine-readable) |
 | `--manifest`      | Path to `Relux.toml`                                                                        |
