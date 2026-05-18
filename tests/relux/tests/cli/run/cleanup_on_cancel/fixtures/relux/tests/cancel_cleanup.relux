@@ -1,0 +1,13 @@
+test "cancel-cleanup" ~10ms {
+    """
+    Sleep far beyond the inline test timeout so the test is cancelled with
+    Outcome::Cancelled { reason: TestTimeout }. The cleanup block must
+    still execute after the cancel fires.
+    """
+    shell s {
+        sleep("1s")
+    }
+    cleanup {
+        > echo cleanup-marker
+    }
+}
