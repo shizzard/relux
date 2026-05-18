@@ -4,6 +4,7 @@ use std::path::Path;
 use crate::report::result::Failure;
 use crate::report::result::Outcome;
 use crate::report::result::TestResult;
+use crate::report::result::events_json_link;
 use crate::report::result::log_link;
 use relux_core::diagnostics::IrSpan;
 use relux_core::table::SourceTable;
@@ -75,6 +76,9 @@ fn render_tap(
                 if let Some(link) = log_link(run_dir, result) {
                     writeln!(out, "  log: {link}").unwrap();
                 }
+                if let Some(link) = events_json_link(run_dir, result) {
+                    writeln!(out, "  log_json: {link}").unwrap();
+                }
                 writeln!(out, "  ...").unwrap();
             }
             Outcome::Fail(failure) => {
@@ -103,6 +107,9 @@ fn render_tap(
                 if let Some(link) = log_link(run_dir, result) {
                     writeln!(out, "  log: {link}").unwrap();
                 }
+                if let Some(link) = events_json_link(run_dir, result) {
+                    writeln!(out, "  log_json: {link}").unwrap();
+                }
                 writeln!(out, "  ...").unwrap();
             }
             Outcome::Cancelled(c) => {
@@ -112,6 +119,9 @@ fn render_tap(
                 writeln!(out, "  duration_ms: {}", result.duration.as_millis()).unwrap();
                 if let Some(link) = log_link(run_dir, result) {
                     writeln!(out, "  log: {link}").unwrap();
+                }
+                if let Some(link) = events_json_link(run_dir, result) {
+                    writeln!(out, "  log_json: {link}").unwrap();
                 }
                 writeln!(out, "  ...").unwrap();
             }
@@ -248,7 +258,8 @@ mod tests {
         assert_eq!(lines[3], "  ---");
         assert_eq!(lines[4], "  duration_ms: 1230");
         assert_eq!(lines[5], "  log: logs/auth/login-test/event.html");
-        assert_eq!(lines[6], "  ...");
+        assert_eq!(lines[6], "  log_json: logs/auth/login-test/events.json");
+        assert_eq!(lines[7], "  ...");
     }
 
     #[test]
@@ -259,6 +270,7 @@ mod tests {
         assert!(tap.contains("ok 1 - simple"));
         assert!(tap.contains("duration_ms: 50"));
         assert!(!tap.contains("log:"));
+        assert!(!tap.contains("log_json:"));
     }
 
     #[test]
@@ -293,7 +305,8 @@ mod tests {
         assert_eq!(lines[8], "  line: 3");
         assert_eq!(lines[9], "  duration_ms: 5000");
         assert_eq!(lines[10], "  log: logs/auth/timeout-test/event.html");
-        assert_eq!(lines[11], "  ...");
+        assert_eq!(lines[11], "  log_json: logs/auth/timeout-test/events.json");
+        assert_eq!(lines[12], "  ...");
     }
 
     #[test]

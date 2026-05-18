@@ -281,6 +281,16 @@ pub fn log_link(run_dir: &Path, result: &TestResult) -> Option<String> {
     Some(format!("{}/event.html", relative.display()))
 }
 
+/// Companion to `log_link` for the canonical structured artifact.
+/// Returns `<log_dir>/events.json` relative to `run_dir`. Machine
+/// consumers (custom reporters, dashboards) prefer this over the
+/// human-targeted `event.html`.
+pub fn events_json_link(run_dir: &Path, result: &TestResult) -> Option<String> {
+    let log_dir = result.log_dir.as_ref()?;
+    let relative = log_dir.strip_prefix(run_dir).ok()?;
+    Some(format!("{}/events.json", relative.display()))
+}
+
 /// Top-level marker that the test was interrupted before completing.
 /// Distinct from `Failure` because the test did not misbehave — it was
 /// stopped by an external event (the per-test watchdog, the suite-wide

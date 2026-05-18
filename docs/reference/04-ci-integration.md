@@ -22,7 +22,9 @@ Each per-test directory under `logs/` contains two artifacts:
   outcome record, embedded source files), consumable by external tooling.
   See [`events.json` Schema](06-events-json-schema.md) for the on-disk
   shape, the tagged-enum variants for spans/events/buffer events/outcome,
-  and the schema-versioning policy.
+  and the schema-versioning policy. Surfaced to machine consumers via the
+  TAP `log_json:` YAML field, a second JUnit `[[ATTACHMENT|...]]` marker,
+  and a `<property name="events_json" ...>` element on each test case.
 - `event.html` — self-contained Svelte SPA viewer. The structured log,
   highlight.js core, Relux language definition, and the viewer bundle
   are each gzipped, base64-encoded, and inlined into

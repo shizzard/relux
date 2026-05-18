@@ -10,6 +10,7 @@ use quick_junit::TestSuite;
 use crate::report::result::Failure;
 use crate::report::result::Outcome;
 use crate::report::result::TestResult;
+use crate::report::result::events_json_link;
 use crate::report::result::log_link;
 use relux_core::diagnostics::IrSpan;
 use relux_core::table::SourceTable;
@@ -71,8 +72,16 @@ fn render_junit(
         }
 
         if let Some(link) = log_link(run_dir, result) {
-            case.set_system_out(format!("[[ATTACHMENT|{link}]]"));
+            let json_link = events_json_link(run_dir, result);
+            let system_out = match &json_link {
+                Some(json) => format!("[[ATTACHMENT|{link}]]\n[[ATTACHMENT|{json}]]"),
+                None => format!("[[ATTACHMENT|{link}]]"),
+            };
+            case.set_system_out(system_out);
             case.add_property(Property::new("log", &link));
+            if let Some(json) = json_link {
+                case.add_property(Property::new("events_json", &json));
+            }
         }
 
         suite.add_test_case(case);
@@ -222,7 +231,9 @@ mod tests {
         assert!(xml.contains("name=\"login test\""));
         assert!(xml.contains("classname=\"tests/auth/login\""));
         assert!(xml.contains("[[ATTACHMENT|login-test/event.html]]"));
+        assert!(xml.contains("[[ATTACHMENT|login-test/events.json]]"));
         assert!(xml.contains("<property name=\"log\" value=\"login-test/event.html\""));
+        assert!(xml.contains("<property name=\"events_json\" value=\"login-test/events.json\""));
         assert!(!xml.contains("<failure"));
         assert!(!xml.contains("<skipped"));
     }
@@ -256,6 +267,7 @@ mod tests {
         assert!(xml.contains("file: tests/auth/login.relux"));
         assert!(xml.contains("line: 3"));
         assert!(xml.contains("[[ATTACHMENT|timeout-test/event.html]]"));
+        assert!(xml.contains("[[ATTACHMENT|timeout-test/events.json]]"));
     }
 
     #[test]
