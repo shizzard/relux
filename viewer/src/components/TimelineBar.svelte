@@ -222,9 +222,13 @@
     {/if}
     {#if previewCards.length > 0 && selectedHover === null}
       <div class="floating-cards" data-timeline-card-stack="true">
-        {#each previewCards as span (n(span.id))}
+        {#each previewCards as span, i (n(span.id))}
           {@const rect = previewRect(span)}
-          <div class="floating-card" style:left="{cardLeftPx(rect)}px">
+          <div
+            class="floating-card"
+            style:left="{cardLeftPx(rect)}px"
+            style:--card-index={i}
+          >
             <TimelinePreviewCard
               mode={{ kind: 'span', span }}
               range={vs.timeRange}
@@ -291,8 +295,13 @@
   }
   .floating-card {
     position: absolute;
-    top: 100%;
-    margin-top: 6px;
+    /* Cards from the preview stack offset vertically by their index so
+       cards with overlapping or near-identical X positions (e.g. two
+       parallel effect cleanups whose curl spans share the same time
+       window) don't collapse on top of each other. The single-card
+       branch above (`selectedHover`) doesn't set `--card-index` and
+       falls back to row 0. */
+    top: calc(100% + 6px + var(--card-index, 0) * 60px);
     z-index: 10;
     pointer-events: auto;
   }

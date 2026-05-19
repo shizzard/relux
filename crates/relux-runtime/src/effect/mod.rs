@@ -91,6 +91,14 @@ impl EffectManager {
     /// allowing overlay expressions to reference the caller's `let` bindings.
     /// `caller_env` is the layered environment visible to the caller.
     /// Returns (key, exported-shells-map) per start declaration.
+    ///
+    /// Acquires run concurrently. The slot lock in `acquire` (see
+    /// `registry::EffectSlot`) serialises bootstrap-vs-reuse for the
+    /// same dedup key, so parallel acquires of overlapping keys are
+    /// safe — one bootstraps, the others wait on the slot's `Notify`.
+    /// Independent effects (different keys) bootstrap truly in parallel.
+    /// Overlay evaluation stays serial — overlays are cheap and may
+    /// reference let-bindings whose ordering is observable.
     #[allow(clippy::type_complexity)]
     pub fn instantiate<'a>(
         &'a self,
@@ -106,7 +114,10 @@ impl EffectManager {
         >,
     > {
         Box::pin(async move {
-            let mut results: Vec<(ExportedEffect, EffectGuard)> = Vec::with_capacity(starts.len());
+            // Phase 1: evaluate every overlay and derive each start's
+            // dedup key serially.
+            let mut prepared: Vec<(&IrEffectStart, EffectInstanceKey, Env)> =
+                Vec::with_capacity(starts.len());
             for start in starts {
                 let evaluated = self
                     .eval_overlay(start, caller_vars, caller_env, parent_span)
@@ -125,11 +136,36 @@ impl EffectManager {
                     &expect_names,
                     &evaluated,
                 );
+                prepared.push((start, key, evaluated));
+            }
 
-                match self
-                    .acquire(&key, start, caller_vars, caller_env, evaluated, parent_span)
-                    .await
-                {
+            // Phase 2: acquire all starts concurrently. `join_all`
+            // preserves input order and runs every future to completion
+            // even when an earlier one errors — important because
+            // dropping an in-flight `acquire` mid-bootstrap would leave
+            // its slot stuck in `Loading` and stall future acquirers.
+            let acquires = prepared
+                .into_iter()
+                .map(|(start, key, evaluated)| async move {
+                    let result = self
+                        .acquire(&key, start, caller_vars, caller_env, evaluated, parent_span)
+                        .await;
+                    (key, result)
+                });
+            let outcomes: Vec<(EffectInstanceKey, _)> = join_all(acquires).await;
+
+            // Phase 3: partition. On any failure, release every
+            // successful acquire (concurrently) and propagate the first
+            // observed failure. Cleanup spans anchor under
+            // `self.test_span`, never `parent_span` — on the recursive
+            // path `parent_span` is the caller effect's open
+            // `EffectSetup` span, and nesting cleanups inside it
+            // violates the invariant from 85eef51.
+            let mut results: Vec<(ExportedEffect, EffectGuard)> =
+                Vec::with_capacity(outcomes.len());
+            let mut first_error: Option<ExecError> = None;
+            for (key, outcome) in outcomes {
+                match outcome {
                     Ok((acquired, guard)) => {
                         results.push((
                             ExportedEffect {
@@ -141,20 +177,21 @@ impl EffectManager {
                         ));
                     }
                     Err(failure) => {
-                        // Release everything we already acquired in this batch
-                        // before propagating the error. Sequential for simplicity.
-                        // Cleanup spans anchor under `self.test_span`, never the
-                        // caller's setup span — on the recursive path
-                        // `parent_span` is the parent effect's open EffectSetup
-                        // span, and nesting cleanups inside it violates the
-                        // 85eef51 invariant.
-                        for (_exported, guard) in results.drain(..) {
-                            self.release_and_teardown(guard, self.test_span).await;
+                        if first_error.is_none() {
+                            first_error = Some(failure);
                         }
-                        return Err(failure);
                     }
                 }
             }
+
+            if let Some(failure) = first_error {
+                let releases = results
+                    .into_iter()
+                    .map(|(_exported, guard)| self.release_and_teardown(guard, self.test_span));
+                let _ = join_all(releases).await;
+                return Err(failure);
+            }
+
             Ok(results)
         })
     }
@@ -462,6 +499,14 @@ impl EffectManager {
                     Ok(v) => v,
                     Err(failure) => {
                         let guards_taken = std::mem::take(&mut dep_guards);
+                        // Pin the setup span's end_ts to the moment of
+                        // failure, before awaiting cleanup. The `setup_span`
+                        // SpanGuard local would otherwise stay alive through
+                        // `run_effect_cleanup`'s shells-shutdown + cleanup-
+                        // block phase and only drop when this function
+                        // unwinds, leaving end_ts near test-end instead of
+                        // setup-end.
+                        self.rt_ctx.log.close_span(setup_span_id);
                         self.run_effect_cleanup(
                             effect.name().name(),
                             start.alias().map(String::from),
@@ -549,8 +594,16 @@ impl EffectManager {
                             // release_and_teardown that would re-lock the same vm via
                             // teardown_effect::shutdown.
                         };
+                        // Pin the shell-block's end_ts to "body done" before
+                        // `try_guards!` may await `run_effect_cleanup`. The
+                        // local `block_span` guard would otherwise stay on the
+                        // stack through the entire cleanup phase and only
+                        // close when this function unwinds, leaving the viewer
+                        // with a shell-block that appears active alongside
+                        // cleanup operations.
+                        self.rt_ctx.log.close_span(block_span_id);
                         try_guards!(exec_result);
-                        // block_span drops here, closing the span.
+                        // block_span drops here as a no-op (already closed).
                     } else {
                         // Unqualified: shell name { ... }
                         let name = block.name().name().to_string();
@@ -596,8 +649,12 @@ impl EffectManager {
                             // vm lock drops at end of this block, BEFORE try_guards! awaits any
                             // release_and_teardown that would re-lock the same vm.
                         };
+                        // Pin the shell-block's end_ts to "body done" before
+                        // `try_guards!` may await `run_effect_cleanup`. See the
+                        // matching comment in the qualified arm above.
+                        self.rt_ctx.log.close_span(block_span_id);
                         try_guards!(exec_result);
-                        // block_span drops here, closing the span.
+                        // block_span drops here as a no-op (already closed).
                     }
                 }
             }

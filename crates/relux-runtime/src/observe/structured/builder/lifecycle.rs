@@ -53,12 +53,31 @@ impl StructuredLogBuilder {
         SpanGuard::new(id, self.clone())
     }
 
+    /// First close wins. The `SpanGuard`'s `Drop` always calls into here
+    /// (so `?` early-returns still get an `end_ts`), but call sites may
+    /// also close a span explicitly via id when its semantic end happens
+    /// well before the guard would naturally drop — e.g., a failing
+    /// effect's setup span needs to close before its `try_guards!`
+    /// awaits `run_effect_cleanup`, or the guard would sit on the stack
+    /// through the entire cleanup phase and end up with a misleading
+    /// `end_ts` near test-end. Making this idempotent lets the guard
+    /// drop later as a no-op.
     pub(super) fn close_span_inner(&self, id: SpanId) {
         let end_ts = self.now();
         let mut inner = self.inner.lock().unwrap();
-        if let Some(span) = inner.spans.get_mut(&id) {
+        if let Some(span) = inner.spans.get_mut(&id)
+            && span.end_ts.is_none()
+        {
             span.end_ts = Some(end_ts);
         }
+    }
+
+    /// Close a span by id. Idempotent — see `close_span_inner`. Used to
+    /// pin a span's `end_ts` to its actual semantic boundary when the
+    /// owning `SpanGuard`'s drop point would otherwise be deferred (the
+    /// failing-effect path through `try_guards!` is the canonical case).
+    pub fn close_span(&self, id: SpanId) {
+        self.close_span_inner(id);
     }
 
     /// Attach a return value to an in-flight `FnCall` span. Called from

@@ -467,7 +467,7 @@ export function shellBlockLifecycle(
   return { firstUse: spawn !== null, spawn, ready };
 }
 
-export type LiveShellState = 'ready' | 'busy' | 'ended' | 'error';
+export type LiveShellState = 'pending' | 'ready' | 'busy' | 'terminated' | 'error';
 
 export interface LiveShell {
   marker: string;
@@ -476,16 +476,22 @@ export interface LiveShell {
   state: LiveShellState;
 }
 
-// Approximate per-shell state at the moment of `event`.
+// Approximate per-shell state by replaying every shell-lifecycle and
+// match event up to `seq`.
 //
-//   - "ended"  : shell had a `shell-terminate` event at-or-before `event.seq`.
+//   - "pending": no `shell-spawn` event for the shell has fired by
+//                `seq` yet — the shell will exist later in the log but
+//                hasn't started at the cursor moment. Without this the
+//                default `ready` (rendered as "running") leaked for
+//                shells that hadn't been spawned yet, surfacing
+//                spawn-in-the-future shells as live.
+//   - "terminated": shell had a `shell-terminate` event at-or-before `seq`.
 //   - "busy"   : most recent `match-start` for the shell at-or-before seq
 //                has no corresponding `match-done` yet.
 //   - "ready"  : otherwise (post-`shell-ready`, idle prompt).
 //
 // Returns one entry per shell in `data.shells`, keyed by marker.
-export function liveShellsAtSeq(data: StructuredLog, event: Event): LiveShell[] {
-  const seq = n(event.seq);
+function liveShellsAtSeqNumber(data: StructuredLog, seq: number): LiveShell[] {
   const out: LiveShell[] = [];
   const records = data.shells as unknown as Record<
     string,
@@ -496,20 +502,46 @@ export function liveShellsAtSeq(data: StructuredLog, event: Event): LiveShell[] 
     const rec = records[marker];
     if (!rec) continue;
     let state: LiveShellState = 'ready';
+    let spawned = false;
     let busy = false;
     let ended = false;
     for (const ev of data.events) {
       if (n(ev.seq) > seq) break;
       if (ev.shell_marker !== marker) continue;
-      if (ev.kind === 'shell-terminate') ended = true;
+      if (ev.kind === 'shell-spawn') spawned = true;
+      else if (ev.kind === 'shell-terminate') ended = true;
       else if (ev.kind === 'match-start') busy = true;
       else if (ev.kind === 'match-done' || ev.kind === 'timeout') busy = false;
     }
-    if (ended) state = 'ended';
+    if (!spawned) state = 'pending';
+    else if (ended) state = 'terminated';
     else if (busy) state = 'busy';
     out.push({ marker, name: rec.name, command: rec.command, state });
   }
   return out;
+}
+
+// Per-shell state at the moment of `event` (i.e. as of `event.seq`).
+export function liveShellsAtSeq(data: StructuredLog, event: Event): LiveShell[] {
+  return liveShellsAtSeqNumber(data, n(event.seq));
+}
+
+// Per-shell state for a span selection: anchor the replay on the latest
+// event whose `ts` falls inside the span's lifetime. Used when the user
+// has a span (not an event) selected — `liveShellsAtSeq` needs a seq,
+// and a span's natural anchor is "the latest activity within it". For
+// in-flight spans (`end_ts === null`) the anchor walks to the very end
+// of the log. Returns `[]` when no event qualifies (a span before any
+// events fired — unusual but well-defined).
+export function liveShellsAtSpan(data: StructuredLog, span: Span): LiveShell[] {
+  const endTs = span.end_ts ?? Number.POSITIVE_INFINITY;
+  let anchorSeq: number | null = null;
+  for (const ev of data.events) {
+    if (ev.ts > endTs) break;
+    anchorSeq = n(ev.seq);
+  }
+  if (anchorSeq === null) return [];
+  return liveShellsAtSeqNumber(data, anchorSeq);
 }
 
 /// Return the bootstrap setup span's id for a given marker, or null if

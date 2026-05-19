@@ -7,6 +7,7 @@ import {
   buildCallStackForSpan,
   eventBySeq,
   liveShellsAtSeq,
+  liveShellsAtSpan,
   replayBufferRegionsAtMarker,
   replayShellCtxAtSeq,
   spanBufferCutoffSeq,
@@ -149,7 +150,11 @@ export class ViewerState {
   );
 
   liveShells = $derived<LiveShell[]>(
-    this.selected ? liveShellsAtSeq(this.data, this.selected) : [],
+    this.selected
+      ? liveShellsAtSeq(this.data, this.selected)
+      : this.selectedSpan
+        ? liveShellsAtSpan(this.data, this.selectedSpan)
+        : [],
   );
 
   constructor(data: StructuredLog) {

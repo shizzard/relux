@@ -820,6 +820,41 @@ describe('varsAtSpan', () => {
       new Map([['EffectVar', 'v']]),
     );
   });
+
+  it('uses span.start_ts as the cutoff when a flattened pure BIF has no inner events', () => {
+    // Models a pure BIF like `rand` between two shell-local lets:
+    //   varLet "before" -> rand() -> varLet "after"
+    // Selecting the rand span should expose `before` but NOT `after`.
+    // The fn-call span emits no events of its own (pure BIFs flatten);
+    // the cutoff must fall back to events whose ts predates the span's
+    // start, otherwise the entire log is replayed and `after` leaks in.
+    const bifSpan: Span = {
+      id: 3n,
+      parent: 2n,
+      start_ts: 5,
+      end_ts: 6,
+      location: null,
+      kind: 'fn-call',
+      name: 'rand',
+      args: [],
+      result: '42',
+      callee_kind: 'bif',
+      is_pure: true,
+    } as Span;
+    const spans = [
+      buildSpan({ kind: 'test', id: 1, parent: null }),
+      buildSpan({ kind: 'shell-block', id: 2, parent: 1, shell: 'a' }),
+      bifSpan,
+    ];
+    const events: Event[] = [
+      varLet(1, 2, 'a', 'before', 'pre'),
+      // Anything with seq >= rand's start_ts (= 5) must NOT appear.
+      varLet(10, 2, 'a', 'after', 'post'),
+    ];
+    expect(varsAtSpan(makeLog(spans, events), bifSpan)).toEqual(
+      new Map([['before', 'pre']]),
+    );
+  });
 });
 
 // ─── capturesAtSpan ────────────────────────────────────────────────

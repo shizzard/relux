@@ -311,21 +311,36 @@ function outerContextForSpan(
   return null;
 }
 
-// Seq of the first event whose span lies within `spanId` or its
-// descendants. Used to compute the "just before this span opens"
-// cutoff (cutoffSeq = result - 1). When the span has no events, we
-// return `Number.MAX_SAFE_INTEGER` so the replay includes everything
-// up to "now" (best we can do for an event-less span).
+// Seq of the last event that fired *before* `spanId` opens. Used by
+// `outerContextForSpan` as the replay cutoff — variables/captures
+// declared at or after the span are excluded.
+//
+// Two cases:
+//   - Span has events in its subtree (typical fn-call): use the first
+//     event's `seq - 1`. The event itself is the span's earliest visible
+//     activity; everything strictly before it is the outer scope.
+//   - Span has no events (a flattened pure BIF like `rand` or `trim`,
+//     whose `FnCall` span exists but emits nothing): fall back to the
+//     latest event whose `ts` predates the span's `start_ts`. Without
+//     this fallback the cutoff defaults to "the entire log" and the
+//     vars panel surfaces let-bindings declared *after* the BIF call.
+//     Returns `-1` when no event predates the span at all, which makes
+//     `varsAtCutoff` replay nothing (the right answer).
 function firstSeqInSubtree(data: StructuredLog, spanId: SpanId): number {
   const subtree = subtreeIds(data, spanId);
-  let first = Number.MAX_SAFE_INTEGER;
   for (const ev of data.events) {
     if (subtree.has(n(ev.span))) {
-      first = n(ev.seq);
-      break;
+      return n(ev.seq) - 1;
     }
   }
-  return first === Number.MAX_SAFE_INTEGER ? first : first - 1;
+  const span = spanById(data, spanId);
+  if (!span) return Number.MAX_SAFE_INTEGER;
+  let last = -1;
+  for (const ev of data.events) {
+    if (ev.ts >= span.start_ts) break;
+    last = n(ev.seq);
+  }
+  return last;
 }
 
 function subtreeIds(data: StructuredLog, root: SpanId): Set<SpanId> {

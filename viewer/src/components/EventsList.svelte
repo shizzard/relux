@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import type { ViewerState } from '../lib/state.svelte';
   import type { Row } from '../lib/flatten';
   import { foldedSeqs, leadEvent } from '../lib/flatten';
@@ -97,16 +96,29 @@
   }
 
   let rowsEl: HTMLOListElement | undefined;
-  onMount(() => {
+
+  // Scroll the currently-selected row into view. Fires on mount (so the
+  // initial selection — e.g. a failed test's match-timeout event — lands
+  // in the viewport) and re-fires whenever the selection changes
+  // programmatically (revealAndSelect from timeline cards, marker-pill
+  // jumps, call-stack frame clicks). Without this an off-screen target
+  // gets selected silently — ancestors expand but the highlighted row
+  // can be pushed off-screen and the click looks ignored.
+  $effect(() => {
     if (!rowsEl) return;
+    let target: HTMLElement | null = null;
     const seq = state.selectedEventSeq;
-    if (seq === null) return;
-    // The lead seq is the canonical data-event-seq; fold halves carry the
-    // other halves' seqs so the failure event still scrolls into view even
-    // when it's the closing half (timeout, match-done) of a fold.
-    const target = rowsEl.querySelector<HTMLElement>(
-      `[data-event-seq="${seq}"], [data-fold-other-seq="${seq}"], [data-fold-extra-seq="${seq}"]`,
-    );
+    const spanId = state.selectedSpanId;
+    if (seq !== null) {
+      // The lead seq is the canonical data-event-seq; fold halves carry
+      // the other halves' seqs so a closing-half failure event still
+      // scrolls into view even when it's not the lead.
+      target = rowsEl.querySelector<HTMLElement>(
+        `[data-event-seq="${seq}"], [data-fold-other-seq="${seq}"], [data-fold-extra-seq="${seq}"]`,
+      );
+    } else if (spanId !== null) {
+      target = rowsEl.querySelector<HTMLElement>(`[data-span-id="${spanId}"]`);
+    }
     target?.scrollIntoView({ block: 'center', behavior: 'auto' });
   });
 </script>

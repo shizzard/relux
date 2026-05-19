@@ -5,9 +5,12 @@ import {
   bootstrapForReuse,
   finalCleanupForDeferred,
   firstUseShellBlockForMarker,
+  liveShellsAtSpan,
   replayBufferRegionsAtMarker,
   selectionSourceRange,
 } from './derive';
+import type { Event } from '../types/Event';
+import type { Span } from '../types/Span';
 
 // Minimal log builder — only `buffer_events` is consulted by
 // replayBufferRegionsAtMarker, so every other field is stubbed.
@@ -629,5 +632,135 @@ describe('selectionSourceRange', () => {
 
   it('returns null when nothing is selected', () => {
     expect(selectionSourceRange(makeData(), null, null)).toBeNull();
+  });
+});
+
+describe('liveShellsAtSpan', () => {
+  function shellRecord(marker: string, name: string, spawn_ts: number) {
+    return { marker, name, command: 'sh', spawn_ts, terminate_ts: null };
+  }
+  function ev(
+    seq: number,
+    ts: number,
+    kind: Event['kind'],
+    shell_marker: string,
+  ): Event {
+    return {
+      seq: BigInt(seq),
+      ts,
+      span: 1n,
+      shell: null,
+      shell_marker,
+      source: null,
+      kind,
+      // narrow events with extra payload are unused by liveShells replay
+    } as unknown as Event;
+  }
+  function span(end_ts: number | null): Span {
+    return {
+      id: 1n,
+      kind: 'fn-call',
+      name: 'f',
+      args: [],
+      result: null,
+      callee_kind: 'user',
+      is_pure: false,
+      parent: null,
+      start_ts: 0,
+      end_ts,
+      location: null,
+    } as unknown as Span;
+  }
+  function logWith(
+    shells: Record<string, ReturnType<typeof shellRecord>>,
+    events: Event[],
+  ): StructuredLog {
+    return {
+      schema_version: 1,
+      info: { name: 't', path: 'p', duration_ms: 0n },
+      outcome: { kind: 'pass' },
+      env: { bootstrap: [] },
+      shells: shells as unknown as StructuredLog['shells'],
+      spans: {},
+      events,
+      buffer_events: [],
+      sources: {},
+      artifacts: [],
+    };
+  }
+
+  it('returns each shell as ready when no match has started by the anchor', () => {
+    const log = logWith(
+      {
+        'a-marker': shellRecord('a-marker', 'a', 0),
+        'b-marker': shellRecord('b-marker', 'b', 0),
+      },
+      [
+        ev(1, 0.1, 'shell-spawn', 'a-marker'),
+        ev(2, 0.2, 'shell-spawn', 'b-marker'),
+        ev(3, 0.3, 'send', 'a-marker'),
+        ev(4, 0.4, 'send', 'b-marker'),
+      ],
+    );
+    const result = liveShellsAtSpan(log, span(1.0));
+    expect(result.map((s) => `${s.name}:${s.state}`).sort()).toEqual(['a:ready', 'b:ready']);
+  });
+
+  it('marks shell busy when match-start has no match-done by the span end', () => {
+    const log = logWith(
+      { 'a-marker': shellRecord('a-marker', 'a', 0) },
+      [
+        ev(1, 0.1, 'shell-spawn', 'a-marker'),
+        ev(2, 0.2, 'match-start', 'a-marker'),
+      ],
+    );
+    const result = liveShellsAtSpan(log, span(0.5));
+    expect(result).toEqual([
+      { marker: 'a-marker', name: 'a', command: 'sh', state: 'busy' },
+    ]);
+  });
+
+  it('walks to the latest event for an in-flight span (end_ts === null)', () => {
+    const log = logWith(
+      { 'a-marker': shellRecord('a-marker', 'a', 0) },
+      [
+        ev(1, 0.1, 'shell-spawn', 'a-marker'),
+        ev(2, 0.2, 'match-start', 'a-marker'),
+        ev(3, 0.3, 'match-done', 'a-marker'),
+      ],
+    );
+    const result = liveShellsAtSpan(log, span(null));
+    expect(result[0]?.state).toBe('ready');
+  });
+
+  it('returns [] when no event fires within the span lifetime', () => {
+    const log = logWith({ 'a-marker': shellRecord('a-marker', 'a', 100) }, [
+      ev(1, 200, 'shell-spawn', 'a-marker'),
+    ]);
+    // span ends before any event fires
+    const result = liveShellsAtSpan(log, span(50));
+    expect(result).toEqual([]);
+  });
+
+  it('marks a shell as pending when its spawn has not fired by the anchor', () => {
+    // Anchor lands inside shell A's lifetime but before shell B spawns.
+    // B's record exists in `data.shells` (it spawns later in the log),
+    // but at the anchor moment B is "not yet started" — must not show
+    // as `ready` (which the modal renders as "running").
+    const log = logWith(
+      {
+        'a-marker': shellRecord('a-marker', 'a', 0),
+        'b-marker': shellRecord('b-marker', 'b', 0),
+      },
+      [
+        ev(1, 0.1, 'shell-spawn', 'a-marker'),
+        ev(2, 0.2, 'send', 'a-marker'),
+        ev(3, 1.0, 'shell-spawn', 'b-marker'),
+      ],
+    );
+    const result = liveShellsAtSpan(log, span(0.5));
+    const byName = new Map(result.map((s) => [s.name, s.state]));
+    expect(byName.get('a')).toBe('ready');
+    expect(byName.get('b')).toBe('pending');
   });
 });

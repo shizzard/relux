@@ -56,12 +56,14 @@
     const live = state.liveShells.find((s) => s.marker === marker);
     if (!live) return { label: 'unknown', cls: 'dead' };
     switch (live.state) {
+      case 'pending':
+        return { label: 'not yet spawned', cls: 'dead' };
       case 'ready':
         return { label: 'running', cls: 'ok' };
       case 'busy':
         return { label: 'awaiting input', cls: 'busy' };
-      case 'ended':
-        return { label: 'ended', cls: 'dead' };
+      case 'terminated':
+        return { label: 'terminated', cls: 'dead' };
       case 'error':
         return { label: 'error', cls: 'err' };
     }
