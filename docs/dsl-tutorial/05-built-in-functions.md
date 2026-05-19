@@ -274,7 +274,7 @@ In the [test log viewer](03-send-match-and-logs.md), each `sleep` shows up as it
 log("about to start the server")
 ```
 
-**`annotate(text)`** adds a label to the progress output — the compact `|....` string you see in terminal output during a test run. Annotations appear inline as named markers, making it easier to see where a test is spending its time when watching a run in real time.
+**`annotate(text)`** adds a label to the progress output — the compact sigil string you see in terminal output during a test run. Every function call already brackets itself with `(` and `)` on the progress line, and `annotate` pushes its text between those brackets, producing `(text)`.
 
 ```relux
 annotate("setup complete")
@@ -283,12 +283,10 @@ annotate("setup complete")
 For example, a test with two annotations might produce progress output like this:
 
 ```text
-test my_test.relux/server-startup: |...[setup complete]....[server ready].. ok (2.1s)
+test my_test.relux/server-startup: +|...o(setup complete)....o(server ready)..o- ok (2.1s)
 ```
 
-The annotation text appears between the dots, marking the point in the test where it was called.
-
-The distinction between `log` and `annotate` is where the output goes. `log` writes to the persistent HTML report — its own row in the events list. `annotate` writes to the live terminal progress line *only*; it leaves no trace in the test log viewer. Use `log` when you want a record alongside the events; use `annotate` for live progress markers.
+Both `log` and `annotate` leave a record in the structured event log (and so are visible in the viewer's events list), but `annotate` is the one that surfaces on the live progress line. Use `log` when the message is primarily for reading after the fact; use `annotate` when you also want to see where a test is spending its time while it runs.
 
 ---
 

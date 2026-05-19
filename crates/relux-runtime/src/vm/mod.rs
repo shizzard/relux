@@ -722,6 +722,7 @@ impl Vm {
                     self.ctx.push_span(fn_guard.id());
                     self.ctx
                         .push_call(fn_name.clone(), named_args.into_iter().collect());
+                    self.log.push_fn_enter(&fn_name);
                     let mut last = String::new();
                     for stmt in &body {
                         match self.exec_stmt(stmt).await {
@@ -729,6 +730,7 @@ impl Vm {
                             Err(e) => {
                                 self.ctx.pop_call();
                                 self.ctx.pop_span();
+                                self.log.push_fn_exit();
                                 return Err(e);
                             }
                         }
@@ -736,6 +738,7 @@ impl Vm {
                     self.ctx.pop_call();
                     self.ctx.pop_span();
                     self.log.set_fn_call_result(fn_guard.id(), &last);
+                    self.log.push_fn_exit();
                     return Ok(last);
                 }
                 IrFn::Builtin { name, arity } => {
@@ -759,11 +762,13 @@ impl Vm {
                             Some(span),
                         );
                         self.ctx.push_span(fn_guard.id());
+                        self.log.push_fn_enter(&fn_name);
                         let result = bif.call(self, evaluated_args, span).await;
                         self.ctx.pop_span();
                         if let Ok(ref v) = result {
                             self.log.set_fn_call_result(fn_guard.id(), v);
                         }
+                        self.log.push_fn_exit();
                         return result;
                     }
                 }
@@ -814,6 +819,7 @@ impl Vm {
                 Some(span),
             );
             self.ctx.push_span(fn_guard.id());
+            self.log.push_fn_enter(&fn_name);
             let return_value = relux_ir::evaluator::eval_pure_fn(
                 ir_fn,
                 evaluated_args,
@@ -823,6 +829,7 @@ impl Vm {
             );
             self.ctx.pop_span();
             self.log.set_fn_call_result(fn_guard.id(), &return_value);
+            self.log.push_fn_exit();
             return Ok(return_value);
         }
 

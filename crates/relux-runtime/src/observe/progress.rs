@@ -15,6 +15,7 @@ pub enum ProgressEvent {
     FnEnter(String),
     FnExit,
     ShellSpawn,
+    ShellTerminate,
     EffectSetup(String),
     EffectTeardown,
     Cleanup,
@@ -105,7 +106,10 @@ pub fn spawn_printer(
                     emit(&mut collected, '}');
                 }
                 ProgressEvent::ShellSpawn => {
-                    emit(&mut collected, 's');
+                    emit(&mut collected, '+');
+                }
+                ProgressEvent::ShellTerminate => {
+                    emit(&mut collected, '-');
                 }
                 ProgressEvent::EffectSetup(_) => {
                     emit(&mut collected, '+');

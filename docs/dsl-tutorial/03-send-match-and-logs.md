@@ -36,17 +36,20 @@ Let's run the example and look at what Relux produces beyond the pass/fail resul
 ```text
 $ relux run -f relux/tests/raw_send.relux
 running 1 tests
-test raw_send.relux/multiple-raw-sends: |.... ok (5.8 ms)
+test raw_send.relux/multiple-raw-sends: +|...o- ok (5.8 ms)
 
 test result: ok. 1 passed; 0 failed; finished in 5.8 ms
 ```
 
-While the test is in flight, you'll briefly see a **progress string** (`|....`) next to the test name — a compact visual trace of what is happening:
+While the test is in flight, you'll briefly see a **progress string** (`+|...o-`) next to the test name — a compact visual trace of what is happening:
 
-- `|` — a shell was opened
-- `.` — a send or successful match operation
+- `+` — a shell was spawned
+- `|` — a shell was switched to
+- `.` — a send operation
+- `o` — a successful match
+- `-` — a shell was terminated
 
-So `|....` means: open shell, then four operations (our two `=>`s, `>`, and `<=`). The default progress display refreshes this line live in your terminal, so by the time the test finishes the glyphs may have already scrolled out of view. The example block above is a frozen snapshot of what you'd see mid-flight; the `--progress` flag changes how progress is rendered, and a later article on the CLI walks through its modes.
+So `+|...o-` means: spawn shell, switch into it, three sends (our two `=>`s and the `>`), one match (the `<=`), shell terminates. The default progress display refreshes this line live in your terminal, so by the time the test finishes the glyphs may have already scrolled out of view. The example block above is a frozen snapshot of what you'd see mid-flight; the `--progress` flag changes how progress is rendered, and a later article on the CLI walks through its modes.
 
 ### The output directory
 

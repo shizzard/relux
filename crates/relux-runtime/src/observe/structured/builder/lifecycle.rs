@@ -247,6 +247,27 @@ impl StructuredLogBuilder {
                 name: shell.to_string(),
             },
         );
+        self.push_progress(ProgressEvent::ShellTerminate);
+    }
+
+    // ─── Progress-only emitters (no structured event; the surrounding
+    // span already carries the full information). Used to surface
+    // lifecycle brackets on the live progress line.
+
+    pub fn push_fn_enter(&self, name: &str) {
+        self.push_progress(ProgressEvent::FnEnter(name.to_string()));
+    }
+
+    pub fn push_fn_exit(&self) {
+        self.push_progress(ProgressEvent::FnExit);
+    }
+
+    pub fn push_effect_setup(&self, name: &str) {
+        self.push_progress(ProgressEvent::EffectSetup(name.to_string()));
+    }
+
+    pub fn push_effect_teardown(&self) {
+        self.push_progress(ProgressEvent::EffectTeardown);
     }
 
     // ─── Effect exposes ───────────────────────────────────────────

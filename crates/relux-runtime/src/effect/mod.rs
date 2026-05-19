@@ -328,6 +328,7 @@ impl EffectManager {
             Some(parent_span),
             Some(start.span()),
         );
+        self.rt_ctx.log.push_effect_setup(&start.effect().name.0);
 
         let effect_result = self
             .rt_ctx
@@ -987,6 +988,7 @@ impl EffectManager {
         // spans emitted by dep releases (and nested final-cleanup spans
         // from dep release-to-zero) are well-ordered children.
         cleanup_span.close();
+        self.rt_ctx.log.push_effect_teardown();
 
         warnings
     }
