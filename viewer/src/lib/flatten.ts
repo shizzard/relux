@@ -194,14 +194,12 @@ export function foldedSeqs(f: FoldedEvent): number[] {
   }
 }
 
-// Given an index into `events`, returns the index of the close half of the
-// fold that starts there (sleep-done, match-done/timeout, shell-ready).
-// Unlike `foldEvents`, which requires strict adjacency to merge rows
-// visually, this helper scans forward by *kind* within the same span
-// (and shell, where the event kind carries one) so it stays correct if
-// future code paths inject other events (log, fail-pattern-triggered,
-// recv, ...) between the open and the close. Returns `startIdx` when the
-// event there does not open a fold, or when no matching close is found.
+// Given an index into `events`, returns the index of the close half of
+// the fold that starts there. Scans forward by *kind* within the same
+// span (and shell, for match) so it stays correct when events from
+// concurrent shells (e.g. diamond cleanup) or unrelated spans interleave
+// between the open and the close. Returns `startIdx` when the event
+// there does not open a fold, or when no matching close is found.
 export function foldCloseIndex(events: readonly Event[], startIdx: number): number {
   const e = events[startIdx];
   if (!e) return startIdx;
@@ -231,25 +229,20 @@ export function foldCloseIndex(events: readonly Event[], startIdx: number): numb
 
 export function foldEvents(events: readonly Event[]): FoldedEvent[] {
   const out: FoldedEvent[] = [];
+  const consumed = new Set<number>();
   for (let i = 0; i < events.length; i++) {
+    if (consumed.has(i)) continue;
     const ev = events[i]!;
-    if (ev.kind === 'sleep-start') {
-      const next = events[i + 1];
-      if (next && next.kind === 'sleep-done' && sameSpan(ev, next)) {
-        out.push({ kind: 'sleep', start: ev, done: next });
-        i++;
-        continue;
-      }
-    } else if (ev.kind === 'match-start') {
-      const next = events[i + 1];
-      if (
-        next &&
-        (next.kind === 'match-done' || next.kind === 'timeout') &&
-        sameSpan(ev, next) &&
-        sameShell(ev, next)
-      ) {
-        out.push({ kind: 'match', start: ev, outcome: next });
-        i++;
+    if (ev.kind === 'sleep-start' || ev.kind === 'match-start') {
+      const closeIdx = foldCloseIndex(events, i);
+      if (closeIdx !== i) {
+        const close = events[closeIdx]!;
+        if (ev.kind === 'sleep-start' && close.kind === 'sleep-done') {
+          out.push({ kind: 'sleep', start: ev, done: close });
+        } else if (ev.kind === 'match-start') {
+          out.push({ kind: 'match', start: ev, outcome: close });
+        }
+        consumed.add(closeIdx);
         continue;
       }
     }

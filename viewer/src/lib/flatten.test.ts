@@ -564,6 +564,68 @@ describe('flattenRows', () => {
     ]);
   });
 
+  it('folds match-start/done across same-span lookahead, not strict adjacency', () => {
+    // Diamond cleanup: two cleanup-block shells run concurrently and
+    // their events interleave in the global array. Each cleanup wraps a
+    // match_ok fn-call. A match-start in span A may be followed by
+    // unrelated events from span B before its own match-done arrives.
+    // The fold must use same-span lookahead so the pair still collapses
+    // into a single row.
+    const log = logWith(
+      [
+        buildSpan({ id: 1, parent: null, kind: 'test' }),
+        buildSpan({ id: 10, parent: 1, kind: 'effect-cleanup', effect: 'A', start_ts: 1 }),
+        buildSpan({ id: 11, parent: 10, kind: 'cleanup-block', start_ts: 1 }),
+        buildSpan({
+          id: 12,
+          parent: 11,
+          kind: 'fn-call',
+          name: 'match_ok',
+          start_ts: 2,
+          callee_kind: 'bif',
+          is_pure: false,
+        }),
+        buildSpan({ id: 20, parent: 1, kind: 'effect-cleanup', effect: 'B', start_ts: 1 }),
+        buildSpan({ id: 21, parent: 20, kind: 'cleanup-block', start_ts: 1 }),
+        buildSpan({
+          id: 22,
+          parent: 21,
+          kind: 'fn-call',
+          name: 'match_ok',
+          start_ts: 2,
+          callee_kind: 'bif',
+          is_pure: false,
+        }),
+      ],
+      [
+        // A opens its match…
+        matchStart(3, 12, 'a'),
+        // …B does an entire send+match in between…
+        send(4, 21, 'b'),
+        matchStart(5, 22, 'b'),
+        matchDone(6, 22, 'b'),
+        // …and only now does A's close arrive.
+        matchDone(7, 12, 'a'),
+      ],
+    );
+    // Both branches expanded; each match collapses to one event row
+    // under its fn-call span. Before the fix, A's match-start emitted as
+    // a single row and A's match-done as a separate row.
+    expect(summarize(flattenRows(log, new Set([10, 11, 12, 20, 21, 22])))).toEqual([
+      { kind: 'span', id: 10, depth: 0 },
+      { kind: 'span', id: 11, depth: 1 },
+      { kind: 'span', id: 12, depth: 2 },
+      { kind: 'event', eventSeq: 3, depth: 3 },
+      { kind: 'span', id: 20, depth: 0 },
+      { kind: 'span', id: 21, depth: 1 },
+      // span 22 (start_ts=2) emits before the cleanup-block's send
+      // (ts=4) in the chronological merge of children + direct events.
+      { kind: 'span', id: 22, depth: 2 },
+      { kind: 'event', eventSeq: 5, depth: 3 },
+      { kind: 'event', eventSeq: 4, depth: 2 },
+    ]);
+  });
+
   it('recurses into deeply nested expanded children', () => {
     // test -> shell -> fn-call -> match-start/done
     const log = logWith(
