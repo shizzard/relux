@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/shizzard/relux/compare/v0.5.0...v0.6.0) (2026-05-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* **runtime:** The flat per-test event log and the legacy single-file HTML report are removed. Each test now emits `events.json` (structured schema, versioned) and a self-contained `event.html`; consumers parsing the old log format must migrate to the documented events.json schema. The runtime introduces a new `Cancelled` outcome distinct from `Fail`, which is surfaced in TAP and JUnit output and in `run_summary.toml`; downstream CI parsers that treated all non-Pass outcomes as Fail must be updated. `run_summary.toml` TestEntry gains a `log_dir` field pointing at the per-test artifact directory.
+
+### Features
+
+* **editors:** add R011 support and VS Code build target ([c9916f3](https://github.com/shizzard/relux/commit/c9916f331e8a632bd97177dac5bf08af157c96b4))
+* **runtime:** structured event log and per-test HTML viewer ([131dc93](https://github.com/shizzard/relux/commit/131dc933bdc60d81abb591c21072b9f20b6c4bdc))
+
 ## [0.5.0](https://github.com/shizzard/relux/compare/v0.4.2...v0.5.0) (2026-04-20)
 
 
