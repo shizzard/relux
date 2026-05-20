@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/shizzard/relux/compare/v0.6.0...v0.6.1) (2026-05-20)
+
+
+### Bug Fixes
+
+* **ci:** add .nojekyll so landing-page _theme assets are served ([855a24f](https://github.com/shizzard/relux/commit/855a24f3bd32f12174842d06179e1287f62e6192))
+
 ## [0.6.0](https://github.com/shizzard/relux/compare/v0.5.0...v0.6.0) (2026-05-20)
 
 
