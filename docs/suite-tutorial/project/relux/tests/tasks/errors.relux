@@ -1,6 +1,6 @@
 import api/http
 import jq
-import service/tasks { url as tasks_url, StartTasks, SeededTasks }
+import service/tasks { url as tasks_url, Tasks, SeededTasks }
 
 # skip if SMOKE
 test "unauthorized without token" {
@@ -11,7 +11,7 @@ test "unauthorized without token" {
     let auth_port = available_port()
     let tasks_port = available_port()
 
-    need StartTasks {
+    start Tasks {
         DB_PORT = db_port
         AUTH_PORT = auth_port
         TASKS_PORT = tasks_port
@@ -31,7 +31,7 @@ test "get nonexistent task" {
     let auth_port = available_port()
     let tasks_port = available_port()
 
-    need SeededTasks {
+    start SeededTasks {
         DB_PORT = db_port
         AUTH_PORT = auth_port
         TASKS_PORT = tasks_port

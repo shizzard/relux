@@ -221,12 +221,12 @@ fn curl(url, method, req_body) {
     let filename = "${outdir}/${file_rand}.http_response.txt"
 
     > curl -v -X ${method} -d '${req_body}' -o ${filename} ${url}
-    <? ^* Request completely sent off
+    <? ^> $
 
     filename
 }
 
-fn match_http_code(code) {
+fn http_match_code(code) {
     <? ^< HTTP/(\d\.\d) ${code} (.*)$
 }
 
@@ -240,7 +240,7 @@ fn http_request(expected_code, url, method) {
 
 fn http_request(expected_code, url, method, req_body) {
     let response_filename = curl(url, method, req_body)
-    match_http_code(expected_code)
+    http_match_code(expected_code)
     match_ok()
     response_filename
 }
@@ -259,9 +259,9 @@ You see four functions with different arities (number of parameters). Since a re
 
 `curl` creates the directory for output bodies, generates the output filename via call to the built-in function `rand`, and executes the curl command. It returns the generated filename that contains the output body.
 
-`match_http_code` matches the expected HTTP code.
+`http_match_code` matches the expected HTTP code.
 
-`http_request` combines the two, and also checks the exit code of the curl command. `curl` and `match_http_code` can still be used independently, for example, if you need to also match some specific response header.
+`http_request` combines the two, and also checks the exit code of the curl command. `curl` and `http_match_code` can still be used independently, for example, if you need to also match some specific response header.
 
 `jq_match_query` runs the jq query against the file contents, and matches the output.
 
