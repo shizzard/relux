@@ -884,8 +884,6 @@ impl Vm {
     }
 
     pub async fn send_line(&mut self, line: &str, span: &IrSpan) -> Result<(), ExecError> {
-        self.send_bytes(format!("{line}\n").as_bytes(), span.clone())
-            .await?;
         let shell = self.ctx.current_name();
         self.log.emit_send(
             self.current_span(),
@@ -894,11 +892,12 @@ impl Vm {
             line,
             Some(span),
         );
+        self.send_bytes(format!("{line}\n").as_bytes(), span.clone())
+            .await?;
         Ok(())
     }
 
     pub async fn send_raw(&mut self, data: &[u8], span: &IrSpan) -> Result<(), ExecError> {
-        self.send_bytes(data, span.clone()).await?;
         let display = data
             .iter()
             .map(|b| format!("\\x{b:02x}"))
@@ -911,6 +910,7 @@ impl Vm {
             &display,
             Some(span),
         );
+        self.send_bytes(data, span.clone()).await?;
         Ok(())
     }
 
