@@ -1,0 +1,55 @@
+test "shell markers: exposed shell carries one marker; cleanup shells distinct" ~60s {
+    """
+    Verifies the shell-identity marker design:
+      * one Inner-exposed shell flows through Outer to test with a single
+        stable marker across every event that references it
+      * two effect cleanups each spawn a __cleanup shell; markers differ
+      * `data.shells` is keyed by marker, has a `name` field, and every
+        record records a `terminate_ts`
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <= 1 passed
+        match_ok()
+
+        > events=$(ls -dt ${__RELUX_TEST_ROOT}/fixtures/relux/out/*/logs/relux/tests/exposed_shell/exposed-shell-carries-stable-marker--multiple-cleanups-have-distinct-markers/events.json 2>/dev/null | head -1); echo FOUND=$events
+        <? ^FOUND=/
+        match_ok()
+
+        // Every shell-bearing event has a non-null shell_marker.
+        > jq -M '[.events[] | select(.shell != null and .shell_marker == null)] | length' $events
+        <? ^0$
+        match_ok()
+
+        // Every buffer event has a non-null shell_marker.
+        > jq -M '[.buffer_events[] | select(.shell_marker == null)] | length' $events
+        <? ^0$
+        match_ok()
+
+        // The exposed Inner shell has exactly one marker across all
+        // its event-name views (`inner`, `Dep.inner`, `O(Outer).wrapped`).
+        > jq -M '[.events[] | select(.shell == "O(Outer).wrapped" or .shell == "Dep.inner" or .shell == "inner") | .shell_marker] | unique | length' $events
+        <? ^1$
+        match_ok()
+
+        // Two __cleanup shell records (one per effect's cleanup block).
+        > jq -M '[.shells | to_entries[] | select(.value.name == "__cleanup")] | length' $events
+        <? ^2$
+        match_ok()
+
+        // Those two have distinct markers.
+        > jq -M '[.shells | to_entries[] | select(.value.name == "__cleanup") | .key] | unique | length' $events
+        <? ^2$
+        match_ok()
+
+        // `data.shells` is keyed by marker — every key matches its marker field.
+        > jq -M '[.shells | to_entries[] | select(.key != .value.marker)] | length' $events
+        <? ^0$
+        match_ok()
+
+        // terminate_ts set on every shell record.
+        > jq -M '[.shells | to_entries[] | select(.value.terminate_ts == null)] | length' $events
+        <? ^0$
+        match_ok()
+    }
+}

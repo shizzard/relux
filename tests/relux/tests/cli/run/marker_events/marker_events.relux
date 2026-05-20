@@ -1,0 +1,48 @@
+test "marker events: markers root with two marker-eval children" {
+    """
+    Verifies that test-level marker evaluations (skip/flaky/run) are
+    replayed under a synthetic `markers` root span at runtime:
+      - two `marker-eval` spans (skip + flaky)
+      - one `pure-match` event from the regex marker
+      - the test-level `let greeting = trim(...)` emits a pure FnCall
+        span under the test root
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <= 1 passed
+        match_ok()
+
+        > events=$(ls -dt ${__RELUX_TEST_ROOT}/fixtures/relux/out/*/logs/relux/tests/marker_events/marker-events-fixture/events.json 2>/dev/null | head -1); echo FOUND=$events
+        <? ^FOUND=/
+        match_ok()
+
+        // Two root spans: markers and test.
+        > jq -Mc '[.spans | to_entries[] | select(.value.parent == null) | .value.kind] | sort' $events
+        <? ^\["markers","test"\]$
+        match_ok()
+
+        // Two marker-eval children under markers.
+        > jq -M '[.spans | to_entries[] | select(.value.kind == "marker-eval")] | length' $events
+        <? ^2$
+        match_ok()
+
+        // One pure-match event for the regex marker.
+        > jq -M '[.events[] | select(.kind == "pure-match")] | length' $events
+        <? ^1$
+        match_ok()
+
+        // The pure-match payload reflects the regex marker on "abc" ? ^a.c$.
+        > jq -Mc '[.events[] | select(.kind == "pure-match")][0] | {value, pattern, result}' $events
+        <? ^\{"value":"abc","pattern":"\^a\.c\$","result":"abc"\}$
+        match_ok()
+
+        // trim/1 FnCall span exists with is_pure=true, callee_kind=bif.
+        // Should appear twice — once inside the skip marker eval, once at test-level let.
+        > jq -M '[.spans | to_entries[] | select(.value.name == "trim")] | length' $events
+        <? ^2$
+        match_ok()
+        > jq -M '.spans | to_entries[] | select(.value.name == "trim") | .value.is_pure' $events
+        <? true
+        match_ok()
+    }
+}

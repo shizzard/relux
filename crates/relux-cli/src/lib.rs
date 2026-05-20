@@ -208,11 +208,12 @@ pub fn cli() -> Command {
         .subcommand(
             Command::new("history")
                 .about("Analyze run history")
-                .group(
-                    clap::ArgGroup::new("analysis")
-                        .args(["flaky", "failures", "first-fail", "durations"])
-                        .required(true),
-                )
+                .group(clap::ArgGroup::new("analysis").args([
+                    "flaky",
+                    "failures",
+                    "first-fail",
+                    "durations",
+                ]))
                 .arg(
                     Arg::new("flaky")
                         .long("flaky")
@@ -248,14 +249,17 @@ pub fn cli() -> Command {
                 .arg(
                     Arg::new("last")
                         .long("last")
-                        .help("Limit analysis to the N most recent runs")
-                        .value_parser(value_parser!(usize)),
+                        .help("Limit analysis to the N most recent runs (default: 10)")
+                        .value_parser(value_parser!(usize))
+                        .default_value("10")
+                        .add(ArgValueCompleter::new(completer::complete_history_last)),
                 )
                 .arg(
                     Arg::new("top")
                         .long("top")
                         .help("Show only the top N results")
-                        .value_parser(value_parser!(usize)),
+                        .value_parser(value_parser!(usize))
+                        .add(ArgValueCompleter::new(completer::complete_history_top)),
                 )
                 .arg(
                     Arg::new("format")

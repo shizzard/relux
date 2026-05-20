@@ -16,6 +16,91 @@ files. The JUnit XML references log files via relative paths, and CI systems
 that support attachments (Jenkins, GitLab) can link directly to per-test
 `event.html` logs when the directory structure is preserved.
 
+Each per-test directory under `logs/` contains two artifacts:
+
+- `events.json` — canonical structured payload (spans, events, buffer events,
+  outcome record, embedded source files), consumable by external tooling.
+  See [`events.json` Schema](06-events-json-schema.md) for the on-disk
+  shape, the tagged-enum variants for spans/events/buffer events/outcome,
+  and the schema-versioning policy. Surfaced to machine consumers via the
+  TAP `log_json:` YAML field, a second JUnit `[[ATTACHMENT|...]]` marker,
+  and a `<property name="events_json" ...>` element on each test case.
+- `event.html` — self-contained Svelte SPA viewer. The structured log,
+  highlight.js core, Relux language definition, and the viewer bundle
+  are each gzipped, base64-encoded, and inlined into
+  `<script type="application/octet-stream">` payload tags. A small
+  bootstrap script decompresses them in-browser via
+  [`DecompressionStream`](https://developer.mozilla.org/docs/Web/API/DecompressionStream),
+  sets `window.RELUX_DATA`, and runs the three JS payloads in order
+  (hljs core → Relux grammar → viewer). Opens directly via `file://`;
+  no server required. Requires Chrome 80+ / Firefox 113+ / Safari 16.4+;
+  older browsers see a one-line message and nothing else. This is the
+  recommended human entry point and the link target used by the
+  run-summary `index.html`, JUnit `[[ATTACHMENT|...]]` markers, and
+  TAP `log:` fields.
+
+### Skipped-test logs
+
+Tests skipped by a marker — either `# skip if X` evaluating true or
+`# run if X` evaluating false, on the test itself or on any effect/function
+it depends on — produce a per-test log alongside passed and failed tests.
+The skipped-test log contains only the MARKERS section: the synthetic
+`markers` span tree with one `marker-eval` child per evaluated marker
+(including any flaky markers that ran before the skip-causing one).
+Opening `event.html` focuses the marker that triggered the skip and expands
+its ancestors so the tree is unfolded. For a skip propagated from a fn or
+effect, the focused marker is the originating one on that fn/effect, not
+on the test.
+
+Tests skipped for other reasons (e.g., "skipped because an earlier test
+caused fail-fast and this test was never started") do not produce a log:
+there are no marker evaluations to show; the actionable information lives
+on the test that caused the cancellation.
+
+### Cancelled outcome
+
+A test that *was* started but did not run to completion produces a
+`Cancelled` outcome — distinct from `Fail`. Sources:
+
+- **Test timeout (`~T` on the test)**: the per-test watchdog fired.
+  Carried as `reason: { type: "test-timeout", duration_ms }`.
+- **Suite timeout**: the suite-wide watchdog fired. Other live tests are
+  cancelled with `reason: { type: "suite-timeout", duration_ms }`.
+- **Fail-fast**: a sibling test failed with `--strategy fail-fast`. Live
+  tests are cancelled with `reason: { type: "fail-fast", trigger_test }`.
+- **SIGINT**: the CLI process received SIGINT. Live tests are cancelled
+  with `reason: { type: "sigint" }`.
+
+Cancelled outcomes:
+
+- Exit nonzero from `relux run` (same as failures).
+- Render as `not ok` in TAP, with a diagnostic block carrying
+  `cancellation: <reason-tag>`.
+- Render as `<error type="cancelled" message="cancelled: <reason-tag>"/>`
+  in JUnit XML (distinct from `<failure>` and `<skipped>`).
+- Render as a `cancelled` row in the HTML run index and a `CANCELLED`
+  pill in the per-test viewer.
+- A `cancelled` event in `events.json` marks the exact point where the
+  VM observed the cancel, on the span execution was inside at that
+  moment.
+
+Flaky-retry semantics: a test marked `# flaky` is retried on `Fail` *and*
+on `Cancelled { reason: TestTimeout }` (the test's own clock running out —
+exactly what scaled-timeout retries target). Other cancellation reasons
+(suite-timeout, fail-fast, SIGINT) are *not* retried.
+
+### Artifacts
+
+Anything a test writes under `$__RELUX_TEST_ARTIFACTS` is enumerated in
+`events.json` under `artifacts` and surfaced in the viewer through an
+`artifacts` modal (AppBar chip, hotkey `A`). Each entry is a relative link
+that opens in a new browser tab; this works whether `event.html` is opened
+directly via `file://` or served over HTTP. The chip is rendered as
+disabled when the test wrote no artifacts.
+
+The viewer bundle is committed at `vendor/relux-viewer.js.gz`; regenerate it
+(and the TypeScript schema bindings) with `just viewer-build`.
+
 ---
 
 ## GitLab CI

@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::time::Duration;
 
+use chrono::DateTime;
+use chrono::Local;
 use serde::Serialize;
 use tabled::builder::Builder;
 use tabled::settings::Alignment;
@@ -21,6 +23,7 @@ use super::analysis::FirstFailRecord;
 use super::analysis::FlakyRecord;
 use super::analysis::LoadedRunsCollection;
 use super::analysis::TestKey;
+use super::loader::LoadedRun;
 
 // ─── Shared Helpers ────────────────────────────────────────────
 
@@ -233,6 +236,35 @@ pub fn format_failures_human(
     }
 
     out.push_str(&legend);
+    out.push_str(&format_latest_fail_block(coll, entries, &idx));
+    out
+}
+
+fn format_latest_fail_block(
+    coll: &LoadedRunsCollection,
+    entries: &[(TestKey, FailureRecord)],
+    idx: &HashMap<String, usize>,
+) -> String {
+    let links: Vec<(usize, String)> = entries
+        .iter()
+        .filter_map(|(key, rec)| {
+            let run_id = rec.latest_fail_run_id.as_deref()?;
+            let uri = coll.event_html_uri(key, run_id)?;
+            let n = key
+                .to_string()
+                .rfind('/')
+                .and_then(|pos| idx.get(&key.to_string()[..pos]).copied())
+                .unwrap_or(0);
+            Some((n, uri))
+        })
+        .collect();
+    if links.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from("\nLatest fail:\n");
+    for (n, uri) in links {
+        out.push_str(&format!("  [{n}] {uri}\n"));
+    }
     out
 }
 
@@ -253,6 +285,8 @@ pub fn format_failures_toml(
         fails: usize,
         runs: usize,
         rate: f64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        latest_fail: Option<String>,
     }
     #[derive(Serialize)]
     struct FailureModeOut {
@@ -272,6 +306,10 @@ pub fn format_failures_toml(
                 fails: r.fails,
                 runs: r.runs,
                 rate: r.rate,
+                latest_fail: r
+                    .latest_fail_run_id
+                    .as_deref()
+                    .and_then(|rid| coll.event_html_uri(k, rid)),
             })
             .collect(),
         modes: modes
@@ -453,14 +491,137 @@ pub fn format_durations_toml(
     toml::to_string_pretty(&report).expect("failed to serialize duration report")
 }
 
+// ─── Run Index (default mode) ──────────────────────────────────
+
+/// Per-run outcome bucket counts, in the canonical display order
+/// (`pass`, `fail`, `skip`, `cancel`). Categories with zero count are
+/// omitted from the rendered summary.
+fn outcome_counts(run: &LoadedRun) -> [(usize, &'static str); 4] {
+    let mut pass = 0;
+    let mut fail = 0;
+    let mut skip = 0;
+    let mut cancel = 0;
+    for t in &run.summary.tests {
+        match t.outcome.as_str() {
+            "pass" => pass += 1,
+            "fail" => fail += 1,
+            "skipped" => skip += 1,
+            "cancelled" => cancel += 1,
+            _ => {}
+        }
+    }
+    [
+        (pass, "pass"),
+        (fail, "fail"),
+        (skip, "skip"),
+        (cancel, "cancel"),
+    ]
+}
+
+fn render_outcome_summary(run: &LoadedRun) -> String {
+    outcome_counts(run)
+        .iter()
+        .filter(|(n, _)| *n > 0)
+        .map(|(n, label)| format!("{n} {label}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn render_local_time(rfc3339: &str) -> String {
+    DateTime::parse_from_rfc3339(rfc3339)
+        .map(|dt| {
+            dt.with_timezone(&Local)
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string()
+        })
+        .unwrap_or_else(|_| rfc3339.to_string())
+}
+
+fn run_index_uri(run: &LoadedRun) -> String {
+    format!("file://{}", run.dir.join("index.html").display())
+}
+
+/// Default mode: list the most recent runs (already truncated by
+/// `--last`) as two-line blocks (`<local time>  <summary>` then a
+/// `file://` URI to the run's `index.html`), newest first.
+pub fn format_run_index_human(runs: &[LoadedRun]) -> String {
+    let mut out = format!("Recent Runs ({} runs)\n\n", runs.len());
+    if runs.is_empty() {
+        out.push_str("No runs found.\n");
+        return out;
+    }
+    let mut iter = runs.iter().rev().peekable();
+    while let Some(run) = iter.next() {
+        let when = render_local_time(&run.summary.run.timestamp);
+        let summary = render_outcome_summary(run);
+        let link = run_index_uri(run);
+        out.push_str(&format!("  {when}  {summary}\n  {link}\n"));
+        if iter.peek().is_some() {
+            out.push('\n');
+        }
+    }
+    out
+}
+
+pub fn format_run_index_toml(runs: &[LoadedRun]) -> String {
+    #[derive(Serialize)]
+    struct RunIndexReport {
+        meta: ReportMeta,
+        runs: Vec<RunEntryOut>,
+    }
+    #[derive(Serialize)]
+    struct RunEntryOut {
+        run_id: String,
+        started: String,
+        duration_ms: u64,
+        report: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pass: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        fail: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        skip: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cancel: Option<usize>,
+    }
+
+    let report = RunIndexReport {
+        meta: ReportMeta { runs: runs.len() },
+        runs: runs
+            .iter()
+            .rev()
+            .map(|run| {
+                let counts = outcome_counts(run);
+                let pass = (counts[0].0 > 0).then_some(counts[0].0);
+                let fail = (counts[1].0 > 0).then_some(counts[1].0);
+                let skip = (counts[2].0 > 0).then_some(counts[2].0);
+                let cancel = (counts[3].0 > 0).then_some(counts[3].0);
+                RunEntryOut {
+                    run_id: run.summary.run.run_id.clone(),
+                    started: render_local_time(&run.summary.run.timestamp),
+                    duration_ms: run.summary.run.duration_ms,
+                    report: run_index_uri(run),
+                    pass,
+                    fail,
+                    skip,
+                    cancel,
+                }
+            })
+            .collect(),
+    };
+    toml::to_string_pretty(&report).expect("failed to serialize run index report")
+}
+
 // ─── Tests ─────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::super::analysis::DurationAggregate;
     use super::super::analysis::DurationPreaggregate;
+    use super::super::analysis::FailurePreaggregate;
     use super::super::analysis::FlakyPreaggregate;
     use super::super::analysis::LoadedRunsCollection;
+    use super::super::analysis::compute_failure_modes;
     use super::super::analysis::tests::sample_runs;
     use super::*;
 
@@ -507,5 +668,60 @@ mod tests {
         let mut idx = HashMap::new();
         idx.insert("foo.relux".to_string(), 3);
         assert_eq!(format_test_col(&idx, "foo.relux/my-test"), "[3] my-test");
+    }
+
+    #[test]
+    fn format_failures_human_emits_latest_fail_footer() {
+        let runs = sample_runs();
+        let mut coll = LoadedRunsCollection::new(runs);
+        let modes = compute_failure_modes(&coll);
+        let entries = coll.truncate::<FailurePreaggregate>(None);
+        let output = format_failures_human(&coll, &entries, &modes);
+        assert!(output.contains("Latest fail:"));
+        assert!(output.contains("file:///tmp/out/run"));
+        assert!(output.contains("/event.html"));
+        // The footer rows are keyed by the same file index as the legend.
+        assert!(output.contains("[1] file://") || output.contains("[2] file://"));
+    }
+
+    #[test]
+    fn format_failures_toml_includes_latest_fail_field() {
+        let runs = sample_runs();
+        let mut coll = LoadedRunsCollection::new(runs);
+        let modes = compute_failure_modes(&coll);
+        let entries = coll.truncate::<FailurePreaggregate>(None);
+        let output = format_failures_toml(&coll, &entries, &modes);
+        assert!(output.contains("latest_fail = \"file:///tmp/out/run"));
+    }
+
+    #[test]
+    fn format_run_index_human_shows_runs_newest_first_omitting_zero_counts() {
+        let runs = sample_runs();
+        let output = format_run_index_human(&runs);
+        assert!(output.contains("Recent Runs (4 runs)"));
+        // sample_runs has no "skipped" or "cancelled" outcomes — those
+        // labels must not appear, only pass and fail.
+        assert!(output.contains("pass"));
+        assert!(output.contains("fail"));
+        assert!(!output.contains("skip"));
+        assert!(!output.contains("cancel"));
+        // Order is newest-first: run4 appears before run1.
+        let pos4 = output.find("run4").expect("run4 in output");
+        let pos1 = output.find("run1").expect("run1 in output");
+        assert!(pos4 < pos1);
+        // Every entry carries a file:// URI to index.html.
+        assert!(output.contains("file:///tmp/out/run4/index.html"));
+        assert!(output.contains("file:///tmp/out/run1/index.html"));
+    }
+
+    #[test]
+    fn format_run_index_toml_omits_empty_categories() {
+        let runs = sample_runs();
+        let output = format_run_index_toml(&runs);
+        assert!(output.contains("pass = "));
+        assert!(output.contains("fail = "));
+        assert!(!output.contains("skip = "));
+        assert!(!output.contains("cancel = "));
+        assert!(output.contains("report = \"file:///tmp/out/run"));
     }
 }

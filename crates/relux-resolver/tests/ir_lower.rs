@@ -1345,7 +1345,16 @@ fn effect_lowering_uses_both_stacks() {
 #[test]
 fn into_suite_transfers_plans() {
     let ctx = make_context();
-    let meta = TestMeta::new("test1", None, None, test_span());
+    let meta = TestMeta::new(
+        "test1",
+        None,
+        None,
+        relux_core::diagnostics::DefinitionRef::Test {
+            name: "test1".into(),
+            module: relux_core::diagnostics::ModulePath("tests".into()),
+        },
+        test_span(),
+    );
     let plan = Plan::Invalid {
         meta,
         causes: vec![],

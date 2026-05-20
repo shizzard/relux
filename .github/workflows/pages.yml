@@ -18,6 +18,17 @@ jobs:
         with:
           mdbook-version: latest
 
+      # Mirror of the `_sync-book-assets` recipe in justfile.
+      - name: Sync book assets
+        run: |
+          set -euo pipefail
+          for book in docs/dsl-tutorial docs/reference docs/suite-tutorial; do
+            mkdir -p "$book/theme"
+            gunzip -c vendor/highlight-11.11.1.min.js.gz > "$book/theme/highlight.js"
+            cp crates/relux-runtime/src/report/highlight-relux.js "$book/highlight-relux.js"
+            cp docs/_theme/relux.css "$book/relux.css"
+          done
+
       - name: Build DSL tutorial
         run: mdbook build docs/dsl-tutorial
 
@@ -38,6 +49,7 @@ jobs:
           cp -r target/book/suite-tutorial deploy/${VERSION}/suite-tutorial
           cp -r target/book/reference deploy/${VERSION}/reference
           cp docs/landing.html deploy/${VERSION}/index.html
+          cp -r docs/_theme deploy/${VERSION}/_theme
 
       - name: Checkout gh-pages
         uses: actions/checkout@v6

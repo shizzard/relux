@@ -1,5 +1,5 @@
 import api/http
-import service/auth { url as auth_url, StartAuth, SeededAuth }
+import service/auth { url as auth_url, Auth, SeededAuth }
 
 # skip if SMOKE
 test "register duplicate user" {
@@ -9,7 +9,7 @@ test "register duplicate user" {
     let db_port = available_port()
     let auth_port = available_port()
 
-    need SeededAuth {
+    start SeededAuth {
         DB_PORT = db_port
         AUTH_PORT = auth_port
     }
@@ -28,7 +28,7 @@ test "login unknown user" {
     let db_port = available_port()
     let auth_port = available_port()
 
-    need StartAuth {
+    start Auth {
         DB_PORT = db_port
         AUTH_PORT = auth_port
     }

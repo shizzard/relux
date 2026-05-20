@@ -24,6 +24,8 @@ The second form, `let count = 3`, shows that literal numbers can go unquoted. Si
 
 The third form, `let empty`, declares a variable with no value. It defaults to the empty string `""`. This is useful when you want to declare a variable early and assign it later.
 
+Every `let` produces its own event row in the [test log viewer](03-send-match-and-logs.md) — recognisable by an `=` glyph, the variable name, and the assigned value. The detail panel also gains a **variables in scope** pane that lists every variable visible from the selected event's vantage point, names on the left, values on the right. Click a `let` row and the new variable appears in the pane; click a later event and the pane shows the accumulated state at that moment.
+
 ## String interpolation with `${var}`
 
 Once declared, a variable is referenced with the `${var}` syntax. Relux replaces each `${var}` with the variable's current value before the operation executes:
@@ -42,6 +44,8 @@ test "interpolation basics" {
 
 Interpolation works everywhere — in send operators, in literal match patterns, and in string expressions passed to functions.
 
+Each `${...}` resolution emits an **interpolation event** in the test log viewer — its own row with a `$` glyph. Selecting the row shows three things in the detail panel: the original template (e.g., `${greeting} ${target}`), the resolved string (`hello world`), and the list of bindings that produced it (`greeting → hello`, `target → world`). It is the inside-out view of every string the test sends or matches.
+
 If you reference a variable that has not been declared, it interpolates to the empty string — no error, no warning. The text simply disappears:
 
 ```relux
@@ -55,6 +59,8 @@ test "undefined variable is empty" {
 ```
 
 This is a deliberate design choice. It makes environment variable access seamless (you don't know ahead of time whether a host variable exists), but it also means a typo in a variable name will silently produce an empty string rather than an error.
+
+Open the test log viewer for a test that silently misbehaves this way and click the interpolation event for the offending line. The bindings list shows `nonexistent → ""` plainly: the typo is right there, even though the test passed. Without the test log viewer, a silently-empty interpolation is one of the slipperiest mistakes in the language to track down; with it, the diagnosis is one click.
 
 ## Everything has a value
 
@@ -112,6 +118,8 @@ test "reassignment" {
     }
 }
 ```
+
+In the test log viewer, an assignment shows up as a `var-assign` row — same `=` glyph as `let`, but selecting it reveals both the new value *and* the previous one, so reassignments are auditable at a glance.
 
 The variable must have been declared with `let` first. Assigning to an undeclared variable is a runtime error:
 
@@ -246,6 +254,8 @@ test "shadowing" {
 
 Shell `a` declares its own `x`, which shadows the test-level `x` inside `a`. Shell `b` still sees the original test-level value.
 
+The variables-in-scope pane reflects this same model: select an event inside shell `a` and the pane shows test-level vars plus `a`'s own; select an event inside shell `b` and the pane swaps to test-level plus `b`'s. When shadowing is in effect, the pane shows the value that *resolves* at that point, not the shadowed one — a way to confirm, at any moment in the test, what each name actually means.
+
 ## Environment variables
 
 Host environment variables — the ones you see with `env` or `printenv` in your terminal — are accessible through the same `${VAR}` syntax as Relux variables:
@@ -277,6 +287,8 @@ Relux injects several variables into every test run. These are real environment 
 - `${__RELUX_SHELL_PROMPT}` — the configured shell prompt string
 - `${__RELUX_SUITE_ROOT}` — the absolute path to the project root (where `Relux.toml` lives)
 - `${__RELUX_TEST_ROOT}` — the absolute path to the directory containing the current test file
+
+The test log viewer surfaces all of this in a dedicated **environment** modal, opened with the `E` key (or by clicking the small `env` chip at the bottom of the variables-in-scope pane). It lists every env var captured at the moment the test started — host vars and Relux-injected ones together — and groups them so the noise stays out of the way. A search box at the top filters by name or value when you need to find one quickly.
 
 ## Try it yourself
 

@@ -7,24 +7,33 @@ use std::time::Duration;
 use std::time::Instant;
 
 use std::collections::VecDeque;
-use std::sync::OnceLock;
 
 use tokio::sync::Mutex as TokioMutex;
-use tokio_util::sync::CancellationToken;
 
-pub(crate) enum CancelReason {
-    SuiteTimeout,
-    FailFast,
-}
-
+use crate::cancel::CancelReason;
+use crate::cancel::CancelToken;
 use crate::effect::CleanupSource;
 use crate::effect::EffectManager;
 use crate::effect::Warning;
 use crate::effect::registry::EffectRegistry;
-use crate::observe::event_sink::EventSink;
+use crate::effect::registry::ShellInstanceKey;
+use crate::observe::structured::EnvInfo;
+use crate::observe::structured::MarkerEvalDecision;
+use crate::observe::structured::MarkerEvalDetail;
+use crate::observe::structured::MarkerEvalKind;
+use crate::observe::structured::MarkerEvalModifier;
+use crate::observe::structured::SpanId;
+use crate::observe::structured::SpanKind;
+use crate::observe::structured::StructuredLogBuilder;
+use crate::observe::structured::TestInfo;
+use crate::observe::structured::TestOutcome;
+use crate::observe::structured::log_sink::LogSink;
+use crate::report::result::ExecError;
 use crate::report::result::Failure;
+use crate::report::result::FailureContext;
 use crate::report::result::Outcome;
 use crate::report::result::TestResult;
+use crate::scan::scan_artifacts;
 use crate::vm::Vm;
 use crate::vm::context::ExecutionContext;
 use crate::vm::context::Scope;
@@ -44,10 +53,14 @@ use relux_ir::IrTimeout;
 use relux_ir::Plan;
 use relux_ir::Suite;
 
+pub mod cancel;
 pub mod effect;
+pub(crate) mod marker_walk;
 pub mod observe;
 pub mod report;
 pub mod runtime_context;
+pub(crate) mod scan;
+pub mod viewer;
 pub mod vm;
 
 pub use runtime_context::RuntimeContext;
@@ -245,18 +258,28 @@ pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> ExecuteResult {
         eprintln!("\nrunning {} tests", suite.plans.len());
     }
 
-    let cancel = CancellationToken::new();
-    let cancel_reason: Arc<OnceLock<CancelReason>> = Arc::new(OnceLock::new());
+    let cancel = CancelToken::new();
+
+    // SIGINT handler: flip the run-wide cancel with `Sigint` reason. The
+    // task ends when ctrl_c fires once or when `execute()` returns
+    // (whichever comes first) — the spawned task is detached and dies with
+    // the runtime.
+    {
+        let sigint_cancel = cancel.clone();
+        tokio::spawn(async move {
+            if tokio::signal::ctrl_c().await.is_ok() {
+                sigint_cancel.cancel_with(CancelReason::Sigint);
+            }
+        });
+    }
 
     // Spawn suite timeout watchdog
     let watchdog = {
         let timeout = run_ctx.suite_timeout;
         let watchdog_cancel = cancel.clone();
-        let watchdog_reason = cancel_reason.clone();
         Some(tokio::spawn(async move {
             tokio::time::sleep(timeout).await;
-            let _ = watchdog_reason.set(CancelReason::SuiteTimeout);
-            watchdog_cancel.cancel();
+            watchdog_cancel.cancel_with(CancelReason::SuiteTimeout { duration: timeout });
         }))
     };
 
@@ -286,7 +309,6 @@ pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> ExecuteResult {
         let ctx = WorkerContext {
             queue: queue.clone(),
             cancel: cancel.clone(),
-            cancel_reason: cancel_reason.clone(),
             suite,
             run_ctx,
             base_env: base_env.clone(),
@@ -318,8 +340,7 @@ pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> ExecuteResult {
 
 struct WorkerContext<'a> {
     queue: Arc<std::sync::Mutex<VecDeque<(usize, &'a Plan)>>>,
-    cancel: CancellationToken,
-    cancel_reason: Arc<OnceLock<CancelReason>>,
+    cancel: CancelToken,
     suite: &'a Suite,
     run_ctx: &'a RunContext,
     base_env: Arc<LayeredEnv>,
@@ -382,7 +403,7 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
 
                 // Flaky retry loop
                 if meta.flaky()
-                    && result.is_failure()
+                    && result.outcome.is_retryable()
                     && ctx.run_ctx.flaky.max_retries > 0
                     && !ctx.cancel.is_cancelled()
                 {
@@ -410,7 +431,7 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                             generation,
                         )
                         .await;
-                        if !result.is_failure() {
+                        if !result.outcome.is_retryable() {
                             break;
                         }
                     }
@@ -422,7 +443,7 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                 let (progress_oneshot_tx, progress_oneshot_rx) = tokio::sync::oneshot::channel();
                 let result_line = format_result_line(&display_id, &result, &tags);
                 let failure = match &result.outcome {
-                    Outcome::Fail(f) => Some((f.clone(), result.log_dir.clone())),
+                    Outcome::Fail(f) => Some(Box::new((f.clone(), result.log_dir.clone()))),
                     _ => None,
                 };
                 let _ = ctx.tui_tx.send(observe::tui::TuiEvent::TestFinished {
@@ -451,16 +472,16 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                 let _ = ctx
                     .tui_tx
                     .send(observe::tui::TuiEvent::Skipped { result_line });
-                TestResult {
-                    test_name: meta.name().to_string(),
-                    test_path: test_path.clone(),
-                    outcome: Outcome::Skipped("skipped".to_string()),
-                    duration: Duration::ZERO,
-                    progress: String::new(),
-                    log_dir: None,
-                    warnings: Vec::new(),
-                    flaky_retries: 0,
-                }
+                log_skipped_test(
+                    meta,
+                    causes,
+                    &ctx.suite.causes,
+                    ctx.run_ctx,
+                    ctx.base_env.clone(),
+                    &test_path,
+                    &ctx.suite.tables,
+                )
+                .await
             }
             Plan::Invalid {
                 meta,
@@ -490,20 +511,23 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
         };
 
         let failed = matches!(result.outcome, Outcome::Fail(_));
+        let trigger_test = result.test_name.clone();
         results.push((plan_idx, result));
 
         if failed && ctx.run_ctx.strategy == RunStrategy::FailFast {
-            let _ = ctx.cancel_reason.set(CancelReason::FailFast);
-            ctx.cancel.cancel();
+            ctx.cancel
+                .cancel_with(CancelReason::FailFast { trigger_test });
             break;
         }
     }
 
     // Drain remaining queue as skipped
     let skip_reason = if ctx.cancel.is_cancelled() {
-        match ctx.cancel_reason.get() {
-            Some(CancelReason::FailFast) => "fail fast",
-            Some(CancelReason::SuiteTimeout) => "suite timeout",
+        match ctx.cancel.reason() {
+            Some(CancelReason::FailFast { .. }) => "fail fast",
+            Some(CancelReason::SuiteTimeout { .. }) => "suite timeout",
+            Some(CancelReason::TestTimeout { .. }) => "test timeout",
+            Some(CancelReason::Sigint) => "sigint",
             None => "cancelled",
         }
     } else {
@@ -552,6 +576,7 @@ fn format_result_line(display_id: &str, result: &TestResult, cause_tags: &str) -
     let outcome_str = match &result.outcome {
         Outcome::Pass => format!("{}", "ok".green()),
         Outcome::Fail(_) => format!("{}", "FAILED".red()),
+        Outcome::Cancelled(c) => format!("{} ({})", "cancelled".yellow(), c.reason_tag()),
         Outcome::Skipped(_) => format!("{}", "skipped".yellow()),
         Outcome::Invalid(_) => format!("{}", "INVALID".red()),
     };
@@ -571,7 +596,7 @@ async fn run_test_cancellable(
     base_env: Arc<LayeredEnv>,
     test_path: &str,
     cause_tags: &str,
-    cancel: &CancellationToken,
+    cancel: &CancelToken,
     tables: &relux_ir::Tables,
     _causes: &CauseTable,
     flaky_timeout_multiplier: f64,
@@ -580,7 +605,7 @@ async fn run_test_cancellable(
     generation: u64,
 ) -> TestResult {
     // Create a child token for test-level timeout
-    let test_cancel = cancel.child_token();
+    let test_cancel = cancel.child();
 
     let effective_timeout = meta
         .timeout()
@@ -597,11 +622,11 @@ async fn run_test_cancellable(
         let timeout_cancel = test_cancel.clone();
         tokio::spawn(async move {
             tokio::time::sleep(timeout).await;
-            timeout_cancel.cancel();
+            timeout_cancel.cancel_with(CancelReason::TestTimeout { duration: timeout });
         })
     });
 
-    let mut result = run_test(
+    let result = run_test(
         meta,
         test,
         run_ctx,
@@ -620,19 +645,6 @@ async fn run_test_cancellable(
     // Abort test timeout watchdog if it's still running
     if let Some(handle) = test_watchdog {
         handle.abort();
-    }
-
-    // If the test was cancelled due to its own timeout (not the parent suite
-    // cancel), rewrite the Cancelled failure into a specific timeout message.
-    if test_cancel.is_cancelled()
-        && !cancel.is_cancelled()
-        && matches!(result.outcome, Outcome::Fail(Failure::Cancelled { .. }))
-    {
-        result.outcome = Outcome::Fail(Failure::Runtime {
-            message: format!("test timeout ({effective_timeout:?}) exceeded"),
-            span: None,
-            shell: None,
-        });
     }
 
     result
@@ -668,7 +680,7 @@ async fn run_test(
     base_env: Arc<LayeredEnv>,
     test_path: &str,
     _cause_tags: &str,
-    cancel: &CancellationToken,
+    cancel: &CancelToken,
     tables: &relux_ir::Tables,
     flaky_timeout_multiplier: f64,
     slot: usize,
@@ -698,15 +710,38 @@ async fn run_test(
         default_timeout: run_ctx.default_timeout.clone(),
     };
 
-    let events = EventSink::new(
+    let log = StructuredLogBuilder::new(
         progress_tx.clone(),
         test_start,
         tables.sources.clone(),
         Arc::from(run_ctx.project_root.as_path()),
     );
 
+    // Replay marker evaluations under a synthetic `markers` root span.
+    // Always opened (the viewer filters out empty markers roots).
+    // The runtime walks the test's IR transitively (Relux is
+    // deterministic: every reachable fn-call and effect-start is
+    // guaranteed to execute) and concatenates marker recordings from
+    // the test, every reachable effect, and every reachable function.
+    // All recordings become flat `marker-eval` children of the markers
+    // root — no nesting under fn-call or effect-setup, since markers
+    // run before any test execution.
+    let recordings = crate::marker_walk::collect_test_marker_recordings(test, meta, tables);
+    let _ = replay_markers(&log, &recordings);
+
+    // Open the root span for this test. Every emission inside the test body
+    // (effect setup, shell block, fn call, cleanup block) is parented on this.
+    let test_span = log.open_span(
+        SpanKind::Test {
+            name: meta.name().to_string(),
+        },
+        None,
+        Some(meta.span()),
+    );
+    let test_span_id = test_span.id();
+
     let rt_ctx = RuntimeContext {
-        events: events.clone(),
+        log: log.clone(),
         shell: shell_config,
         log_dir: Arc::from(log_dir.as_path()),
         tables: tables.clone(),
@@ -717,28 +752,94 @@ async fn run_test(
     };
 
     // Create a per-test EffectManager
-    let test_manager = EffectManager::new(Arc::new(EffectRegistry::new()), rt_ctx.clone());
+    let test_manager = EffectManager::new(
+        Arc::new(EffectRegistry::new()),
+        rt_ctx.clone(),
+        test_span_id,
+    );
 
-    let outcome = run_test_body(meta, test, &test_manager, &mut warnings, &rt_ctx).await;
+    let outcome = run_test_body(
+        meta,
+        test,
+        &test_manager,
+        &mut warnings,
+        &rt_ctx,
+        test_span_id,
+    )
+    .await;
 
     if outcome.is_err() {
-        events.emit_failure("", None);
+        log.emit_failure_progress();
     }
 
     // Release effects (always runs, even after cancellation)
     let effect_warnings = test_manager.cleanup_all().await;
     warnings.extend(effect_warnings);
 
-    // Collect events (consumes the EventSink, releasing its ProgressTx)
-    let log_events = events.take();
-
-    // Drop all remaining ProgressTx holders so the forwarder task can finish
+    // Drop all remaining ProgressTx holders so the forwarder task can finish.
     drop(test_manager);
     drop(rt_ctx);
     drop(progress_tx);
     let duration = test_start.elapsed();
 
-    crate::report::html::generate_html_logs(&log_dir, meta.name(), &log_events, &run_ctx.run_dir);
+    test_span.close();
+
+    // Snapshot the bootstrap env (root layer of `base_env`) for the artifact.
+    // Sorted for deterministic JSON output across runs.
+    let mut bootstrap: Vec<(String, String)> = base_env
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    bootstrap.sort_by(|a, b| a.0.cmp(&b.0));
+
+    // Build the structured log. The verdict is a tagged enum:
+    // Pass / Fail(FailureRecord) / Cancelled(CancellationRecord) / Skip.
+    // Runnable tests here produce Pass, Fail, or Cancelled — Skip is
+    // emitted by `log_skipped_test`.
+    let test_outcome = match &outcome {
+        Ok(()) => TestOutcome::Pass,
+        Err(ExecError::Failure(f)) => TestOutcome::Fail(log.failure_record(f)),
+        Err(ExecError::Cancelled(c)) => TestOutcome::Cancelled(log.cancellation_record(c)),
+    };
+    let artifacts = scan_artifacts(&artifacts_dir);
+    let structured = log.build(
+        TestInfo {
+            name: meta.name().to_string(),
+            path: test_path.to_string(),
+            duration_ms: duration.as_millis() as u64,
+        },
+        EnvInfo { bootstrap },
+        test_outcome,
+        artifacts,
+    );
+
+    let events_json_path = log_dir.join("events.json");
+    match serde_json::to_vec_pretty(&structured) {
+        Ok(bytes) => {
+            if let Err(e) = std::fs::write(&events_json_path, &bytes) {
+                eprintln!(
+                    "warning: failed to write {}: {}",
+                    events_json_path.display(),
+                    e
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "warning: failed to serialize structured log for {}: {}",
+                events_json_path.display(),
+                e
+            );
+        }
+    }
+
+    if let Err(e) = crate::report::event_html::write(&log_dir, &structured) {
+        eprintln!(
+            "warning: failed to write {}: {}",
+            log_dir.join("event.html").display(),
+            e
+        );
+    }
 
     match outcome {
         Ok(()) => TestResult {
@@ -751,10 +852,20 @@ async fn run_test(
             warnings,
             flaky_retries: 0,
         },
-        Err(failure) => TestResult {
+        Err(ExecError::Failure(f)) => TestResult {
             test_name: meta.name().to_string(),
             test_path: test_path.to_string(),
-            outcome: Outcome::Fail(failure),
+            outcome: Outcome::Fail(f),
+            duration,
+            progress: String::new(),
+            log_dir: Some(log_dir),
+            warnings,
+            flaky_retries: 0,
+        },
+        Err(ExecError::Cancelled(c)) => TestResult {
+            test_name: meta.name().to_string(),
+            test_path: test_path.to_string(),
+            outcome: Outcome::Cancelled(c),
             duration,
             progress: String::new(),
             log_dir: Some(log_dir),
@@ -772,7 +883,8 @@ async fn run_test_body(
     manager: &EffectManager,
     warnings: &mut Vec<Warning>,
     rt_ctx: &RuntimeContext,
-) -> Result<(), Failure> {
+    test_span: SpanId,
+) -> Result<(), ExecError> {
     // 1. Create test scope
     let scope = Scope::Test {
         name: meta.name().to_string(),
@@ -782,19 +894,26 @@ async fn run_test_body(
 
     // 2. Evaluate test-level lets into scope (parser enforces lets come before starts)
     for item in test.body() {
-        if let IrTestItem::Let { stmt, .. } = item {
+        if let IrTestItem::Let { stmt, span } = item {
             let mut vars = scope.vars().lock().await;
+            let mut sink = LogSink::new(&rt_ctx.log, test_span);
             let value = if let Some(expr) = stmt.value() {
                 relux_ir::evaluator::eval_pure_expr(
                     expr,
                     &vars,
                     &rt_ctx.env,
                     &rt_ctx.tables.pure_fns,
+                    &mut sink,
                 )
             } else {
                 String::new()
             };
-            vars.insert(stmt.name().name().to_string(), value);
+            let name = stmt.name().name();
+            vars.insert(name.to_string(), value.clone());
+            drop(vars);
+            rt_ctx
+                .log
+                .emit_var_let(test_span, None, None, name, &value, Some(span));
         }
     }
 
@@ -802,7 +921,7 @@ async fn run_test_body(
     let caller_vars = scope.vars().lock().await.clone();
     let root_env = rt_ctx.env.clone();
     let exported = manager
-        .instantiate(test.starts(), &caller_vars, &root_env)
+        .instantiate_top_level(test.starts(), &caller_vars, &root_env)
         .await?;
 
     // 4. Build shell map from exposed effect shells
@@ -813,10 +932,17 @@ async fn run_test_body(
     let mut effect_vars: HashMap<String, HashMap<String, String>> = HashMap::new();
     let mut reset_seen = HashSet::new();
     for (start, exported) in test.starts().iter().zip(exported) {
-        for vm_arc in exported.shells.values() {
+        let source_effect_name = start.effect().name.0.clone();
+        let alias = start.alias().map(str::to_string);
+        for (shell_local_name, vm_arc) in exported.shells.iter() {
             let ptr = Arc::as_ptr(vm_arc) as usize;
             if reset_seen.insert(ptr) {
-                vm_arc.lock().await.reset_for_export(scope.clone());
+                vm_arc.lock().await.reset_for_export(
+                    scope.clone(),
+                    alias.clone(),
+                    Some(source_effect_name.clone()),
+                    shell_local_name.clone(),
+                );
             }
         }
         if let Some(alias) = start.alias() {
@@ -824,8 +950,6 @@ async fn run_test_body(
             // also insert it under the alias name directly
             if exported.shells.len() == 1 {
                 let vm_arc = exported.shells.values().next().unwrap().clone();
-                let source = vm_arc.lock().await.current_name();
-                rt_ctx.events.emit_shell_alias(alias, source);
                 shells.insert(alias.to_string(), vm_arc);
             }
             effect_shells.insert(alias.to_string(), exported.shells);
@@ -851,7 +975,7 @@ async fn run_test_body(
         IrTestItem::Cleanup { block, span } => Some((block.clone(), span.clone())),
         _ => None,
     });
-    let body_result: Result<(), Failure> = async {
+    let body_result: Result<(), ExecError> = async {
         for item in test.body() {
             match item {
                 IrTestItem::Comment { .. } | IrTestItem::DocString { .. } => continue,
@@ -859,17 +983,24 @@ async fn run_test_body(
                 IrTestItem::Let { .. } => continue,
                 IrTestItem::Shell { block, .. } => {
                     let switch_span = block.name().span();
-                    let exit_span = block.span().at_end();
                     if let Some(qualifier) = block.qualifier() {
                         // Qualified shell block: alias.shell { ... }
                         let alias = qualifier.name();
                         let shell_name = block.name().name();
                         let display = format!("{alias}.{shell_name}");
-                        rt_ctx.events.emit_shell_switch(&display, Some(switch_span));
+                        let block_span = rt_ctx.log.open_span(
+                            SpanKind::ShellBlock {
+                                shell: display.clone(),
+                            },
+                            Some(test_span),
+                            Some(switch_span),
+                        );
+                        let block_span_id = block_span.id();
                         let dep = effect_shells.get(alias).ok_or_else(|| Failure::Runtime {
                             message: format!("unknown effect alias `{alias}`"),
                             span: None,
                             shell: None,
+                            context: FailureContext::pre_vm_with_span(block_span_id),
                         })?;
                         let vm_arc = dep.get(shell_name).ok_or_else(|| Failure::Runtime {
                             message: format!(
@@ -877,36 +1008,56 @@ async fn run_test_body(
                             ),
                             span: None,
                             shell: None,
+                            context: FailureContext::pre_vm_with_span(block_span_id),
                         })?;
                         let mut vm = vm_arc.lock().await;
+                        let vm_name = vm.current_name();
+                        let vm_marker = vm.shell_marker().to_string();
                         rt_ctx
-                            .events
-                            .emit_shell_switch(vm.current_name(), Some(switch_span));
+                            .log
+                            .emit_shell_switch(block_span_id, &vm_name, &vm_marker, None);
+                        vm.set_block_span(block_span_id);
                         vm.exec_stmts(block.body()).await?;
-                        vm.set_exit_span(exit_span);
+                        // block_span drops here, closing the span.
                     } else {
                         // Unqualified shell block: shell name { ... }
                         let name = block.name().name().to_string();
-                        rt_ctx.events.emit_shell_switch(&name, Some(switch_span));
+                        let block_span = rt_ctx.log.open_span(
+                            SpanKind::ShellBlock {
+                                shell: name.clone(),
+                            },
+                            Some(test_span),
+                            Some(switch_span),
+                        );
+                        let block_span_id = block_span.id();
                         if !shells.contains_key(&name) {
-                            let shell_state = ShellState::new(name.clone(), None);
+                            let shell_state = ShellState::new(name.clone());
                             let ctx = ExecutionContext::new(
                                 scope.clone(),
                                 shell_state,
                                 rt_ctx.shell.default_timeout.clone(),
                                 rt_ctx.env.clone(),
+                                block_span_id,
                             );
-                            let vm = Vm::new(name.clone(), ctx, rt_ctx).await?;
+                            let shell_key = ShellInstanceKey::Test {
+                                shell_name: name.clone(),
+                            };
+                            let vm = Vm::new(name.clone(), shell_key.marker(), ctx, rt_ctx).await?;
                             shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
                         }
                         let vm_arc = shells.get(&name).expect("shell just inserted above");
                         let mut vm = vm_arc.lock().await;
-                        let display_name = vm.current_name().to_string();
-                        rt_ctx
-                            .events
-                            .emit_shell_switch(&display_name, Some(switch_span));
+                        let display_name = vm.current_name();
+                        let display_marker = vm.shell_marker().to_string();
+                        rt_ctx.log.emit_shell_switch(
+                            block_span_id,
+                            &display_name,
+                            &display_marker,
+                            None,
+                        );
+                        vm.set_block_span(block_span_id);
                         vm.exec_stmts(block.body()).await?;
-                        vm.set_exit_span(exit_span);
+                        // block_span drops here, closing the span.
                     }
                 }
                 IrTestItem::Cleanup { .. } => continue,
@@ -927,24 +1078,42 @@ async fn run_test_body(
 
     // 7. Run test cleanup (fresh shell, best-effort)
     if let Some((cleanup, cleanup_span)) = &cleanup_block {
-        rt_ctx.events.emit_cleanup("__cleanup", Some(cleanup_span));
-        let shell_state = ShellState::new("__cleanup".to_string(), None);
+        let cleanup_block_span =
+            rt_ctx
+                .log
+                .open_span(SpanKind::CleanupBlock, Some(test_span), Some(cleanup_span));
+        let cleanup_block_span_id = cleanup_block_span.id();
+        let shell_state = ShellState::new("__cleanup".to_string());
         let ctx = ExecutionContext::new(
             scope.clone(),
             shell_state,
             rt_ctx.shell.default_timeout.clone(),
             rt_ctx.env.clone(),
+            cleanup_block_span_id,
         );
         // Cleanup uses its own uncancellable token
         let mut cleanup_rt_ctx = rt_ctx.clone();
-        cleanup_rt_ctx.cancel = CancellationToken::new();
-        match Vm::new("__cleanup".to_string(), ctx, &cleanup_rt_ctx).await {
+        cleanup_rt_ctx.cancel = CancelToken::new();
+        let cleanup_shell_key = ShellInstanceKey::Test {
+            shell_name: "__cleanup".into(),
+        };
+        let cleanup_marker = cleanup_shell_key.marker();
+        match Vm::new(
+            "__cleanup".to_string(),
+            cleanup_marker.clone(),
+            ctx,
+            &cleanup_rt_ctx,
+        )
+        .await
+        {
             Ok(mut cleanup_vm) => {
                 if let Err(failure) = cleanup_vm.exec_stmts(cleanup.body()).await {
-                    rt_ctx.events.emit_warning(
+                    rt_ctx.log.emit_warning(
+                        cleanup_block_span_id,
                         "__cleanup",
+                        &cleanup_marker,
                         "test cleanup failed",
-                        Some(cleanup_span),
+                        None,
                     );
                     warnings.push(Warning::CleanupFailed {
                         source: CleanupSource::Test,
@@ -954,10 +1123,12 @@ async fn run_test_body(
                 cleanup_vm.shutdown().await;
             }
             Err(e) => {
-                rt_ctx.events.emit_warning(
+                rt_ctx.log.emit_warning(
+                    cleanup_block_span_id,
                     "__cleanup",
+                    &cleanup_marker,
                     "failed to spawn cleanup shell",
-                    Some(cleanup_span),
+                    None,
                 );
                 warnings.push(Warning::CleanupFailed {
                     source: CleanupSource::Test,
@@ -965,13 +1136,247 @@ async fn run_test_body(
                         message: format!("failed to spawn cleanup shell: {e:?}"),
                         span: None,
                         shell: None,
-                    },
+                        context: FailureContext::pre_vm_with_span(cleanup_block_span_id),
+                    }
+                    .into(),
                 });
             }
         }
+        // cleanup_block_span drops here, closing the span.
     }
 
     body_result
+}
+
+// ─── Marker replay ─────────────────────────────────────────
+
+pub(crate) fn marker_kind_to_runtime(k: relux_ir::marker::MarkerEvalKind) -> MarkerEvalKind {
+    match k {
+        relux_ir::marker::MarkerEvalKind::Skip => MarkerEvalKind::Skip,
+        relux_ir::marker::MarkerEvalKind::Run => MarkerEvalKind::Run,
+        relux_ir::marker::MarkerEvalKind::Flaky => MarkerEvalKind::Flaky,
+    }
+}
+
+pub(crate) fn marker_modifier_to_runtime(
+    m: relux_ir::marker::MarkerEvalModifier,
+) -> MarkerEvalModifier {
+    match m {
+        relux_ir::marker::MarkerEvalModifier::If => MarkerEvalModifier::If,
+        relux_ir::marker::MarkerEvalModifier::Unless => MarkerEvalModifier::Unless,
+    }
+}
+
+pub(crate) fn marker_decision_to_runtime(
+    d: relux_ir::marker::MarkerEvalDecision,
+) -> MarkerEvalDecision {
+    match d {
+        relux_ir::marker::MarkerEvalDecision::Pass => MarkerEvalDecision::Pass,
+        relux_ir::marker::MarkerEvalDecision::Mark => MarkerEvalDecision::Mark,
+    }
+}
+
+pub(crate) fn marker_detail_from_evaluation(
+    e: &relux_core::diagnostics::SkipEvaluation,
+) -> MarkerEvalDetail {
+    use relux_core::diagnostics::SkipEvaluation::*;
+    match e {
+        Unconditional => MarkerEvalDetail::Unconditional,
+        Bare { value, met } => MarkerEvalDetail::Bare {
+            value: value.clone(),
+            met: *met,
+        },
+        Eq { lhs, rhs, met } => MarkerEvalDetail::Eq {
+            lhs: lhs.clone(),
+            rhs: rhs.clone(),
+            met: *met,
+        },
+        Regex {
+            value,
+            pattern,
+            met,
+        } => MarkerEvalDetail::Regex {
+            value: value.clone(),
+            pattern: pattern.clone(),
+            met: *met,
+        },
+    }
+}
+
+// ─── log_skipped_test ──────────────────────────────────────
+
+/// Emit a markers-only `event.html` and `events.json` for a `Plan::Skipped`
+/// test. Does NOT run the test (no PTY, no shells, no body); the structured
+/// log contains only the synthetic `markers` root and its `marker-eval`
+/// children. The triggering marker (`(Skip, Mark)` or `(Run, Pass)`) is
+/// pointed to by `TestOutcome::Skip(SkipRecord { ... })`.
+async fn log_skipped_test(
+    meta: &relux_ir::TestMeta,
+    causes: &[relux_core::diagnostics::CauseId],
+    suite_causes: &relux_core::diagnostics::CauseTable,
+    run_ctx: &RunContext,
+    base_env: Arc<LayeredEnv>,
+    test_path: &str,
+    tables: &relux_ir::Tables,
+) -> TestResult {
+    let test_start = Instant::now();
+    let source_table = &tables.sources;
+    let log_dir = test_log_dir(&run_ctx.run_dir, source_table, meta, &run_ctx.project_root);
+    let _ = std::fs::create_dir_all(&log_dir);
+
+    let (progress_tx, _progress_rx) = crate::observe::progress::channel();
+    let log = StructuredLogBuilder::new(
+        progress_tx,
+        test_start,
+        source_table.clone(),
+        Arc::from(run_ctx.project_root.as_path()),
+    );
+
+    // Look up the originating definition's recordings via the cause's
+    // SkipReport.definition. Works uniformly for test-level skips (key:
+    // DefinitionRef::Test{..}) and for skips propagated from fn/effect
+    // (key: DefinitionRef::Fn(..) / DefinitionRef::Effect(..)).
+    let report = causes
+        .iter()
+        .find_map(|id| match suite_causes.get(id) {
+            Some(relux_core::diagnostics::Cause::Skip(r)) => Some(r.clone()),
+            _ => None,
+        })
+        .expect("Plan::Skipped must carry a Cause::Skip");
+    let recordings_owned: Vec<relux_ir::marker::MarkerRecording> = tables
+        .marker_recordings
+        .get(&report.definition)
+        .map(|v| (*v).clone())
+        .unwrap_or_default();
+    let recordings: &[relux_ir::marker::MarkerRecording] = &recordings_owned;
+    let handles = replay_markers(&log, recordings);
+
+    // Locate the triggering marker. eval_marker returns early on trigger,
+    // so the triggering recording is always the last one — but scan
+    // defensively in case future changes alter recording order.
+    let trigger_idx = recordings
+        .iter()
+        .position(|r| {
+            use relux_ir::marker::MarkerEvalDecision;
+            use relux_ir::marker::MarkerEvalKind;
+            matches!(
+                (r.kind, r.decision),
+                (MarkerEvalKind::Skip, MarkerEvalDecision::Mark)
+                    | (MarkerEvalKind::Run, MarkerEvalDecision::Pass)
+            )
+        })
+        .expect("marker_recordings entry for skipped definition must contain a triggering marker");
+    let handle = &handles[trigger_idx];
+    let rec = &recordings[trigger_idx];
+
+    let outcome = TestOutcome::Skip(crate::observe::structured::SkipRecord {
+        span: handle.span,
+        event_seq: handle.event_seq,
+        marker_kind: marker_kind_to_runtime(rec.kind),
+        evaluation: marker_detail_from_evaluation(&rec.evaluation),
+    });
+
+    // Bootstrap env snapshot (sorted for deterministic JSON).
+    let mut bootstrap: Vec<(String, String)> = base_env
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    bootstrap.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let structured = log.build(
+        TestInfo {
+            name: meta.name().to_string(),
+            path: test_path.to_string(),
+            duration_ms: 0,
+        },
+        EnvInfo { bootstrap },
+        outcome,
+        Vec::new(),
+    );
+
+    let events_json_path = log_dir.join("events.json");
+    match serde_json::to_vec_pretty(&structured) {
+        Ok(bytes) => {
+            if let Err(e) = std::fs::write(&events_json_path, &bytes) {
+                eprintln!(
+                    "warning: failed to write {}: {}",
+                    events_json_path.display(),
+                    e
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "warning: failed to serialize structured log for {}: {}",
+                events_json_path.display(),
+                e
+            );
+        }
+    }
+
+    if let Err(e) = crate::report::event_html::write(&log_dir, &structured) {
+        eprintln!(
+            "warning: failed to write {}: {}",
+            log_dir.join("event.html").display(),
+            e
+        );
+    }
+
+    TestResult {
+        test_name: meta.name().to_string(),
+        test_path: test_path.to_string(),
+        outcome: Outcome::Skipped("skipped".to_string()),
+        duration: Duration::ZERO,
+        progress: String::new(),
+        log_dir: Some(log_dir),
+        warnings: Vec::new(),
+        flaky_retries: 0,
+    }
+}
+
+// ─── Marker replay ─────────────────────────────────────────
+
+/// Output of `replay_markers`: one handle per input recording, positionally
+/// aligned. `span` is the `marker-eval` span; `event_seq` is the bool-check
+/// event under it. Used by `log_skipped_test` to build the `SkipRecord`
+/// focus pointer for the triggering marker.
+pub(crate) struct MarkerHandle {
+    pub span: crate::observe::structured::SpanId,
+    pub event_seq: crate::observe::structured::EventSeq,
+}
+
+/// Lay down the synthetic `markers` root span and every recorded
+/// `marker-eval` child. Always emits the root (even when empty); the
+/// viewer filters it. Returns one `MarkerHandle` per input recording,
+/// positionally aligned.
+pub(crate) fn replay_markers(
+    log: &StructuredLogBuilder,
+    recordings: &[relux_ir::marker::MarkerRecording],
+) -> Vec<MarkerHandle> {
+    let markers_guard = log.open_markers_span(None);
+    let mut handles = Vec::with_capacity(recordings.len());
+    for rec in recordings {
+        let me_guard = log.open_marker_eval_span(
+            markers_guard.id(),
+            marker_kind_to_runtime(rec.kind),
+            marker_modifier_to_runtime(rec.modifier),
+            marker_decision_to_runtime(rec.decision),
+            Some(&rec.marker_span),
+        );
+        let span = me_guard.id();
+        let mut sink = LogSink::new(log, span);
+        sink.replay(&rec.ops);
+        // Final truthy/falsy outcome event, after the sink-op trail.
+        let event_seq = log.emit_bool_check(
+            span,
+            marker_detail_from_evaluation(&rec.evaluation),
+            Some(&rec.marker_span),
+        );
+        handles.push(MarkerHandle { span, event_seq });
+        // me_guard drops here, closing the marker-eval span.
+    }
+    // markers_guard drops here, closing the markers root.
+    handles
 }
 
 #[cfg(test)]
@@ -1004,5 +1409,344 @@ mod tests {
             test_display_id("basic/test.relux", "my test"),
             "basic/test.relux/my-test"
         );
+    }
+
+    #[tokio::test]
+    async fn log_skipped_test_writes_skip_record_artifact() {
+        use crate::observe::structured::StructuredLog;
+        use crate::observe::structured::TestOutcome;
+        use relux_core::diagnostics::Cause;
+        use relux_core::diagnostics::DefinitionRef;
+        use relux_core::diagnostics::IrSpan;
+        use relux_core::diagnostics::ModulePath;
+        use relux_core::diagnostics::SkipEvaluation;
+        use relux_core::diagnostics::SkipReport;
+        use relux_core::pure::Env;
+        use relux_core::pure::LayeredEnv;
+        use relux_core::table::SharedTable;
+        use relux_ir::IrTimeout;
+        use relux_ir::TestMeta;
+        use relux_ir::marker::MarkerEvalDecision;
+        use relux_ir::marker::MarkerEvalKind;
+        use relux_ir::marker::MarkerEvalModifier;
+        use relux_ir::marker::MarkerRecording;
+
+        // Synthesize the test-level definition + meta.
+        let definition = DefinitionRef::Test {
+            name: "always-skipped".into(),
+            module: ModulePath("tests/synthetic".into()),
+        };
+        let meta = TestMeta::new(
+            "always-skipped",
+            None,
+            None as Option<IrTimeout>,
+            definition.clone(),
+            IrSpan::synthetic(),
+        );
+
+        // Pre-populate the side table with the test's recordings plus a
+        // flaky entry to assert flaky markers survive into the rendered tree.
+        let recordings = vec![
+            MarkerRecording {
+                marker_span: IrSpan::synthetic(),
+                kind: MarkerEvalKind::Flaky,
+                modifier: MarkerEvalModifier::If,
+                evaluation: SkipEvaluation::Unconditional,
+                decision: MarkerEvalDecision::Mark,
+                ops: Vec::new(),
+            },
+            MarkerRecording {
+                marker_span: IrSpan::synthetic(),
+                kind: MarkerEvalKind::Skip,
+                modifier: MarkerEvalModifier::If,
+                evaluation: SkipEvaluation::Unconditional,
+                decision: MarkerEvalDecision::Mark,
+                ops: Vec::new(),
+            },
+        ];
+
+        let tables = relux_ir::Tables::new();
+        tables
+            .marker_recordings
+            .insert(definition.clone(), recordings);
+
+        // Register a Cause::Skip whose definition points at the meta. The
+        // production register_cause path uses `skip.cause_id()` as the key,
+        // so do the same here for symmetry.
+        let report = SkipReport {
+            definition: definition.clone(),
+            marker_span: IrSpan::synthetic(),
+            evaluation: SkipEvaluation::Unconditional,
+        };
+        let cause_id = report.cause_id();
+        let suite_causes: relux_core::diagnostics::CauseTable = SharedTable::new();
+        suite_causes.insert(cause_id.clone(), Cause::skip(report));
+
+        let scratch = std::env::temp_dir().join(format!(
+            "relux-log-skipped-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+        std::fs::create_dir_all(&scratch).unwrap();
+
+        let run_ctx = RunContext {
+            run_id: "test".into(),
+            run_dir: scratch.clone(),
+            artifacts_dir: scratch.join("artifacts"),
+            project_root: scratch.clone(),
+            shell_command: "/bin/sh".into(),
+            shell_prompt: "$ ".into(),
+            default_timeout: IrTimeout::tolerance(std::time::Duration::from_secs(5)),
+            test_timeout: IrTimeout::tolerance(std::time::Duration::from_secs(60)),
+            suite_timeout: std::time::Duration::from_secs(300),
+            strategy: RunStrategy::FailFast,
+            flaky: relux_core::config::FlakyConfig::default(),
+            jobs: 1,
+            progress: ProgressMode::Plain,
+        };
+        let base_env = std::sync::Arc::new(LayeredEnv::root(Env::new()));
+
+        let result = log_skipped_test(
+            &meta,
+            std::slice::from_ref(&cause_id),
+            &suite_causes,
+            &run_ctx,
+            base_env,
+            "tests/synthetic.relux",
+            &tables,
+        )
+        .await;
+
+        assert!(matches!(result.outcome, Outcome::Skipped(_)));
+        let log_dir = result
+            .log_dir
+            .clone()
+            .expect("skipped test must have log_dir");
+        assert!(
+            log_dir.join("events.json").exists(),
+            "events.json must exist"
+        );
+        assert!(log_dir.join("event.html").exists(), "event.html must exist");
+
+        // Verify the JSON: outcome.kind == "skip" and SkipRecord.span resolves
+        // to a marker-eval span in the spans map.
+        let bytes = std::fs::read(log_dir.join("events.json")).unwrap();
+        let log: StructuredLog = serde_json::from_slice(&bytes).unwrap();
+        match &log.outcome {
+            TestOutcome::Skip(rec) => {
+                let span = log
+                    .spans
+                    .get(&rec.span)
+                    .expect("SkipRecord.span must exist in spans");
+                assert!(
+                    matches!(
+                        span.kind,
+                        crate::observe::structured::SpanKind::MarkerEval { .. }
+                    ),
+                    "SkipRecord.span must point to a marker-eval span, got: {:?}",
+                    span.kind
+                );
+            }
+            other => panic!("expected TestOutcome::Skip, got {other:?}"),
+        }
+
+        // Flaky markers must reach the rendered MARKERS tree alongside the
+        // skip-triggering one — even on a skipped test.
+        let has_flaky = log.spans.values().any(|s| {
+            matches!(
+                s.kind,
+                crate::observe::structured::SpanKind::MarkerEval {
+                    marker_kind: crate::observe::structured::MarkerEvalKind::Flaky,
+                    ..
+                }
+            )
+        });
+        assert!(
+            has_flaky,
+            "expected a flaky marker-eval span in the skipped-test artifact"
+        );
+
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+
+    #[tokio::test]
+    async fn log_skipped_test_handles_propagated_skip_from_effect() {
+        // Propagated case: the test's own definition has no recordings; the
+        // cause's SkipReport.definition points at the originating effect,
+        // and the effect's recordings live in the side table under that key.
+        use crate::observe::structured::StructuredLog;
+        use crate::observe::structured::TestOutcome;
+        use relux_core::diagnostics::Cause;
+        use relux_core::diagnostics::DefinitionRef;
+        use relux_core::diagnostics::EffectId;
+        use relux_core::diagnostics::EffectName;
+        use relux_core::diagnostics::IrSpan;
+        use relux_core::diagnostics::ModulePath;
+        use relux_core::diagnostics::SkipEvaluation;
+        use relux_core::diagnostics::SkipReport;
+        use relux_core::pure::Env;
+        use relux_core::pure::LayeredEnv;
+        use relux_core::table::SharedTable;
+        use relux_ir::IrTimeout;
+        use relux_ir::TestMeta;
+        use relux_ir::marker::MarkerEvalDecision;
+        use relux_ir::marker::MarkerEvalKind;
+        use relux_ir::marker::MarkerEvalModifier;
+        use relux_ir::marker::MarkerRecording;
+
+        let test_def = DefinitionRef::Test {
+            name: "depends-on-skipped-effect".into(),
+            module: ModulePath("tests/synthetic".into()),
+        };
+        let effect_id = EffectId {
+            module: ModulePath("tests/synthetic".into()),
+            name: EffectName("Mock".into()),
+        };
+        let effect_def = DefinitionRef::Effect(effect_id);
+
+        let meta = TestMeta::new(
+            "depends-on-skipped-effect",
+            None,
+            None as Option<IrTimeout>,
+            test_def.clone(),
+            IrSpan::synthetic(),
+        );
+
+        // Effect's recordings (the originating skip lives here, not on the test).
+        let recordings = vec![MarkerRecording {
+            marker_span: IrSpan::synthetic(),
+            kind: MarkerEvalKind::Skip,
+            modifier: MarkerEvalModifier::If,
+            evaluation: SkipEvaluation::Bare {
+                value: "yes".into(),
+                met: true,
+            },
+            decision: MarkerEvalDecision::Mark,
+            ops: Vec::new(),
+        }];
+        let tables = relux_ir::Tables::new();
+        tables
+            .marker_recordings
+            .insert(effect_def.clone(), recordings);
+
+        let report = SkipReport {
+            definition: effect_def,
+            marker_span: IrSpan::synthetic(),
+            evaluation: SkipEvaluation::Bare {
+                value: "yes".into(),
+                met: true,
+            },
+        };
+        let cause_id = report.cause_id();
+        let suite_causes: relux_core::diagnostics::CauseTable = SharedTable::new();
+        suite_causes.insert(cause_id.clone(), Cause::skip(report));
+
+        let scratch = std::env::temp_dir().join(format!(
+            "relux-log-skipped-propagated-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+        std::fs::create_dir_all(&scratch).unwrap();
+
+        let run_ctx = RunContext {
+            run_id: "test".into(),
+            run_dir: scratch.clone(),
+            artifacts_dir: scratch.join("artifacts"),
+            project_root: scratch.clone(),
+            shell_command: "/bin/sh".into(),
+            shell_prompt: "$ ".into(),
+            default_timeout: IrTimeout::tolerance(std::time::Duration::from_secs(5)),
+            test_timeout: IrTimeout::tolerance(std::time::Duration::from_secs(60)),
+            suite_timeout: std::time::Duration::from_secs(300),
+            strategy: RunStrategy::FailFast,
+            flaky: relux_core::config::FlakyConfig::default(),
+            jobs: 1,
+            progress: ProgressMode::Plain,
+        };
+        let base_env = std::sync::Arc::new(LayeredEnv::root(Env::new()));
+
+        let result = log_skipped_test(
+            &meta,
+            &[cause_id],
+            &suite_causes,
+            &run_ctx,
+            base_env,
+            "tests/synthetic.relux",
+            &tables,
+        )
+        .await;
+
+        let log_dir = result
+            .log_dir
+            .clone()
+            .expect("propagated-skip artifact must have log_dir");
+        let bytes = std::fs::read(log_dir.join("events.json")).unwrap();
+        let log: StructuredLog = serde_json::from_slice(&bytes).unwrap();
+        match &log.outcome {
+            TestOutcome::Skip(rec) => {
+                let span = log
+                    .spans
+                    .get(&rec.span)
+                    .expect("SkipRecord.span must exist");
+                assert!(matches!(
+                    span.kind,
+                    crate::observe::structured::SpanKind::MarkerEval { .. }
+                ));
+            }
+            other => panic!("expected TestOutcome::Skip, got {other:?}"),
+        }
+
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+
+    #[test]
+    fn replay_markers_returns_handles_aligned_with_recordings() {
+        use crate::observe::structured::StructuredLogBuilder;
+        use relux_core::diagnostics::SkipEvaluation;
+        use relux_ir::marker::MarkerEvalDecision;
+        use relux_ir::marker::MarkerEvalKind;
+        use relux_ir::marker::MarkerEvalModifier;
+        use relux_ir::marker::MarkerRecording;
+
+        let (tx, _rx) = crate::observe::progress::channel();
+        let sources = relux_core::table::SharedTable::new();
+        let log = StructuredLogBuilder::new(
+            tx,
+            std::time::Instant::now(),
+            sources,
+            std::sync::Arc::from(std::path::Path::new(".")),
+        );
+
+        let span = relux_core::diagnostics::IrSpan::synthetic();
+        let recordings = vec![
+            MarkerRecording {
+                marker_span: span.clone(),
+                kind: MarkerEvalKind::Skip,
+                modifier: MarkerEvalModifier::If,
+                evaluation: SkipEvaluation::Unconditional,
+                decision: MarkerEvalDecision::Mark,
+                ops: Vec::new(),
+            },
+            MarkerRecording {
+                marker_span: span.clone(),
+                kind: MarkerEvalKind::Flaky,
+                modifier: MarkerEvalModifier::If,
+                evaluation: SkipEvaluation::Unconditional,
+                decision: MarkerEvalDecision::Mark,
+                ops: Vec::new(),
+            },
+        ];
+
+        let handles = replay_markers(&log, &recordings);
+        assert_eq!(handles.len(), recordings.len(), "handles must align 1:1");
+        // Distinct marker-eval spans and distinct bool-check events.
+        assert_ne!(handles[0].span, handles[1].span);
+        assert_ne!(handles[0].event_seq, handles[1].event_seq);
     }
 }

@@ -1,0 +1,826 @@
+//! Concurrent accumulator for `StructuredLog`.
+//!
+//! `StructuredLogBuilder` is the writer end of the structured-event stream.
+//! It is cheap to `Clone` (storage is `Arc<Mutex<_>>`-shared) and is threaded
+//! through `RuntimeContext`; every emission site forwards through it.
+//!
+//! The per-event-kind emitters live in concern-grouped submodules
+//! (`lifecycle`, `io`, `matching`, `values`, `diagnostics`) — each one
+//! adds an `impl StructuredLogBuilder` block. This file owns the core:
+//! the struct itself, the `SpanGuard` RAII handle, helper resolvers
+//! (`now`, `resolve_location`, `timeout_value`, `push_progress`), the
+//! two raw push entry points (`push_event`, `push_buffer_event`), and
+//! the final `build()` assembly.
+
+mod diagnostics;
+mod io;
+mod lifecycle;
+mod matching;
+mod values;
+
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::Duration;
+use std::time::Instant;
+
+use relux_core::diagnostics::IrSpan;
+use relux_core::table::SourceTable;
+use relux_ir::IrTimeout;
+
+use super::ArtifactEntry;
+use super::EnvInfo;
+use super::SourceLocation;
+use super::StructuredLog;
+use super::TestInfo;
+use super::TestOutcome;
+use super::buffer::BufferEvent;
+use super::buffer::BufferEventKind;
+use super::event::Event;
+use super::event::EventKind;
+use super::event::EventSeq;
+use super::event::TimeoutValue;
+use super::span::Span;
+use super::span::SpanId;
+use crate::observe::progress::ProgressEvent;
+use crate::observe::progress::ProgressTx;
+
+/// Concurrent accumulator for `StructuredLog`. Cheap to `Clone` (the storage
+/// is `Arc`-shared); the runtime threads it through `RuntimeContext` and
+/// every emission site forwards through it.
+#[derive(Clone)]
+pub struct StructuredLogBuilder {
+    pub(super) inner: Arc<Mutex<BuilderInner>>,
+    pub(super) test_start: Instant,
+    pub(super) sources: SourceTable,
+    pub(super) project_root: Arc<Path>,
+    pub(super) progress_tx: ProgressTx,
+}
+
+/// RAII handle for a span. `Drop` calls `close_span_inner` on the underlying
+/// builder, so `?` early-returns are safe — the span always gets an `end_ts`.
+/// Use `id()` to obtain the `SpanId` for emissions and as a parent of
+/// child spans. Use `close()` to close explicitly (gives a tighter `end_ts`
+/// than waiting for drop, useful right before `build()`).
+pub struct SpanGuard {
+    id: Option<SpanId>,
+    log: StructuredLogBuilder,
+}
+
+impl SpanGuard {
+    pub(super) fn new(id: SpanId, log: StructuredLogBuilder) -> Self {
+        Self { id: Some(id), log }
+    }
+
+    pub fn id(&self) -> SpanId {
+        self.id.expect("span guard already closed")
+    }
+
+    pub fn close(mut self) {
+        if let Some(id) = self.id.take() {
+            self.log.close_span_inner(id);
+        }
+    }
+}
+
+impl Drop for SpanGuard {
+    fn drop(&mut self) {
+        if let Some(id) = self.id.take() {
+            self.log.close_span_inner(id);
+        }
+    }
+}
+
+pub(super) struct BuilderInner {
+    pub(super) next_seq: EventSeq,
+    pub(super) next_span_id: SpanId,
+    pub(super) spans: HashMap<SpanId, Span>,
+    pub(super) events: Vec<Event>,
+    pub(super) buffer_events: Vec<BufferEvent>,
+    pub(super) shells: HashMap<String, super::shell::ShellRecord>,
+}
+
+impl StructuredLogBuilder {
+    pub fn new(
+        progress_tx: ProgressTx,
+        test_start: Instant,
+        sources: SourceTable,
+        project_root: Arc<Path>,
+    ) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(BuilderInner {
+                next_seq: 0,
+                next_span_id: 0,
+                spans: HashMap::new(),
+                events: Vec::new(),
+                buffer_events: Vec::new(),
+                shells: HashMap::new(),
+            })),
+            test_start,
+            sources,
+            project_root,
+            progress_tx,
+        }
+    }
+
+    pub(super) fn now(&self) -> Duration {
+        self.test_start.elapsed()
+    }
+
+    pub(super) fn resolve_location(&self, span: &IrSpan) -> Option<SourceLocation> {
+        let file_id = span.file();
+        let source_file = self.sources.get(file_id)?;
+        let line = source_file.line_at(span.span().start());
+        let rel_path = source_file
+            .path
+            .strip_prefix(&*self.project_root)
+            .unwrap_or(&source_file.path);
+        Some(SourceLocation {
+            file: rel_path.display().to_string(),
+            line,
+            start: span.span().start(),
+            end: span.span().end(),
+        })
+    }
+
+    pub(super) fn timeout_value(&self, t: &IrTimeout) -> TimeoutValue {
+        match t {
+            IrTimeout::Tolerance {
+                duration,
+                multiplier,
+                span,
+            } => TimeoutValue::Tolerance {
+                duration: humantime::format_duration(*duration).to_string(),
+                multiplier: format_multiplier(*multiplier),
+                total_duration: humantime::format_duration(t.adjusted_duration()).to_string(),
+                source: self.resolve_location(span),
+            },
+            IrTimeout::Assertion { duration, span } => TimeoutValue::Assertion {
+                duration: humantime::format_duration(*duration).to_string(),
+                source: self.resolve_location(span),
+            },
+        }
+    }
+
+    pub(super) fn push_progress(&self, event: ProgressEvent) {
+        let _ = self.progress_tx.send(event);
+    }
+
+    /// Latest emitted seq, or `0` if no event has fired yet. Failures use
+    /// this to point the structured-log artifact at the most recent event
+    /// (typically a `Timeout` or `FailPatternTriggered`).
+    pub fn current_seq(&self) -> EventSeq {
+        let inner = self.inner.lock().unwrap();
+        inner.next_seq.saturating_sub(1)
+    }
+
+    /// Test-only: a snapshot of the accumulated buffer events, in the
+    /// order they were pushed.
+    #[cfg(test)]
+    pub(crate) fn buffer_events_for_tests(&self) -> Vec<BufferEvent> {
+        self.inner.lock().unwrap().buffer_events.clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn sources_for_tests(&self) -> &relux_core::table::SourceTable {
+        &self.sources
+    }
+
+    #[cfg(test)]
+    pub(crate) fn resolve_location_for_tests(&self, span: &IrSpan) -> Option<SourceLocation> {
+        self.resolve_location(span)
+    }
+
+    pub fn push_event(
+        &self,
+        span: SpanId,
+        shell: Option<&str>,
+        shell_marker: Option<&str>,
+        location: Option<&IrSpan>,
+        kind: EventKind,
+    ) -> EventSeq {
+        let source = location.and_then(|s| self.resolve_location(s));
+        let ts = self.now();
+        let mut inner = self.inner.lock().unwrap();
+        let seq = inner.next_seq;
+        inner.next_seq += 1;
+        inner.events.push(Event {
+            seq,
+            ts,
+            span,
+            shell: shell.map(String::from),
+            shell_marker: shell_marker.map(String::from),
+            source,
+            kind,
+        });
+        seq
+    }
+
+    pub fn push_buffer_event(
+        &self,
+        shell: &str,
+        shell_marker: &str,
+        kind: BufferEventKind,
+    ) -> EventSeq {
+        let ts = self.now();
+        let mut inner = self.inner.lock().unwrap();
+        let seq = inner.next_seq;
+        inner.next_seq += 1;
+        inner.buffer_events.push(BufferEvent {
+            seq,
+            ts,
+            shell: shell.to_string(),
+            shell_marker: shell_marker.to_string(),
+            kind,
+        });
+        seq
+    }
+
+    pub fn build(
+        self,
+        info: TestInfo,
+        env: EnvInfo,
+        outcome: TestOutcome,
+        artifacts: Vec<ArtifactEntry>,
+    ) -> StructuredLog {
+        let inner = match Arc::try_unwrap(self.inner) {
+            Ok(mutex) => mutex.into_inner().unwrap(),
+            Err(arc) => {
+                let mut guard = arc.lock().unwrap();
+                BuilderInner {
+                    next_seq: guard.next_seq,
+                    next_span_id: guard.next_span_id,
+                    spans: std::mem::take(&mut guard.spans),
+                    events: std::mem::take(&mut guard.events),
+                    buffer_events: std::mem::take(&mut guard.buffer_events),
+                    shells: std::mem::take(&mut guard.shells),
+                }
+            }
+        };
+
+        let mut referenced: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for span in inner.spans.values() {
+            if let Some(loc) = &span.location {
+                referenced.insert(loc.file.clone());
+            }
+        }
+        for ev in &inner.events {
+            if let Some(loc) = &ev.source {
+                referenced.insert(loc.file.clone());
+            }
+        }
+
+        let mut sources: HashMap<String, String> = HashMap::new();
+        for (_, source_file) in self.sources.as_vec() {
+            let rel = source_file
+                .path
+                .strip_prefix(&*self.project_root)
+                .unwrap_or(&source_file.path)
+                .display()
+                .to_string();
+            if referenced.contains(&rel) {
+                sources.insert(rel, source_file.source.clone());
+            }
+        }
+
+        StructuredLog {
+            schema_version: super::SCHEMA_VERSION,
+            info,
+            outcome,
+            env,
+            shells: inner.shells,
+            spans: inner.spans,
+            events: inner.events,
+            buffer_events: inner.buffer_events,
+            sources,
+            artifacts,
+        }
+    }
+}
+
+/// Format a tolerance multiplier as a stable string. Whole numbers keep one
+/// decimal place (`1.0`, `2.0`), fractional values use default float
+/// formatting (`1.5`, `1.25`).
+fn format_multiplier(m: f64) -> String {
+    if m.fract() == 0.0 {
+        format!("{m:.1}")
+    } else {
+        format!("{m}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::super::span::FnCallKind;
+    use super::super::span::SpanKind;
+    use super::*;
+    use crate::observe::progress;
+
+    fn make_builder() -> (
+        StructuredLogBuilder,
+        tokio::sync::mpsc::UnboundedReceiver<ProgressEvent>,
+    ) {
+        let (tx, rx) = progress::channel();
+        let sources = relux_core::table::SharedTable::new();
+        let builder = StructuredLogBuilder::new(
+            tx,
+            Instant::now(),
+            sources,
+            Arc::from(PathBuf::from("/project").as_path()),
+        );
+        (builder, rx)
+    }
+
+    #[test]
+    fn seq_is_monotonic_across_event_and_buffer_pushes() {
+        let (b, _rx) = make_builder();
+        let test_span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let id = test_span.id();
+        let s1 = b.push_event(
+            id,
+            Some("sh"),
+            Some("m"),
+            None,
+            EventKind::Send { data: "a".into() },
+        );
+        let s2 = b.push_buffer_event("sh", "m", BufferEventKind::Grew { data: "b".into() });
+        let s3 = b.push_event(
+            id,
+            Some("sh"),
+            Some("m"),
+            None,
+            EventKind::Recv { data: "c".into() },
+        );
+        assert_eq!(s1, 0);
+        assert_eq!(s2, 1);
+        assert_eq!(s3, 2);
+    }
+
+    #[test]
+    fn open_close_span_round_trips() {
+        let (b, _rx) = make_builder();
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let id = span.id();
+        span.close();
+        let inner = b.inner.lock().unwrap();
+        let stored = inner.spans.get(&id).unwrap();
+        assert!(stored.end_ts.is_some());
+        assert!(stored.parent.is_none());
+    }
+
+    #[test]
+    fn span_guard_closes_on_drop() {
+        let (b, _rx) = make_builder();
+        let id = {
+            let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+            span.id()
+            // span drops at end of this block
+        };
+        let inner = b.inner.lock().unwrap();
+        assert!(inner.spans.get(&id).unwrap().end_ts.is_some());
+    }
+
+    #[test]
+    fn span_guard_explicit_close_then_drop_is_noop() {
+        let (b, _rx) = make_builder();
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let id = span.id();
+        span.close();
+        let end_after_close = b.inner.lock().unwrap().spans.get(&id).unwrap().end_ts;
+        assert!(end_after_close.is_some());
+        // Drop happened inside `close()` (Option taken). A subsequent peek
+        // should show the same end_ts — the guard's drop didn't re-touch it
+        // because there's no guard left.
+        let end_later = b.inner.lock().unwrap().spans.get(&id).unwrap().end_ts;
+        assert_eq!(end_after_close, end_later);
+    }
+
+    #[test]
+    fn span_ids_are_unique_and_parent_preserved() {
+        let (b, _rx) = make_builder();
+        let parent = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let parent_id = parent.id();
+        let child = b.open_span(
+            SpanKind::ShellBlock { shell: "sh".into() },
+            Some(parent_id),
+            None,
+        );
+        let child_id = child.id();
+        assert_ne!(parent_id, child_id);
+        let inner = b.inner.lock().unwrap();
+        assert_eq!(inner.spans.get(&child_id).unwrap().parent, Some(parent_id));
+    }
+
+    #[test]
+    fn shell_glossary_records_spawn_and_terminate() {
+        let (b, _rx) = make_builder();
+        b.record_shell_spawn("test-marker-0000", "default", "/bin/bash");
+        b.record_shell_terminate("test-marker-0000");
+        let inner = b.inner.lock().unwrap();
+        let rec = inner.shells.get("test-marker-0000").unwrap();
+        assert_eq!(rec.name, "default");
+        assert_eq!(rec.command, "/bin/bash");
+        assert!(rec.terminate_ts.is_some());
+    }
+
+    #[test]
+    fn clone_shares_storage() {
+        let (b, _rx) = make_builder();
+        let b2 = b.clone();
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        b2.push_event(
+            span.id(),
+            Some("sh"),
+            Some("m"),
+            None,
+            EventKind::Send { data: "x".into() },
+        );
+        let inner = b.inner.lock().unwrap();
+        assert_eq!(inner.events.len(), 1);
+    }
+
+    #[test]
+    fn build_consumes_builder_and_yields_log() {
+        let (b, _rx) = make_builder();
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let id = span.id();
+        b.push_event(
+            id,
+            Some("sh"),
+            Some("m"),
+            None,
+            EventKind::Send { data: "x".into() },
+        );
+        b.push_buffer_event("sh", "m", BufferEventKind::Grew { data: "y".into() });
+        span.close();
+        let log = b.build(
+            TestInfo {
+                name: "t".into(),
+                path: "t.relux".into(),
+                duration_ms: 1,
+            },
+            EnvInfo::default(),
+            TestOutcome::Pass,
+            Vec::new(),
+        );
+        assert_eq!(log.events.len(), 1);
+        assert_eq!(log.buffer_events.len(), 1);
+        assert_eq!(log.spans.len(), 1);
+        assert!(matches!(log.outcome, TestOutcome::Pass));
+    }
+
+    #[test]
+    fn emit_send_pushes_event_and_progress() {
+        let (b, mut rx) = make_builder();
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        b.emit_send(span.id(), "sh", "m", "hello", None);
+        let inner = b.inner.lock().unwrap();
+        assert!(matches!(
+            &inner.events.last().unwrap().kind,
+            EventKind::Send { data } if data == "hello"
+        ));
+        drop(inner);
+        assert!(matches!(rx.try_recv(), Ok(ProgressEvent::Send)));
+    }
+
+    #[test]
+    fn emit_match_done_record_pushes_event_with_supplied_buffer_seq() {
+        let (b, _rx) = make_builder();
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        // Simulate the buffer event that `OutputBuffer::consume_*` would
+        // have pushed atomically with the consume operation.
+        let buffer_seq = b.push_buffer_event(
+            "sh",
+            "m",
+            BufferEventKind::Matched {
+                before: "before".into(),
+                matched: "ok".into(),
+                after: "after".into(),
+            },
+        );
+        b.emit_match_done_record(
+            span.id(),
+            "sh",
+            "m",
+            "ok",
+            Duration::from_millis(5),
+            None,
+            buffer_seq,
+            None,
+        );
+        let inner = b.inner.lock().unwrap();
+        assert_eq!(inner.buffer_events.len(), 1);
+        let last = inner.events.last().unwrap();
+        match &last.kind {
+            EventKind::MatchDone {
+                buffer_seq: ev_seq, ..
+            } => assert_eq!(*ev_seq, buffer_seq),
+            _ => panic!("expected MatchDone"),
+        }
+    }
+
+    #[test]
+    fn resolve_stack_walks_parent_chain_root_to_leaf() {
+        let (b, _rx) = make_builder();
+        let test_span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let test_id = test_span.id();
+        let block_span = b.open_span(
+            SpanKind::ShellBlock { shell: "sh".into() },
+            Some(test_id),
+            None,
+        );
+        let block_id = block_span.id();
+        let fn_span = b.open_span(
+            SpanKind::FnCall {
+                name: "do_thing".into(),
+                args: vec![("x".into(), "1".into())],
+                result: None,
+                callee_kind: FnCallKind::User,
+                is_pure: false,
+            },
+            Some(block_id),
+            None,
+        );
+        let fn_id = fn_span.id();
+
+        let frames = b.resolve_stack(fn_id);
+        assert_eq!(frames.len(), 3);
+        assert_eq!(frames[0].span, test_id);
+        assert_eq!(frames[0].kind, "test");
+        assert_eq!(frames[0].name.as_deref(), Some("t"));
+        assert_eq!(frames[1].span, block_id);
+        assert_eq!(frames[1].kind, "shell-block");
+        assert_eq!(frames[1].name.as_deref(), Some("sh"));
+        assert_eq!(frames[2].span, fn_id);
+        assert_eq!(frames[2].kind, "fn-call");
+        assert_eq!(frames[2].name.as_deref(), Some("do_thing"));
+        assert_eq!(frames[2].args, vec![("x".into(), "1".into())]);
+    }
+
+    #[test]
+    fn fn_call_round_trips_callee_kind_and_is_pure() {
+        let (b, _rx) = make_builder();
+        let test_span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let test_id = test_span.id();
+        let fn_span = b.open_span(
+            SpanKind::FnCall {
+                name: "trim".into(),
+                args: vec![("$0".into(), "hi".into())],
+                result: None,
+                callee_kind: FnCallKind::Bif,
+                is_pure: true,
+            },
+            Some(test_id),
+            None,
+        );
+        let fn_id = fn_span.id();
+        fn_span.close();
+        test_span.close();
+
+        let inner = b.inner.lock().unwrap();
+        let stored = inner.spans.get(&fn_id).unwrap();
+        match &stored.kind {
+            SpanKind::FnCall {
+                callee_kind,
+                is_pure,
+                ..
+            } => {
+                assert_eq!(*callee_kind, FnCallKind::Bif);
+                assert!(*is_pure);
+            }
+            _ => panic!("expected FnCall"),
+        }
+    }
+
+    #[test]
+    fn current_seq_reflects_latest_emission() {
+        let (b, _rx) = make_builder();
+        assert_eq!(b.current_seq(), 0);
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        b.push_event(
+            span.id(),
+            Some("sh"),
+            Some("m"),
+            None,
+            EventKind::Send { data: "a".into() },
+        );
+        assert_eq!(b.current_seq(), 0);
+        b.push_buffer_event("sh", "m", BufferEventKind::Grew { data: "b".into() });
+        assert_eq!(b.current_seq(), 1);
+    }
+
+    #[test]
+    fn round_trip_serde_json() {
+        let (b, _rx) = make_builder();
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let buffer_seq = b.push_buffer_event(
+            "sh",
+            "m",
+            BufferEventKind::Matched {
+                before: "".into(),
+                matched: "ok".into(),
+                after: "".into(),
+            },
+        );
+        b.emit_match_done_record(
+            span.id(),
+            "sh",
+            "m",
+            "ok",
+            Duration::from_millis(1),
+            None,
+            buffer_seq,
+            None,
+        );
+        span.close();
+        let log = b.build(
+            TestInfo {
+                name: "t".into(),
+                path: "t.relux".into(),
+                duration_ms: 1,
+            },
+            EnvInfo::default(),
+            TestOutcome::Pass,
+            Vec::new(),
+        );
+        let json = serde_json::to_string(&log).unwrap();
+        let back: StructuredLog = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.events.len(), log.events.len());
+        assert_eq!(back.buffer_events.len(), log.buffer_events.len());
+        assert_eq!(back.spans.len(), log.spans.len());
+    }
+
+    #[test]
+    fn push_event_records_source_when_irspan_provided() {
+        use relux_core::Span as CoreSpan;
+        use relux_core::diagnostics::IrSpan;
+        use relux_core::table::FileId;
+
+        let (builder, _rx) = make_builder();
+        let path = PathBuf::from("/project/t.relux");
+        let file_id = FileId::new(path.clone());
+        let src = relux_core::table::SourceFile::new(path, "abcdef\n".into());
+        builder.sources_for_tests().insert(file_id.clone(), src);
+
+        let span_guard = builder.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let ir = IrSpan::new(file_id, CoreSpan::new(1, 4));
+        builder.push_event(
+            span_guard.id(),
+            None,
+            None,
+            Some(&ir),
+            EventKind::Annotate { text: "hi".into() },
+        );
+        drop(span_guard);
+
+        let log = builder.build(
+            TestInfo {
+                name: "t".into(),
+                path: "t".into(),
+                duration_ms: 0,
+            },
+            EnvInfo::default(),
+            TestOutcome::Pass,
+            Vec::new(),
+        );
+        let ev = log
+            .events
+            .iter()
+            .find(|e| matches!(e.kind, EventKind::Annotate { .. }))
+            .unwrap();
+        let src = ev.source.as_ref().expect("source present");
+        assert_eq!(src.start, 1);
+        assert_eq!(src.end, 4);
+    }
+
+    #[test]
+    fn build_populates_sources_for_referenced_files_only() {
+        use relux_core::Span as CoreSpan;
+        use relux_core::diagnostics::IrSpan;
+        use relux_core::table::FileId;
+
+        let (builder, _rx) = make_builder();
+        let path_used = PathBuf::from("/project/used.relux");
+        let path_unused = PathBuf::from("/project/unused.relux");
+        let fid_used = FileId::new(path_used.clone());
+        let fid_unused = FileId::new(path_unused.clone());
+        builder.sources_for_tests().insert(
+            fid_used.clone(),
+            relux_core::table::SourceFile::new(path_used, "u-content\n".into()),
+        );
+        builder.sources_for_tests().insert(
+            fid_unused,
+            relux_core::table::SourceFile::new(path_unused, "x-content\n".into()),
+        );
+
+        let test_span = builder.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let ir = IrSpan::new(fid_used, CoreSpan::new(0, 1));
+        builder.emit_annotate(test_span.id(), "sh", "m", "a", Some(&ir));
+        drop(test_span);
+
+        let log = builder.build(
+            TestInfo {
+                name: "t".into(),
+                path: "t".into(),
+                duration_ms: 0,
+            },
+            EnvInfo::default(),
+            TestOutcome::Pass,
+            Vec::new(),
+        );
+
+        assert_eq!(log.sources.len(), 1, "only referenced files in sources");
+        assert_eq!(
+            log.sources.get("used.relux"),
+            Some(&"u-content\n".to_string())
+        );
+        assert!(!log.sources.contains_key("unused.relux"));
+    }
+
+    #[test]
+    fn emit_send_records_source_from_irspan() {
+        use relux_core::Span as CoreSpan;
+        use relux_core::diagnostics::IrSpan;
+        use relux_core::table::FileId;
+
+        let (builder, _rx) = make_builder();
+        let path = PathBuf::from("/project/t.relux");
+        let file_id = FileId::new(path.clone());
+        let src = relux_core::table::SourceFile::new(path, "send hello\n".into());
+        builder.sources_for_tests().insert(file_id.clone(), src);
+
+        let test_span = builder.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let ir = IrSpan::new(file_id, CoreSpan::new(0, 4));
+        builder.emit_send(test_span.id(), "sh", "m", "hello", Some(&ir));
+        drop(test_span);
+
+        let log = builder.build(
+            TestInfo {
+                name: "t".into(),
+                path: "t".into(),
+                duration_ms: 0,
+            },
+            EnvInfo::default(),
+            TestOutcome::Pass,
+            Vec::new(),
+        );
+        let ev = log
+            .events
+            .iter()
+            .find(|e| matches!(e.kind, EventKind::Send { .. }))
+            .unwrap();
+        let s = ev.source.as_ref().expect("source set");
+        assert_eq!(s.start, 0);
+        assert_eq!(s.end, 4);
+    }
+
+    #[test]
+    fn source_location_carries_byte_range() {
+        use relux_core::Span as CoreSpan;
+        use relux_core::diagnostics::IrSpan;
+        use relux_core::table::FileId;
+
+        let (builder, _rx) = make_builder();
+        let path = PathBuf::from("/project/lib/x.relux");
+        let file_id = FileId::new(path.clone());
+        let src = relux_core::table::SourceFile::new(path, "line 1\nline 2\nline 3\n".into());
+        builder.sources_for_tests().insert(file_id.clone(), src);
+
+        let ir = IrSpan::new(file_id, CoreSpan::new(7, 13));
+        let loc = builder.resolve_location_for_tests(&ir).expect("resolve");
+        assert_eq!(loc.file, "lib/x.relux");
+        assert_eq!(loc.line, 2);
+        assert_eq!(loc.start, 7);
+        assert_eq!(loc.end, 13);
+    }
+
+    #[test]
+    fn test_outcome_skip_serde_round_trip() {
+        use super::super::skip::SkipRecord;
+        use super::super::span::MarkerEvalDetail;
+        use super::super::span::MarkerEvalKind;
+
+        let original = TestOutcome::Skip(SkipRecord {
+            span: 42u64,
+            event_seq: 7u64,
+            marker_kind: MarkerEvalKind::Skip,
+            evaluation: MarkerEvalDetail::Unconditional,
+        });
+        let json = serde_json::to_string(&original).unwrap();
+        assert!(
+            json.contains("\"kind\":\"skip\""),
+            "expected `\"kind\":\"skip\"` in JSON, got: {json}"
+        );
+        let parsed: TestOutcome = serde_json::from_str(&json).unwrap();
+        match parsed {
+            TestOutcome::Skip(rec) => {
+                assert_eq!(rec.span, 42u64);
+                assert_eq!(rec.event_seq, 7u64);
+            }
+            other => panic!("expected TestOutcome::Skip, got {other:?}"),
+        }
+    }
+}

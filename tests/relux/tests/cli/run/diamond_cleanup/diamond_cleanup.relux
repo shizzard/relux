@@ -1,0 +1,78 @@
+test "diamond shared dep cleans up after both parents, exactly once" ~60s {
+    """
+    Verifies the RAII refcount design:
+      * shared dep E0 is deduplicated (exactly one E0 cleanup line)
+      * E0 cleanup runs strictly after both E1 and E2 cleanups
+      * cleanup of dependencies awaits both parents' own cleanup
+    """
+    let marker = "${__RELUX_TEST_ARTIFACTS}/order"
+
+    shell s {
+        > export MARKER_FILE=${marker}
+        match_ok()
+        > rm -f ${marker}
+        match_ok()
+
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <= 1 passed
+        match_ok()
+
+        // Exactly one E0 cleanup line: dedup.
+        > grep -c '^E0$' ${marker}
+        <? ^1$
+        match_ok()
+
+        // E0 line number > E1 line number AND > E2 line number.
+        // Assignment-only sends produce no stdout, so each one needs an
+        // explicit `match_prompt()` — otherwise the prompts stack onto
+        // one line and `^OK$` can't anchor against the final echo.
+        > e0=$(grep -n '^E0$' ${marker} | cut -d: -f1)
+        match_prompt()
+        > e1=$(grep -n '^E1$' ${marker} | cut -d: -f1)
+        match_prompt()
+        > e2=$(grep -n '^E2$' ${marker} | cut -d: -f1)
+        match_prompt()
+        > [ "$e0" -gt "$e1" ] && [ "$e0" -gt "$e2" ] && echo OK
+        <? ^OK$
+        match_ok()
+
+        // Find the child run's events.json. Child runs leave per-run dirs
+        // under ${__RELUX_TEST_ROOT}/fixtures/relux/out/; the most recent
+        // is the one we just created.
+        > events=$(ls -dt ${__RELUX_TEST_ROOT}/fixtures/relux/out/*/logs/relux/tests/diamond/diamond-cleans-up/events.json 2>/dev/null | head -1); echo FOUND=$events
+        <? ^FOUND=/
+        match_ok()
+
+        // Structural assertions on the child's span tree:
+
+        // Three distinct effect markers across bootstraps (E0, E1, E2).
+        > jq -M '[.spans[] | select(.kind == "effect-setup" and .is_reuse == false) | .marker] | unique | length' $events
+        <? ^3$
+        match_ok()
+
+        // Exactly one reuse setup span (E0's second acquire).
+        > jq -M '[.spans[] | select(.kind == "effect-setup" and .is_reuse == true)] | length' $events
+        <? ^1$
+        match_ok()
+
+        // The reuse span's marker matches a bootstrap span's marker.
+        > jq -Mr '[.spans[] | select(.kind == "effect-setup" and .is_reuse == true) | .marker] as $r | [.spans[] | select(.kind == "effect-setup" and .is_reuse == false) | .marker] as $b | if ($r | length) == 1 and ($b | index($r[0]) != null) then "OK" else "MISS" end' $events
+        <? ^OK$
+        match_ok()
+
+        // Exactly one final cleanup span per bootstrapped effect (three total).
+        > jq -M '[.spans[] | select(.kind == "effect-cleanup" and .is_deferred == false)] | length' $events
+        <? ^3$
+        match_ok()
+
+        // Exactly one deferred cleanup span (E0's non-last release).
+        > jq -M '[.spans[] | select(.kind == "effect-cleanup" and .is_deferred == true)] | length' $events
+        <? ^1$
+        match_ok()
+
+        // The deferred cleanup's marker matches a final cleanup's marker.
+        > jq -Mr '[.spans[] | select(.kind == "effect-cleanup" and .is_deferred == true) | .marker] as $d | [.spans[] | select(.kind == "effect-cleanup" and .is_deferred == false) | .marker] as $f | if ($d | length) == 1 and ($f | index($d[0]) != null) then "OK" else "MISS" end' $events
+        <? ^OK$
+        match_ok()
+    }
+}

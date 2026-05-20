@@ -2,10 +2,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
-use tokio_util::sync::CancellationToken;
-
-use crate::observe::event_sink::EventSink;
-use crate::observe::shell_log::ShellLogger;
+use crate::cancel::CancelToken;
+use crate::observe::structured::StructuredLogBuilder;
 use relux_core::pure::LayeredEnv;
 use relux_ir::IrTimeout;
 use relux_ir::Tables;
@@ -19,18 +17,12 @@ pub struct ShellConfig {
 
 #[derive(Clone)]
 pub struct RuntimeContext {
-    pub events: EventSink,
+    pub log: StructuredLogBuilder,
     pub shell: ShellConfig,
     pub log_dir: Arc<Path>,
     pub tables: Tables,
     pub env: Arc<LayeredEnv>,
-    pub cancel: CancellationToken,
+    pub cancel: CancelToken,
     pub test_start: Instant,
     pub flaky_timeout_multiplier: f64,
-}
-
-impl RuntimeContext {
-    pub fn create_shell_logger(&self, name: &str) -> std::io::Result<ShellLogger> {
-        ShellLogger::create(&self.log_dir, name, self.test_start)
-    }
 }

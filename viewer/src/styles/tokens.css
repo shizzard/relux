@@ -1,0 +1,34 @@
+:root {
+  --bg: #0f1620;
+  --bg-deep: #0a0f17;
+  --paper: #18212e;
+  --paper-2: #1d2735;
+
+  --ink: #e8e4d6;
+  --ink-dim: #9aa3ad;
+  --ink-faint: #5b6470;
+
+  --accent: #ffd166;
+  --accent-2: #6fd3a3;
+  --accent-3: #c79bf0;
+  --danger: #ff7a7a;
+  --info: #7aa7d9;
+
+  --pass: var(--accent-2);
+  --fail: var(--danger);
+  --cancel: var(--accent);
+  --skip: var(--ink-faint);
+  --invalid: var(--accent);
+
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", "Fira Code", "Source Code Pro", Menlo, Consolas, monospace;
+
+  --gap-xs: 4px;
+  --gap-sm: 8px;
+  --gap-md: 12px;
+  --gap-lg: 18px;
+  --gap-xl: 28px;
+
+  --radius: 6px;
+  --border: rgba(232, 228, 214, 0.18);
+}

@@ -5,7 +5,6 @@ test "check rejects match operator in cleanup block" {
     shell s {
         > ${__RELUX} check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
         // TODO: detection not yet implemented in new resolver
-        match_prompt()
-        match_exit_code(0)
+        match_ok()
     }
 }

@@ -8,6 +8,8 @@ use relux_core::pure::LayeredEnv;
 use relux_core::pure::VarScope;
 use relux_ir::IrTimeout;
 
+use crate::observe::structured::SpanId;
+
 // ─── FailPattern ────────────────────────────────────────────
 
 #[derive(Clone, Debug)]
@@ -86,11 +88,22 @@ impl Scope {
 // ─── ShellState ─────────────────────────────────────────────
 
 pub struct ShellState {
+    /// Local name of the shell within its current owning scope. At spawn
+    /// time this is the shell's declaration name; each `reset_for_export`
+    /// rewrites it to the key under which the source effect exposed the
+    /// shell to the parent.
     pub name: String,
-    pub alias: Option<String>,
-    /// Accumulated name path from effect export chain.
-    /// Each export pushes `"EffectName.shell_name"` onto this prefix.
-    pub name_prefix: Vec<String>,
+
+    /// User-supplied alias from the parent caller's `start <Effect> as
+    /// <Alias>`. `None` when the caller did not alias, or when the shell
+    /// is in its own (origin) scope and no parent has imported it yet.
+    pub effect_alias: Option<String>,
+
+    /// Original effect-type name of the parent effect that owns this
+    /// shell from the current scope's POV. `None` symmetrically with
+    /// `effect_alias` (no parent → no name).
+    pub effect_name: Option<String>,
+
     pub vars: VarScope,
     pub captures: Captures,
     pub timeout: Option<IrTimeout>,
@@ -98,11 +111,11 @@ pub struct ShellState {
 }
 
 impl ShellState {
-    pub fn new(name: String, alias: Option<String>) -> Self {
+    pub fn new(name: String) -> Self {
         Self {
             name,
-            alias,
-            name_prefix: Vec::new(),
+            effect_alias: None,
+            effect_name: None,
             vars: VarScope::new(),
             captures: Captures::new(),
             timeout: None,
@@ -127,6 +140,7 @@ pub struct ExecutionContext {
     pub scope: Scope,
     pub shell: ShellState,
     call_stack: Vec<CallFrame>,
+    span_stack: Vec<SpanId>,
     pub default_timeout: IrTimeout,
     pub env: Arc<LayeredEnv>,
 }
@@ -137,14 +151,44 @@ impl ExecutionContext {
         shell: ShellState,
         default_timeout: IrTimeout,
         env: Arc<LayeredEnv>,
+        parent_span: SpanId,
     ) -> Self {
         Self {
             scope,
             shell,
             call_stack: Vec::new(),
+            span_stack: vec![parent_span],
             default_timeout,
             env,
         }
+    }
+
+    /// The id of the innermost span currently active in this context. Used
+    /// by every emission site so events reference the span they fired in.
+    pub fn current_span(&self) -> SpanId {
+        *self
+            .span_stack
+            .last()
+            .expect("span_stack always has at least one entry")
+    }
+
+    pub fn push_span(&mut self, id: SpanId) {
+        self.span_stack.push(id);
+    }
+
+    pub fn pop_span(&mut self) {
+        // Never pop the bottom of the stack (the root passed to `new`).
+        if self.span_stack.len() > 1 {
+            self.span_stack.pop();
+        }
+    }
+
+    /// Reset the span stack so emissions are parented on `span`. Used when a
+    /// shell is reused across shell blocks: each block opens a fresh
+    /// ShellBlock span and the VM's events should reference that one rather
+    /// than the span from the shell's original construction.
+    pub fn set_block_span(&mut self, span: SpanId) {
+        self.span_stack = vec![span];
     }
 
     /// Look up a variable by name. Follows the lookup chain per RFC R005.
@@ -191,13 +235,15 @@ impl ExecutionContext {
         }
     }
 
-    /// Assign to an existing variable. Returns true if found and updated.
-    pub async fn assign(&mut self, key: &str, value: String) -> bool {
+    /// Assign to an existing variable. Returns `Some(prev)` with the prior
+    /// value if found and updated, `None` if the key was not found in any
+    /// scope.
+    pub async fn assign(&mut self, key: &str, value: String) -> Option<String> {
         if let Some(frame) = self.call_stack.last_mut() {
             return frame.vars.assign(key, value);
         }
-        if self.shell.vars.assign(key, value.clone()) {
-            return true;
+        if let Some(prev) = self.shell.vars.assign(key, value.clone()) {
+            return Some(prev);
         }
         self.scope.vars().lock().await.assign(key, value)
     }
@@ -266,24 +312,37 @@ impl ExecutionContext {
         }
     }
 
-    /// Current display name for logging.
-    /// Builds the full qualified name from the effect export chain:
-    /// e.g. `SetupDb.db.Db.db.mydb` for a 2-level effect chain with alias `mydb`.
+    /// Current display name for logging. Reflects the *current scope's*
+    /// view of the shell only — no chain accumulation across exports.
+    ///
+    /// Format:
+    /// - `<name>` when no parent effect imported this shell (origin scope or
+    ///   directly at test scope without aliasing through an effect).
+    /// - `<Effect>.<name>` when the parent imported the source effect without
+    ///   aliasing it.
+    /// - `<Alias>(<Effect>).<name>` when the parent used `start Effect as Alias`.
     pub fn current_name(&self) -> String {
-        let tail = self.shell.alias.as_deref().unwrap_or(&self.shell.name);
-        if self.shell.name_prefix.is_empty() {
-            tail.to_string()
-        } else {
-            format!("{}.{}", self.shell.name_prefix.join("."), tail)
+        match (&self.shell.effect_name, &self.shell.effect_alias) {
+            (None, _) => self.shell.name.clone(),
+            (Some(eff), None) => format!("{eff}.{}", self.shell.name),
+            (Some(eff), Some(ali)) => format!("{ali}({eff}).{}", self.shell.name),
         }
     }
 
-    /// Reset for shell export (effect → test/parent effect).
-    /// Accumulates the current scope+shell name into the name prefix chain.
-    pub fn reset_for_export(&mut self, new_scope: Scope) {
-        // Push "EffectName.shell_name" onto the prefix before switching scope
-        let segment = format!("{}.{}", self.scope.name(), self.shell.name);
-        self.shell.name_prefix.push(segment);
+    /// Reset for shell export (effect → test/parent effect). Replaces the
+    /// shell's view with how the new (parent) scope sees it: the parent's
+    /// alias for the source effect, the source effect's original name, and
+    /// the local key under which it was exposed.
+    pub fn reset_for_export(
+        &mut self,
+        new_scope: Scope,
+        parent_alias: Option<String>,
+        parent_effect_name: Option<String>,
+        shell_local_name: String,
+    ) {
+        self.shell.effect_alias = parent_alias;
+        self.shell.effect_name = parent_effect_name;
+        self.shell.name = shell_local_name;
         self.scope = new_scope;
         self.shell.vars = VarScope::new();
         self.shell.captures = Captures::new();
@@ -302,6 +361,30 @@ impl ExecutionContext {
     /// Whether we're inside a function call.
     pub fn in_call(&self) -> bool {
         !self.call_stack.is_empty()
+    }
+
+    /// Snapshot user-visible variables at the current point of execution,
+    /// for failure diagnostics. Excludes the layered process env (already in
+    /// `events.json :: env.bootstrap`) and matcher captures. Sorted by key
+    /// for stable JSON output.
+    pub async fn snapshot_user_vars(&self) -> Vec<(String, String)> {
+        let mut out: Vec<(String, String)> = Vec::new();
+        if let Some(frame) = self.call_stack.last() {
+            for (k, v) in frame.vars.iter() {
+                out.push((k.to_string(), v.to_string()));
+            }
+        } else {
+            for (k, v) in self.shell.vars.iter() {
+                out.push((k.to_string(), v.to_string()));
+            }
+            let scope_vars = self.scope.vars().lock().await;
+            for (k, v) in scope_vars.iter() {
+                out.push((k.to_string(), v.to_string()));
+            }
+        }
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out.dedup_by(|a, b| a.0 == b.0);
+        out
     }
 
     /// Build the environment variables map for spawning a shell process.
@@ -345,7 +428,7 @@ mod tests {
     }
 
     fn test_shell(name: &str) -> ShellState {
-        ShellState::new(name.into(), None)
+        ShellState::new(name.into())
     }
 
     fn test_ctx() -> ExecutionContext {
@@ -354,6 +437,7 @@ mod tests {
             test_shell("sh"),
             IrTimeout::tolerance(Duration::from_secs(5)),
             test_env(),
+            0,
         )
     }
 
@@ -456,14 +540,14 @@ mod tests {
     async fn assign_in_shell() {
         let mut ctx = test_ctx();
         ctx.shell.vars.insert("x".into(), "old".into());
-        assert!(ctx.assign("x", "new".into()).await);
+        assert_eq!(ctx.assign("x", "new".into()).await, Some("old".into()));
         assert_eq!(ctx.lookup("x").await, Some("new".into()));
     }
 
     #[tokio::test]
-    async fn assign_missing_returns_false() {
+    async fn assign_missing_returns_none() {
         let mut ctx = test_ctx();
-        assert!(!ctx.assign("nope", "val".into()).await);
+        assert_eq!(ctx.assign("nope", "val".into()).await, None);
     }
 
     #[tokio::test]
@@ -474,7 +558,7 @@ mod tests {
             .lock()
             .await
             .insert("g".into(), "old".into());
-        assert!(ctx.assign("g", "new".into()).await);
+        assert_eq!(ctx.assign("g", "new".into()).await, Some("old".into()));
         assert_eq!(ctx.scope.vars().lock().await.get("g"), Some("new"));
     }
 
@@ -536,56 +620,54 @@ mod tests {
     // ─── Name resolution ─────────────────────────────────────
 
     #[test]
-    fn current_name_shell() {
+    fn current_name_bare() {
         let ctx = test_ctx();
         assert_eq!(ctx.current_name(), "sh");
     }
 
     #[test]
-    fn current_name_alias() {
+    fn current_name_effect_no_alias() {
         let mut ctx = test_ctx();
-        ctx.shell.alias = Some("mydb".into());
-        assert_eq!(ctx.current_name(), "mydb");
+        ctx.shell.effect_name = Some("Setup".into());
+        ctx.shell.name = "psql".into();
+        assert_eq!(ctx.current_name(), "Setup.psql");
     }
 
     #[test]
-    fn current_name_with_prefix() {
+    fn current_name_effect_with_alias() {
         let mut ctx = test_ctx();
-        ctx.shell.name_prefix = vec!["SetupDb.db".into(), "Db.db".into()];
-        ctx.shell.alias = Some("mydb".into());
-        assert_eq!(ctx.current_name(), "SetupDb.db.Db.db.mydb");
+        ctx.shell.effect_name = Some("Setup".into());
+        ctx.shell.effect_alias = Some("Db".into());
+        ctx.shell.name = "psql".into();
+        assert_eq!(ctx.current_name(), "Db(Setup).psql");
     }
 
     #[test]
-    fn current_name_with_prefix_no_alias() {
+    fn current_name_replaced_by_export_chain() {
+        // Each export step replaces the view; nothing accumulates.
         let mut ctx = test_ctx();
-        ctx.shell.name_prefix = vec!["Db.db".into()];
-        assert_eq!(ctx.current_name(), "Db.db.sh");
-    }
-
-    #[test]
-    fn current_name_accumulated_via_export() {
-        let mut ctx = test_ctx();
-        ctx.scope = Scope::Effect {
-            name: "Db".into(),
-            vars: Arc::new(Mutex::new(VarScope::new())),
-            _timeout: None,
-            env: Arc::new(LayeredEnv::root(Env::new())),
-        };
-        ctx.shell.name = "db".into();
-        // First export: Db.db → SetupDb
-        ctx.reset_for_export(Scope::Effect {
-            name: "SetupDb".into(),
-            vars: Arc::new(Mutex::new(VarScope::new())),
-            _timeout: None,
-            env: Arc::new(LayeredEnv::root(Env::new())),
-        });
-        assert_eq!(ctx.shell.name_prefix, vec!["Db.db"]);
-        // Second export: SetupDb.db → test
-        ctx.reset_for_export(test_scope("my test"));
-        assert_eq!(ctx.shell.name_prefix, vec!["Db.db", "SetupDb.db"]);
-        ctx.shell.alias = Some("mydb".into());
-        assert_eq!(ctx.current_name(), "Db.db.SetupDb.db.mydb");
+        ctx.shell.name = "inner".into();
+        // First export: Inner → Outer (Outer's `start Inner as Dep`).
+        ctx.reset_for_export(
+            Scope::Effect {
+                name: "Outer".into(),
+                vars: Arc::new(Mutex::new(VarScope::new())),
+                _timeout: None,
+                env: Arc::new(LayeredEnv::root(Env::new())),
+            },
+            Some("Dep".into()),
+            Some("Inner".into()),
+            "inner".into(),
+        );
+        assert_eq!(ctx.current_name(), "Dep(Inner).inner");
+        // Second export: Outer → test (test's `start Outer as O`, exposed-as `wrapped`).
+        ctx.reset_for_export(
+            test_scope("my test"),
+            Some("O".into()),
+            Some("Outer".into()),
+            "wrapped".into(),
+        );
+        assert_eq!(ctx.current_name(), "O(Outer).wrapped");
     }
 
     // ─── Captures ────────────────────────────────────────────
@@ -630,7 +712,7 @@ mod tests {
         ctx.shell.timeout = Some(IrTimeout::tolerance(Duration::from_secs(99)));
 
         let new_scope = test_scope("new test");
-        ctx.reset_for_export(new_scope);
+        ctx.reset_for_export(new_scope, None, None, "sh".into());
 
         assert_eq!(ctx.lookup("x").await, None);
         assert_eq!(ctx.capture(1), None);
@@ -655,12 +737,13 @@ mod tests {
             _timeout: None,
             env: Arc::new(LayeredEnv::root(Env::from_map(overlay_map))),
         };
-        let shell = ShellState::new("db".into(), None);
+        let shell = ShellState::new("db".into());
         let ctx = ExecutionContext::new(
             scope,
             shell,
             IrTimeout::tolerance(Duration::from_secs(5)),
             test_env(),
+            0,
         );
         assert_eq!(ctx.lookup("PORT").await, Some("5432".into()));
     }
@@ -685,12 +768,13 @@ mod tests {
             _timeout: None,
             env: child_env,
         };
-        let shell = ShellState::new("s".into(), None);
+        let shell = ShellState::new("s".into());
         let ctx = ExecutionContext::new(
             scope,
             shell,
             IrTimeout::tolerance(Duration::from_secs(5)),
             test_env(),
+            0,
         );
         // lookup walks the chain — this works correctly
         assert_eq!(ctx.lookup("BASE_PORT").await, Some("5432".into()));
@@ -715,12 +799,13 @@ mod tests {
             _timeout: None,
             env: child_env,
         };
-        let shell = ShellState::new("s".into(), None);
+        let shell = ShellState::new("s".into());
         let ctx = ExecutionContext::new(
             scope,
             shell,
             IrTimeout::tolerance(Duration::from_secs(5)),
             test_env(),
+            0,
         );
         let penv: HashMap<String, String> = ctx.process_env().into_iter().collect();
         // Child's own overlay should be present
@@ -731,6 +816,42 @@ mod tests {
             Some(&"5432".to_string()),
             "process_env must include variables from parent LayeredEnv layers"
         );
+    }
+
+    // ─── snapshot_user_vars ─────────────────────────────────
+
+    #[tokio::test]
+    async fn snapshot_user_vars_in_shell_scope() {
+        let mut ctx = test_ctx();
+        ctx.shell.vars.insert("a".into(), "1".into());
+        ctx.scope.vars().lock().await.insert("b".into(), "2".into());
+        let snap = ctx.snapshot_user_vars().await;
+        assert_eq!(
+            snap,
+            vec![("a".into(), "1".into()), ("b".into(), "2".into())]
+        );
+    }
+
+    #[tokio::test]
+    async fn snapshot_user_vars_in_call_frame_only() {
+        let mut ctx = test_ctx();
+        ctx.shell.vars.insert("outer".into(), "v".into());
+        ctx.push_call("fn".into(), vec![("arg".into(), "av".into())]);
+        ctx.let_insert("local".into(), "lv".into());
+        let snap = ctx.snapshot_user_vars().await;
+        // Only the innermost call frame's vars are visible (matches lookup barrier).
+        assert_eq!(
+            snap,
+            vec![("arg".into(), "av".into()), ("local".into(), "lv".into()),]
+        );
+    }
+
+    #[tokio::test]
+    async fn snapshot_user_vars_excludes_env() {
+        let ctx = test_ctx();
+        let snap = ctx.snapshot_user_vars().await;
+        // PATH is in the layered env, not in scope/shell vars — must be excluded.
+        assert!(snap.iter().all(|(k, _)| k != "PATH"));
     }
 
     // ─── Captures unit tests ────────────────────────────────

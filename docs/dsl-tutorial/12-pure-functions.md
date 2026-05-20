@@ -243,6 +243,8 @@ pure fn double_wrap(s) {
 
 Condition markers can also call pure functions, but that is covered in a later article.
 
+In the [test log viewer](03-send-match-and-logs.md), user-defined pure functions show up as their own spans in the events list, just like impure functions — you can fold them open to see the steps inside. Pure built-in functions behave a bit differently in the trace, but the difference is self-evident once you see it.
+
 ## What "pure" means in Relux
 
 If you are familiar with functional programming, the word "pure" might suggest a function that is deterministic and free of side effects — calling it with the same arguments always produces the same result.

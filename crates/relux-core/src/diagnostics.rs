@@ -648,7 +648,7 @@ impl SkipReport {
 
 impl std::error::Error for SkipReport {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DefinitionRef {
     Fn(FnId),
     Effect(EffectId),
@@ -762,6 +762,17 @@ pub struct CauseId {
     pub id: String,
 }
 
+/// Format an arbitrary hash as a stable mnemonic string of the form
+/// `"adjective-noun-NNNN"`. Same input always produces the same output.
+/// Used wherever an opaque hash needs a human-readable handle: diagnostic
+/// cause ids, effect-instance identity markers, etc.
+pub fn format_mnemonic(hash: u64) -> String {
+    let adj_idx = (hash & 0xFF) as usize;
+    let noun_idx = ((hash >> 8) & 0xFF) as usize;
+    let suffix = ((hash >> 16) % 10000) as u16;
+    format!("{}-{}-{:04}", ADJECTIVES[adj_idx], NOUNS[noun_idx], suffix)
+}
+
 impl CauseId {
     /// Generate a deterministic mnemonic from hashed inputs.
     pub fn generate(module: &str, name: &str, arity: usize, error_kind: &str) -> Self {
@@ -770,16 +781,8 @@ impl CauseId {
         name.hash(&mut hasher);
         arity.hash(&mut hasher);
         error_kind.hash(&mut hasher);
-        let hash = hasher.finish();
-
-        let adj_idx = (hash & 0xFF) as usize;
-        let noun_idx = ((hash >> 8) & 0xFF) as usize;
-        let suffix = ((hash >> 16) % 10000) as u16;
-
-        let adj = ADJECTIVES[adj_idx];
-        let noun = NOUNS[noun_idx];
         Self {
-            id: format!("{adj}-{noun}-{suffix:04}"),
+            id: format_mnemonic(hasher.finish()),
         }
     }
 }
@@ -2036,5 +2039,39 @@ mod tests {
             name: EffectName("StartDb".into()),
         };
         assert_eq!(id.to_string(), "lib/effects::StartDb");
+    }
+
+    #[test]
+    fn format_mnemonic_matches_pattern() {
+        let out = format_mnemonic(0x1234_5678_9abc_def0);
+        let parts: Vec<&str> = out.split('-').collect();
+        assert_eq!(
+            parts.len(),
+            3,
+            "expected 3 dash-separated parts, got {out:?}"
+        );
+        assert!(parts[0].chars().all(|c| c.is_ascii_lowercase()));
+        assert!(parts[1].chars().all(|c| c.is_ascii_lowercase()));
+        assert_eq!(parts[2].len(), 4);
+        assert!(parts[2].chars().all(|c| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn format_mnemonic_is_stable() {
+        let a = format_mnemonic(0xdead_beef_cafe_babe);
+        let b = format_mnemonic(0xdead_beef_cafe_babe);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn cause_id_generate_unchanged_for_known_inputs() {
+        let before = CauseId::generate("mod", "name", 2, "kind");
+        let mut hasher = DefaultHasher::new();
+        "mod".hash(&mut hasher);
+        "name".hash(&mut hasher);
+        2usize.hash(&mut hasher);
+        "kind".hash(&mut hasher);
+        let via_helper = format_mnemonic(hasher.finish());
+        assert_eq!(before.id, via_helper);
     }
 }

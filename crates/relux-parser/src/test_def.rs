@@ -101,14 +101,16 @@ pub fn def_test<'a>()
     .collect::<Vec<_>>();
 
     // Let section
+    //
+    // `stmt_let()` ends with `.then_ignore(newline())`, so `e.span()` here
+    // would include the trailing `\n`. Use the inner `AstStmt::Let`'s
+    // span instead — it's set inside `stmt_let` *before* the newline is
+    // consumed, so it tightly covers `let <name> = <expr>` only.
     let let_item = leading_ws()
         .ignore_then(stmt_let_standalone())
-        .map_with(|s, e| {
-            let span = crate::span_from_chumsky(e.span());
-            match s.node {
-                AstStmt::Let { stmt, .. } => AstTestItem::Let { stmt, span },
-                _ => unreachable!(),
-            }
+        .map(|s| match s.node {
+            AstStmt::Let { stmt, span } => AstTestItem::Let { stmt, span },
+            _ => unreachable!(),
         });
     let let_comment = leading_ws().ignore_then(comment()).map_with(|c, e| {
         let span = crate::span_from_chumsky(e.span());

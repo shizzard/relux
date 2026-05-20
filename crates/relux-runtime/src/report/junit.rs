@@ -10,6 +10,7 @@ use quick_junit::TestSuite;
 use crate::report::result::Failure;
 use crate::report::result::Outcome;
 use crate::report::result::TestResult;
+use crate::report::result::events_json_link;
 use crate::report::result::log_link;
 use relux_core::diagnostics::IrSpan;
 use relux_core::table::SourceTable;
@@ -51,6 +52,12 @@ fn render_junit(
                 status.set_description(format_failure_detail(failure, source_table));
                 case.status = status;
             }
+            Outcome::Cancelled(c) => {
+                let mut status = TestCaseStatus::non_success(NonSuccessKind::Error);
+                status.set_message(format!("cancelled: {}", c.reason_tag()));
+                status.set_type("cancelled");
+                case.status = status;
+            }
             Outcome::Skipped(reason) => {
                 let mut status = TestCaseStatus::skipped();
                 status.set_message(reason.as_str());
@@ -65,8 +72,16 @@ fn render_junit(
         }
 
         if let Some(link) = log_link(run_dir, result) {
-            case.set_system_out(format!("[[ATTACHMENT|{link}]]"));
+            let json_link = events_json_link(run_dir, result);
+            let system_out = match &json_link {
+                Some(json) => format!("[[ATTACHMENT|{link}]]\n[[ATTACHMENT|{json}]]"),
+                None => format!("[[ATTACHMENT|{link}]]"),
+            };
+            case.set_system_out(system_out);
             case.add_property(Property::new("log", &link));
+            if let Some(json) = json_link {
+                case.add_property(Property::new("events_json", &json));
+            }
         }
 
         suite.add_test_case(case);
@@ -82,6 +97,7 @@ fn format_failure_detail(failure: &Failure, source_table: &SourceTable) -> Strin
             pattern,
             span,
             shell,
+            ..
         } => {
             let loc = source_location(span, source_table);
             format!("shell: {shell}\npattern: {pattern}\n{loc}")
@@ -91,6 +107,7 @@ fn format_failure_detail(failure: &Failure, source_table: &SourceTable) -> Strin
             matched_line,
             span,
             shell,
+            ..
         } => {
             let loc = source_location(span, source_table);
             format!("shell: {shell}\npattern: {pattern}\nmatched: {matched_line}\n{loc}")
@@ -99,6 +116,7 @@ fn format_failure_detail(failure: &Failure, source_table: &SourceTable) -> Strin
             shell,
             exit_code,
             span,
+            ..
         } => {
             let loc = source_location(span, source_table);
             let code_str = match exit_code {
@@ -111,6 +129,7 @@ fn format_failure_detail(failure: &Failure, source_table: &SourceTable) -> Strin
             message,
             span,
             shell,
+            ..
         } => {
             let shell_line = match shell {
                 Some(s) => format!("shell: {s}\n"),
@@ -121,17 +140,6 @@ fn format_failure_detail(failure: &Failure, source_table: &SourceTable) -> Strin
                 None => String::new(),
             };
             format!("{shell_line}message: {message}{loc_line}")
-        }
-        Failure::Cancelled { span, shell } => {
-            let shell_line = match shell {
-                Some(s) => format!("shell: {s}\n"),
-                None => String::new(),
-            };
-            let loc_line = match span {
-                Some(s) => format!("\n{}", source_location(s, source_table)),
-                None => String::new(),
-            };
-            format!("{shell_line}cancelled{loc_line}")
         }
     }
 }
@@ -157,6 +165,7 @@ fn line_number(source: &str, offset: usize) -> usize {
 mod tests {
     use super::*;
     use crate::report::result::Failure;
+    use crate::report::result::FailureContext;
     use crate::report::result::Outcome;
     use crate::report::result::TestResult;
     use relux_core::diagnostics::IrSpan;
@@ -222,7 +231,9 @@ mod tests {
         assert!(xml.contains("name=\"login test\""));
         assert!(xml.contains("classname=\"tests/auth/login\""));
         assert!(xml.contains("[[ATTACHMENT|login-test/event.html]]"));
+        assert!(xml.contains("[[ATTACHMENT|login-test/events.json]]"));
         assert!(xml.contains("<property name=\"log\" value=\"login-test/event.html\""));
+        assert!(xml.contains("<property name=\"events_json\" value=\"login-test/events.json\""));
         assert!(!xml.contains("<failure"));
         assert!(!xml.contains("<skipped"));
     }
@@ -235,6 +246,8 @@ mod tests {
             pattern: "/ready/".to_string(),
             span: test_span(12, 17),
             shell: "default".to_string(),
+            effective: Box::new(relux_ir::IrTimeout::tolerance(Duration::from_secs(5))),
+            context: FailureContext::pre_vm(),
         };
         let results = vec![make_result(
             "timeout test",
@@ -254,6 +267,7 @@ mod tests {
         assert!(xml.contains("file: tests/auth/login.relux"));
         assert!(xml.contains("line: 3"));
         assert!(xml.contains("[[ATTACHMENT|timeout-test/event.html]]"));
+        assert!(xml.contains("[[ATTACHMENT|timeout-test/events.json]]"));
     }
 
     #[test]

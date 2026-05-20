@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cargo_check() {
+    echo "Running cargo check..."
+    cargo check --workspace
+}
+
+cargo_clippy() {
+    echo "Running cargo clippy..."
+    cargo clippy --workspace --all-targets -- -D warnings
+}
+
+cargo_fmt() {
+    echo "Running cargo +nightly fmt check..."
+    rustup run nightly rustfmt --edition 2024 --check $(find crates -name '*.rs')
+}
+
+sync_book_assets() {
+    # Per-book theme assets (highlight-relux.js, relux.css, theme/highlight.js)
+    # are gitignored copies — mdbook needs them present at build time, so
+    # sync first. Inlined here (rather than calling `just`) to match the CI
+    # workflows that build the books.
+    local hljs_gz=vendor/highlight-11.11.1.min.js.gz
+    local grammar=crates/relux-runtime/src/report/highlight-relux.js
+    local css=docs/_theme/relux.css
+    local book
+    for book in docs/dsl-tutorial docs/reference docs/suite-tutorial; do
+        mkdir -p "$book/theme"
+        gunzip -c "$hljs_gz" > "$book/theme/highlight.js"
+        cp "$grammar" "$book/highlight-relux.js"
+        cp "$css" "$book/relux.css"
+    done
+}
+
+mdbook_build() {
+    echo "Building docs..."
+    sync_book_assets
+    mdbook build docs/dsl-tutorial
+    mdbook build docs/suite-tutorial
+    mdbook build docs/reference
+}
+
+# Verify vendor/relux-viewer.js.gz is in sync with viewer/ sources, but
+# only when the commit actually touches them — Rust-only commits skip
+# the (slow) docker build entirely.
+verify_viewer_bundle() {
+    local staged
+    staged=$(git diff --cached --name-only --diff-filter=ACMR)
+    if ! printf '%s\n' "$staged" | grep -qE '^(viewer/|vendor/relux-viewer\.js\.gz$)'; then
+        return 0
+    fi
+
+    echo "Rebuilding viewer bundle to verify vendor/ is in sync..."
+    just viewer-build >/dev/null
+
+    if ! git diff --quiet -- vendor/relux-viewer.js.gz; then
+        echo
+        echo "ERROR: vendor/relux-viewer.js.gz is out of sync with viewer/ sources."
+        echo "Stage the rebuilt bundle and re-commit:"
+        echo "    git add vendor/relux-viewer.js.gz"
+        exit 1
+    fi
+}
+
+cargo_check
+cargo_clippy
+cargo_fmt
+mdbook_build
+verify_viewer_bundle

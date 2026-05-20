@@ -306,6 +306,8 @@ Assertion timeouts (`@`) are never scaled -- they test hard time bounds that sho
 relux run --strategy fail-fast
 ```
 
+Sibling tests that were already running when fail-fast triggers end with a `cancelled` outcome (reason `fail-fast`), pointing back at the test that tripped the strategy. Tests that had not yet started are skipped.
+
 For CI, run everything to get the full picture:
 
 ```text

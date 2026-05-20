@@ -1,0 +1,33 @@
+effect E0 {
+    expose shell s
+    shell s {
+        > echo "E0 setup"
+        <? ^E0 setup$
+    }
+    cleanup {
+        > echo "E0" >> ${MARKER_FILE}
+        match_ok()
+    }
+}
+
+effect E1 {
+    start E0 as Zero
+    expose shell Zero.s as s
+    shell Zero.s {
+        !? UH_OH
+        > echo UH_OH
+        match_ok()
+    }
+    cleanup {
+        > echo "E1" >> ${MARKER_FILE}
+        match_ok()
+    }
+}
+
+test "fail-path" {
+    start E1 as One
+    shell One.s {
+        > echo "body"
+        <? ^body$
+    }
+}

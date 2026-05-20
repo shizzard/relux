@@ -70,6 +70,8 @@ Cleanup does not run in the effect's shell, or the test shell. Relux spawns a **
 
 This means you cannot rely on working directory changes or any shell-level state from the original shells. However, cleanup **does** have access to variables declared at the effect or test level with `let`, [overlay variables](11-effects-and-dependencies.md#overlay-variables) (for effects), and environment variables. If cleanup needs to know a path or a port number, declare it as a top-level `let` variable so both the shell blocks and the cleanup block can reference it.
 
+In the [test log viewer](03-send-match-and-logs.md), each cleanup block runs as its own **cleanup-block span** at the end of the test — a foldable subtree hanging off the test span, with the implicit cleanup shell as its context. Expand the span and you see the cleanup's sends and `let` declarations stacked beneath; the buffer pane (the one from the [output buffer article](04-the-output-buffer.md)) shows the cleanup shell's own buffer, independent of any test shells that already terminated. The variables-in-scope pane reflects what cleanup can actually see: top-level `let` bindings, overlay values, environment variables.
+
 ## Allowed operations
 
 Cleanup blocks support a restricted set of operations:
@@ -92,6 +94,8 @@ The reason is pragmatic: cleanup exists to run teardown after something has alre
 Cleanup always runs, whether the test passed, failed, or timed out. And cleanup errors never change the test result. If a cleanup command fails — the file does not exist, the directory is already gone, the shell cannot start — Relux logs the issue but reports the test result based on the test body alone.
 
 This means you do not need to worry about cleanup failures masking real test results or causing false negatives. A flaky teardown command will not turn a passing test red.
+
+When a cleanup command fails, the test log viewer marks it with a **warning** row inside the cleanup-block subtree — the message identifies the source (e.g., `effect TempDir cleanup failed` or `test cleanup failed`) and carries the warning glyph and color. The test's overall pass/fail badge stays unchanged because cleanup is best-effort, but the warning makes the failure easy to spot when you skim the events list. Click into the cleanup subtree and the cleanup shell's buffer pane shows what the shell got back before things went sideways.
 
 ## Execution order
 
@@ -162,6 +166,8 @@ Cleanup runs in the opposite direction:
 3. `BuildApp` cleanup — remove the entire build directory
 
 This ordering matters. If `BuildApp` cleaned up first, it would delete `/tmp/build` — including the config file that `GenerateConfig`'s cleanup is about to target. Reverse topological order guarantees that each cleanup step runs while its dependencies' files still exist.
+
+This ordering reads top-to-bottom in the test log viewer. After the test body's spans close, the cleanup section appears: test cleanup first (if any), then each effect's cleanup span — `DeployLocal`, `GenerateConfig`, `BuildApp` — in the order they actually fire. Each effect-cleanup span carries a link back to its original setup, so jumping from the `BuildApp` cleanup to the `BuildApp` setup at the top of the test is a single click. For an effect that's been reused across multiple `start` sites, only the final release runs the actual teardown; earlier releases show as zero-duration **`deferred`**-tagged spans with a click-through forward to where the real cleanup eventually fires. The test log viewer's spatial layout matches the execution model: setup grows downward, the test runs, cleanup unwinds upward.
 
 ## Overlay variables in cleanup
 

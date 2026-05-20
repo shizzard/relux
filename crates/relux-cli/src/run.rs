@@ -11,7 +11,6 @@ use relux_ir::IrTimeout;
 use relux_resolver::resolve;
 use relux_runtime::RunContext;
 use relux_runtime::RunStrategy;
-use relux_runtime::report::result::Outcome;
 
 use super::build_source_loader;
 use super::resolve_project;
@@ -182,15 +181,8 @@ pub async fn cmd_run(matches: &clap::ArgMatches) {
     };
     report.eprint();
 
-    // HTML run summary (index.html)
-    relux_runtime::report::html::generate_run_summary(&run_dir, &results);
-
-    // Source pages (copy + syntax-highlighted HTML)
-    relux_runtime::report::html::generate_source_pages(
-        &run_dir,
-        &suite.tables.sources,
-        &project_root,
-    );
+    // Run summary (index.html)
+    relux_runtime::report::run_index::generate(&run_dir, &results, exec.wall_duration, jobs);
 
     // Optional artifact formats
     let suite_name = cfg.name.as_deref().unwrap_or("relux");
@@ -211,9 +203,7 @@ pub async fn cmd_run(matches: &clap::ArgMatches) {
         );
     }
 
-    let has_problems = results
-        .iter()
-        .any(|r| matches!(r.outcome, Outcome::Fail(_) | Outcome::Invalid(_)));
+    let has_problems = results.iter().any(|r| r.outcome.is_nonzero_outcome());
     if has_problems {
         process::exit(1);
     }

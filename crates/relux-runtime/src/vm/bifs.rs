@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 
+use crate::report::result::ExecError;
 use crate::report::result::Failure;
 use crate::vm::Vm;
 use relux_core::diagnostics::IrSpan;
@@ -12,7 +13,12 @@ use relux_core::diagnostics::IrSpan;
 pub trait Bif: Send + Sync {
     fn name(&self) -> &str;
     fn arity(&self) -> usize;
-    async fn call(&self, vm: &mut Vm, args: Vec<String>, span: &IrSpan) -> Result<String, Failure>;
+    async fn call(
+        &self,
+        vm: &mut Vm,
+        args: Vec<String>,
+        span: &IrSpan,
+    ) -> Result<String, ExecError>;
 }
 
 // ─── Lookup ─────────────────────────────────────────────────
@@ -66,11 +72,13 @@ pub fn is_impure_bif(name: &str, arity: usize) -> bool {
     lookup_impure(name, arity).is_some()
 }
 
-fn runtime_error(message: String, span: &IrSpan) -> Failure {
+async fn runtime_error(vm: &Vm, message: String, span: &IrSpan) -> Failure {
+    let context = vm.capture_failure_context().await;
     Failure::Runtime {
         message,
         span: Some(span.clone()),
-        shell: None,
+        shell: Some(vm.current_name()),
+        context,
     }
 }
 
@@ -87,24 +95,37 @@ impl Bif for Sleep {
         1
     }
 
-    async fn call(&self, vm: &mut Vm, args: Vec<String>, span: &IrSpan) -> Result<String, Failure> {
-        let duration = humantime::parse_duration(args[0].trim())
-            .map_err(|_| runtime_error(format!("invalid duration: `{}`", args[0]), span))?;
+    async fn call(
+        &self,
+        vm: &mut Vm,
+        args: Vec<String>,
+        span: &IrSpan,
+    ) -> Result<String, ExecError> {
+        let duration = match humantime::parse_duration(args[0].trim()) {
+            Ok(d) => d,
+            Err(_) => {
+                return Err(
+                    runtime_error(vm, format!("invalid duration: `{}`", args[0]), span)
+                        .await
+                        .into(),
+                );
+            }
+        };
+        let span_id = vm.current_span();
         let shell = vm.current_name();
-        vm.events.emit_sleep_start(&shell, duration, Some(span));
+        let marker = vm.shell_marker().to_string();
+        vm.log
+            .emit_sleep_start(span_id, &shell, &marker, duration, Some(span));
         tokio::select! {
             _ = tokio::time::sleep(duration) => {}
             _ = vm.cancel.cancelled() => {
                 let shell = vm.current_name();
-                vm.events.emit_sleep_done(&shell, Some(span));
-                return Err(Failure::Cancelled {
-                    span: Some(span.clone()),
-                    shell: Some(shell),
-                });
+                vm.log.emit_sleep_done(span_id, &shell, &marker, Some(span));
+                return Err(vm.observed_cancel(Some(span.clone())).await);
             }
         }
         let shell = vm.current_name();
-        vm.events.emit_sleep_done(&shell, Some(span));
+        vm.log.emit_sleep_done(span_id, &shell, &marker, Some(span));
         Ok(String::new())
     }
 }
@@ -120,10 +141,17 @@ impl Bif for Annotate {
         1
     }
 
-    async fn call(&self, vm: &mut Vm, args: Vec<String>, span: &IrSpan) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        vm: &mut Vm,
+        args: Vec<String>,
+        span: &IrSpan,
+    ) -> Result<String, ExecError> {
         let text = args[0].clone();
         let shell = vm.current_name();
-        vm.events.emit_annotate(&shell, &text, Some(span));
+        let marker = vm.shell_marker().to_string();
+        vm.log
+            .emit_annotate(vm.current_span(), &shell, &marker, &text, Some(span));
         Ok(text)
     }
 }
@@ -139,10 +167,17 @@ impl Bif for Log {
         1
     }
 
-    async fn call(&self, vm: &mut Vm, args: Vec<String>, span: &IrSpan) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        vm: &mut Vm,
+        args: Vec<String>,
+        span: &IrSpan,
+    ) -> Result<String, ExecError> {
         let message = args[0].clone();
         let shell = vm.current_name();
-        vm.events.emit_log(&shell, &message, Some(span));
+        let marker = vm.shell_marker().to_string();
+        vm.log
+            .emit_log(vm.current_span(), &shell, &marker, &message, Some(span));
         Ok(message)
     }
 }
@@ -163,7 +198,7 @@ impl Bif for MatchPrompt {
         vm: &mut Vm,
         _args: Vec<String>,
         span: &IrSpan,
-    ) -> Result<String, Failure> {
+    ) -> Result<String, ExecError> {
         let prompt = vm.shell_prompt().to_string();
         vm.match_literal(&prompt, span).await
     }
@@ -180,7 +215,12 @@ impl Bif for MatchExitCode {
         1
     }
 
-    async fn call(&self, vm: &mut Vm, args: Vec<String>, span: &IrSpan) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        vm: &mut Vm,
+        args: Vec<String>,
+        span: &IrSpan,
+    ) -> Result<String, ExecError> {
         let prompt = vm.shell_prompt().to_string();
         vm.send_line("echo ::$?::", span).await?;
         vm.match_literal(&format!("::{}::", args[0]), span).await?;
@@ -204,7 +244,7 @@ impl Bif for MatchOk {
         vm: &mut Vm,
         _args: Vec<String>,
         span: &IrSpan,
-    ) -> Result<String, Failure> {
+    ) -> Result<String, ExecError> {
         let prompt = vm.shell_prompt().to_string();
         vm.match_literal(&prompt, span).await?;
         vm.send_line("echo ::$?::", span).await?;
@@ -229,7 +269,7 @@ impl Bif for MatchNotOk {
         vm: &mut Vm,
         _args: Vec<String>,
         span: &IrSpan,
-    ) -> Result<String, Failure> {
+    ) -> Result<String, ExecError> {
         let prompt = vm.shell_prompt().to_string();
         vm.match_literal(&prompt, span).await?;
         vm.send_line(
@@ -253,7 +293,12 @@ impl Bif for MatchNotOkWithCode {
         1
     }
 
-    async fn call(&self, vm: &mut Vm, args: Vec<String>, span: &IrSpan) -> Result<String, Failure> {
+    async fn call(
+        &self,
+        vm: &mut Vm,
+        args: Vec<String>,
+        span: &IrSpan,
+    ) -> Result<String, ExecError> {
         let prompt = vm.shell_prompt().to_string();
         vm.match_literal(&prompt, span).await?;
         vm.send_line(
@@ -285,7 +330,7 @@ impl Bif for CtrlChar {
         vm: &mut Vm,
         _args: Vec<String>,
         span: &IrSpan,
-    ) -> Result<String, Failure> {
+    ) -> Result<String, ExecError> {
         vm.send_raw(&[self.byte], span).await?;
         Ok(String::new())
     }

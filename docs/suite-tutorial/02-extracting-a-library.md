@@ -210,7 +210,7 @@ test "key-value CRUD" {
 }
 ```
 
-The gain is small for now. But in chapter 6, when we replace the hardcoded port with a dynamic one, we'll only need to change `url` in `service/db.relux` — not every test.
+The gain is small for now. But in chapter 5, when we replace the hardcoded port with a dynamic one, we'll only need to change `url` in `service/db.relux` — not every test.
 
 ## What we have so far
 

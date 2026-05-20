@@ -5,9 +5,12 @@ use std::path::PathBuf;
 use tokio::sync::mpsc;
 
 use crate::observe::progress::ProgressEvent;
+use crate::report::console;
 use crate::report::result::Failure;
 use relux_core::error::DiagnosticReport;
 use relux_core::table::SourceTable;
+
+const BUFFER_TAIL_LINES: usize = 12;
 
 // ─── TuiEvent ───────────────────────────────────────────────
 
@@ -28,7 +31,7 @@ pub enum TuiEvent {
     TestFinished {
         slot: usize,
         result_line: String,
-        failure: Option<(Failure, Option<PathBuf>)>,
+        failure: Option<Box<(Failure, Option<PathBuf>)>>,
         progress_tx: tokio::sync::oneshot::Sender<String>,
     },
     /// A test was skipped/invalid (not running, just report).
@@ -143,26 +146,28 @@ fn truncate_name(name: &str, width: usize) -> String {
 
 // ─── Progress char mapping ──────────────────────────────────
 
-fn progress_char(event: &ProgressEvent) -> Option<char> {
+fn progress_render(event: &ProgressEvent) -> Option<String> {
     match event {
-        ProgressEvent::Send => Some('.'),
+        ProgressEvent::Send => Some(".".to_string()),
         ProgressEvent::MatchStart => None,
-        ProgressEvent::MatchDone => Some('.'),
+        ProgressEvent::MatchDone => Some("o".to_string()),
         ProgressEvent::SleepStart => None,
         ProgressEvent::SleepDone => None,
-        ProgressEvent::ShellSwitch(_) => Some('|'),
-        ProgressEvent::FnEnter(_) => Some('{'),
-        ProgressEvent::FnExit => Some('}'),
-        ProgressEvent::ShellSpawn => Some('s'),
-        ProgressEvent::EffectSetup(_) => Some('+'),
-        ProgressEvent::EffectTeardown => Some('-'),
-        ProgressEvent::Cleanup => Some('c'),
-        ProgressEvent::FailPattern => Some('!'),
-        ProgressEvent::Timeout => Some('T'),
-        ProgressEvent::Failure => Some('F'),
-        ProgressEvent::Error(_) => Some('E'),
-        ProgressEvent::Warning(_) => Some('W'),
-        ProgressEvent::Annotation(_) => None,
+        ProgressEvent::ShellSwitch(_) => Some("|".to_string()),
+        ProgressEvent::FnEnter(_) => Some("(".to_string()),
+        ProgressEvent::FnExit => Some(")".to_string()),
+        ProgressEvent::ShellSpawn => Some("+".to_string()),
+        ProgressEvent::ShellTerminate => Some("-".to_string()),
+        ProgressEvent::EffectSetup(_) => Some("{".to_string()),
+        ProgressEvent::EffectTeardown => Some("}".to_string()),
+        ProgressEvent::Cleanup => None,
+        ProgressEvent::FailPattern => Some("!".to_string()),
+        ProgressEvent::Timeout => Some("T".to_string()),
+        ProgressEvent::Failure => Some("F".to_string()),
+        ProgressEvent::Cancellation => Some("X".to_string()),
+        ProgressEvent::Error(_) => Some("E".to_string()),
+        ProgressEvent::Warning(_) => Some("W".to_string()),
+        ProgressEvent::Annotation(text) => Some(text.clone()),
     }
 }
 
@@ -193,7 +198,18 @@ fn eprint_failure(
     project_root: &Path,
 ) {
     DiagnosticReport::from(failure).eprint(source_table, Some(project_root));
+    let ctx = failure.context();
+    let blocks = [
+        console::format_call_stack(ctx.call_stack()),
+        console::format_buffer_tail(ctx.buffer_tail(), BUFFER_TAIL_LINES),
+        console::format_vars_in_scope(ctx.vars_in_scope()),
+    ];
+    for block in blocks.into_iter().flatten() {
+        eprintln!();
+        eprintln!("{block}");
+    }
     if let Some(log_dir) = log_dir {
+        eprintln!();
         eprintln!(
             "  Event log: file://{}",
             log_dir.join("event.html").display()
@@ -218,7 +234,8 @@ async fn run_plain_renderer(
                 progress_tx,
             } => {
                 eprintln!("{result_line}");
-                if let Some((f, log_dir)) = &failure {
+                if let Some(boxed) = &failure {
+                    let (f, log_dir) = boxed.as_ref();
                     eprint_failure(f, log_dir.as_deref(), source_table, project_root);
                 }
                 let _ = progress_tx.send(String::new());
@@ -308,8 +325,10 @@ async fn run_tty_renderer(
                         }
                         _ => {}
                     }
-                    if let Some(ch) = progress_char(&event) {
-                        state.push(ch);
+                    if let Some(s) = progress_render(&event) {
+                        for ch in s.chars() {
+                            state.push(ch);
+                        }
                     }
                 }
                 active_lines = redraw_active(&slots, active_lines, name_width, progress_width);
@@ -329,7 +348,8 @@ async fn run_tty_renderer(
                 slots[slot] = None;
                 clear_active(active_lines);
                 eprintln!("{result_line}");
-                if let Some((f, log_dir)) = &failure {
+                if let Some(boxed) = &failure {
+                    let (f, log_dir) = boxed.as_ref();
                     eprint_failure(f, log_dir.as_deref(), source_table, project_root);
                 }
                 active_lines = redraw_active(&slots, 0, name_width, progress_width);
@@ -471,11 +491,52 @@ mod tests {
     }
 
     #[test]
-    fn progress_char_mapping() {
-        assert_eq!(progress_char(&ProgressEvent::Send), Some('.'));
-        assert_eq!(progress_char(&ProgressEvent::MatchStart), None);
-        assert_eq!(progress_char(&ProgressEvent::MatchDone), Some('.'));
-        assert_eq!(progress_char(&ProgressEvent::ShellSpawn), Some('s'));
-        assert_eq!(progress_char(&ProgressEvent::Failure), Some('F'));
+    fn progress_render_single_char_mappings() {
+        assert_eq!(progress_render(&ProgressEvent::Send).as_deref(), Some("."));
+        assert_eq!(progress_render(&ProgressEvent::MatchStart), None);
+        assert_eq!(
+            progress_render(&ProgressEvent::MatchDone).as_deref(),
+            Some("o")
+        );
+        assert_eq!(
+            progress_render(&ProgressEvent::ShellSpawn).as_deref(),
+            Some("+")
+        );
+        assert_eq!(
+            progress_render(&ProgressEvent::ShellTerminate).as_deref(),
+            Some("-")
+        );
+        assert_eq!(
+            progress_render(&ProgressEvent::FnEnter("f".into())).as_deref(),
+            Some("(")
+        );
+        assert_eq!(
+            progress_render(&ProgressEvent::FnExit).as_deref(),
+            Some(")")
+        );
+        assert_eq!(
+            progress_render(&ProgressEvent::EffectSetup("E".into())).as_deref(),
+            Some("{")
+        );
+        assert_eq!(
+            progress_render(&ProgressEvent::EffectTeardown).as_deref(),
+            Some("}")
+        );
+        assert_eq!(
+            progress_render(&ProgressEvent::Cancellation).as_deref(),
+            Some("X")
+        );
+        assert_eq!(
+            progress_render(&ProgressEvent::Failure).as_deref(),
+            Some("F")
+        );
+    }
+
+    #[test]
+    fn progress_render_annotation_returns_text_verbatim() {
+        assert_eq!(
+            progress_render(&ProgressEvent::Annotation("hello world".into())).as_deref(),
+            Some("hello world")
+        );
     }
 }

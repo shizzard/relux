@@ -1,0 +1,42 @@
+test "run triggers test cleanup on test-timeout cancellation" ~10s {
+    """
+    Verify that when a test is cancelled by its inline test-timeout, the
+    test's cleanup block still executes. Inspect the per-test events.json
+    artifact: outcome.kind must be `cancelled` and a `cleanup-block` span
+    must exist as a direct child of the `test` span, with at least one
+    `send` event inside it (proving the cleanup body actually ran rather
+    than the span just being opened).
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? test-timeout
+        <? 1 cancelled
+        match_not_ok(1)
+
+        > events=$(ls -dt ${__RELUX_TEST_ROOT}/fixtures/relux/out/*/logs/relux/tests/cancel_cleanup/cancel-cleanup/events.json 2>/dev/null | head -1)
+        match_prompt()
+        > echo FOUND=$events
+        <? ^FOUND=/
+        match_ok()
+
+        > jq -Mr '.outcome.kind' $events
+        <? ^cancelled$
+        match_ok()
+
+        > test_id=$(jq -Mr '.spans[] | select(.kind == "test") | .id' $events)
+        match_prompt()
+        > echo TEST=$test_id
+        <? ^TEST=[0-9]
+        match_ok()
+
+        > jq -M --arg t "$test_id" '[.spans[] | select(.kind == "cleanup-block" and .parent == ($t | tonumber))] | length' $events
+        <? ^1$
+        match_ok()
+
+        > cleanup_id=$(jq -Mr --arg t "$test_id" '.spans[] | select(.kind == "cleanup-block" and .parent == ($t | tonumber)) | .id' $events)
+        match_prompt()
+        > jq -M --arg c "$cleanup_id" '[.events[] | select(.span == ($c | tonumber) and .kind == "send")] | length' $events
+        <? ^[1-9][0-9]*$
+        match_ok()
+    }
+}

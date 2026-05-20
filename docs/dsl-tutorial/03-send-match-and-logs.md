@@ -36,17 +36,20 @@ Let's run the example and look at what Relux produces beyond the pass/fail resul
 ```text
 $ relux run -f relux/tests/raw_send.relux
 running 1 tests
-test raw_send.relux/multiple-raw-sends: |.... ok (5.8 ms)
+test raw_send.relux/multiple-raw-sends: +|...o- ok (5.8 ms)
 
 test result: ok. 1 passed; 0 failed; finished in 5.8 ms
 ```
 
-The line starting with `test` shows the test name, a **progress string** (`|....`), the result, and the duration. The progress string is a compact visual trace of what happened during execution:
+While the test is in flight, you'll briefly see a **progress string** (`+|...o-`) next to the test name — a compact visual trace of what is happening:
 
-- `|` — a shell was opened
-- `.` — a send or successful match operation
+- `+` — a shell was spawned
+- `|` — a shell was switched to
+- `.` — a send operation
+- `o` — a successful match
+- `-` — a shell was terminated
 
-So `|....` means: open shell, then four operations (our two `=>`s, `>`, and `<=`).
+So `+|...o-` means: spawn shell, switch into it, three sends (our two `=>`s and the `>`), one match (the `<=`), shell terminates. The default progress display refreshes this line live in your terminal, so by the time the test finishes the glyphs may have already scrolled out of view. The example block above is a frozen snapshot of what you'd see mid-flight; the `--progress` flag changes how progress is rendered, and a later article on the CLI walks through its modes.
 
 ### The output directory
 
@@ -58,41 +61,31 @@ relux/out/
 └── run-2026-03-11-14-04-08-RnwTRJ4AMY/
     ├── index.html
     ├── run_summary.toml
-    └── logs/
-        └── relux/tests/raw_send/
-            └── multiple-raw-sends/
-                ├── event.html
-                ├── s.html
-                ├── s.stdin.log
-                ├── s.stdin.raw
-                ├── s.stdout.log
-                └── s.stdout.raw
+    ├── artifacts/
+    └── logs/relux/tests/raw_send/multiple-raw-sends/
+        ├── event.html
+        ├── events.json
+        └── artifacts/
 ```
 
 Each run gets its own directory, named with a timestamp and a random ID. The `latest` symlink always points to the most recent run — so `relux/out/latest/index.html` is always the quickest way to the results.
 
-Open `relux/out/latest/index.html` in a browser. The index page shows a summary table with one row per test: the test name, its result (pass/fail/skip), the duration, and the progress string. For a single passing test this is underwhelming, but when you have dozens of tests and one fails, the index is where you start — scan the results, click the failing test to jump to its event log.
+Open `relux/out/latest/index.html` in a browser. The index page shows a summary table with one row per test: the test name, its result (pass/fail/skip), and the duration. For a single passing test this is underwhelming, but when you have dozens of tests and one fails, the index is where you start — scan the results, click the failing test to drill into its test log viewer.
 
-Each test gets an `event.html` file that records every operation in a timeline: sends, matches, timeouts, shell switches. Each row shows a timestamp (relative to test start), the shell name, the event type, and the event data. Try clicking on the timestamp: it would bring you to the shell-specific event log, where you can only see events for this particular shell. Clicking on timestamp in the shell log would bring you back to the test log at that exact moment. It is very useful when you want to inspect what happened around that particular event in the shell.
+### The test log viewer
 
-For our passing test, the event log has four rows: the two raw sends (`echo one` and `-two`), the send of `-three` (with newline), and the successful match of `one-two-three`. Since the test only spawns one shell, the shell event log will have almost the same.
+Each test gets an `event.html` file: a self-contained page you can open from anywhere, no server required.
 
-Alongside the event log, each shell produces four log files:
+- **Top:** a timeline strip — a compact visual summary of all events. Click anywhere on it to jump.
+- **Left:** an events list — one row per operation in the test: sends, matches, shell opens, plus richer event kinds as your tests grow.
+- **Right:** a detail panel — selecting an event in the list shows the shell's output at that moment and the source line that produced it.
+- **Top bar:** a few side panels you'll grow into as later articles introduce more concepts.
 
-- **`s.stdin.log`** — every command sent to the shell, with timestamps
-- **`s.stdout.log`** — everything the shell printed back, with timestamps
-- **`s.stdin.raw`** / **`s.stdout.raw`** — the same data but as raw bytes, without timestamps
+Next to `event.html` you'll also find `events.json` — the same data in a machine-readable form, useful when you want to feed test runs into your own tooling.
 
-The `.log` files are the ones you'll read most often. Here is what `s.stdout.log` looks like for our test:
+The viewer needs a fairly modern browser — Chrome / Edge 80+, Firefox 113+, or Safari 16.4+. Older browsers see a one-line fallback message instead of the report; open `events.json` directly in that case.
 
-```text
-[+0.003s] export PS1='relux> ' PS2='' PROMPT_COMMAND=''
-[+0.008s] relux> echo one-two-three
-[+0.009s] one-two-three
-[+0.009s] relux>
-```
-
-The first line is Relux configuring the shell prompt. Then the shell echoes the command, prints the output, and shows the prompt again. The timestamps let you see exactly when each piece of output arrived.
+As you work through the rest of this tutorial, each article will introduce the test log viewer functionality relevant to its topic. For a full catalog of regions, panels, and hotkeys, see the [Test Log Viewer reference](../reference/05-test-log-viewer.html). For now, open the test log viewer for your test and click around — there's no pressure to understand everything yet.
 
 ## Error logs
 
@@ -129,7 +122,7 @@ test hello.relux/echo-and-match: |... ok (9.7 ms)
 test result: ok. 1 passed; 0 failed; finished in 9.7 ms
 ```
 
-Wait, what? That is definitely a bug, this should not have worked — where did the second `hello-relux` come from? Let's read the event log for this test (`relux/out/latest/logs/relux/tests/hello/echo-and-match/event.html`) and look at the two match rows.
+Wait, what? That is definitely a bug, this should not have worked — where did the second `hello-relux` come from? Let's open the test log viewer for this test (`relux/out/latest/logs/relux/tests/hello/echo-and-match/event.html`) and look at the two match rows in its events list.
 
 The first match did not hit the output line `hello-relux` — it hit the echoed **command** `echo hello-relux`, which contains the substring `hello-relux`. The second match then found the actual output.
 

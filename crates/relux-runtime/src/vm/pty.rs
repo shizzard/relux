@@ -1,28 +1,27 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use regex::RegexBuilder;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Child;
-use tokio::sync::Mutex;
 
 use super::buffer::OutputBuffer;
-use crate::observe::shell_log::ShellLogger;
+use crate::observe::structured::StructuredLogBuilder;
 
 pub(crate) struct PtyShell {
     writer: pty_process::OwnedWritePty,
     child: Child,
     pub(crate) output_buf: OutputBuffer,
     read_task: tokio::task::JoinHandle<()>,
-    shell_log: Arc<Mutex<ShellLogger>>,
 }
 
 impl PtyShell {
     pub fn spawn(
         shell_command: &str,
         env: impl IntoIterator<Item = (String, String)>,
-        shell_log: Arc<Mutex<ShellLogger>>,
+        log: StructuredLogBuilder,
+        shell_name: String,
+        shell_marker: String,
     ) -> Result<Self, pty_process::Error> {
         let (pty, pts) = pty_process::open()?;
         pty.resize(pty_process::Size::new(24, u16::MAX))?;
@@ -32,9 +31,8 @@ impl PtyShell {
         let child = cmd.spawn(pts)?;
 
         let (reader, writer) = pty.into_split();
-        let output_buf = OutputBuffer::new();
+        let output_buf = OutputBuffer::new(log, shell_name, shell_marker);
         let output_for_reader = output_buf.clone();
-        let shell_log_reader = shell_log.clone();
         let mut reader = tokio::io::BufReader::new(reader);
         let read_task = tokio::spawn(async move {
             let mut buf = vec![0u8; 4096];
@@ -42,7 +40,10 @@ impl PtyShell {
                 match reader.read(&mut buf).await {
                     Ok(0) => break,
                     Ok(n) => {
-                        shell_log_reader.lock().await.log_stdout(&buf[..n]);
+                        // `append` pushes the streaming-decoded `Grew`
+                        // buffer event under the same mutex that holds
+                        // the raw bytes — `grew`/`matched` ordering is
+                        // race-free against the VM's match emissions.
                         output_for_reader.append(&buf[..n]).await;
                     }
                     Err(_) => break,
@@ -55,7 +56,6 @@ impl PtyShell {
             child,
             output_buf,
             read_task,
-            shell_log,
         })
     }
 
@@ -76,7 +76,9 @@ impl PtyShell {
             .expect("prompt regex must be valid");
 
         tokio::time::timeout(timeout, async {
-            // Step 1: Wait for any shell output (rc files, default prompt, etc.)
+            // Step 1: Wait for any shell output (rc files, default prompt, etc.).
+            // `consume_regex` emits the `Matched` buffer event under its
+            // internal mutex, so init drains the buffer losslessly.
             loop {
                 let notified = self.output_buf.notify.notified();
                 if self
@@ -110,7 +112,6 @@ impl PtyShell {
 
     pub async fn send_bytes(&mut self, data: &[u8]) -> Result<(), std::io::Error> {
         self.writer.write_all(data).await?;
-        self.shell_log.lock().await.log_stdin(data);
         Ok(())
     }
 

@@ -1,0 +1,32 @@
+effect Inner {
+    expose shell inner
+    shell inner {
+        > echo "inner ready"
+        <? ^inner ready$
+    }
+    cleanup {
+        > echo "inner cleanup"
+        match_ok()
+    }
+}
+
+effect Outer {
+    start Inner as Dep
+    expose shell Dep.inner as wrapped
+    shell local {
+        > echo "outer setup"
+        <? ^outer setup$
+    }
+    cleanup {
+        > echo "outer cleanup"
+        match_ok()
+    }
+}
+
+test "exposed shell carries stable marker; multiple cleanups have distinct markers" {
+    start Outer as O
+    shell O.wrapped {
+        > echo "test using exported shell"
+        <? ^test using exported shell$
+    }
+}

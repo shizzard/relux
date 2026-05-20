@@ -15,12 +15,14 @@ pub enum ProgressEvent {
     FnEnter(String),
     FnExit,
     ShellSpawn,
+    ShellTerminate,
     EffectSetup(String),
     EffectTeardown,
     Cleanup,
     FailPattern,
     Timeout,
     Failure,
+    Cancellation,
     Error(String),
     Warning(String),
     Annotation(String),
@@ -104,7 +106,10 @@ pub fn spawn_printer(
                     emit(&mut collected, '}');
                 }
                 ProgressEvent::ShellSpawn => {
-                    emit(&mut collected, 's');
+                    emit(&mut collected, '+');
+                }
+                ProgressEvent::ShellTerminate => {
+                    emit(&mut collected, '-');
                 }
                 ProgressEvent::EffectSetup(_) => {
                     emit(&mut collected, '+');
@@ -126,6 +131,10 @@ pub fn spawn_printer(
                 ProgressEvent::Failure => {
                     timed = None;
                     emit(&mut collected, 'F');
+                }
+                ProgressEvent::Cancellation => {
+                    timed = None;
+                    emit(&mut collected, 'C');
                 }
                 ProgressEvent::Error(_) => {
                     timed = None;

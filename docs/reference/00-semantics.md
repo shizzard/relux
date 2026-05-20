@@ -147,6 +147,7 @@
 - Effects are instantiated and their shells are available before the test body runs
 - A test succeeds if all match operations in all shell blocks pass
 - A test fails if any match operation times out or any fail pattern matches
+- A test is cancelled (a distinct outcome from failure) when execution is stopped before the test could finish: the test's own `~T` timeout fired, the suite-wide timeout fired, fail-fast cut sibling tests short, or the process received SIGINT. Cancelled outcomes exit nonzero in CI, exactly like failures, but they preserve the distinction that the test was not misbehaving
 
 ## Cleanup
 
