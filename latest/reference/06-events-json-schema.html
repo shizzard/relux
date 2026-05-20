@@ -1,0 +1,634 @@
+<!DOCTYPE HTML>
+<html lang="en" class="relux sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>events.json Schema - Relux Reference</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="relux-7a3db124.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "relux";
+            const default_dark_theme = "relux";
+            window.path_to_searchindex_js = "searchindex-fa6ab283.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-9798380f.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('relux')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Relux Reference</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="eventsjson-schema"><a class="header" href="#eventsjson-schema"><code>events.json</code> Schema</a></h1>
+<p>Every test run writes a per-test <code>events.json</code> next to its <code>event.html</code>
+under <code>relux/out/run-&lt;timestamp&gt;-&lt;id&gt;/logs/&lt;test&gt;/</code>. The file is the
+canonical structured artifact: the viewer that ships in <code>event.html</code> is
+one consumer, and downstream tooling (dashboards, CI integrations,
+custom reporters) can read the same file.</p>
+<p>This article describes the on-disk shape. The TypeScript declarations
+shipped under <code>viewer/src/types/</code> are generated from the Rust source
+via <a href="https://docs.rs/ts-rs"><code>ts-rs</code></a> and stay in sync; they are the
+machine-readable equivalent of what this page describes in prose.</p>
+<h2 id="conventions"><a class="header" href="#conventions">Conventions</a></h2>
+<ul>
+<li><strong>Tagged enums</strong> carry their discriminator either as <code>"kind"</code>
+(<code>Span</code>, <code>Event</code>, <code>BufferEvent</code>, <code>TestOutcome</code>, <code>SpanKind</code>,
+<code>EventKind</code>, <code>BufferEventKind</code>) or as <code>"type"</code>
+(<code>CancelReasonRecord</code>, <code>TimeoutValue</code>, <code>FailureRecord</code>). The
+discriminator is always a kebab-case string. The remaining
+variant-specific fields are flattened alongside it.</li>
+<li><strong>Timestamps</strong> (<code>ts</code>, <code>start_ts</code>, <code>end_ts</code>, <code>spawn_ts</code>,
+<code>terminate_ts</code>) are fractional milliseconds since test start,
+encoded as JSON numbers.</li>
+<li><strong>Durations exposed to JSON</strong> are JSON numbers in milliseconds
+(<code>elapsed</code>, <code>duration</code>) unless they live inside a <code>TimeoutValue</code>,
+where they are pre-formatted humantime strings.</li>
+<li><strong>IDs</strong> (<code>SpanId</code>, <code>EventSeq</code>) are 64-bit unsigned integers. JSON
+object keys (e.g. <code>spans</code>) are stringified per JSON rules; the
+generated TS types reflect this.</li>
+<li><strong>String values</strong> are arbitrary UTF-8. Shell output is captured
+through a UTF-8 stream sanitizer.</li>
+</ul>
+<h2 id="top-level-shape"><a class="header" href="#top-level-shape">Top-level shape</a></h2>
+<pre><code class="language-jsonc">{
+  "schema_version": 1,
+  "info":   { ... TestInfo ... },
+  "outcome": { "kind": "pass" | "fail" | "cancelled" | "skip", ... },
+  "env":    { "bootstrap": [["KEY", "value"], ...] },
+  "shells": { "&lt;shell-marker&gt;": { ... ShellRecord ... }, ... },
+  "spans":  { "&lt;span-id&gt;":     { ... Span ... },         ... },
+  "events":        [ { ... Event ... },        ... ],
+  "buffer_events": [ { ... BufferEvent ... },  ... ],
+  "sources":   { "&lt;relative-path&gt;": "&lt;file contents&gt;", ... },
+  "artifacts": [ { "path": "...", "size": 123, "mime": "..." }, ... ]
+}
+</code></pre>
+<p>Field notes:</p>
+<ul>
+<li><code>schema_version</code> (<code>u32</code>) — current version is <code>1</code>. Bumped on any
+backwards-incompatible change. Consumers should verify this matches
+the version they expect and fail loudly otherwise. The viewer
+rejects mismatched artifacts with a banner.</li>
+<li><code>info</code> — <code>{ name, path, duration_ms }</code>. <code>path</code> is the source-relative
+path of the test file; <code>duration_ms</code> is the total wall-clock from
+test start to outcome.</li>
+<li><code>env.bootstrap</code> — list of <code>(name, value)</code> env entries captured at
+test startup (the seed for the test’s environment chain).</li>
+<li><code>shells</code> — every PTY spawned during the test, keyed by stable
+identity marker (see <a href="#shells"><code>ShellRecord</code></a>).</li>
+<li><code>spans</code> — every span opened during the test, keyed by <code>SpanId</code> (see
+<a href="#spans"><code>Span</code></a>). Forms a tree via <code>parent</code>.</li>
+<li><code>events</code> — execution events in <code>seq</code> order (see <a href="#events"><code>Event</code></a>).</li>
+<li><code>buffer_events</code> — parallel timeline of PTY-buffer transitions in
+<code>seq</code> order (see <a href="#buffer-events"><code>BufferEvent</code></a>).</li>
+<li><code>sources</code> — <code>.relux</code> file contents referenced by any <code>Span.location</code>
+or <code>Event.source</code>. Keyed by relative path; only files actually
+referenced are embedded.</li>
+<li><code>artifacts</code> — files written under the test’s artifacts directory
+(see <a href="#artifacts"><code>ArtifactEntry</code></a>).</li>
+</ul>
+<h2 id="outcome"><a class="header" href="#outcome">Outcome</a></h2>
+<p><code>outcome</code> is a tagged enum on <code>kind</code>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"pass"</code></td><td>none</td></tr>
+<tr><td><code>"fail"</code></td><td>one of the four <a href="#failure"><code>FailureRecord</code></a> variants, flattened</td></tr>
+<tr><td><code>"cancelled"</code></td><td><a href="#cancellation"><code>CancellationRecord</code></a>, flattened</td></tr>
+<tr><td><code>"skip"</code></td><td><a href="#skip"><code>SkipRecord</code></a>, flattened</td></tr>
+</tbody>
+</table>
+</div>
+<p>The variant tag carried by <code>FailureRecord</code> lives on <code>type</code> (not
+<code>kind</code>) to avoid colliding with the outer outcome tag — so a
+<code>fail</code>-outcome payload looks like
+<code>{ "kind": "fail", "type": "match-timeout", ... }</code>.</p>
+<h3 id="failure"><a class="header" href="#failure">Failure</a></h3>
+<p><code>FailureRecord</code> is a tagged enum on <code>type</code>. All variants carry a
+pre-computed <code>call_stack</code> (the active span stack at the failure site)
+and <code>vars_in_scope</code>. Most variants also carry a <code>buffer_tail</code> (the
+last bytes of the PTY buffer when the failure landed).</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>type</code></th><th>Source of failure</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"match-timeout"</code></td><td><code>match</code> exceeded its effective timeout</td></tr>
+<tr><td><code>"fail-pattern-matched"</code></td><td>an installed <code>fail</code> pattern matched a recv line</td></tr>
+<tr><td><code>"shell-exited"</code></td><td>the PTY shell died unexpectedly (carries <code>exit_code: i32 | null</code>)</td></tr>
+<tr><td><code>"runtime"</code></td><td>any other runtime error (carries <code>message</code>; <code>span</code>/<code>event_seq</code> optional)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Each variant also carries the <code>span</code> and <code>event_seq</code> that pinpoint the
+event-stream location of the failure.</p>
+<h3 id="cancellation"><a class="header" href="#cancellation">Cancellation</a></h3>
+<p><code>CancellationRecord</code>:</p>
+<pre><code class="language-jsonc">{
+  "reason": { ... CancelReasonRecord ... },
+  "span": &lt;span-id&gt; | null,
+  "event_seq": &lt;seq&gt; | null,
+  "shell": "&lt;name&gt;" | null,
+  "call_stack": [ { ... StackFrame ... }, ... ]
+}
+</code></pre>
+<p><code>CancelReasonRecord</code> is a tagged enum on <code>type</code>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>type</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"test-timeout"</code></td><td><code>duration_ms</code></td></tr>
+<tr><td><code>"suite-timeout"</code></td><td><code>duration_ms</code></td></tr>
+<tr><td><code>"fail-fast"</code></td><td><code>trigger_test</code></td></tr>
+<tr><td><code>"sigint"</code></td><td>none</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="skip"><a class="header" href="#skip">Skip</a></h3>
+<p><code>SkipRecord</code> is a pointer into the in-stream marker evaluations:</p>
+<pre><code class="language-jsonc">{
+  "span": &lt;marker-eval span-id&gt;,
+  "event_seq": &lt;bool-check event seq&gt;,
+  "marker_kind": "skip" | "run" | "flaky",
+  "evaluation": { ... MarkerEvalDetail ... }
+}
+</code></pre>
+<p>The viewer focuses these at open time and expands ancestors so the
+markers tree is unfolded.</p>
+<h2 id="shells"><a class="header" href="#shells">Shells</a></h2>
+<p>Keyed by stable identity marker. Each entry:</p>
+<pre><code class="language-jsonc">{
+  "marker": "&lt;same as the map key&gt;",
+  "name": "&lt;spawn-time bare name&gt;",
+  "spawn_ts": &lt;ms&gt;,
+  "terminate_ts": &lt;ms&gt; | null,
+  "command": "&lt;the spawning shell command&gt;"
+}
+</code></pre>
+<p>The display layer renders qualified forms like <code>Db.inner</code> from events
+(<code>ShellSwitch</code>, <code>EffectExposeShell</code>); the record itself holds the
+bare name observed at spawn time.</p>
+<h2 id="spans"><a class="header" href="#spans">Spans</a></h2>
+<p>A span represents one bracketed region of execution. Spans nest via
+<code>parent</code>. Each span:</p>
+<pre><code class="language-jsonc">{
+  "id": &lt;span-id&gt;,
+  "parent": &lt;span-id&gt; | null,
+  "start_ts": &lt;ms&gt;,
+  "end_ts": &lt;ms&gt; | null,
+  "location": { ... SourceLocation ... } | null,
+  "kind": "&lt;one of the kinds below&gt;",
+  ...   // kind-specific fields, flattened
+}
+</code></pre>
+<p><code>SpanKind</code> is tagged on <code>kind</code>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"test"</code></td><td>Root span for the test body. <code>name</code>.</td></tr>
+<tr><td><code>"effect-setup"</code></td><td>An effect being acquired. <code>effect</code>, <code>overlay</code>, <code>alias</code>, <code>marker</code>, <code>is_reuse</code>. The bootstrap span has <code>is_reuse: false</code>; dedup’d reuse spans have <code>is_reuse: true</code> and zero duration.</td></tr>
+<tr><td><code>"effect-cleanup"</code></td><td>An effect being released. <code>effect</code>, <code>alias</code>, <code>setup_span</code>, <code>marker</code>, <code>is_deferred</code>. Parented under the test, not the long-closed setup; <code>setup_span</code> back-references its pair.</td></tr>
+<tr><td><code>"shell-block"</code></td><td>A <code>shell &lt;name&gt;</code> block. <code>shell</code>.</td></tr>
+<tr><td><code>"cleanup-block"</code></td><td>A <code>cleanup</code> block. No payload.</td></tr>
+<tr><td><code>"fn-call"</code></td><td>A function call (user or BIF). <code>name</code>, <code>args</code>, <code>result</code>, <code>callee_kind</code> (<code>"user" | "bif"</code>), <code>is_pure</code>.</td></tr>
+<tr><td><code>"markers"</code></td><td>Synthetic root grouping per-test marker evaluations.</td></tr>
+<tr><td><code>"marker-eval"</code></td><td>One marker evaluation under <code>markers</code>. <code>marker_kind</code>, <code>modifier</code> (<code>"if" | "unless"</code>), <code>decision</code> (<code>"pass" | "mark"</code>).</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="events"><a class="header" href="#events">Events</a></h2>
+<p>An event is a point-in-time observation made by the VM. Events are
+emitted in monotonic <code>seq</code> order. Each event carries the span it
+landed on, the shell it acted on (when applicable), and a source
+location resolving against <code>sources</code>. The common envelope:</p>
+<pre><code class="language-jsonc">{
+  "seq": &lt;u64&gt;,
+  "ts": &lt;ms&gt;,
+  "span": &lt;span-id&gt;,
+  "shell": "&lt;display name&gt;" | null,
+  "shell_marker": "&lt;shell map key&gt;" | null,
+  "source": { ... SourceLocation ... } | null,
+  "kind": "&lt;one of the kinds below&gt;",
+  ...   // kind-specific fields, flattened
+}
+</code></pre>
+<p><code>shell</code> and <code>shell_marker</code> are present iff a shell was in scope at
+the emit site; <code>shell_marker</code> is the stable identity, <code>shell</code> is the
+display name at that moment.</p>
+<p><code>EventKind</code> is tagged on <code>kind</code>. The variants, grouped by concern:</p>
+<p><strong>Shell lifecycle</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"shell-spawn"</code></td><td><code>name</code>, <code>command</code></td></tr>
+<tr><td><code>"shell-ready"</code></td><td><code>name</code></td></tr>
+<tr><td><code>"shell-switch"</code></td><td><code>name</code></td></tr>
+<tr><td><code>"shell-terminate"</code></td><td><code>name</code></td></tr>
+<tr><td><code>"effect-expose-shell"</code></td><td><code>name</code>, <code>target</code>, <code>qualifier</code></td></tr>
+<tr><td><code>"effect-expose-var"</code></td><td><code>name</code>, <code>target</code>, <code>qualifier</code>, <code>value</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>I/O</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"send"</code></td><td><code>data</code></td></tr>
+<tr><td><code>"recv"</code></td><td><code>data</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Matching</strong> (<code>buffer_seq</code> cross-references a <code>buffer_events</code> entry)</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"match-start"</code></td><td><code>pattern</code>, <code>is_regex</code>, <code>effective</code> (a <a href="#timeoutvalue"><code>TimeoutValue</code></a>)</td></tr>
+<tr><td><code>"match-done"</code></td><td><code>matched</code>, <code>elapsed</code> (ms), <code>captures: { [name]: string } | null</code>, <code>buffer_seq</code></td></tr>
+<tr><td><code>"timeout"</code></td><td><code>pattern</code>, <code>buffer_seq: u64 | null</code>, <code>effective</code>. <code>buffer_seq</code> is null when no buffer event corresponds (the failure record’s <code>buffer_tail</code> is canonical in that case).</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Fail patterns</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"fail-pattern-set"</code></td><td><code>pattern</code>, <code>is_regex</code></td></tr>
+<tr><td><code>"fail-pattern-cleared"</code></td><td>none</td></tr>
+<tr><td><code>"fail-pattern-triggered"</code></td><td><code>pattern</code>, <code>is_regex</code>, <code>matched_line</code>, <code>buffer_seq: u64 | null</code> (null because fail-pattern hits observe without advancing the cursor)</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Control flow</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"sleep-start"</code></td><td><code>duration</code> (ms)</td></tr>
+<tr><td><code>"sleep-done"</code></td><td>none</td></tr>
+<tr><td><code>"timeout-set"</code></td><td><code>timeout</code>, <code>previous</code> (both <code>TimeoutValue</code>)</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Values</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"var-let"</code></td><td><code>name</code>, <code>value</code></td></tr>
+<tr><td><code>"var-assign"</code></td><td><code>name</code>, <code>value</code>, <code>previous</code></td></tr>
+<tr><td><code>"var-read"</code></td><td><code>name</code>, <code>value</code> (<code>""</code> when undefined)</td></tr>
+<tr><td><code>"string-eval"</code></td><td><code>result</code></td></tr>
+<tr><td><code>"interpolation"</code></td><td><code>template</code>, <code>result</code>, <code>bindings: Array&lt;[name, value]&gt;</code></td></tr>
+<tr><td><code>"pure-match"</code></td><td><code>match_kind</code> (<code>"regex" | "literal"</code>), <code>value</code>, <code>pattern</code>, <code>result</code> (matched substring or <code>""</code>), <code>captures: { [name]: string }</code></td></tr>
+<tr><td><code>"bool-check"</code></td><td><code>evaluation: MarkerEvalDetail</code>. Emitted as the last event inside a <code>marker-eval</code> span.</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>MarkerEvalDetail</code> is tagged on <code>shape</code>: <code>"unconditional"</code>,
+<code>"bare" + { value, met }</code>, <code>"eq" + { lhs, rhs, met }</code>, or
+<code>"regex" + { value, pattern, met }</code>.</p>
+<p><strong>Diagnostics</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"annotate"</code></td><td><code>text</code></td></tr>
+<tr><td><code>"log"</code></td><td><code>message</code></td></tr>
+<tr><td><code>"warning"</code></td><td><code>message</code></td></tr>
+<tr><td><code>"error"</code></td><td><code>message</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Cancellation</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"cancelled"</code></td><td><code>reason: CancelReasonRecord</code>. Emitted on the span the VM was inside when it observed cancellation.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="buffer-events"><a class="header" href="#buffer-events">Buffer events</a></h2>
+<p>A parallel timeline tracking transitions of each shell’s PTY output
+buffer. Buffer events always carry a shell. The common envelope:</p>
+<pre><code class="language-jsonc">{
+  "seq": &lt;u64&gt;,
+  "ts": &lt;ms&gt;,
+  "shell": "&lt;display name&gt;",
+  "shell_marker": "&lt;shell map key&gt;",
+  "kind": "&lt;one of the kinds below&gt;",
+  ...   // kind-specific fields, flattened
+}
+</code></pre>
+<p><code>BufferEventKind</code> is tagged on <code>kind</code>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"grew"</code></td><td><code>data</code></td><td>New bytes appended to the buffer.</td></tr>
+<tr><td><code>"matched"</code></td><td><code>before</code>, <code>matched</code>, <code>after</code></td><td>A <code>match</code> consumed the cursor up through <code>matched</code>; <code>before</code> is what preceded, <code>after</code> is what now remains.</td></tr>
+<tr><td><code>"reset"</code></td><td><code>consumed</code></td><td>The buffer was reset (e.g. cleared between shell blocks); <code>consumed</code> is what got dropped.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="stack-frames"><a class="header" href="#stack-frames">Stack frames</a></h2>
+<p><code>StackFrame</code> (used in <code>FailureRecord.call_stack</code> and
+<code>CancellationRecord.call_stack</code>):</p>
+<pre><code class="language-jsonc">{
+  "span": &lt;span-id&gt;,
+  "kind": "&lt;span kind discriminator&gt;",
+  "name": "&lt;fn or effect name&gt;" | null,
+  "args": [["name", "value"], ...],
+  "alias": "&lt;user-supplied alias&gt;" | null,
+  "location": { ... SourceLocation } | null
+}
+</code></pre>
+<p><code>kind</code> mirrors the span’s <code>SpanKind</code> discriminator (e.g.
+<code>"fn-call"</code>, <code>"shell-block"</code>). <code>alias</code> is the user-supplied
+<code>start FX as Alias</code> binding when present; only effect-setup /
+effect-cleanup frames carry one today.</p>
+<h2 id="timeoutvalue"><a class="header" href="#timeoutvalue"><code>TimeoutValue</code></a></h2>
+<pre><code class="language-jsonc">// Either:
+{ "type": "tolerance",
+  "duration": "5s",            // humantime-formatted
+  "multiplier": "1.0",
+  "total_duration": "5s",
+  "source": { ... SourceLocation } | null }
+// or:
+{ "type": "assertion",
+  "duration": "30s",
+  "source": { ... SourceLocation } | null }
+</code></pre>
+<p><code>tolerance</code> is the soft kind that scales with <code>--timeout-multiplier</code>;
+<code>assertion</code> is the hard kind that does not. All three duration fields
+are humantime strings — consumers should display them verbatim
+rather than re-parsing.</p>
+<h2 id="sourcelocation"><a class="header" href="#sourcelocation"><code>SourceLocation</code></a></h2>
+<pre><code class="language-jsonc">{
+  "file": "&lt;relative path; matches a key in `sources`&gt;",
+  "line": &lt;1-based line number&gt;,
+  "start": &lt;byte offset into the source&gt;,
+  "end":   &lt;byte offset into the source&gt;
+}
+</code></pre>
+<p><code>start</code>/<code>end</code> resolve against <code>sources[file]</code>.</p>
+<h2 id="artifacts"><a class="header" href="#artifacts">Artifacts</a></h2>
+<pre><code class="language-jsonc">{
+  "path": "&lt;forward-slash relative path&gt;",
+  "size": &lt;bytes&gt;,
+  "mime": "&lt;mime/type&gt;" | null
+}
+</code></pre>
+<p><code>path</code> never starts with <code>/</code> and never contains <code>.</code> / <code>..</code> segments.
+The list is sorted with files preceding subdirectory contents at each
+level (<code>cmp_artifact_paths</code>). <code>mime</code> is derived from the extension
+via <code>mime_guess</code>; the browser does its own sniffing on click.</p>
+<h2 id="versioning"><a class="header" href="#versioning">Versioning</a></h2>
+<p><code>schema_version</code> is currently <code>1</code>. A future change that adds new
+optional fields or new tagged-enum variants is <em>not</em> a breaking
+change and does not bump the version; consumers should ignore unknown
+variants gracefully. Any change that removes or renames fields, or
+narrows the meaning of an existing field, bumps the version.</p>
+<p>To regenerate the TypeScript bindings after editing the Rust types,
+run <code>just viewer-build</code> — it runs the <code>ts-rs</code> export tests and then
+rebuilds the viewer bundle.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="05-test-log-viewer.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="05-test-log-viewer.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-c4a399dd.js"></script>
+        <script src="book-c22b7243.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="highlight-relux-20a2d16c.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

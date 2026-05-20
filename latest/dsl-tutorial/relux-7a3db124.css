@@ -1,0 +1,172 @@
+/* Relux book theme — mirrors the viewer palette so the three mdBooks,
+   the runtime's HTML report, and the docs landing page look like one
+   product. Hex values live in `:root` as `--relux-*` tokens so any
+   standalone page (like docs/landing.html) can `<link>` this file and
+   consume them directly. The mdBook variable mappings below redeclare
+   the same colors on every built-in theme class so a stale
+   `mdbook-theme` value in localStorage can't fall back to a
+   half-styled built-in palette. */
+
+:root {
+  /* Canonical palette — sourced from viewer/src/styles/tokens.css. */
+  --relux-bg: #0f1620;        /* deepest: sidebar / landing body */
+  --relux-paper: #18212e;     /* content surface: book body, cards */
+  --relux-paper-2: #1d2735;   /* raised: code chip, table header, hover */
+  --relux-ink: #e8e4d6;
+  --relux-ink-dim: #9aa3ad;
+  --relux-ink-faint: #5b6470;
+  --relux-accent: #ffd166;    /* amber: keywords, links, warning */
+  --relux-accent-2: #6fd3a3;  /* mint: strings, numbers, inline code */
+  --relux-accent-3: #c79bf0;  /* purple: types, function names */
+  --relux-info: #7aa7d9;      /* blue: variables, notes */
+  --relux-danger: #ff7a7a;
+  --relux-border: rgba(232, 228, 214, 0.18);
+  --relux-border-soft: rgba(232, 228, 214, 0.12);
+  --relux-overlay: rgba(10, 15, 23, 0.55);
+  --relux-shadow: rgba(0, 0, 0, 0.4);
+
+  --relux-font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --relux-font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", "Fira Code", "Source Code Pro", Menlo, Consolas, monospace;
+
+  color-scheme: dark;
+}
+
+/* mdBook variable mappings. Repeated on every built-in theme class so
+   we win over mdBook's `variables.css` regardless of which class
+   ends up on `<html>` (the book.toml pins `relux`, but localStorage
+   may still hold `navy`/`ayu`/etc from before). */
+.relux,
+.light,
+.rust,
+.coal,
+.navy,
+.ayu {
+  --bg: var(--relux-paper);
+  --fg: var(--relux-ink);
+
+  --sidebar-bg: var(--relux-bg);
+  --sidebar-fg: var(--relux-ink);
+  --sidebar-non-existant: var(--relux-ink-faint);
+  --sidebar-active: var(--relux-accent);
+  --sidebar-spacer: var(--relux-border-soft);
+
+  --scrollbar: var(--relux-ink-faint);
+
+  --icons: var(--relux-ink-faint);
+  --icons-hover: var(--relux-ink);
+
+  --links: var(--relux-accent);
+
+  --inline-code-color: var(--relux-accent-2);
+
+  --theme-popup-bg: var(--relux-paper-2);
+  --theme-popup-border: var(--relux-border);
+  --theme-hover: var(--relux-paper-2);
+
+  --quote-bg: var(--relux-paper-2);
+  --quote-border: var(--relux-border);
+
+  --warning-border: var(--relux-accent);
+
+  --table-border-color: var(--relux-border);
+  --table-header-bg: var(--relux-paper-2);
+  --table-alternate-bg: var(--relux-paper-2);
+
+  --searchbar-border-color: var(--relux-border);
+  --searchbar-bg: var(--relux-paper-2);
+  --searchbar-fg: var(--relux-ink);
+  --searchbar-shadow-color: var(--relux-shadow);
+  --searchresults-header-fg: var(--relux-ink-dim);
+  --searchresults-border-color: var(--relux-border);
+  --searchresults-li-bg: var(--relux-paper-2);
+  --search-mark-bg: var(--relux-accent);
+
+  --color-scheme: dark;
+
+  --copy-button-filter: invert(40%) sepia(8%) saturate(515%) hue-rotate(176deg) brightness(94%) contrast(82%);
+  --copy-button-filter-hover: invert(86%) sepia(31%) saturate(680%) hue-rotate(338deg) brightness(105%) contrast(102%);
+
+  --footnote-highlight: var(--relux-accent);
+
+  --overlay-bg: var(--relux-overlay);
+
+  --blockquote-note-color: var(--relux-info);
+  --blockquote-tip-color: var(--relux-accent-2);
+  --blockquote-important-color: var(--relux-accent-3);
+  --blockquote-warning-color: var(--relux-accent);
+  --blockquote-caution-color: var(--relux-danger);
+
+  --sidebar-header-border-color: var(--relux-border);
+
+  --mono-font: var(--relux-font-mono);
+}
+
+/* `general.css` hardcodes Open Sans on `html` — override via cascade
+   instead of redefining a variable. */
+html,
+body,
+button,
+input {
+  font-family: var(--relux-font-body);
+}
+
+/* Hide the theme picker entirely. We've collapsed every built-in
+   theme onto one palette, so the brush button would offer the user
+   five identical options. */
+#theme-toggle,
+.theme-popup {
+  display: none !important;
+}
+
+/* mdBook's `book.js#set_theme` only swaps the dark highlight CSS for
+   `coal`/`navy`/`ayu`; any other theme name (including `relux`) falls
+   into the `else` branch and gets `highlight-493f70e1.css`, the LIGHT
+   atelier-dune stylesheet — which sets `.hljs { background: #f6f7f6 }`
+   and a `#d70025` red on `.hljs-variable`. All rules below are scoped
+   under `.relux` so they out-specify those built-ins regardless of
+   load order.
+
+   Code blocks and inline code both sit on `--paper-2` so they read as
+   slightly raised against the page (`--paper`). Same chip color for
+   block and inline keeps the visual rhythm consistent. */
+.relux .hljs {
+  background: var(--relux-paper-2);
+  color: var(--relux-ink);
+}
+
+.relux :not(pre) > code {
+  background: var(--relux-paper-2);
+  color: var(--relux-accent-2);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+
+/* Match the viewer's source pane: same hljs class colors as
+   viewer/src/components/sections/SourceView.svelte. */
+.relux .hljs-keyword {
+  color: var(--relux-accent);
+  font-weight: 700;
+}
+.relux .hljs-duration {
+  font-weight: 400;
+}
+.relux .hljs-variable,
+.relux .hljs-subst {
+  color: var(--relux-info);
+}
+.relux .hljs-type {
+  color: var(--relux-accent-3);
+  font-weight: 700;
+}
+.relux .hljs-title,
+.relux .hljs-built_in {
+  color: var(--relux-accent-3);
+}
+.relux .hljs-string,
+.relux .hljs-number {
+  color: var(--relux-accent-2);
+}
+.relux .hljs-comment {
+  color: var(--relux-ink-faint);
+  font-style: italic;
+}

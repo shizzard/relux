@@ -1,4 +1,4 @@
-import service/db { url as db_url, StartDb }
+import service/db { url as db_url, Db }
 import api/http
 import jq
 
@@ -8,7 +8,7 @@ test "key-value CRUD" {
     """
     let db_port = available_port()
 
-    need StartDb {
+    start Db {
         DB_PORT = db_port
     }
 

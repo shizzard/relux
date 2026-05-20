@@ -1,10 +1,11 @@
 import api/http
-import service/db { url as db_url, StartDb }
+import service/db { url as db_url, Db }
 
-effect StartAuth -> auth {
-    need StartDb {
+effect Auth {
+    start Db {
         DB_PORT = DB_PORT
     }
+    expose shell auth
 
     shell db_client {
         log("create the auth database")
@@ -19,11 +20,12 @@ effect StartAuth -> auth {
     }
 }
 
-effect SeededAuth -> auth {
-    need StartAuth as auth {
+effect SeededAuth {
+    start Auth as Dep {
         DB_PORT = DB_PORT
         AUTH_PORT = AUTH_PORT
     }
+    expose shell Dep.auth as auth
 
     shell auth_client {
         log("create seed database users")

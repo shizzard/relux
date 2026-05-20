@@ -1,6 +1,6 @@
 import api/http
 import jq
-import service/tasks { url as tasks_url, StartTasks }
+import service/tasks { url as tasks_url, Tasks }
 
 test "task CRUD" {
     """
@@ -10,7 +10,7 @@ test "task CRUD" {
     let auth_port = available_port()
     let tasks_port = available_port()
 
-    need StartTasks {
+    start Tasks {
         DB_PORT = db_port
         AUTH_PORT = auth_port
         TASKS_PORT = tasks_port

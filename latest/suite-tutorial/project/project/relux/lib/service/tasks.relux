@@ -1,16 +1,17 @@
 import api/http
 import jq
-import service/db { url as db_url, StartDb }
+import service/db { url as db_url, Db }
 import service/auth { SeededAuth }
 
-effect StartTasks -> tasks {
-    need StartDb {
+effect Tasks {
+    start Db {
         DB_PORT = DB_PORT
     }
-    need SeededAuth {
+    start SeededAuth {
         DB_PORT = DB_PORT
         AUTH_PORT = AUTH_PORT
     }
+    expose shell tasks
 
     shell db_client {
         log("create the tasks database")
@@ -25,12 +26,13 @@ effect StartTasks -> tasks {
     }
 }
 
-effect SeededTasks -> tasks {
-    need StartTasks as tasks {
+effect SeededTasks {
+    start Tasks as Dep {
         DB_PORT = DB_PORT
         AUTH_PORT = AUTH_PORT
         TASKS_PORT = TASKS_PORT
     }
+    expose shell Dep.tasks as tasks
 
     shell tasks_client {
         log("login as alice")

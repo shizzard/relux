@@ -1,6 +1,8 @@
 import api/http
 
-effect StartDb -> db {
+effect Db {
+    expose shell db
+
     shell db {
         let db_root = "${__RELUX_TEST_ARTIFACTS}/database"
 

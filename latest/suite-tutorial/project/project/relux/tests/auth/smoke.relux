@@ -1,5 +1,5 @@
 import api/http
-import service/auth { url as auth_url, StartAuth }
+import service/auth { url as auth_url, Auth }
 
 test "register and login" {
     """
@@ -8,7 +8,7 @@ test "register and login" {
     let db_port = available_port()
     let auth_port = available_port()
 
-    need StartAuth {
+    start Auth {
         DB_PORT = db_port
         AUTH_PORT = auth_port
     }
