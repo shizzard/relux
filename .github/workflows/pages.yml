@@ -77,6 +77,12 @@ jobs:
           rm -rf gh-pages/latest
           cp -r deploy/${VERSION} gh-pages/latest
 
+          # Disable Jekyll site-wide so the landing page's `_theme/`
+          # directory is served (Jekyll strips underscore-prefixed paths
+          # by default). mdbook emits a per-book .nojekyll but none at
+          # the gh-pages root.
+          touch gh-pages/.nojekyll
+
           cat > gh-pages/index.html << 'REDIRECT'
           <!DOCTYPE html>
           <html>
