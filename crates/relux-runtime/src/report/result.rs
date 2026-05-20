@@ -88,8 +88,9 @@ impl FailureContext {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum Failure {
+    #[error("match timeout in shell '{shell}': timed out waiting for {pattern}")]
     MatchTimeout {
         pattern: String,
         span: IrSpan,
@@ -99,6 +100,9 @@ pub enum Failure {
         effective: Box<IrTimeout>,
         context: FailureContext,
     },
+    #[error(
+        "fail pattern matched in shell '{shell}': pattern {pattern} triggered, matched: \"{matched_line}\""
+    )]
     FailPatternMatched {
         pattern: String,
         matched_line: String,
@@ -106,12 +110,26 @@ pub enum Failure {
         shell: String,
         context: FailureContext,
     },
+    #[error(
+        "shell '{shell}' exited unexpectedly{}",
+        match exit_code {
+            Some(code) => format!(" with exit code {code}"),
+            None => " without an exit code".to_string(),
+        }
+    )]
     ShellExited {
         shell: String,
         exit_code: Option<i32>,
         span: IrSpan,
         context: FailureContext,
     },
+    #[error(
+        "{}",
+        match shell {
+            Some(s) => format!("runtime error in shell '{s}': {message}"),
+            None => format!("runtime error: {message}"),
+        }
+    )]
     Runtime {
         message: String,
         span: Option<IrSpan>,
@@ -122,49 +140,7 @@ pub enum Failure {
 
 impl Failure {
     pub fn summary(&self) -> String {
-        match self {
-            Failure::MatchTimeout { pattern, shell, .. } => {
-                format!("match timeout in shell '{shell}': timed out waiting for {pattern}")
-            }
-            Failure::FailPatternMatched {
-                pattern,
-                matched_line,
-                shell,
-                ..
-            } => {
-                format!(
-                    "fail pattern matched in shell '{shell}': pattern {pattern} triggered, matched: \"{matched_line}\""
-                )
-            }
-            Failure::ShellExited {
-                shell,
-                exit_code: Some(code),
-                ..
-            } => {
-                format!("shell '{shell}' exited unexpectedly with exit code {code}")
-            }
-            Failure::ShellExited {
-                shell,
-                exit_code: None,
-                ..
-            } => {
-                format!("shell '{shell}' exited unexpectedly without an exit code")
-            }
-            Failure::Runtime {
-                message,
-                shell: Some(shell),
-                ..
-            } => {
-                format!("runtime error in shell '{shell}': {message}")
-            }
-            Failure::Runtime {
-                message,
-                shell: None,
-                ..
-            } => {
-                format!("runtime error: {message}")
-            }
-        }
+        self.to_string()
     }
 
     pub fn failure_type(&self) -> &'static str {
@@ -295,7 +271,16 @@ pub fn events_json_link(run_dir: &Path, result: &TestResult) -> Option<String> {
 /// Distinct from `Failure` because the test did not misbehave — it was
 /// stopped by an external event (the per-test watchdog, the suite-wide
 /// watchdog, fail-fast, or SIGINT).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, thiserror::Error)]
+#[error(
+    "{}",
+    match reason {
+        CancelReason::TestTimeout { duration } => format!("cancelled: test timed out after {duration:?}"),
+        CancelReason::SuiteTimeout { duration } => format!("cancelled: suite timed out after {duration:?}"),
+        CancelReason::FailFast { trigger_test } => format!("cancelled: suite stopped after `{trigger_test}` failed (fail-fast)"),
+        CancelReason::Sigint => "cancelled: interrupted (SIGINT)".to_string(),
+    }
+)]
 pub struct Cancellation {
     pub reason: CancelReason,
     pub context: FailureContext,
@@ -303,18 +288,7 @@ pub struct Cancellation {
 
 impl Cancellation {
     pub fn summary(&self) -> String {
-        match &self.reason {
-            CancelReason::TestTimeout { duration } => {
-                format!("cancelled: test timed out after {duration:?}")
-            }
-            CancelReason::SuiteTimeout { duration } => {
-                format!("cancelled: suite timed out after {duration:?}")
-            }
-            CancelReason::FailFast { trigger_test } => {
-                format!("cancelled: suite stopped after `{trigger_test}` failed (fail-fast)")
-            }
-            CancelReason::Sigint => "cancelled: interrupted (SIGINT)".to_string(),
-        }
+        self.to_string()
     }
 
     pub fn reason_tag(&self) -> &'static str {
@@ -343,30 +317,17 @@ impl From<&Cancellation> for relux_core::error::DiagnosticReport {
 /// is running. `Failure` is "the test misbehaved"; `Cancelled` is "we were
 /// stopped from the outside". `run_test` maps each variant onto the
 /// corresponding `Outcome`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum ExecError {
-    Failure(Failure),
-    Cancelled(Cancellation),
-}
-
-impl From<Failure> for ExecError {
-    fn from(f: Failure) -> Self {
-        ExecError::Failure(f)
-    }
-}
-
-impl From<Cancellation> for ExecError {
-    fn from(c: Cancellation) -> Self {
-        ExecError::Cancelled(c)
-    }
+    #[error(transparent)]
+    Failure(#[from] Failure),
+    #[error(transparent)]
+    Cancelled(#[from] Cancellation),
 }
 
 impl ExecError {
     pub fn summary(&self) -> String {
-        match self {
-            ExecError::Failure(f) => f.summary(),
-            ExecError::Cancelled(c) => c.summary(),
-        }
+        self.to_string()
     }
 }
 
