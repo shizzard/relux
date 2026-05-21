@@ -16,33 +16,16 @@ cargo_fmt() {
     rustup run nightly rustfmt --edition 2024 --check $(find crates -name '*.rs')
 }
 
-sync_book_assets() {
-    # Per-book theme assets (highlight-relux.js, relux.css, theme/highlight.js)
-    # are gitignored copies — mdbook needs them present at build time, so
-    # sync first. Inlined here (rather than calling `just`) to match the CI
-    # workflows that build the books.
-    local hljs_gz=vendor/highlight-11.11.1.min.js.gz
-    local grammar=crates/relux-runtime/src/report/highlight-relux.js
-    local css=docs/_theme/relux.css
-    local book
-    for book in docs/dsl-tutorial docs/reference docs/suite-tutorial; do
-        mkdir -p "$book/theme"
-        gunzip -c "$hljs_gz" > "$book/theme/highlight.js"
-        cp "$grammar" "$book/highlight-relux.js"
-        cp "$css" "$book/relux.css"
-    done
-}
-
 mdbook_build() {
     echo "Building docs..."
-    sync_book_assets
+    ./.scripts/build-books-sync-book-targets.sh
     mdbook build docs/dsl-tutorial
     mdbook build docs/suite-tutorial
     mdbook build docs/reference
 }
 
 # Verify vendor/relux-viewer.js.gz is in sync with viewer/ sources, but
-# only when the commit actually touches them — Rust-only commits skip
+# only when the commit actually touches them - Rust-only commits skip
 # the (slow) docker build entirely.
 verify_viewer_bundle() {
     local staged
@@ -52,7 +35,12 @@ verify_viewer_bundle() {
     fi
 
     echo "Rebuilding viewer bundle to verify vendor/ is in sync..."
-    just viewer-build >/dev/null
+    {
+        cargo test -p relux-runtime --features ts-export 'export_bindings_'
+        docker run --rm -v "$PWD/viewer":/src -w /src node:lts-slim \
+            sh -c 'npm ci && npm run build'
+        cp viewer/dist/relux-viewer.js.gz vendor/relux-viewer.js.gz
+    } >/dev/null
 
     if ! git diff --quiet -- vendor/relux-viewer.js.gz; then
         echo

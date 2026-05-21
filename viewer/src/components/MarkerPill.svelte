@@ -49,7 +49,7 @@
     appearance: none;
   }
   .pill[disabled] {
-    /* decorative — keep neutral look, no hover affordance */
+    /* decorative - keep neutral look, no hover affordance */
     pointer-events: none;
   }
   .pill.clickable {

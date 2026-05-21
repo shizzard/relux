@@ -40,7 +40,7 @@ use relux_ir::IrEffectStart;
 use relux_ir::IrNode;
 use relux_ir::IrPureLetStmt;
 
-// ─── Warning / CleanupSource ────────────────────────────────
+// --- Warning / CleanupSource -----------------------------
 
 #[derive(Debug, Clone)]
 pub enum CleanupSource {
@@ -56,7 +56,7 @@ pub enum Warning {
     },
 }
 
-// ─── EffectManager ──────────────────────────────────────────
+// --- EffectManager ---------------------------------------
 
 pub struct EffectManager {
     registry: Arc<EffectRegistry>,
@@ -66,7 +66,7 @@ pub struct EffectManager {
     /// construction: each test instantiates its own `EffectManager`.
     top_level_guards: TokioMutex<Vec<EffectGuard>>,
     /// Root anchor for every `EffectCleanup` span emitted during this
-    /// test's lifetime — happy-path teardown, mid-setup rollback, and
+    /// test's lifetime - happy-path teardown, mid-setup rollback, and
     /// `try_guards!`-driven partial teardown alike. Per-test by
     /// construction (same lifetime as `top_level_guards`). Threading
     /// this from `lib.rs` once at construction lets failure paths
@@ -95,9 +95,9 @@ impl EffectManager {
     /// Acquires run concurrently. The slot lock in `acquire` (see
     /// `registry::EffectSlot`) serialises bootstrap-vs-reuse for the
     /// same dedup key, so parallel acquires of overlapping keys are
-    /// safe — one bootstraps, the others wait on the slot's `Notify`.
+    /// safe - one bootstraps, the others wait on the slot's `Notify`.
     /// Independent effects (different keys) bootstrap truly in parallel.
-    /// Overlay evaluation stays serial — overlays are cheap and may
+    /// Overlay evaluation stays serial - overlays are cheap and may
     /// reference let-bindings whose ordering is observable.
     #[allow(clippy::type_complexity)]
     pub fn instantiate<'a>(
@@ -141,7 +141,7 @@ impl EffectManager {
 
             // Phase 2: acquire all starts concurrently. `join_all`
             // preserves input order and runs every future to completion
-            // even when an earlier one errors — important because
+            // even when an earlier one errors - important because
             // dropping an in-flight `acquire` mid-bootstrap would leave
             // its slot stuck in `Loading` and stall future acquirers.
             let acquires = prepared
@@ -157,7 +157,7 @@ impl EffectManager {
             // Phase 3: partition. On any failure, release every
             // successful acquire (concurrently) and propagate the first
             // observed failure. Cleanup spans anchor under
-            // `self.test_span`, never `parent_span` — on the recursive
+            // `self.test_span`, never `parent_span` - on the recursive
             // path `parent_span` is the caller effect's open
             // `EffectSetup` span, and nesting cleanups inside it
             // violates the invariant from 85eef51.
@@ -267,7 +267,7 @@ impl EffectManager {
 
                     // Emit a zero-duration reuse span under the caller's
                     // parent so the dedup hit is visible in the viewer.
-                    // The marker matches the bootstrap span's marker —
+                    // The marker matches the bootstrap span's marker -
                     // the viewer hops back by marker on pill click.
                     let overlay = evaluated_overlay
                         .take()
@@ -409,7 +409,7 @@ impl EffectManager {
         //    The `?` below is safe without guard release: `dep_guards` hasn't
         //    been populated yet, and `instantiate`'s own partial-batch
         //    rollback handles anything it acquired before failing. The
-        //    effect's own cleanup body is also not invoked here — it can
+        //    effect's own cleanup body is also not invoked here - it can
         //    reference dep-exposed vars, and at this point deps don't exist,
         //    so there is nothing for cleanup to act on.
         let effect_vars = scope.vars().lock().await.clone();
@@ -422,7 +422,7 @@ impl EffectManager {
         // point and the final `Ok(EffectHandle { ... dep_guards ... })` is
         // wrapped in `try_guards!`, which runs this effect's own cleanup
         // body (if declared) and releases the accumulated dep guards via
-        // `run_effect_cleanup` before propagating the error — matching the
+        // `run_effect_cleanup` before propagating the error - matching the
         // success-path teardown order (effect's own cleanup before its
         // deps').
 
@@ -443,7 +443,7 @@ impl EffectManager {
         // failures that fire inside the body walk below (a shell-block
         // statement that fails before the body walk reaches the
         // `IrEffectItem::Cleanup` arm). The body walk no longer captures
-        // this — see step 6.
+        // this - see step 6.
         let cleanup_block: Option<IrCleanupBlock> = effect.body().iter().find_map(|item| {
             if let IrEffectItem::Cleanup { block, .. } = item {
                 Some(block.clone())
@@ -484,13 +484,13 @@ impl EffectManager {
         // Local helper: on any failure below, run this effect's own cleanup
         // body (best-effort) and release dep guards under that cleanup
         // span, then propagate. Warnings from the partial-teardown are
-        // discarded — the test is failing anyway; surfacing extra cleanup
+        // discarded - the test is failing anyway; surfacing extra cleanup
         // noise on top would obscure the root failure. Defined after the
         // `shells` binding because macro hygiene resolves `&shells`
         // against the binding visible at the macro's definition site.
         //
         // The final argument is `self.test_span`, NOT the local
-        // `parent_span` — on the recursive sub-effect path, `parent_span`
+        // `parent_span` - on the recursive sub-effect path, `parent_span`
         // is the grandparent effect's open EffectSetup span. Cleanup
         // spans must always anchor under the test span (85eef51).
         macro_rules! try_guards {
@@ -660,7 +660,7 @@ impl EffectManager {
             }
         }
 
-        // 7. Resolve expose declarations — mark which shells/vars are exposed
+        // 7. Resolve expose declarations - mark which shells/vars are exposed
         let mut exposed: HashSet<String> = HashSet::new();
         let mut exposed_vars: HashMap<String, String> = HashMap::new();
 
@@ -773,7 +773,7 @@ impl EffectManager {
         drop(effect_vars);
 
         // 8. Terminate non-exposed local shells (deduplicate by Arc pointer).
-        //    Collect pointers of exposed VMs first — a non-exposed key may alias
+        //    Collect pointers of exposed VMs first - a non-exposed key may alias
         //    the same Arc as an exposed key (e.g. backwards-compat single-shell alias),
         //    so we must not shut those down.
         let exposed_ptrs: HashSet<usize> = shells

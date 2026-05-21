@@ -35,7 +35,7 @@ use relux_core::pure::LayeredEnv;
 use relux_core::table::FileId;
 use relux_core::table::SourceTable;
 
-// ─── LoweringScope ──────────────────────────────────────────
+// --- LoweringScope ---------------------------------------
 
 /// Per-definition scope holding local name resolution tables.
 /// Pushed onto the scope stack when entering a definition's body,
@@ -45,7 +45,7 @@ pub struct LoweringScope {
     pub tables: LocalTables,
 }
 
-// ─── LoweringContext ─────────────────────────────────────────
+// --- LoweringContext -------------------------------------
 
 pub struct LoweringContext {
     ast_table: AstTable,
@@ -95,7 +95,7 @@ impl LoweringContext {
         }
     }
 
-    // ─── Accessors ───────────────────────────────────────────
+    // --- Accessors ---------------------------------------
 
     pub fn ast_table(&self) -> &AstTable {
         &self.ast_table
@@ -149,13 +149,13 @@ impl LoweringContext {
         self.shallow_env.as_ref()
     }
 
-    // ─── BIF Registration ────────────────────────────────────
+    // --- BIF Registration --------------------------------
 
     /// Pre-register all built-in functions under the synthetic `@builtin` module.
     pub fn register_bifs(&self) {
         let builtin_mod = ModulePath("@builtin".into());
 
-        // Pure BIFs — registered in both FnTable and PureFnTable.
+        // Pure BIFs - registered in both FnTable and PureFnTable.
         let pure_bifs: &[(&str, usize)] = &[
             ("trim", 1),
             ("upper", 1),
@@ -193,7 +193,7 @@ impl LoweringContext {
             );
         }
 
-        // Impure BIFs — registered in FnTable only.
+        // Impure BIFs - registered in FnTable only.
         let impure_bifs: &[(&str, usize)] = &[
             ("sleep", 1),
             ("annotate", 1),
@@ -226,7 +226,7 @@ impl LoweringContext {
         }
     }
 
-    // ─── Local Table Factories ───────────────────────────────
+    // --- Local Table Factories ---------------------------
 
     pub fn local_tables(&self) -> LocalTables {
         LocalTables {
@@ -236,7 +236,7 @@ impl LoweringContext {
         }
     }
 
-    // ─── Local Table Population ──────────────────────────────
+    // --- Local Table Population --------------------------
 
     /// Populate local tables from a module's own definitions and imports.
     ///
@@ -277,7 +277,7 @@ impl LoweringContext {
 
                 match &import.names {
                     None => {
-                        // Wildcard import — import all definitions from target.
+                        // Wildcard import - import all definitions from target.
                         self.import_wildcard(
                             &import_mod_path,
                             target_file_id,
@@ -331,7 +331,7 @@ impl LoweringContext {
                         arity: def.params.len(),
                     };
                     let span = IrSpan::new(file_id.clone(), def.name.node.span);
-                    // Pure fns go in both tables — pure fns are callable
+                    // Pure fns go in both tables - pure fns are callable
                     // from impure contexts too.
                     tables
                         .fns
@@ -543,7 +543,7 @@ impl LoweringContext {
         Ok(())
     }
 
-    // ─── Cause / Warning Registration ────────────────────────
+    // --- Cause / Warning Registration --------------------
 
     pub fn register_cause(&self, cause_id: CauseId, cause: relux_core::diagnostics::Cause) {
         self.causes.insert(cause_id, cause);
@@ -553,7 +553,7 @@ impl LoweringContext {
         self.warnings.insert(warning_id, warning);
     }
 
-    // ─── In-Progress Stack: Functions ────────────────────────
+    // --- In-Progress Stack: Functions --------------------
 
     pub fn push_fn(&mut self, id: FnId, span: IrSpan) {
         self.fn_stack.push((id, span));
@@ -575,7 +575,7 @@ impl LoweringContext {
         Some(CycleReport::Function { chain })
     }
 
-    // ─── In-Progress Stack: Effects ──────────────────────────
+    // --- In-Progress Stack: Effects ----------------------
 
     pub fn push_effect(&mut self, id: EffectId, span: IrSpan) {
         self.effect_stack.push((id, span));
@@ -597,7 +597,7 @@ impl LoweringContext {
         Some(CycleReport::Effect { chain })
     }
 
-    // ─── Finalization ────────────────────────────────────────
+    // --- Finalization ------------------------------------
 
     /// Print all diagnostics (causes and warnings) to stderr.
     ///
@@ -627,7 +627,7 @@ impl LoweringContext {
         }
     }
 
-    // ─── Scope Stack ─────────────────────────────────────────
+    // --- Scope Stack -------------------------------------
 
     pub fn push_scope(&mut self, scope: LoweringScope) {
         self.scope_stack.push(scope);
@@ -641,7 +641,7 @@ impl LoweringContext {
         self.scope_stack.last().expect("no current scope")
     }
 
-    // ─── Resolve: Functions ──────────────────────────────────
+    // --- Resolve: Functions ------------------------------
 
     /// Resolve a function by its global FnId.
     /// Handles caching, cycle detection, local table creation, and lowering.
@@ -738,7 +738,7 @@ impl LoweringContext {
         result
     }
 
-    // ─── Resolve: Pure Functions ─────────────────────────────
+    // --- Resolve: Pure Functions -------------------------
 
     pub fn resolve_pure_fn(&mut self, fn_id: &FnId) -> Result<IrPureFn, LoweringBail> {
         // Check cache
@@ -840,7 +840,7 @@ impl LoweringContext {
         result
     }
 
-    // ─── Resolve: Effects ────────────────────────────────────
+    // --- Resolve: Effects --------------------------------
 
     pub fn resolve_effect(&mut self, effect_id: &EffectId) -> Result<IrEffect, LoweringBail> {
         // Check cache

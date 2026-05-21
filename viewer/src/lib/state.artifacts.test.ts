@@ -17,7 +17,7 @@ function makeLog(artifacts: ArtifactEntry[]): StructuredLog {
   } as unknown as StructuredLog;
 }
 
-describe('ViewerState — artifacts modal', () => {
+describe('ViewerState - artifacts modal', () => {
   it('opens, closes, and is independent of other modals', () => {
     const state = new ViewerState(
       makeLog([{ path: 'out.txt', size: 12n, mime: 'text/plain' }]),

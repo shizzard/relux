@@ -79,7 +79,7 @@ export function buildCallStack(data: StructuredLog, event: Event): StackFrame[] 
 
 // Selecting a span shows the **outer** scope (vars/captures at the
 // moment the span opened), so the call stack should also be the chain
-// of callers — i.e. ancestors *excluding* the span itself.
+// of callers - i.e. ancestors *excluding* the span itself.
 export function buildCallStackForSpan(data: StructuredLog, span: Span): StackFrame[] {
   if (span.parent === null) return [];
   return ancestors(data, n(span.parent))
@@ -480,7 +480,7 @@ export interface LiveShell {
 // match event up to `seq`.
 //
 //   - "pending": no `shell-spawn` event for the shell has fired by
-//                `seq` yet — the shell will exist later in the log but
+//                `seq` yet - the shell will exist later in the log but
 //                hasn't started at the cursor moment. Without this the
 //                default `ready` (rendered as "running") leaked for
 //                shells that hadn't been spawned yet, surfacing
@@ -528,11 +528,11 @@ export function liveShellsAtSeq(data: StructuredLog, event: Event): LiveShell[] 
 
 // Per-shell state for a span selection: anchor the replay on the latest
 // event whose `ts` falls inside the span's lifetime. Used when the user
-// has a span (not an event) selected — `liveShellsAtSeq` needs a seq,
+// has a span (not an event) selected - `liveShellsAtSeq` needs a seq,
 // and a span's natural anchor is "the latest activity within it". For
 // in-flight spans (`end_ts === null`) the anchor walks to the very end
 // of the log. Returns `[]` when no event qualifies (a span before any
-// events fired — unusual but well-defined).
+// events fired - unusual but well-defined).
 export function liveShellsAtSpan(data: StructuredLog, span: Span): LiveShell[] {
   const endTs = span.end_ts ?? Number.POSITIVE_INFINITY;
   let anchorSeq: number | null = null;
@@ -602,7 +602,7 @@ export function firstUseShellBlockForMarker(
       if (ev.kind === 'shell-spawn' && ev.shell_marker === marker) {
         return n(span.id);
       }
-      // First event in span — if not a marker-matching shell-spawn,
+      // First event in span - if not a marker-matching shell-spawn,
       // move on to the next shell-block.
       break;
     }

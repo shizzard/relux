@@ -4,7 +4,7 @@ use relux_lexer::Token;
 
 use super::ParserInput;
 
-/// `//` — comment prefix (two consecutive Slash tokens).
+/// `//` - comment prefix (two consecutive Slash tokens).
 pub fn prefix_comment<'a>()
 -> impl Parser<'a, ParserInput<'a>, (), extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::Slash)
@@ -13,7 +13,7 @@ pub fn prefix_comment<'a>()
         .labelled("comment prefix (//)")
 }
 
-/// `#` — marker prefix.
+/// `#` - marker prefix.
 pub fn prefix_marker<'a>()
 -> impl Parser<'a, ParserInput<'a>, (), extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::Hash).ignored().labelled("marker prefix (#)")

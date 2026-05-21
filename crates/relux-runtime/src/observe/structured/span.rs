@@ -62,7 +62,7 @@ pub enum MarkerEvalModifier {
 pub enum MarkerEvalDecision {
     /// Marker's action did not apply.
     Pass,
-    /// Marker's action applied — the kind tells which (skip / run /
+    /// Marker's action applied - the kind tells which (skip / run /
     /// flaky).
     Mark,
 }
@@ -106,7 +106,7 @@ pub enum SpanKind {
         overlay: Vec<(String, String)>,
         alias: Option<String>,
         /// Identity marker computed from the effect-instance dedup key.
-        /// Same value on every `EffectSetup` for the same instance —
+        /// Same value on every `EffectSetup` for the same instance -
         /// the bootstrap span plus every dedup'd reuse share it.
         marker: String,
         /// `false` on the bootstrap span that runs the setup body.

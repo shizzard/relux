@@ -40,7 +40,7 @@ fn ir_ident_empty_name() {
     assert_eq!(ident.name(), "");
 }
 
-// ─── Lowering tests (moved from lower.rs) ───────────────
+// --- Lowering tests (moved from lower.rs) ----------------
 
 use relux_ast::AstIdent;
 

@@ -221,7 +221,7 @@ fn ir_pure_stmt_expr() {
     assert!(matches!(stmt, IrPureStmt::Expr { .. }));
 }
 
-// ─── Shell statement lowering ─────────────────────────────
+// --- Shell statement lowering ----------------------------
 
 #[test]
 fn lower_let_stmt_with_value() {
@@ -559,7 +559,7 @@ fn lower_comments_pass_through() {
     }
 }
 
-// ─── Pure statement lowering ──────────────────────────────
+// --- Pure statement lowering -----------------------------
 
 #[test]
 fn lower_pure_stmt_let() {

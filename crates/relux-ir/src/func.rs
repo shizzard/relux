@@ -11,7 +11,7 @@ use super::stmt::IrPureStmt;
 use super::stmt::IrShellStmt;
 
 /// IrFn is an enum because builtins have no AST source.
-/// IrNode is NOT implemented — Builtin has no span.
+/// IrNode is NOT implemented - Builtin has no span.
 #[derive(Debug, Clone)]
 pub enum IrFn {
     UserDefined {
@@ -27,7 +27,7 @@ pub enum IrFn {
 }
 
 /// IrPureFn is an enum because builtins have no AST source.
-/// IrNode is NOT implemented — Builtin has no span.
+/// IrNode is NOT implemented - Builtin has no span.
 #[derive(Debug, Clone)]
 pub enum IrPureFn {
     UserDefined {

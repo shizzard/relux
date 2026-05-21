@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use relux_core::pure::LayeredEnv;
 
-// ─── ShallowEnv ─────────────────────────────────────────────
+// --- ShallowEnv ------------------------------------------
 
 /// A set of known variable names (no values).
 /// Used at resolve time to track which names are available
@@ -33,7 +33,7 @@ impl ShallowEnv {
     }
 }
 
-// ─── ShallowLayeredEnv ──────────────────────────────────────
+// --- ShallowLayeredEnv -----------------------------------
 
 /// A layered set of known variable names that mirrors the runtime
 /// `LayeredEnv` structure but tracks only name presence.
@@ -80,4 +80,4 @@ impl ShallowLayeredEnv {
     }
 }
 
-// ─── Tests ──────────────────────────────────────────────────
+// --- Tests -----------------------------------------------

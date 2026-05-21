@@ -3,13 +3,13 @@ use std::fmt;
 
 use logos::Logos;
 
-// ─── Helpers ────────────────────────────────────────────────
+// --- Helpers ---------------------------------------------
 
-// ─── Token ──────────────────────────────────────────────────
+// --- Token -----------------------------------------------
 
 #[derive(Logos, PartialEq, Clone)]
 pub enum Token<'a> {
-    // ── Keywords ────────────────────────────────────────────
+    // --- Keywords ----------------------------------------
     #[token("fn")]
     Fn,
     #[token("pure")]
@@ -37,11 +37,11 @@ pub enum Token<'a> {
     #[token("as")]
     As,
 
-    // ── Word (identifier catch-all — longer match beats keywords) ──
+    // Word (identifier catch-all - longer match beats keywords)
     #[regex("[a-zA-Z_][a-zA-Z0-9_]*")]
     Word(&'a str),
 
-    // ── Symbols (single character) ──────────────────────────
+    // --- Symbols (single character) ----------------------
     #[token("$")]
     Dollar,
     #[token("{")]
@@ -87,7 +87,7 @@ pub enum Token<'a> {
     #[token(".")]
     Dot,
 
-    // ── Whitespace ──────────────────────────────────────────
+    // --- Whitespace --------------------------------------
     #[regex(" +")]
     Space(&'a str),
     #[regex("\t+")]
@@ -95,7 +95,7 @@ pub enum Token<'a> {
     #[token("\n")]
     Newline,
 
-    // ── Text (catch-all, produced by post-lex squashing) ────
+    // --- Text (catch-all, produced by post-lex squashing) ---
     Text(&'a str),
 }
 
@@ -161,7 +161,7 @@ impl fmt::Debug for Token<'_> {
     }
 }
 
-// ─── Input Normalization ────────────────────────────────────
+// --- Input Normalization ---------------------------------
 
 pub fn normalize(source: &str) -> Cow<'_, str> {
     if source.contains('\r') {
@@ -171,7 +171,7 @@ pub fn normalize(source: &str) -> Cow<'_, str> {
     }
 }
 
-// ─── Public API ─────────────────────────────────────────────
+// --- Public API ------------------------------------------
 
 pub fn lex(source: &str) -> Vec<Spanned<'_>> {
     let mut lexer = Token::lexer(source);
@@ -215,7 +215,7 @@ pub fn lex(source: &str) -> Vec<Spanned<'_>> {
     tokens
 }
 
-// ─── TimeoutKind (shared with parser/resolver) ──────────────
+// --- TimeoutKind (shared with parser/resolver) -----------
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum TimeoutKind {
@@ -238,7 +238,7 @@ impl fmt::Display for TimeoutKind {
     }
 }
 
-// ─── Tests ──────────────────────────────────────────────────
+// --- Tests -----------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -255,9 +255,9 @@ mod tests {
             .collect()
     }
 
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
     // Symbols
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
 
     mod symbols {
         use super::*;
@@ -341,7 +341,7 @@ mod tests {
 
         #[test]
         fn spans_all_20() {
-            // Backslash at EOF has no following char, so Escape doesn't match — bare Backslash.
+            // Backslash at EOF has no following char, so Escape doesn't match - bare Backslash.
             let input = "${}()\"<>=!?~@#[],/-\\";
             let sp = spans(input);
             assert_eq!(sp.len(), 20);
@@ -357,9 +357,9 @@ mod tests {
         }
     }
 
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
     // Whitespace
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
 
     mod whitespace {
         use super::*;
@@ -431,9 +431,9 @@ mod tests {
         }
     }
 
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
     // Keywords
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
 
     mod keywords {
         use super::*;
@@ -488,7 +488,7 @@ mod tests {
 
         #[test]
         fn prefix_guard_blocks() {
-            // Word regex matches full identifier — keywords never split words
+            // Word regex matches full identifier - keywords never split words
             assert_eq!(tokens("functional"), vec![Token::Text("functional")]);
             assert_eq!(tokens("letter"), vec![Token::Text("letter")]);
             assert_eq!(tokens("testing"), vec![Token::Text("testing")]);
@@ -512,7 +512,7 @@ mod tests {
 
         #[test]
         fn suffix_split() {
-            // Word regex matches the full identifier — no spurious keyword splits
+            // Word regex matches the full identifier - no spurious keyword splits
             assert_eq!(tokens("myfn"), vec![Token::Text("myfn")]);
             assert_eq!(tokens("islet"), vec![Token::Text("islet")]);
             assert_eq!(tokens("cleanup_fn"), vec![Token::Text("cleanup_fn")]);
@@ -527,7 +527,7 @@ mod tests {
 
         #[test]
         fn as_boundary_cases() {
-            // "as" is the shortest keyword — verify longer words aren't split
+            // "as" is the shortest keyword - verify longer words aren't split
             assert_eq!(tokens("assign"), vec![Token::Text("assign")]);
             assert_eq!(tokens("asset"), vec![Token::Text("asset")]);
             assert_eq!(tokens("asking"), vec![Token::Text("asking")]);
@@ -587,7 +587,7 @@ mod tests {
 
         #[test]
         fn inside_payload() {
-            // Keywords inside operator payloads are still recognized —
+            // Keywords inside operator payloads are still recognized -
             // parser handles context
             assert_eq!(
                 tokens(
@@ -610,9 +610,9 @@ mod tests {
         }
     }
 
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
     // Text (catch-all)
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
 
     mod text {
         use super::*;
@@ -743,9 +743,9 @@ mod tests {
         }
     }
 
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
     // Escapes (backslash sequences)
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
 
     mod escapes {
         use super::*;
@@ -829,9 +829,9 @@ mod tests {
         }
     }
 
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
     // Unicode
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
 
     mod unicode {
         use super::*;
@@ -897,7 +897,7 @@ mod tests {
             // Cyrillic 'a' (U+0430) looks like Latin 'a' but is different
             // bytes. "\u{0430}s" visually resembles "as" but must NOT match.
             assert_eq!(tokens("\u{0430}s"), vec![Token::Text("\u{0430}s")]);
-            // Cyrillic 'e' (U+0435) in "l\u{0435}t" — looks like "let"
+            // Cyrillic 'e' (U+0435) in "l\u{0435}t" - looks like "let"
             assert_eq!(tokens("l\u{0435}t"), vec![Token::Text("l\u{0435}t")]);
         }
 
@@ -912,9 +912,9 @@ mod tests {
         }
     }
 
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
     // Input normalization
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
 
     mod normalization {
         use super::*;
@@ -1002,9 +1002,9 @@ mod tests {
         }
     }
 
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
     // Strings and docstrings
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
 
     mod strings {
         use super::*;
@@ -1130,9 +1130,9 @@ line2"""
         }
     }
 
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
     // Regex patterns as token streams
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
 
     mod regex_patterns {
         use super::*;
@@ -1209,9 +1209,9 @@ line2"""
         }
     }
 
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
     // Span accuracy
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
 
     mod span_accuracy {
         use super::*;
@@ -1239,9 +1239,9 @@ line2"""
         }
     }
 
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
     // Real-world syntax lines
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
 
     mod syntax_lines {
         use super::*;
@@ -1737,7 +1737,7 @@ line2"""
         fn test_def() {
             // Note: "test" inside the string is recognized as a keyword
             // because it's followed by `"` (not an ident char). The parser
-            // handles this — inside string context, keywords are just content.
+            // handles this - inside string context, keywords are just content.
             assert_eq!(
                 tokens(
                     r#"test "my test" {
@@ -2235,9 +2235,9 @@ let
         }
     }
 
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
     // Integration: multi-line module
-    // ─────────────────────────────────────────────────────────
+    // ---------------------------------------------------------
 
     mod integration {
         use super::*;

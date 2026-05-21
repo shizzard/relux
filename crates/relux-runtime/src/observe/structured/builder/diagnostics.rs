@@ -136,7 +136,7 @@ impl StructuredLogBuilder {
     /// methods. `Vm` failures produce full diagnostic context; `PreVm`
     /// failures (effect-resolution errors, pre-VM init, cleanup-shell
     /// spawn) land with the surrounding span and empty stack / tail /
-    /// vars — the artifact stays well-formed.
+    /// vars - the artifact stays well-formed.
     pub fn failure_record(&self, failure: &crate::report::result::Failure) -> FailureRecord {
         use crate::report::result::Failure;
         match failure {

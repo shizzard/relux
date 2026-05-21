@@ -119,7 +119,7 @@ fn fns_with_builtins(names: &[(&str, usize)]) -> PureFnTable {
     fns
 }
 
-// ─── Expression evaluation ──────────────────────────────
+// --- Expression evaluation -------------------------------
 
 #[test]
 fn eval_string_literal() {
@@ -344,7 +344,7 @@ fn eval_call_nested() {
     );
 }
 
-// ─── Function evaluation ────────────────────────────────
+// --- Function evaluation ---------------------------------
 
 #[test]
 fn eval_fn_identity() {

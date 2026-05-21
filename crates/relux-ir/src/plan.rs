@@ -22,7 +22,7 @@ use super::tables::Tables;
 use super::test_def::IrTest;
 use super::timeout::IrTimeout;
 
-// ─── TestMeta ────────────────────────────────────────────────
+// --- TestMeta --------------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct TestMeta {
@@ -79,7 +79,7 @@ impl TestMeta {
 
 impl_ir_node_struct!(TestMeta);
 
-// ─── Plan ─────────────────────────────────────────────────
+// --- Plan ------------------------------------------------
 
 #[derive(Debug)]
 pub enum Plan {
@@ -110,7 +110,7 @@ impl Plan {
     }
 }
 
-// ─── Suite ───────────────────────────────────────────────────
+// --- Suite -----------------------------------------------
 
 #[derive(Debug)]
 pub struct Suite {
@@ -121,7 +121,7 @@ pub struct Suite {
     pub tables: Tables,
 }
 
-// ─── Plan Building ───────────────────────────────────────────
+// --- Plan Building ---------------------------------------
 
 pub(crate) fn build_plan(
     def: &AstTestDef,
@@ -268,4 +268,4 @@ pub fn build_all_plans(ctx: &mut LoweringContext) -> Vec<Plan> {
     plans
 }
 
-// ─── Tests ───────────────────────────────────────────────────
+// --- Tests -----------------------------------------------

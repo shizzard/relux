@@ -88,7 +88,7 @@
     cursorPercent = null;
     lastCandidateKey = '';
     vs.timelineHover = null;
-    // Note: do NOT clear timelineCardFocus here — the cursor may be
+    // Note: do NOT clear timelineCardFocus here - the cursor may be
     // moving from the bar into a card. The card's own onmouseleave
     // clears it.
   }

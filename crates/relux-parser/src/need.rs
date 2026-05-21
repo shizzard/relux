@@ -10,9 +10,9 @@ use super::ws::newline;
 use super::ws::ws;
 use relux_ast::AstStartDecl;
 
-// ─── L5: Start Combinator ──────────────────────────────────
+// --- L5: Start Combinator --------------------------------
 
-/// `start Effect [as alias] [{ overlay }]` — start declaration.
+/// `start Effect [as alias] [{ overlay }]` - start declaration.
 pub fn start_decl<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStartDecl>, extra::Err<Rich<'a, Token<'a>>>> + Clone
 {

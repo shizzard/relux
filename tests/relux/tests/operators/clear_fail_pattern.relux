@@ -4,7 +4,7 @@ test "bare fail regex clears fail pattern" {
 
     Set a regex fail pattern matching "error", clear it with bare !?,
     then echo "error". The test passes only if the pattern was
-    actually cleared — otherwise the fail pattern would abort it.
+    actually cleared - otherwise the fail pattern would abort it.
     """
     shell s {
         !? error

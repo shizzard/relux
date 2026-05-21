@@ -20,9 +20,9 @@ use relux_ast::AstStmt;
 /// Sentinel span for dummy blank-line comments (filtered out after collection).
 const SENTINEL: Span = Span::new(0, 0);
 
-// ─── L5: Block Combinators ─────────────────────────────────
+// --- L5: Block Combinators -------------------------------
 
-/// `shell name { stmts }` — shell block.
+/// `shell name { stmts }` - shell block.
 pub fn shell_block<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstShellBlock>, extra::Err<Rich<'a, Token<'a>>>> + Clone
 {
@@ -33,7 +33,7 @@ pub fn shell_block<'a>()
         .then_ignore(punctuation_brace_open())
         .then(
             stmt()
-                // Fragile: SENTINEL comment must be filtered below — edit with caution.
+                // Fragile: SENTINEL comment must be filtered below - edit with caution.
                 .or(ws().ignore_then(newline()).map_with(|_, _| {
                     Spanned::new(
                         AstStmt::Comment { text: String::new(), span: SENTINEL },
@@ -59,7 +59,7 @@ pub fn shell_block<'a>()
         .boxed()
 }
 
-/// `shell qualifier.name { stmts }` — qualified shell block (dot-access to effect-exported shell).
+/// `shell qualifier.name { stmts }` - qualified shell block (dot-access to effect-exported shell).
 pub fn qualified_shell_block<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstShellBlock>, extra::Err<Rich<'a, Token<'a>>>> + Clone
 {
@@ -72,7 +72,7 @@ pub fn qualified_shell_block<'a>()
         .then_ignore(punctuation_brace_open())
         .then(
             stmt()
-                // Fragile: SENTINEL comment must be filtered below — edit with caution.
+                // Fragile: SENTINEL comment must be filtered below - edit with caution.
                 .or(ws().ignore_then(newline()).map_with(|_, _| {
                     Spanned::new(
                         AstStmt::Comment { text: String::new(), span: SENTINEL },
@@ -98,7 +98,7 @@ pub fn qualified_shell_block<'a>()
         .boxed()
 }
 
-/// `cleanup { stmts }` — cleanup block.
+/// `cleanup { stmts }` - cleanup block.
 pub fn cleanup_block<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstCleanupBlock>, extra::Err<Rich<'a, Token<'a>>>> + Clone
 {
@@ -107,7 +107,7 @@ pub fn cleanup_block<'a>()
         .ignore_then(punctuation_brace_open())
         .ignore_then(
             stmt()
-                // Fragile: SENTINEL comment must be filtered below — edit with caution.
+                // Fragile: SENTINEL comment must be filtered below - edit with caution.
                 .or(ws().ignore_then(newline()).map_with(|_, _| {
                     Spanned::new(
                         AstStmt::Comment { text: String::new(), span: SENTINEL },
@@ -310,7 +310,7 @@ mod tests {
         );
     }
 
-    // ── Qualified shell blocks ──────────────────────────────
+    // --- Qualified shell blocks --------------------------
 
     fn parse_qualified(source: &str) -> AstShellBlock {
         let pairs = lex_to_pairs(source);

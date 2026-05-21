@@ -1,10 +1,10 @@
 use std::ops::Range;
 
-// ─── Span ────────────────────────────────────────────────────
+// --- Span ------------------------------------------------
 
 /// Source span represented as a byte-offset range.
 ///
-/// Fields are private by design — all span arithmetic must be implemented
+/// Fields are private by design - all span arithmetic must be implemented
 /// as methods on this type and covered by unit tests. Do not expose fields
 /// to prevent ad-hoc arithmetic at call sites.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -84,7 +84,7 @@ impl From<Span> for Range<usize> {
     }
 }
 
-// ─── Spanned ─────────────────────────────────────────────────
+// --- Spanned ---------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Spanned<T, S = Span> {
@@ -98,7 +98,7 @@ impl<T, S> Spanned<T, S> {
     }
 }
 
-// ─── Modules ─────────────────────────────────────────────────
+// --- Modules ---------------------------------------------
 
 pub mod config;
 pub mod diagnostics;
@@ -107,7 +107,7 @@ pub mod error;
 pub mod pure;
 pub mod table;
 
-// ─── Span Tests ─────────────────────────────────────────────
+// --- Span Tests ------------------------------------------
 
 #[cfg(test)]
 mod span_tests {

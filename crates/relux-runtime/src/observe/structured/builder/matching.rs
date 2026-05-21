@@ -47,7 +47,7 @@ impl StructuredLogBuilder {
     /// Record a structured `MatchDone` event referencing a buffer event
     /// that was pushed (atomically with the consume operation) by
     /// `OutputBuffer::consume_*`. The buffer event push is the consumer's
-    /// responsibility — this method only emits the structured event +
+    /// responsibility - this method only emits the structured event +
     /// progress notification.
     #[allow(clippy::too_many_arguments)]
     pub fn emit_match_done_record(

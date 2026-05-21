@@ -233,7 +233,7 @@ export function cancelReasonSummary(reason: CancelReasonRecord): string {
   }
 }
 
-// Folded helpers — pair-aware variants used by the timeline rows. For
+// Folded helpers - pair-aware variants used by the timeline rows. For
 // single-event folds we delegate to the existing per-event helpers; for
 // merged folds the glyph / family reflect the closing half (match outcome,
 // spawn readiness) and the summary stitches the halves together.

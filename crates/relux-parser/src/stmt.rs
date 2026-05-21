@@ -28,9 +28,9 @@ use relux_ast::AstLetStmt;
 use relux_ast::AstStmt;
 use relux_ast::AstStringPart;
 
-// ─── L4: Statement Combinators ──────────────────────────────
+// --- L4: Statement Combinators ---------------------------
 
-/// `> payload` → `AstStmt::Send`
+/// `> payload` -> `AstStmt::Send`
 fn stmt_send<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     op_send()
@@ -49,7 +49,7 @@ fn stmt_send<'a>()
         .then_ignore(newline())
 }
 
-/// `=> payload` → `AstStmt::SendRaw`
+/// `=> payload` -> `AstStmt::SendRaw`
 fn stmt_send_raw<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     op_send_raw()
@@ -68,7 +68,7 @@ fn stmt_send_raw<'a>()
         .then_ignore(newline())
 }
 
-/// `<? payload` → `AstStmt::MatchRegex`, or `<?` alone → `AstStmt::BufferReset`
+/// `<? payload` -> `AstStmt::MatchRegex`, or `<?` alone -> `AstStmt::BufferReset`
 fn stmt_match_regex<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     op_match_regex()
@@ -89,7 +89,7 @@ fn stmt_match_regex<'a>()
         .then_ignore(newline())
 }
 
-/// `<= payload` → `AstStmt::MatchLiteral`, or `<=` alone → `AstStmt::BufferReset`
+/// `<= payload` -> `AstStmt::MatchLiteral`, or `<=` alone -> `AstStmt::BufferReset`
 fn stmt_match_literal<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     op_match_literal()
@@ -110,7 +110,7 @@ fn stmt_match_literal<'a>()
         .then_ignore(newline())
 }
 
-/// `!? payload` → `AstStmt::FailRegex`, or `!?` alone → `AstStmt::ClearFailPattern`
+/// `!? payload` -> `AstStmt::FailRegex`, or `!?` alone -> `AstStmt::ClearFailPattern`
 fn stmt_fail_regex<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     op_fail_regex()
@@ -131,7 +131,7 @@ fn stmt_fail_regex<'a>()
         .then_ignore(newline())
 }
 
-/// `!= payload` → `AstStmt::FailLiteral`, or `!=` alone → `AstStmt::ClearFailPattern`
+/// `!= payload` -> `AstStmt::FailLiteral`, or `!=` alone -> `AstStmt::ClearFailPattern`
 fn stmt_fail_literal<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     op_fail_literal()
@@ -152,7 +152,7 @@ fn stmt_fail_literal<'a>()
         .then_ignore(newline())
 }
 
-/// `<~5s= payload` or `<@2s= payload` → `AstStmt::TimedMatchLiteral`
+/// `<~5s= payload` or `<@2s= payload` -> `AstStmt::TimedMatchLiteral`
 fn stmt_timed_match_literal<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     op_timed_match_literal()
@@ -172,7 +172,7 @@ fn stmt_timed_match_literal<'a>()
         .then_ignore(newline())
 }
 
-/// `<~5s? payload` or `<@2s? payload` → `AstStmt::TimedMatchRegex`
+/// `<~5s? payload` or `<@2s? payload` -> `AstStmt::TimedMatchRegex`
 fn stmt_timed_match_regex<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     op_timed_match_regex()
@@ -192,7 +192,7 @@ fn stmt_timed_match_regex<'a>()
         .then_ignore(newline())
 }
 
-/// `~5s` or `@10s` followed by newline → `AstStmt::Timeout`
+/// `~5s` or `@10s` followed by newline -> `AstStmt::Timeout`
 fn stmt_timeout<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     timeout()
@@ -209,7 +209,7 @@ fn stmt_timeout<'a>()
         .then_ignore(newline())
 }
 
-/// `let name [= expr]` → `AstStmt::Let`
+/// `let name [= expr]` -> `AstStmt::Let`
 fn stmt_let<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     keyword(Token::Let)
@@ -234,7 +234,7 @@ fn stmt_let<'a>()
         .then_ignore(newline())
 }
 
-/// `name = expr` → `AstStmt::Assign`
+/// `name = expr` -> `AstStmt::Assign`
 fn stmt_assign<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     ident_var()
@@ -253,7 +253,7 @@ fn stmt_assign<'a>()
         .then_ignore(newline())
 }
 
-/// `expr` → `AstStmt::Expr` (catch-all for bare function calls)
+/// `expr` -> `AstStmt::Expr` (catch-all for bare function calls)
 fn stmt_expr<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     expr()
@@ -300,7 +300,7 @@ pub fn stmt_let_standalone<'a>()
     stmt_let()
 }
 
-// ─── Helpers ────────────────────────────────────────────────
+// --- Helpers ---------------------------------------------
 
 fn is_empty_payload(interp: &AstInterpolation) -> bool {
     interp.parts.is_empty()

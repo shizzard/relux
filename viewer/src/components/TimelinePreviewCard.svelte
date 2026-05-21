@@ -104,7 +104,7 @@
         // Stop the click from bubbling to the parent `.track`'s
         // onclick. Without this the bubbled handler re-runs
         // `candidateSpansAt` at the same cursor position, finds the
-        // same multi-candidate set, and re-pins the timeline — the
+        // same multi-candidate set, and re-pins the timeline - the
         // selection set by `onclick` is correct, but the cards never
         // close and the user can't tell the click landed.
         e.stopPropagation();

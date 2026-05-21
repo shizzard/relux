@@ -3,7 +3,7 @@ use std::time::Duration;
 use relux_core::Span;
 use relux_core::Spanned;
 
-// ─── AstIdent ───────────────────────────────────────────────
+// --- AstIdent --------------------------------------------
 
 /// Dedicated identifier type, replacing raw `String` for names
 /// throughout the AST.
@@ -22,7 +22,7 @@ impl AstIdent {
     }
 }
 
-// ─── Trait + Macros ─────────────────────────────────────────
+// --- Trait + Macros --------------------------------------
 
 pub trait AstNode {
     fn span(&self) -> &Span;
@@ -52,7 +52,7 @@ macro_rules! impl_ast_node_enum {
     };
 }
 
-// ─── Expressions ─────────────────────────────────────────────
+// --- Expressions -----------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstExpr {
@@ -132,7 +132,7 @@ pub struct AstCallExpr {
     pub span: Span,
 }
 
-// ─── Statements ──────────────────────────────────────────────
+// --- Statements ------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstStmt {
@@ -230,7 +230,7 @@ pub struct AstAssignStmt {
     pub span: Span,
 }
 
-// ─── Blocks ──────────────────────────────────────────────────
+// --- Blocks ----------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstShellBlock {
@@ -246,7 +246,7 @@ pub struct AstCleanupBlock {
     pub span: Span,
 }
 
-// ─── Markers ─────────────────────────────────────────────────
+// --- Markers ---------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstMarkerDecl {
@@ -299,7 +299,7 @@ pub enum AstMarkerCondBody {
 
 impl_ast_node_enum!(AstMarkerCondBody { Bare, Eq, Regex });
 
-// ─── Imports ─────────────────────────────────────────────────
+// --- Imports ---------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstImport {
@@ -315,7 +315,7 @@ pub struct AstImportName {
     pub span: Span,
 }
 
-// ─── Start ───────────────────────────────────────────────────
+// --- Start -----------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstStartDecl {
@@ -332,7 +332,7 @@ pub struct AstOverlayEntry {
     pub span: Span,
 }
 
-// ─── Expect ──────────────────────────────────────────────────
+// --- Expect ----------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstExpectDecl {
@@ -340,7 +340,7 @@ pub struct AstExpectDecl {
     pub span: Span,
 }
 
-// ─── Expose ──────────────────────────────────────────────────
+// --- Expose ----------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstExposeKind {
@@ -359,7 +359,7 @@ pub struct AstExposeDecl {
     pub span: Span,
 }
 
-// ─── Function Definitions ───────────────────────────────────
+// --- Function Definitions --------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstFnDef {
@@ -379,7 +379,7 @@ pub struct AstPureFnDef {
     pub span: Span,
 }
 
-// ─── Effect Definition ──────────────────────────────────────
+// --- Effect Definition -----------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstEffectDef {
@@ -410,7 +410,7 @@ impl_ast_node_enum!(AstEffectItem {
     Cleanup
 });
 
-// ─── Test Definition ────────────────────────────────────────
+// --- Test Definition -------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstTestDef {
@@ -440,7 +440,7 @@ impl_ast_node_enum!(AstTestItem {
     Cleanup
 });
 
-// ─── Module ─────────────────────────────────────────────────
+// --- Module ----------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstModule {
@@ -467,7 +467,7 @@ impl_ast_node_enum!(AstItem {
     Test
 });
 
-// ─── Timeout ────────────────────────────────────────────────
+// --- Timeout ---------------------------------------------
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum AstTimeout {
@@ -489,7 +489,7 @@ impl_ast_node_enum!(AstTimeout {
     Assertion
 });
 
-// ─── Macro Impls ────────────────────────────────────────────
+// --- Macro Impls -----------------------------------------
 
 impl_ast_node_struct!(
     AstIdent,

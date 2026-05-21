@@ -12,7 +12,7 @@ use relux_core::table::SourceTable;
 
 const BUFFER_TAIL_LINES: usize = 12;
 
-// ─── TuiEvent ───────────────────────────────────────────────
+// --- TuiEvent --------------------------------------------
 
 pub enum TuiEvent {
     /// A test started running in a slot.
@@ -44,7 +44,7 @@ pub fn channel() -> (TuiTx, mpsc::UnboundedReceiver<TuiEvent>) {
     mpsc::unbounded_channel()
 }
 
-// ─── SlotState ──────────────────────────────────────────────
+// --- SlotState -------------------------------------------
 
 #[derive(Clone, Copy)]
 enum TimedWait {
@@ -117,7 +117,7 @@ impl SlotState {
     }
 }
 
-// ─── Layout ─────────────────────────────────────────────────
+// --- Layout ----------------------------------------------
 
 fn layout() -> (usize, usize) {
     let width = terminal_size::terminal_size()
@@ -128,7 +128,7 @@ fn layout() -> (usize, usize) {
     (name_width, progress_width)
 }
 
-/// Truncate test_id to fit width, left-aligned, adding … prefix if needed.
+/// Truncate test_id to fit width, left-aligned, adding ... (ellipsis) prefix if needed.
 fn truncate_name(name: &str, width: usize) -> String {
     if width == 0 {
         return String::new();
@@ -137,14 +137,14 @@ fn truncate_name(name: &str, width: usize) -> String {
     if name_len <= width {
         format!("{name:<width$}")
     } else {
-        // Take the last (width - 1) chars, prefix with …
+        // Take the last (width - 1) chars, prefix with ... (ellipsis)
         let skip = name_len - (width - 1);
         let truncated: String = name.chars().skip(skip).collect();
         format!("\u{2026}{truncated}")
     }
 }
 
-// ─── Progress char mapping ──────────────────────────────────
+// --- Progress char mapping -------------------------------
 
 fn progress_render(event: &ProgressEvent) -> Option<String> {
     match event {
@@ -171,7 +171,7 @@ fn progress_render(event: &ProgressEvent) -> Option<String> {
     }
 }
 
-// ─── Spawn ──────────────────────────────────────────────────
+// --- Spawn -----------------------------------------------
 
 pub fn spawn_tui(
     rx: mpsc::UnboundedReceiver<TuiEvent>,
@@ -189,7 +189,7 @@ pub fn spawn_tui(
     })
 }
 
-// ─── Failure detail printing ────────────────────────────────
+// --- Failure detail printing -----------------------------
 
 fn eprint_failure(
     failure: &Failure,
@@ -217,7 +217,7 @@ fn eprint_failure(
     }
 }
 
-// ─── Plain (non-TTY) renderer ───────────────────────────────
+// --- Plain (non-TTY) renderer ----------------------------
 
 async fn run_plain_renderer(
     mut rx: mpsc::UnboundedReceiver<TuiEvent>,
@@ -247,7 +247,7 @@ async fn run_plain_renderer(
     }
 }
 
-// ─── TTY renderer ───────────────────────────────────────────
+// --- TTY renderer ----------------------------------------
 
 fn has_timed_waits(slots: &[Option<SlotState>]) -> bool {
     slots
@@ -419,7 +419,7 @@ fn redraw_active(
     lines_written
 }
 
-// ─── Tests ──────────────────────────────────────────────────
+// --- Tests -----------------------------------------------
 
 #[cfg(test)]
 mod tests {

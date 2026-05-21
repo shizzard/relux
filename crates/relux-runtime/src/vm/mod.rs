@@ -42,7 +42,7 @@ use relux_ir::IrStringPart;
 use relux_ir::IrTimeout;
 use relux_ir::Tables;
 
-// ─── Interpolation helpers ──────────────────────────────────────
+// --- Interpolation helpers -------------------------------
 
 fn has_interpolation(expr: &IrInterpolation) -> bool {
     expr.parts().iter().any(|p| {
@@ -99,7 +99,7 @@ async fn interpolate_ir(expr: &IrInterpolation, ctx: &ExecutionContext) -> Strin
     out
 }
 
-// ─── Vm ─────────────────────────────────────────────────────────
+// --- Vm --------------------------------------------------
 
 pub struct Vm {
     pty: PtyShell,
@@ -190,7 +190,7 @@ impl Vm {
         &self.shell_marker
     }
 
-    /// Reset the execution context for shell export (effect → test/parent effect).
+    /// Reset the execution context for shell export (effect -> test/parent effect).
     pub fn reset_for_export(
         &mut self,
         new_scope: context::Scope,
@@ -254,7 +254,7 @@ impl Vm {
     /// Snapshot the diagnostic context for a `Failure` produced by this VM.
     /// Captures the active span, the latest event seq, the resolved call
     /// stack, the failing shell's buffer tail, and user-visible vars.
-    /// Must be called *at* the failure construction site — once the VM is
+    /// Must be called *at* the failure construction site - once the VM is
     /// dropped the buffer is gone.
     pub(crate) async fn capture_failure_context(&self) -> FailureContext {
         let span = self.ctx.current_span();
@@ -849,7 +849,7 @@ impl Vm {
         .into())
     }
 
-    // ─── Public methods for BIFs ────────────────────────────────
+    // --- Public methods for BIFs -------------------------
 
     pub async fn match_literal(
         &mut self,
@@ -916,7 +916,7 @@ impl Vm {
         Ok(())
     }
 
-    // ─── Wait + consume/peek helpers ────────────────────────────
+    // --- Wait + consume/peek helpers ---------------------
 
     async fn wait_consume_literal(
         &self,

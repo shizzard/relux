@@ -10,7 +10,7 @@ use relux_ir::IrTimeout;
 
 use crate::observe::structured::SpanId;
 
-// ─── FailPattern ────────────────────────────────────────────
+// --- FailPattern -----------------------------------------
 
 #[derive(Clone, Debug)]
 pub enum FailPattern {
@@ -18,7 +18,7 @@ pub enum FailPattern {
     Literal(String),
 }
 
-// ─── Captures ───────────────────────────────────────────────
+// --- Captures --------------------------------------------
 
 /// Regex capture storage. Indexed captures are stored as "0", "1", etc.
 /// Named captures are stored by their group name.
@@ -54,7 +54,7 @@ impl Captures {
     }
 }
 
-// ─── Scope ──────────────────────────────────────────────────
+// --- Scope -----------------------------------------------
 
 #[derive(Clone)]
 pub enum Scope {
@@ -85,7 +85,7 @@ impl Scope {
     }
 }
 
-// ─── ShellState ─────────────────────────────────────────────
+// --- ShellState ------------------------------------------
 
 pub struct ShellState {
     /// Local name of the shell within its current owning scope. At spawn
@@ -101,7 +101,7 @@ pub struct ShellState {
 
     /// Original effect-type name of the parent effect that owns this
     /// shell from the current scope's POV. `None` symmetrically with
-    /// `effect_alias` (no parent → no name).
+    /// `effect_alias` (no parent -> no name).
     pub effect_name: Option<String>,
 
     pub vars: VarScope,
@@ -124,7 +124,7 @@ impl ShellState {
     }
 }
 
-// ─── CallFrame ──────────────────────────────────────────────
+// --- CallFrame -------------------------------------------
 
 pub struct CallFrame {
     pub name: String,
@@ -134,7 +134,7 @@ pub struct CallFrame {
     pub fail_pattern: Option<FailPattern>,
 }
 
-// ─── ExecutionContext ────────────────────────────────────────
+// --- ExecutionContext ------------------------------------
 
 pub struct ExecutionContext {
     pub scope: Scope,
@@ -194,7 +194,7 @@ impl ExecutionContext {
     /// Look up a variable by name. Follows the lookup chain per RFC R005.
     pub async fn lookup(&self, key: &str) -> Option<String> {
         if let Some(frame) = self.call_stack.last() {
-            // Inside a function call — hard barrier
+            // Inside a function call - hard barrier
             if let Some(v) = frame.vars.get(key) {
                 return Some(v.to_string());
             }
@@ -208,7 +208,7 @@ impl ExecutionContext {
         if let Some(v) = self.scope.vars().lock().await.get(key) {
             return Some(v.to_string());
         }
-        // Effect scope env walks the layered chain (overlays → base)
+        // Effect scope env walks the layered chain (overlays -> base)
         if let Scope::Effect { env, .. } = &self.scope
             && let Some(v) = env.get(key)
         {
@@ -313,7 +313,7 @@ impl ExecutionContext {
     }
 
     /// Current display name for logging. Reflects the *current scope's*
-    /// view of the shell only — no chain accumulation across exports.
+    /// view of the shell only - no chain accumulation across exports.
     ///
     /// Format:
     /// - `<name>` when no parent effect imported this shell (origin scope or
@@ -329,7 +329,7 @@ impl ExecutionContext {
         }
     }
 
-    /// Reset for shell export (effect → test/parent effect). Replaces the
+    /// Reset for shell export (effect -> test/parent effect). Replaces the
     /// shell's view with how the new (parent) scope sees it: the parent's
     /// alias for the source effect, the source effect's original name, and
     /// the local key under which it was exposed.
@@ -441,7 +441,7 @@ mod tests {
         )
     }
 
-    // ─── Lookup tests ────────────────────────────────────────
+    // --- Lookup tests ------------------------------------
 
     #[tokio::test]
     async fn lookup_shell_var() {
@@ -485,7 +485,7 @@ mod tests {
         assert_eq!(ctx.lookup("x").await, Some("shell".into()));
     }
 
-    // ─── Call stack barrier ──────────────────────────────────
+    // --- Call stack barrier ------------------------------
 
     #[tokio::test]
     async fn call_frame_barrier() {
@@ -515,7 +515,7 @@ mod tests {
         ctx.pop_call();
     }
 
-    // ─── Let insert ──────────────────────────────────────────
+    // --- Let insert --------------------------------------
 
     #[tokio::test]
     async fn let_insert_in_shell() {
@@ -534,7 +534,7 @@ mod tests {
         assert_eq!(ctx.lookup("local").await, None);
     }
 
-    // ─── Assign ──────────────────────────────────────────────
+    // --- Assign ------------------------------------------
 
     #[tokio::test]
     async fn assign_in_shell() {
@@ -562,7 +562,7 @@ mod tests {
         assert_eq!(ctx.scope.vars().lock().await.get("g"), Some("new"));
     }
 
-    // ─── Timeout ─────────────────────────────────────────────
+    // --- Timeout -----------------------------------------
 
     #[test]
     fn timeout_default_fallback() {
@@ -588,7 +588,7 @@ mod tests {
         assert_eq!(ctx.timeout().raw_duration(), Duration::from_secs(10));
     }
 
-    // ─── Fail pattern ────────────────────────────────────────
+    // --- Fail pattern ------------------------------------
 
     #[test]
     fn fail_pattern_default_none() {
@@ -617,7 +617,7 @@ mod tests {
         assert!(ctx.fail_pattern().is_some());
     }
 
-    // ─── Name resolution ─────────────────────────────────────
+    // --- Name resolution ---------------------------------
 
     #[test]
     fn current_name_bare() {
@@ -647,7 +647,7 @@ mod tests {
         // Each export step replaces the view; nothing accumulates.
         let mut ctx = test_ctx();
         ctx.shell.name = "inner".into();
-        // First export: Inner → Outer (Outer's `start Inner as Dep`).
+        // First export: Inner -> Outer (Outer's `start Inner as Dep`).
         ctx.reset_for_export(
             Scope::Effect {
                 name: "Outer".into(),
@@ -660,7 +660,7 @@ mod tests {
             "inner".into(),
         );
         assert_eq!(ctx.current_name(), "Dep(Inner).inner");
-        // Second export: Outer → test (test's `start Outer as O`, exposed-as `wrapped`).
+        // Second export: Outer -> test (test's `start Outer as O`, exposed-as `wrapped`).
         ctx.reset_for_export(
             test_scope("my test"),
             Some("O".into()),
@@ -670,7 +670,7 @@ mod tests {
         assert_eq!(ctx.current_name(), "O(Outer).wrapped");
     }
 
-    // ─── Captures ────────────────────────────────────────────
+    // --- Captures ----------------------------------------
 
     #[test]
     fn capture_in_shell() {
@@ -700,7 +700,7 @@ mod tests {
         assert_eq!(ctx.capture(1), Some("shell".into()));
     }
 
-    // ─── Reset for export ────────────────────────────────────
+    // --- Reset for export --------------------------------
 
     #[tokio::test]
     async fn reset_for_export_clears_vars_and_captures() {
@@ -724,7 +724,7 @@ mod tests {
         );
     }
 
-    // ─── Effect scope with overlay ───────────────────────────
+    // --- Effect scope with overlay -----------------------
 
     #[tokio::test]
     async fn effect_scope_overlay_lookup() {
@@ -748,7 +748,7 @@ mod tests {
         assert_eq!(ctx.lookup("PORT").await, Some("5432".into()));
     }
 
-    // ─── LayeredEnv chain bugs ─────────────────────────────
+    // --- LayeredEnv chain bugs ---------------------------
 
     #[tokio::test]
     async fn effect_scope_lookup_walks_parent_layers() {
@@ -776,7 +776,7 @@ mod tests {
             test_env(),
             0,
         );
-        // lookup walks the chain — this works correctly
+        // lookup walks the chain - this works correctly
         assert_eq!(ctx.lookup("BASE_PORT").await, Some("5432".into()));
         assert_eq!(ctx.lookup("LABEL").await, Some("child".into()));
     }
@@ -818,7 +818,7 @@ mod tests {
         );
     }
 
-    // ─── snapshot_user_vars ─────────────────────────────────
+    // --- snapshot_user_vars ------------------------------
 
     #[tokio::test]
     async fn snapshot_user_vars_in_shell_scope() {
@@ -850,11 +850,11 @@ mod tests {
     async fn snapshot_user_vars_excludes_env() {
         let ctx = test_ctx();
         let snap = ctx.snapshot_user_vars().await;
-        // PATH is in the layered env, not in scope/shell vars — must be excluded.
+        // PATH is in the layered env, not in scope/shell vars - must be excluded.
         assert!(snap.iter().all(|(k, _)| k != "PATH"));
     }
 
-    // ─── Captures unit tests ────────────────────────────────
+    // --- Captures unit tests -----------------------------
 
     #[test]
     fn captures_new_is_empty() {

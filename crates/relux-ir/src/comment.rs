@@ -6,7 +6,7 @@ use super::IrNode;
 use super::IrNodeLowering;
 use super::LoweringContext;
 
-/// Stub IR node for comments. No fields beyond span — comments are
+/// Stub IR node for comments. No fields beyond span - comments are
 /// passed through to the runtime, which can decide what (if anything)
 /// to do with them.
 #[derive(Debug, Clone)]

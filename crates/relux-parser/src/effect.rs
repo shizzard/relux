@@ -33,7 +33,7 @@ use relux_ast::AstStmt;
 /// Sentinel span for dummy blank-line comments.
 const SENTINEL: Span = Span::new(0, 0);
 
-// ─── Helpers ────────────────────────────────────────────────
+// --- Helpers ---------------------------------------------
 
 /// Preamble: markers/comments/blank lines before the `effect` keyword.
 fn effect_preamble<'a>()
@@ -49,9 +49,9 @@ fn effect_preamble<'a>()
         .map(|items| items.into_iter().flatten().collect())
 }
 
-// ─── L6: Effect Definition ─────────────────────────────────
+// --- L6: Effect Definition -------------------------------
 
-/// `[preamble] effect Name { expect, lets, starts, expose, shells, cleanup }` — effect definition.
+/// `[preamble] effect Name { expect, lets, starts, expose, shells, cleanup }` - effect definition.
 pub fn def_effect<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstEffectDef>, extra::Err<Rich<'a, Token<'a>>>> + Clone
 {
@@ -64,7 +64,7 @@ pub fn def_effect<'a>()
         .then_ignore(ws())
         .then_ignore(punctuation_brace_open());
 
-    // ── Expect section ─────────────────────────────────────
+    // --- Expect section ----------------------------------
     // `expect VAR1, VAR2, VAR3`
     let expect_item = leading_ws()
         .ignore_then(keyword(Token::Expect))
@@ -99,7 +99,7 @@ pub fn def_effect<'a>()
     let expect_section = choice((
         expect_item,
         expect_comment,
-        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
+        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment - edit with caution.
         ws().ignore_then(newline()).to(AstEffectItem::Comment {
             text: String::new(),
             span: SENTINEL,
@@ -108,7 +108,7 @@ pub fn def_effect<'a>()
     .repeated()
     .collect::<Vec<_>>();
 
-    // ── Start section ──────────────────────────────────────
+    // --- Start section -----------------------------------
     let start_item = leading_ws().ignore_then(start_decl()).map_with(|n, e| {
         let span = crate::span_from_chumsky(e.span());
         AstEffectItem::Start { decl: n.node, span }
@@ -120,7 +120,7 @@ pub fn def_effect<'a>()
     let start_section = choice((
         start_item,
         start_comment,
-        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
+        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment - edit with caution.
         ws().ignore_then(newline()).to(AstEffectItem::Comment {
             text: String::new(),
             span: SENTINEL,
@@ -146,7 +146,7 @@ pub fn def_effect<'a>()
     let let_section = choice((
         let_item,
         let_comment,
-        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
+        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment - edit with caution.
         ws().ignore_then(newline()).to(AstEffectItem::Comment {
             text: String::new(),
             span: SENTINEL,
@@ -155,13 +155,13 @@ pub fn def_effect<'a>()
     .repeated()
     .collect::<Vec<_>>();
 
-    // ── Expose section ──────────────────────────────────────
+    // --- Expose section ----------------------------------
     // `expose shell [Qualifier.]target [as alias]`
     // `expose var [Qualifier.]target [as alias]`
     //
     // For `expose shell`: unqualified target and alias are snake_case (ident_fn).
     // For `expose var`: unqualified target and alias are permissive (ident_var).
-    // Qualifier (before dot) is always CamelCase (ident_effect) — it's an effect alias.
+    // Qualifier (before dot) is always CamelCase (ident_effect) - it's an effect alias.
 
     let expose_shell_item = leading_ws()
         .ignore_then(keyword(Token::Expose))
@@ -245,7 +245,7 @@ pub fn def_effect<'a>()
     let expose_section = choice((
         expose_item,
         expose_comment,
-        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
+        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment - edit with caution.
         ws().ignore_then(newline()).to(AstEffectItem::Comment {
             text: String::new(),
             span: SENTINEL,
@@ -254,7 +254,7 @@ pub fn def_effect<'a>()
     .repeated()
     .collect::<Vec<_>>();
 
-    // ── Shell section (both `shell name { }` and `qualifier.name { }`) ──
+    // --- Shell section (both `shell name { }` and `qualifier.name { }`) ---
     let shell_item = leading_ws().ignore_then(shell_block()).map_with(|sb, e| {
         let span = crate::span_from_chumsky(e.span());
         AstEffectItem::Shell {
@@ -280,7 +280,7 @@ pub fn def_effect<'a>()
         shell_item,
         qualified_shell_item,
         shell_comment,
-        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
+        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment - edit with caution.
         ws().ignore_then(newline()).to(AstEffectItem::Comment {
             text: String::new(),
             span: SENTINEL,
@@ -303,14 +303,14 @@ pub fn def_effect<'a>()
     let cleanup_section = choice((
         cleanup_item,
         cleanup_comment,
-        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
+        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment - edit with caution.
         ws().ignore_then(newline()).to(AstEffectItem::Comment {
             text: String::new(),
             span: SENTINEL,
         }),
     ))
     .or_not()
-    // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
+    // Fragile: SENTINEL comment must be filtered by is_sentinel_comment - edit with caution.
     .map(|opt| {
         opt.unwrap_or(AstEffectItem::Comment {
             text: String::new(),
@@ -659,7 +659,7 @@ effect Db {
         );
     }
 
-    // ── Expect tests ────────────────────────────────────────
+    // --- Expect tests ------------------------------------
 
     #[test]
     fn effect_with_expect() {
@@ -722,7 +722,7 @@ effect Db {
         assert_eq!(shells.len(), 1);
     }
 
-    // ── Expose tests ────────────────────────────────────────
+    // --- Expose tests ------------------------------------
 
     #[test]
     fn effect_with_expose_simple() {
@@ -795,7 +795,7 @@ effect Db {
         assert_eq!(expose_count, 2);
     }
 
-    // ── Full R008 effect ────────────────────────────────────
+    // --- Full R008 effect --------------------------------
 
     #[test]
     fn effect_full_r008() {
@@ -914,7 +914,7 @@ effect Db {
         assert!(expose.alias.is_none());
     }
 
-    // ── Expose var tests ────────────────────────────────────
+    // --- Expose var tests --------------------------------
 
     #[test]
     fn effect_expose_var_simple() {

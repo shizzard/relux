@@ -5,7 +5,7 @@ use crate::report::result::Failure;
 use crate::vm::Vm;
 use relux_core::diagnostics::IrSpan;
 
-// ─── BIF Trait ──────────────────────────────────────────────
+// --- BIF Trait -------------------------------------------
 // Bif: callable only from impure (shell) contexts.
 // Pure BIFs are handled by relux_core::pure::bifs::dispatch.
 
@@ -21,7 +21,7 @@ pub trait Bif: Send + Sync {
     ) -> Result<String, ExecError>;
 }
 
-// ─── Lookup ─────────────────────────────────────────────────
+// --- Lookup ----------------------------------------------
 
 pub fn lookup_impure(name: &str, arity: usize) -> Option<Box<dyn Bif>> {
     match (name, arity) {
@@ -82,7 +82,7 @@ async fn runtime_error(vm: &Vm, message: String, span: &IrSpan) -> Failure {
     }
 }
 
-// ─── Impure BIFs ────────────────────────────────────────────
+// --- Impure BIFs -----------------------------------------
 
 pub struct Sleep;
 

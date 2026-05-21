@@ -1,12 +1,12 @@
 //! Per-test `event.html` emitter.
 //!
 //! Writes a single self-contained HTML file beside `events.json`. Four
-//! payloads — the `StructuredLog` JSON, the highlight.js core, the Relux
-//! hljs grammar, and the Svelte viewer bundle — are each gzipped and
+//! payloads - the `StructuredLog` JSON, the highlight.js core, the Relux
+//! hljs grammar, and the Svelte viewer bundle - are each gzipped and
 //! base64-encoded into `<script type="application/octet-stream">` tags.
 //! A small bootstrap `<script>` decompresses them with the browser-native
 //! `DecompressionStream`, sets `window.RELUX_DATA`, and synchronously
-//! evaluates the three JS payloads in order (hljs core → Relux grammar →
+//! evaluates the three JS payloads in order (hljs core -> Relux grammar ->
 //! viewer bundle).
 //!
 //! No `fetch`, no CORS, opens directly via `file://`. Requires a browser
@@ -241,7 +241,7 @@ mod tests {
     fn bootstrap_shows_browser_floor_when_decompression_stream_missing() {
         // Without a headless-JS runtime we can't *execute* the fallback path,
         // but the contract is small enough to lock in structurally. If any
-        // of these checks fail the fallback is broken — a Safari 15 user
+        // of these checks fail the fallback is broken - a Safari 15 user
         // would see a blank page or a half-rendered failure instead of the
         // documented one-liner.
         let html = render(&sample_log("any")).unwrap();
@@ -278,11 +278,11 @@ mod tests {
             .expect("fallback branch is missing an early `return`");
         let first_unzip = bootstrap
             .find("await unzip(")
-            .expect("bootstrap no longer calls unzip — refactor invalidates this test");
+            .expect("bootstrap no longer calls unzip - refactor invalidates this test");
         assert!(
             return_idx < first_unzip,
             "the fallback `return` no longer precedes the first `unzip` call \
-             — DecompressionStream-less browsers may try to decompress anyway",
+             - DecompressionStream-less browsers may try to decompress anyway",
         );
     }
 

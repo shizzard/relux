@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 pub mod bifs;
 
-// ─── VarScope ───────────────────────────────────────────────
+// --- VarScope --------------------------------------------
 
-/// A single variable scope — flat name→value mapping.
+/// A single variable scope - flat name->value mapping.
 ///
 /// Used by the evaluator for per-call variable frames and
 /// by the runtime's `ExecutionContext` for its frame variables.
@@ -47,7 +47,7 @@ impl VarScope {
     }
 }
 
-// ─── Env ─────────────────────────────────────────────────────
+// --- Env -------------------------------------------------
 
 /// Immutable snapshot of environment variables, captured once before
 /// resolution. Shared between the resolver (marker evaluation) and
@@ -95,15 +95,15 @@ impl Env {
     }
 }
 
-// ─── LayeredEnv ─────────────────────────────────────────────
+// --- LayeredEnv ------------------------------------------
 
 /// Layered environment with recursive parent chain.
 ///
 /// Each layer holds a small overlay (`own`) and points to a parent
 /// `LayeredEnv`. The root layer wraps the base process environment
-/// with no parent. Lookups walk the chain: own → parent → grandparent → ...
+/// with no parent. Lookups walk the chain: own -> parent -> grandparent -> ...
 ///
-/// No cloning of the base env — each layer is `Arc`-shared.
+/// No cloning of the base env - each layer is `Arc`-shared.
 #[derive(Debug, Clone)]
 pub struct LayeredEnv {
     own: Env,
@@ -157,7 +157,7 @@ impl From<Env> for LayeredEnv {
     }
 }
 
-// ─── Tests ──────────────────────────────────────────────────
+// --- Tests -----------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -244,7 +244,7 @@ mod tests {
         assert_eq!(s.get("c"), Some("3"));
     }
 
-    // ─── Env tests ───────────────────────────────────────────
+    // --- Env tests ---------------------------------------
 
     #[test]
     fn env_capture() {
@@ -314,7 +314,7 @@ mod tests {
         assert_eq!(env.get("K"), Some("new"));
     }
 
-    // ─── LayeredEnv tests ────────────────────────────────────
+    // --- LayeredEnv tests --------------------------------
 
     #[test]
     fn layered_root_lookup() {
@@ -392,7 +392,7 @@ mod tests {
         assert_eq!(top.get("X"), Some("top"));
     }
 
-    // ─── From<Env> ──────────────────────────────────────────
+    // --- From<Env> ---------------------------------------
 
     #[test]
     fn from_env_creates_root() {
@@ -402,7 +402,7 @@ mod tests {
         assert_eq!(layered.get("K"), Some("V"));
     }
 
-    // ─── iter() tests ───────────────────────────────────────
+    // --- iter() tests ------------------------------------
 
     #[test]
     fn iter_single_layer() {

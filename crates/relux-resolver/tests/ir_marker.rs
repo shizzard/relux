@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-// ─── eval_marker: @skip ────────────────────────────────────
+// --- eval_marker: @skip ----------------------------------
 
 #[test]
 fn marker_skip_unconditional() {
@@ -228,7 +228,7 @@ test "rx" {
     assert!(is_skipped(&suite.plans[0]));
 }
 
-// ─── eval_marker: @run ─────────────────────────────────────
+// --- eval_marker: @run -----------------------------------
 
 #[test]
 fn marker_run_unconditional() {
@@ -362,7 +362,7 @@ test "run" {
     assert!(is_skipped(&suite.plans[0]));
 }
 
-// ─── eval_marker: unless ───────────────────────────────────
+// --- eval_marker: unless ---------------------------------
 
 #[test]
 fn marker_skip_unless_truthy() {
@@ -434,7 +434,7 @@ test "t" {
     assert!(is_runnable(&suite.plans[0]));
 }
 
-// ─── eval_marker: with expressions ─────────────────────────
+// --- eval_marker: with expressions -----------------------
 
 #[test]
 fn marker_skip_if_env_var() {
@@ -509,7 +509,7 @@ test "t" {
     assert!(is_skipped(&suite.plans[0]));
 }
 
-// ─── eval_marker: errors ───────────────────────────────────
+// --- eval_marker: errors ---------------------------------
 
 #[test]
 fn marker_invalid_regex_in_condition() {
@@ -546,7 +546,7 @@ test "t" {
     assert!(is_invalid(&suite.plans[0]));
 }
 
-// ─── eval_marker: multiple markers ─────────────────────────
+// --- eval_marker: multiple markers -----------------------
 
 #[test]
 fn marker_first_skip_triggers() {
@@ -722,7 +722,7 @@ fn marker_no_flaky_by_default() {
     assert!(!is_flaky(&suite.plans[0]));
 }
 
-// ─── Marker on fn/effect ───────────────────────────────────
+// --- Marker on fn/effect ---------------------------------
 
 #[test]
 fn marker_skip_on_fn_propagates_to_test() {
@@ -740,7 +740,7 @@ test "t" {
 }
 "#,
     )]);
-    // fn is skipped → calling it from test body propagates skip
+    // fn is skipped -> calling it from test body propagates skip
     assert!(is_skipped(&suite.plans[0]));
 }
 
@@ -806,11 +806,11 @@ test "t" {
 }
 "#,
     )]);
-    // CI not set → run condition unmet → fn skipped → test skipped
+    // CI not set -> run condition unmet -> fn skipped -> test skipped
     assert!(is_skipped(&suite.plans[0]));
 }
 
-// ─── Plan::Skipped retains marker recordings ───────────────
+// --- Plan::Skipped retains marker recordings -------------
 
 #[test]
 fn skipped_plan_retains_unconditional_skip_recording() {
@@ -861,8 +861,8 @@ test "skipped" {
         "expected one recording for `# run if MY_VAR`"
     );
     assert_eq!(recs[0].kind, MarkerEvalKind::Run);
-    // `# run if MY_VAR` with MY_VAR unset → condition not met → Run-marker
-    // does NOT apply (decision = Pass) → the test is skipped because no
+    // `# run if MY_VAR` with MY_VAR unset -> condition not met -> Run-marker
+    // does NOT apply (decision = Pass) -> the test is skipped because no
     // run-mark fired.
     assert_eq!(recs[0].decision, MarkerEvalDecision::Pass);
 }
@@ -901,7 +901,7 @@ test "skipped" {
 
 #[test]
 fn propagated_skip_from_fn_lands_under_originating_def() {
-    // CI not set → `# run if CI` on helper() unmet → helper bails skip →
+    // CI not set -> `# run if CI` on helper() unmet -> helper bails skip ->
     // test depending on helper inherits the skip. The originating recordings
     // live under DefinitionRef::Fn(helper), not under the test's own def.
     let suite = resolve_source_no_env(&[(
@@ -921,7 +921,7 @@ test "t" {
     assert!(is_skipped(&suite.plans[0]));
 
     // Test's own definition has no markers (no `#` lines), so its entry is
-    // either absent or an empty vec — the propagating recording lives under
+    // either absent or an empty vec - the propagating recording lives under
     // the fn's definition, not the test's.
     let test_recs = suite
         .tables

@@ -15,9 +15,9 @@ use super::ws::ws;
 use relux_ast::AstImport;
 use relux_ast::AstImportName;
 
-// ─── L5: AstImport Combinators ────────────────────────────────
+// --- L5: AstImport Combinators ---------------------------
 
-/// `path/to/module` — slash-separated path segments.
+/// `path/to/module` - slash-separated path segments.
 fn import_path<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<String>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     text()
@@ -39,7 +39,7 @@ fn import_path<'a>()
         .boxed()
 }
 
-/// `import path [{ names }]` — import declaration.
+/// `import path [{ names }]` - import declaration.
 pub fn import<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstImport>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     let import_name = ident_aliased_effect()

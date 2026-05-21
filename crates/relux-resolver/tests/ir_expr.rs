@@ -135,7 +135,7 @@ fn ir_node_enum_span_different_values() {
     assert_eq!(e2.span().span(), &relux_core::Span::new(20, 30));
 }
 
-// ─── Expression lowering ──────────────────────────────────
+// --- Expression lowering ---------------------------------
 
 #[test]
 fn lower_expr_string() {

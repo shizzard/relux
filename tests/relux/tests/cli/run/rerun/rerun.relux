@@ -2,12 +2,12 @@ test "rerun re-runs only failed tests" {
     """
     Verify --rerun selects only non-passing tests from the latest run.
 
-    Phase 1: run with TRIGGER=error — always_pass passes, trigger fails,
+    Phase 1: run with TRIGGER=error - always_pass passes, trigger fails,
              always_skipped is skipped, always_invalid is invalid.
-    Phase 2: --rerun with TRIGGER=success — reruns trigger (now passes),
+    Phase 2: --rerun with TRIGGER=success - reruns trigger (now passes),
              always_skipped (still skipped), always_invalid (still invalid).
              always_pass is excluded because it passed.
-    Phase 3: --rerun again — trigger passed in phase 2, so only skipped and
+    Phase 3: --rerun again - trigger passed in phase 2, so only skipped and
              invalid remain. Both are still rerun.
     """
     shell s {

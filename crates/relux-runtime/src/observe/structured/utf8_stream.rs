@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn carryover_is_bounded() {
         let mut s = Utf8Stream::new();
-        // Feed only the first byte of a 4-byte sequence many times — pending
+        // Feed only the first byte of a 4-byte sequence many times - pending
         // must never exceed 3 bytes.
         for _ in 0..10 {
             s.feed(&[0xF0]);
@@ -149,10 +149,10 @@ mod tests {
         assert_eq!(s.pending_len(), 0);
         s.feed(b"hello");
         assert_eq!(s.pending_len(), 0);
-        // First two bytes of U+1F389 (F0 9F 8E 89) — incomplete.
+        // First two bytes of U+1F389 (F0 9F 8E 89) - incomplete.
         s.feed(&[0xF0, 0x9F]);
         assert_eq!(s.pending_len(), 2);
-        // Finish the codepoint — pending drains.
+        // Finish the codepoint - pending drains.
         s.feed(&[0x8E, 0x89]);
         assert_eq!(s.pending_len(), 0);
     }

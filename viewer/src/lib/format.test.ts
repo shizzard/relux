@@ -29,7 +29,7 @@ import {
   truncate,
 } from './format';
 
-// ─── Fixtures ───────────────────────────────────────────────────────
+// --- Fixtures --------------------------------------------
 
 function span(id: number, parent: number | null, k: Span['kind'] | Span): Span {
   if (typeof k !== 'string') return k;
@@ -82,7 +82,7 @@ function ev<K extends Event['kind']>(kind: K, extra: Record<string, unknown> = {
   } as unknown as Event;
 }
 
-// ─── formatTimestamp / formatDuration ───────────────────────────────
+// --- formatTimestamp / formatDuration --------------------
 
 describe('formatTimestamp', () => {
   it('renders sub-1s in milliseconds (integer)', () => {
@@ -91,13 +91,13 @@ describe('formatTimestamp', () => {
     expect(formatTimestamp(42.7)).toBe('43ms');
   });
 
-  it('renders 1s–60s with two fractional digits', () => {
+  it('renders 1s-60s with two fractional digits', () => {
     expect(formatTimestamp(1000)).toBe('1.00s');
     expect(formatTimestamp(1234)).toBe('1.23s');
     expect(formatTimestamp(59_999)).toBe('60.00s');
   });
 
-  it('renders ≥60s in `Xm Ys` form', () => {
+  it('renders >=60s in `Xm Ys` form', () => {
     expect(formatTimestamp(60_000)).toBe('1m 0s');
     expect(formatTimestamp(125_000)).toBe('2m 5s');
   });
@@ -108,7 +108,7 @@ describe('formatTimestamp', () => {
   });
 });
 
-// ─── escapeBytes / escapeBufferBytes ────────────────────────────────
+// --- escapeBytes / escapeBufferBytes ---------------------
 
 describe('escapeBytes', () => {
   it('passes printable ASCII through unchanged', () => {
@@ -125,7 +125,7 @@ describe('escapeBytes', () => {
   });
 
   it('preserves non-ASCII printables (no escaping outside the C0/DEL range)', () => {
-    expect(escapeBytes('café — \u{1F600}')).toBe('café — \u{1F600}');
+    expect(escapeBytes('caf\u{e9} - \u{1F600}')).toBe('caf\u{e9} - \u{1F600}');
   });
 });
 
@@ -140,13 +140,13 @@ describe('escapeBufferBytes', () => {
   });
 });
 
-// ─── kindGlyph / kindFamily ─────────────────────────────────────────
+// --- kindGlyph / kindFamily ------------------------------
 
 describe('kindGlyph', () => {
   it('returns the configured glyph for a known kind', () => {
-    expect(kindGlyph('send')).toBe('\u{2192}'); // →
-    expect(kindGlyph('recv')).toBe('\u{2190}'); // ←
-    expect(kindGlyph('error')).toBe('\u{2717}'); // ✗
+    expect(kindGlyph('send')).toBe('\u{2192}'); // ->
+    expect(kindGlyph('recv')).toBe('\u{2190}'); // <-
+    expect(kindGlyph('error')).toBe('\u{2717}'); // cross
   });
 
   it('returns the bullet fallback for unknown kinds', () => {
@@ -168,7 +168,7 @@ describe('kindFamily', () => {
   });
 });
 
-// ─── formatBytes ────────────────────────────────────────────────────
+// --- formatBytes -----------------------------------------
 
 describe('formatBytes', () => {
   it('uses plain `B` below 1024', () => {
@@ -192,7 +192,7 @@ describe('formatBytes', () => {
   });
 });
 
-// ─── formatTimeout / formatTimeoutLine ──────────────────────────────
+// --- formatTimeout / formatTimeoutLine -------------------
 
 function tolerance(opts: {
   duration?: string;
@@ -239,7 +239,7 @@ describe('formatTimeoutLine', () => {
     expect(formatTimeoutLine(tolerance())).toBe('5s (default)');
   });
 
-  it('expands tolerance×multiplier to the computed total', () => {
+  it('expands tolerance x multiplier to the computed total', () => {
     const v = tolerance({
       duration: '5s',
       multiplier: '1.5',
@@ -254,7 +254,7 @@ describe('formatTimeoutLine', () => {
   });
 });
 
-// ─── truncate ──────────────────────────────────────────────────────
+// --- truncate --------------------------------------------
 
 describe('truncate', () => {
   it('returns the input unchanged when within budget', () => {
@@ -268,7 +268,7 @@ describe('truncate', () => {
   });
 });
 
-// ─── eventSummary ──────────────────────────────────────────────────
+// --- eventSummary ----------------------------------------
 
 describe('eventSummary', () => {
   it('summarises send/recv via escapeBytes', () => {
@@ -361,7 +361,7 @@ describe('eventSummary', () => {
   });
 });
 
-// ─── cancelReasonSummary ────────────────────────────────────────────
+// --- cancelReasonSummary ---------------------------------
 
 describe('cancelReasonSummary', () => {
   it('formats all four variants', () => {
@@ -383,7 +383,7 @@ describe('cancelReasonSummary', () => {
   });
 });
 
-// ─── folded helpers ─────────────────────────────────────────────────
+// --- folded helpers --------------------------------------
 
 describe('folded helpers', () => {
   const single: FoldedEvent = { kind: 'single', event: ev('send', { data: 'x' }) };
@@ -432,7 +432,7 @@ describe('folded helpers', () => {
   });
 });
 
-// ─── span display ──────────────────────────────────────────────────
+// --- span display ----------------------------------------
 
 describe('displaySpanKind / displaySpanCallKind', () => {
   it('maps schema strings to DSL-aligned labels', () => {
@@ -522,7 +522,7 @@ describe('spanTitle', () => {
     expect(spanTitle(span(1, null, 'markers'))).toBe('');
   });
 
-  it('renders marker-eval as `#kind modifier → decision`', () => {
+  it('renders marker-eval as `#kind modifier -> decision`', () => {
     const me: Span = {
       id: 1n,
       parent: null,
@@ -538,7 +538,7 @@ describe('spanTitle', () => {
   });
 });
 
-// ─── marker display helpers ────────────────────────────────────────
+// --- marker display helpers ------------------------------
 
 describe('marker display helpers', () => {
   it('displayMarkerKind prefixes with `#`', () => {

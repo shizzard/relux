@@ -13,9 +13,9 @@ use super::ws::ws;
 use relux_ast::AstExpr;
 use relux_ast::AstOverlayEntry;
 
-// ─── L4: Overlay Combinators ────────────────────────────────
+// --- L4: Overlay Combinators -----------------------------
 
-/// `var = expr` — single overlay entry, or bare `var` (shorthand for `var = var`).
+/// `var = expr` - single overlay entry, or bare `var` (shorthand for `var = var`).
 fn overlay_entry<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstOverlayEntry>, extra::Err<Rich<'a, Token<'a>>>> + Clone
 {
@@ -42,7 +42,7 @@ fn overlay_entry<'a>()
     choice((full, shorthand)).labelled("overlay entry")
 }
 
-/// `{ key = val, key = val }` — overlay block with optional trailing comma.
+/// `{ key = val, key = val }` - overlay block with optional trailing comma.
 pub fn overlay<'a>()
 -> impl Parser<'a, ParserInput<'a>, Vec<Spanned<AstOverlayEntry>>, extra::Err<Rich<'a, Token<'a>>>>
 + Clone {

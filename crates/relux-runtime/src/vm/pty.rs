@@ -42,7 +42,7 @@ impl PtyShell {
                     Ok(n) => {
                         // `append` pushes the streaming-decoded `Grew`
                         // buffer event under the same mutex that holds
-                        // the raw bytes — `grew`/`matched` ordering is
+                        // the raw bytes - `grew`/`matched` ordering is
                         // race-free against the VM's match emissions.
                         output_for_reader.append(&buf[..n]).await;
                     }

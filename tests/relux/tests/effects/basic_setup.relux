@@ -50,7 +50,7 @@ effect SideEffectOnly {
 test "bare start runs effect but does not expose shell" {
     """
     Verify that start without as runs the effect for side effects
-    but the exported shell is not accessible — shell s creates
+    but the exported shell is not accessible - shell s creates
     a fresh local shell without the effect's state.
     """
     start SideEffectOnly

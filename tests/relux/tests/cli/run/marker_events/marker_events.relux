@@ -37,7 +37,7 @@ test "marker events: markers root with two marker-eval children" {
         match_ok()
 
         // trim/1 FnCall span exists with is_pure=true, callee_kind=bif.
-        // Should appear twice — once inside the skip marker eval, once at test-level let.
+        // Should appear twice - once inside the skip marker eval, once at test-level let.
         > jq -M '[.spans | to_entries[] | select(.value.name == "trim")] | length' $events
         <? ^2$
         match_ok()

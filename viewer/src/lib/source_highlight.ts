@@ -4,7 +4,7 @@ const MARK_CLOSE = '</mark>';
 /**
  * Wrap bytes [start, end) of the highlighted HTML in `<mark
  * class="span-frame">`. Walks the HTML linearly, tracking byte offsets
- * through text nodes only — HTML tags are pass-through and don't
+ * through text nodes only - HTML tags are pass-through and don't
  * advance the offset.
  *
  * The wrap is closed and reopened around each `\n` so multi-line
@@ -62,7 +62,7 @@ export function wrapByteRange(html: string, start: number, end: number): string 
       const wasInMark = inMark;
       close();
       out += html.slice(i, tagEnd + 1);
-      // Reopen only if the range hasn't ended yet — otherwise we'd
+      // Reopen only if the range hasn't ended yet - otherwise we'd
       // emit a stray `<mark></mark>` between the tag and the next
       // text byte.
       if (wasInMark && byteIdx < end) open();

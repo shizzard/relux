@@ -12,7 +12,7 @@ use ariadne::sources;
 use crate::diagnostics::IrSpan;
 use crate::table::SourceTable;
 
-// ─── Severity ──────────────────────────────────────────────
+// --- Severity --------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
@@ -20,7 +20,7 @@ pub enum Severity {
     Warning,
 }
 
-// ─── Diagnostic Report ──────────────────────────────────────
+// --- Diagnostic Report -----------------------------------
 
 #[derive(Debug, Clone)]
 pub struct ReportLabel {
@@ -52,7 +52,7 @@ pub struct DiagnosticReport {
     pub note: Option<String>,
 }
 
-// ─── Diagnostic Reports (batch with source table) ───────────
+// --- Diagnostic Reports (batch with source table) --------
 
 pub struct DiagnosticReports {
     pub errors: Vec<DiagnosticReport>,
@@ -78,7 +78,7 @@ impl DiagnosticReports {
     }
 }
 
-// ─── Rendering ──────────────────────────────────────────────
+// --- Rendering -------------------------------------------
 
 type Src = String;
 

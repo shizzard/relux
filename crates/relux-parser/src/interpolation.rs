@@ -10,7 +10,7 @@ use super::ident::ident_var;
 use relux_ast::AstInterpolation;
 use relux_ast::AstStringPart;
 
-// ─── Escape Table ───────────────────────────────────────────
+// --- Escape Table ----------------------------------------
 
 fn interpret_escape(ch: &str) -> Option<char> {
     match ch {
@@ -29,9 +29,9 @@ fn interpret_escape(ch: &str) -> Option<char> {
     }
 }
 
-// ─── L2: Primitive Interpolation Combinators ────────────────
+// --- L2: Primitive Interpolation Combinators -------------
 
-/// `$$` → `AstStringPart::EscapedDollar`
+/// `$$` -> `AstStringPart::EscapedDollar`
 fn interp_escaped_dollar<'a>()
 -> impl Parser<'a, ParserInput<'a>, AstStringPart, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::Dollar)
@@ -41,7 +41,7 @@ fn interp_escaped_dollar<'a>()
         })
 }
 
-/// `${Qualifier.name}` → `AstStringPart::QualifiedVarRef(qualifier, name)`
+/// `${Qualifier.name}` -> `AstStringPart::QualifiedVarRef(qualifier, name)`
 fn interp_qualified_var_ref<'a>()
 -> impl Parser<'a, ParserInput<'a>, AstStringPart, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::Dollar)
@@ -57,7 +57,7 @@ fn interp_qualified_var_ref<'a>()
         })
 }
 
-/// `${var_name}` → `AstStringPart::VarRef(name)`
+/// `${var_name}` -> `AstStringPart::VarRef(name)`
 fn interp_var_ref<'a>()
 -> impl Parser<'a, ParserInput<'a>, AstStringPart, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::Dollar)
@@ -70,7 +70,7 @@ fn interp_var_ref<'a>()
         })
 }
 
-/// `${1}` → `AstStringPart::CaptureRef(index)`
+/// `${1}` -> `AstStringPart::CaptureRef(index)`
 fn interp_capture_ref<'a>()
 -> impl Parser<'a, ParserInput<'a>, AstStringPart, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::Dollar)
@@ -83,7 +83,7 @@ fn interp_capture_ref<'a>()
         })
 }
 
-/// `\n`, `\t`, etc. → interpreted escape character. Invalid escapes emit an error
+/// `\n`, `\t`, etc. -> interpreted escape character. Invalid escapes emit an error
 /// but still consume the token (preventing backtrack to catch-all).
 fn interp_escape_seq<'a>()
 -> impl Parser<'a, ParserInput<'a>, AstStringPart, extra::Err<Rich<'a, Token<'a>>>> + Clone {
@@ -122,7 +122,7 @@ fn interp_raw_escape_seq<'a>()
     })
 }
 
-// ─── L3: Interpolation Context Combinators ──────────────────
+// --- L3: Interpolation Context Combinators ---------------
 
 /// Helper: coalesce adjacent Literal parts.
 fn coalesce_parts(parts: Vec<AstStringPart>) -> Vec<AstStringPart> {

@@ -27,7 +27,7 @@ test "inline timeout overrides scoped timeout for literal" ~3s {
 
 test "inline timeout is one-shot" ~3s {
     """
-    Verify the inline timeout does not persist — the next match
+    Verify the inline timeout does not persist - the next match
     reverts to the scoped timeout.
     """
     shell s {

@@ -16,7 +16,7 @@ use crate::observe::structured::StackFrame;
 /// Diagnostic context captured at failure-construction time. Travels with
 /// every `Failure` so that downstream consumers (structured-log artifact,
 /// console error renderer) can render the call site, what arrived in the
-/// shell, and which user vars were live — without needing to reach back
+/// shell, and which user vars were live - without needing to reach back
 /// into a VM that is about to be dropped.
 ///
 /// The variant makes the failure's provenance explicit. `Vm` carries the
@@ -268,7 +268,7 @@ pub fn events_json_link(run_dir: &Path, result: &TestResult) -> Option<String> {
 }
 
 /// Top-level marker that the test was interrupted before completing.
-/// Distinct from `Failure` because the test did not misbehave — it was
+/// Distinct from `Failure` because the test did not misbehave - it was
 /// stopped by an external event (the per-test watchdog, the suite-wide
 /// watchdog, fail-fast, or SIGINT).
 #[derive(Debug, Clone, thiserror::Error)]
@@ -380,7 +380,7 @@ impl Outcome {
 
     /// Whether the flaky-retry loop should retry on this outcome. Real
     /// failures and per-test-timeout cancellations are retryable (those are
-    /// the test's own clock running out — exactly what flaky retries with
+    /// the test's own clock running out - exactly what flaky retries with
     /// scaled timeouts target). External cancellations (suite-timeout,
     /// fail-fast, SIGINT) are not retryable: rerunning the same test isn't
     /// going to make the external trigger disappear.
@@ -395,7 +395,7 @@ impl Outcome {
     }
 }
 
-// ─── Run Report ─────────────────────────────────────────────
+// --- Run Report ------------------------------------------
 
 pub struct RunReport<'a> {
     pub results: &'a [TestResult],

@@ -12,7 +12,7 @@ use relux_core::diagnostics::ModulePath;
 use relux_core::pure::LayeredEnv;
 use relux_ir::Suite;
 
-// ─── Source Loader ──────────────────────────────────────────
+// --- Source Loader ---------------------------------------
 
 pub trait SourceLoader {
     fn load(&self, mod_path: &str) -> Option<(PathBuf, String)>;
@@ -42,7 +42,7 @@ impl SourceLoader for FsSourceLoader {
     }
 }
 
-// ─── Public API ─────────────────────────────────────────────
+// --- Public API ------------------------------------------
 
 pub fn resolve(
     source_loader: &dyn SourceLoader,

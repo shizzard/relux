@@ -1,6 +1,6 @@
 //! Per-run `index.html` generator. Lists every test in a run with its
 //! outcome, duration, progress string, and (when available) a link to the
-//! per-test artifact directory. Self-contained — no event-log dependencies.
+//! per-test artifact directory. Self-contained - no event-log dependencies.
 //!
 //! The page chrome (CSS / search-and-filter script) lives in the sibling
 //! `run_index.css` and `run_index.js` files. They are embedded via

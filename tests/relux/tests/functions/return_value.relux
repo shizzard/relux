@@ -40,7 +40,7 @@ test "let as return value" {
 test "return value ignored when not captured" {
     """
     Verify calling a function without capturing its return value
-    does not cause errors — the function runs for side effects only.
+    does not cause errors - the function runs for side effects only.
     """
     shell s {
         get_greeting()

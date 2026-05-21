@@ -30,7 +30,7 @@ use relux_ast::AstTestItem;
 /// Sentinel span for dummy blank-line comments.
 const SENTINEL: Span = Span::new(0, 0);
 
-// ─── Helpers ────────────────────────────────────────────────
+// --- Helpers ---------------------------------------------
 
 /// Preamble: markers/comments/blank lines before the `test` keyword.
 fn test_preamble<'a>()
@@ -46,9 +46,9 @@ fn test_preamble<'a>()
         .map(|items| items.into_iter().flatten().collect())
 }
 
-// ─── L6: Test Definition ───────────────────────────────────
+// --- L6: Test Definition ---------------------------------
 
-/// `[preamble] test "name" [timeout] { docstring, lets, starts, shells, cleanup }` — test definition.
+/// `[preamble] test "name" [timeout] { docstring, lets, starts, shells, cleanup }` - test definition.
 pub fn def_test<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstTestDef>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     // Header: test "name" [~5s] {
@@ -91,7 +91,7 @@ pub fn def_test<'a>()
     let start_section = choice((
         start_item,
         start_comment,
-        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
+        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment - edit with caution.
         ws().ignore_then(newline()).to(AstTestItem::Comment {
             text: String::new(),
             span: SENTINEL,
@@ -104,7 +104,7 @@ pub fn def_test<'a>()
     //
     // `stmt_let()` ends with `.then_ignore(newline())`, so `e.span()` here
     // would include the trailing `\n`. Use the inner `AstStmt::Let`'s
-    // span instead — it's set inside `stmt_let` *before* the newline is
+    // span instead - it's set inside `stmt_let` *before* the newline is
     // consumed, so it tightly covers `let <name> = <expr>` only.
     let let_item = leading_ws()
         .ignore_then(stmt_let_standalone())
@@ -119,7 +119,7 @@ pub fn def_test<'a>()
     let let_section = choice((
         let_item,
         let_comment,
-        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
+        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment - edit with caution.
         ws().ignore_then(newline()).to(AstTestItem::Comment {
             text: String::new(),
             span: SENTINEL,
@@ -154,7 +154,7 @@ pub fn def_test<'a>()
         shell_item,
         qualified_shell_item,
         shell_comment,
-        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
+        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment - edit with caution.
         ws().ignore_then(newline()).to(AstTestItem::Comment {
             text: String::new(),
             span: SENTINEL,
@@ -178,14 +178,14 @@ pub fn def_test<'a>()
     let cleanup_section = choice((
         cleanup_item,
         cleanup_comment,
-        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
+        // Fragile: SENTINEL comment must be filtered by is_sentinel_comment - edit with caution.
         ws().ignore_then(newline()).to(AstTestItem::Comment {
             text: String::new(),
             span: SENTINEL,
         }),
     ))
     .or_not()
-    // Fragile: SENTINEL comment must be filtered by is_sentinel_comment — edit with caution.
+    // Fragile: SENTINEL comment must be filtered by is_sentinel_comment - edit with caution.
     .map(|opt| {
         opt.unwrap_or(AstTestItem::Comment {
             text: String::new(),

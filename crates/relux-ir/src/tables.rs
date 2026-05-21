@@ -17,9 +17,9 @@ use super::effect::IrEffect;
 use super::func::IrFn;
 use super::func::IrPureFn;
 
-// ─── Local Keys ─────────────────────────────────────────────
+// --- Local Keys ------------------------------------------
 
-/// Local function key — used by both fn and pure fn local tables.
+/// Local function key - used by both fn and pure fn local tables.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LocalFnKey {
     pub name: String,
@@ -54,9 +54,9 @@ pub type PureFnTable = SharedTable<IrFnId, Result<IrPureFn, LoweringBail>>;
 pub type EffectTable = SharedTable<IrEffectId, Result<IrEffect, LoweringBail>>;
 pub type MarkerRecordingsTable = SharedTable<DefinitionRef, Vec<crate::marker::MarkerRecording>>;
 
-// ─── Tables ─────────────────────────────────────────────────
+// --- Tables ----------------------------------------------
 
-/// Shared (global) resolution tables — sources, functions, pure functions,
+/// Shared (global) resolution tables - sources, functions, pure functions,
 /// effects, plus marker recordings keyed by the definition that produced them.
 #[derive(Debug, Clone)]
 pub struct Tables {
@@ -85,9 +85,9 @@ impl Default for Tables {
     }
 }
 
-// ─── LocalTable ─────────────────────────────────────────────
+// --- LocalTable ------------------------------------------
 
-/// Local name resolution table — maps local keys to global keys with
+/// Local name resolution table - maps local keys to global keys with
 /// origin spans, backed by a SharedTable for registry lookups.
 pub struct LocalTable<K, GK, V> {
     locals: HashMap<K, (GK, IrSpan)>,
@@ -132,7 +132,7 @@ where
     }
 }
 
-// ─── Local Tables ───────────────────────────────────────────
+// --- Local Tables ----------------------------------------
 
 pub type LocalFnTable = LocalTable<LocalFnKey, IrFnId, Result<IrFn, LoweringBail>>;
 pub type LocalPureFnTable = LocalTable<LocalFnKey, IrFnId, Result<IrPureFn, LoweringBail>>;

@@ -20,7 +20,7 @@ use relux_ast::AstModule;
 /// Sentinel span for dummy blank-line items.
 const SENTINEL: Span = Span::new(0, 0);
 
-// ─── L7: Module Combinators ────────────────────────────────
+// --- L7: Module Combinators ------------------------------
 
 /// A single module-level item.
 fn module_item<'a>()
@@ -68,7 +68,7 @@ fn module_item<'a>()
 pub fn module<'a>()
 -> impl Parser<'a, ParserInput<'a>, AstModule, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     module_item()
-        // Fragile: SENTINEL comment must be filtered below — edit with caution.
+        // Fragile: SENTINEL comment must be filtered below - edit with caution.
         .or(ws().ignore_then(newline()).map_with(|_, _| {
             Spanned::new(
                 AstItem::Comment { text: String::new(), span: SENTINEL },

@@ -9,7 +9,7 @@
   const info = $derived(state.data.info);
   const outcomeKind = $derived(state.data.outcome.kind);
   const cls = $derived(outcomeClass(outcomeKind));
-  // Display label for the pill — kept short and parallel (PASS/FAIL/CANCEL).
+  // Display label for the pill - kept short and parallel (PASS/FAIL/CANCEL).
   const pillLabel = $derived(outcomeKind === 'cancelled' ? 'cancel' : outcomeKind);
   const duration = $derived(formatDuration(Number(info.duration_ms)));
   const shellCount = $derived(Object.keys(state.data.shells).length);

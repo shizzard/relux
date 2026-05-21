@@ -30,7 +30,7 @@ Then reload the editor window (Cmd+Shift+P -> "Developer: Reload Window").
 
 Bump `version` in `package.json` when the plugin changes. The release workflow
 packages the extension as a `.vsix` and attaches it to the GitHub Release.
-Unchanged versions are fine — it just means no new `.vsix` worth installing.
+Unchanged versions are fine - it just means no new `.vsix` worth installing.
 
 ## Packaging
 

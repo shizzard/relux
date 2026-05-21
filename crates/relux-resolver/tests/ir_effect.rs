@@ -89,7 +89,7 @@ fn ir_overlay_entry() {
     assert!(matches!(entry.value(), IrPureExpr::Var { .. }));
 }
 
-// ─── Effect lowering (cacheable) ──────────────────────────
+// --- Effect lowering (cacheable) -------------------------
 
 #[test]
 fn lower_effect_simple() {
@@ -456,7 +456,7 @@ fn lower_effect_error_cached() {
     assert!(result2.is_err());
 }
 
-// ─── Purity enforcement tests ────────────────────────────
+// --- Purity enforcement tests ----------------------------
 
 #[test]
 fn lower_effect_let_rejects_impure_fn_call() {
@@ -592,7 +592,7 @@ effect App {
     assert!(matches!(result, Err(LoweringBail::Invalid(_))));
 }
 
-// ─── Expose validation ──────────────────────────────────
+// --- Expose validation -----------------------------------
 
 #[test]
 fn lower_effect_expose_valid_local_shell() {
@@ -705,7 +705,7 @@ effect Wrapper {
 #[test]
 fn lower_effect_expose_qualified_unexposed_shell() {
     // Base exposes `sh` but NOT `internal`.
-    // Wrapper tries to re-expose `b.internal` — this should fail
+    // Wrapper tries to re-expose `b.internal` - this should fail
     // because Base does not expose `internal` to callers.
     let source = r#"effect Base {
   expose shell sh
@@ -739,7 +739,7 @@ effect Wrapper {
 #[test]
 fn lower_effect_expose_rejects_qualified_shell_name() {
     // `shell b.sh { ... }` is a qualified block that operates on a dependency's
-    // shell — it does NOT create a local shell. `expose sh` (unqualified) should
+    // shell - it does NOT create a local shell. `expose sh` (unqualified) should
     // fail because no local shell named `sh` exists.
     let source = r#"effect Base {
   expose shell sh

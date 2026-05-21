@@ -19,18 +19,18 @@ test "service healthcheck" {
 }
 ```
 
-Relux sends input to PTY shells and matches output against regex or literal patterns with timeouts. Tests read like a transcript of a shell session — send a command, match the response, repeat.
+Relux sends input to PTY shells and matches output against regex or literal patterns with timeouts. Tests read like a transcript of a shell session - send a command, match the response, repeat.
 
 ## Features
 
-- **Pattern matching** — literal (`<=`) and regex (`<?`) with capture groups
-- **Timeouts** — per-operator, per-test, and suite-level, with tolerance and assertion modes
-- **Effects** — declarative test infrastructure with dependency graphs and automatic teardown
-- **Parallel execution** — run tests concurrently with isolated environments
-- **Functions and modules** — extract reusable logic, organize suites across files
-- **Fail patterns** — continuous background monitoring for errors
-- **HTML reports** — rich test output with shell I/O logs
-- **Single binary** — no runtime dependencies
+- **Pattern matching** - literal (`<=`) and regex (`<?`) with capture groups
+- **Timeouts** - per-operator, per-test, and suite-level, with tolerance and assertion modes
+- **Effects** - declarative test infrastructure with dependency graphs and automatic teardown
+- **Parallel execution** - run tests concurrently with isolated environments
+- **Functions and modules** - extract reusable logic, organize suites across files
+- **Fail patterns** - continuous background monitoring for errors
+- **HTML reports** - rich test output with shell I/O logs
+- **Single binary** - no runtime dependencies
 
 ## Installation
 
@@ -58,6 +58,6 @@ relux run                        # run all tests
 
 ## Documentation
 
-- [DSL Tutorial](https://shizzard.github.io/relux/latest/dsl-tutorial/) — learn the Relux language from scratch
-- [Suite Tutorial](https://shizzard.github.io/relux/latest/suite-tutorial/) — build a real-world test suite with shared infrastructure
-- [Reference](https://shizzard.github.io/relux/latest/reference/) — semantic model, configuration, syntax, built-in functions, CI integration
+- [DSL Tutorial](https://shizzard.github.io/relux/latest/dsl-tutorial/) - learn the Relux language from scratch
+- [Suite Tutorial](https://shizzard.github.io/relux/latest/suite-tutorial/) - build a real-world test suite with shared infrastructure
+- [Reference](https://shizzard.github.io/relux/latest/reference/) - semantic model, configuration, syntax, built-in functions, CI integration

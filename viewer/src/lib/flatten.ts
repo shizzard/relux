@@ -272,7 +272,7 @@ export function foldEvents(events: readonly Event[]): FoldedEvent[] {
 //
 // Zero-duration "marker-only" spans (`effect-setup { is_reuse: true }`
 // and `effect-cleanup { is_deferred: true }`) need no special handling
-// — they appear in the tree as ordinary children and slot into the
+// - they appear in the tree as ordinary children and slot into the
 // merged ts ordering naturally.
 export function flattenRows(data: StructuredLog, expandedSpans: Set<SpanId>): Row[] {
   const visibleEvents = data.events.filter((ev) => !HIDDEN_EVENT_KINDS.has(ev.kind));

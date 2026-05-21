@@ -9,7 +9,7 @@ Syntax highlighting and editor support for the [Relux](https://github.com/spawnl
   - Bracket, brace, and parenthesis matching
   - Line comment support (`// ...`)
   - Code folding for `test`, `effect`, `fn`, `shell`, and `cleanup` blocks
-- **Customizable Colors**: Configure syntax colors via Settings → Editor → Color Scheme → Relux
+- **Customizable Colors**: Configure syntax colors via Settings -> Editor -> Color Scheme -> Relux
 
 ## Supported Syntax
 
@@ -32,7 +32,7 @@ Syntax highlighting and editor support for the [Relux](https://github.com/spawnl
 
 2. Install the plugin:
    - Open IntelliJ IDEA
-   - Go to Settings → Plugins → ⚙️ → Install Plugin from Disk...
+   - Go to Settings -> Plugins -> gear icon -> Install Plugin from Disk...
    - Select `build/distributions/relux-intellij-plugin-0.1.0.zip`
    - Restart the IDE
 
@@ -45,7 +45,7 @@ Syntax highlighting and editor support for the [Relux](https://github.com/spawnl
 ## Versioning
 
 Bump `version` in `build.gradle.kts` when the plugin changes. The release
-workflow publishes to JetBrains Marketplace, which rejects duplicate versions —
+workflow publishes to JetBrains Marketplace, which rejects duplicate versions -
 so unchanged plugins are silently skipped.
 
 ## Building

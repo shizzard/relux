@@ -4,35 +4,35 @@ import type { Span } from '../types/Span';
 import type { StructuredLog } from '../types/StructuredLog';
 import { flattenRows, type FoldedEvent, type Row } from './flatten';
 
-// ─── Span builders ──────────────────────────────────────────────────
+// --- Span builders ---------------------------------------
 
 type SpanInput = { id: number; parent: number | null; start_ts?: number; end_ts?: number | null } & (
   | { kind: 'test'; name?: string }
   | {
-      kind: 'effect-setup';
-      effect: string;
-      alias?: string | null;
-      marker?: string;
-      is_reuse?: boolean;
-    }
+    kind: 'effect-setup';
+    effect: string;
+    alias?: string | null;
+    marker?: string;
+    is_reuse?: boolean;
+  }
   | {
-      kind: 'effect-cleanup';
-      effect: string;
-      alias?: string | null;
-      setup_span?: number;
-      marker?: string;
-      is_deferred?: boolean;
-    }
+    kind: 'effect-cleanup';
+    effect: string;
+    alias?: string | null;
+    setup_span?: number;
+    marker?: string;
+    is_deferred?: boolean;
+  }
   | { kind: 'cleanup-block' }
   | { kind: 'shell-block'; shell: string }
   | {
-      kind: 'fn-call';
-      name?: string;
-      args?: Array<[string, string]>;
-      result?: string | null;
-      callee_kind?: 'user' | 'bif';
-      is_pure?: boolean;
-    }
+    kind: 'fn-call';
+    name?: string;
+    args?: Array<[string, string]>;
+    result?: string | null;
+    callee_kind?: 'user' | 'bif';
+    is_pure?: boolean;
+  }
 );
 
 function buildSpan(input: SpanInput): Span {
@@ -89,7 +89,7 @@ function spansToMap(spans: Span[]): Record<string, Span> {
   return out;
 }
 
-// ─── Event builders ─────────────────────────────────────────────────
+// --- Event builders --------------------------------------
 
 function send(seq: number, span: number, shell = 's'): Event {
   return {
@@ -210,7 +210,7 @@ function logWith(spans: Span[], events: Event[]): StructuredLog {
   } as unknown as StructuredLog;
 }
 
-// ─── Helpers for assertions ────────────────────────────────────────
+// --- Helpers for assertions ------------------------------
 
 type RowSummary =
   | { kind: 'span'; id: number; depth: number }
@@ -242,7 +242,7 @@ function leadSeq(f: FoldedEvent): number {
   return Number(f.start.seq);
 }
 
-// ─── Tests ─────────────────────────────────────────────────────────
+// --- Tests -----------------------------------------------
 
 describe('flattenRows', () => {
   it('returns empty rows when log has no test span', () => {
@@ -440,7 +440,7 @@ describe('flattenRows', () => {
   });
 
   it('emits zero-duration is_reuse setup as a child of its parent', () => {
-    // E2.setup contains a single dedup'd acquire of E0 — no events of
+    // E2.setup contains a single dedup'd acquire of E0 - no events of
     // its own. It must still appear as a child row.
     const log = logWith(
       [
@@ -529,12 +529,12 @@ describe('flattenRows', () => {
         send(7, 16), // E0 cleanup-block
       ],
     );
-    // Default: only test expanded — top-level cleanup rows only.
+    // Default: only test expanded - top-level cleanup rows only.
     expect(summarize(flattenRows(log, new Set()))).toEqual([
       { kind: 'span', id: 10, depth: 0 },
       { kind: 'span', id: 12, depth: 0 },
     ]);
-    // Expand only E1.cleanup — its cleanup-block and the deferred E0
+    // Expand only E1.cleanup - its cleanup-block and the deferred E0
     // render under it; E2's tree stays collapsed; no E0 rows leak under
     // E2.
     expect(summarize(flattenRows(log, new Set([10])))).toEqual([
@@ -543,7 +543,7 @@ describe('flattenRows', () => {
       { kind: 'span', id: 14, depth: 1 },
       { kind: 'span', id: 12, depth: 0 },
     ]);
-    // Expand only E2.cleanup — its cleanup-block and the final E0 render
+    // Expand only E2.cleanup - its cleanup-block and the final E0 render
     // under it; E1's tree stays collapsed; no deferred row appears under
     // E2.
     expect(summarize(flattenRows(log, new Set([12])))).toEqual([
@@ -598,13 +598,13 @@ describe('flattenRows', () => {
         }),
       ],
       [
-        // A opens its match…
+        // A opens its match...
         matchStart(3, 12, 'a'),
-        // …B does an entire send+match in between…
+        // ...B does an entire send+match in between...
         send(4, 21, 'b'),
         matchStart(5, 22, 'b'),
         matchDone(6, 22, 'b'),
-        // …and only now does A's close arrive.
+        // ...and only now does A's close arrive.
         matchDone(7, 12, 'a'),
       ],
     );
@@ -659,7 +659,7 @@ describe('flattenRows', () => {
   });
 });
 
-describe('flattenRows — transparent BIFs', () => {
+describe('flattenRows - transparent BIFs', () => {
   it('hides pure-BIF FnCall span and emits a bif-row', () => {
     const log = logWith(
       [

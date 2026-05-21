@@ -8,7 +8,7 @@ use crate::Span;
 use crate::table::FileId;
 use crate::table::SharedTable;
 
-// ─── ModulePath / EffectName ────────────────────────────────
+// --- ModulePath / EffectName -----------------------------
 
 /// A module path like `"tests/login"` or `"lib/helpers"`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -30,7 +30,7 @@ impl fmt::Display for EffectName {
     }
 }
 
-// ─── IrSpan ─────────────────────────────────────────────────
+// --- IrSpan ----------------------------------------------
 
 /// Byte range within a specific source file. Used by all IR nodes
 /// and diagnostic labels for cross-file source annotations.
@@ -68,7 +68,7 @@ impl IrSpan {
     }
 }
 
-// ─── FnId ───────────────────────────────────────────────────
+// --- FnId ------------------------------------------------
 
 /// Uniquely identifies a function (pure or impure) across the suite.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -84,7 +84,7 @@ impl fmt::Display for FnId {
     }
 }
 
-// ─── EffectId ───────────────────────────────────────────────
+// --- EffectId --------------------------------------------
 
 /// Uniquely identifies an effect definition across the suite.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -99,7 +99,7 @@ impl fmt::Display for EffectId {
     }
 }
 
-// ─── Severity ───────────────────────────────────────────────
+// --- Severity --------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
@@ -107,7 +107,7 @@ pub enum Severity {
     Warning,
 }
 
-// ─── ReportLabel ────────────────────────────────────────────
+// --- ReportLabel -----------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct ReportLabel {
@@ -115,7 +115,7 @@ pub struct ReportLabel {
     pub message: String,
 }
 
-// ─── Diagnostic ─────────────────────────────────────────────
+// --- Diagnostic ------------------------------------------
 
 #[derive(Debug)]
 pub struct Diagnostic {
@@ -276,9 +276,9 @@ impl Diagnostic {
     }
 }
 
-// ─── LoweringBail ───────────────────────────────────────────
+// --- LoweringBail ----------------------------------------
 
-/// Error type for lowering failures — either a skip or an invalid definition.
+/// Error type for lowering failures - either a skip or an invalid definition.
 #[derive(Debug, Clone)]
 pub enum LoweringBail {
     Skip(Arc<SkipReport>),
@@ -315,7 +315,7 @@ impl LoweringBail {
 
 impl std::error::Error for LoweringBail {}
 
-// ─── InvalidReport ──────────────────────────────────────────
+// --- InvalidReport ---------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct UnsatisfiedExpectData {
@@ -458,7 +458,7 @@ impl fmt::Display for InvalidReport {
 }
 
 impl InvalidReport {
-    // ─── Constructors ───────────────────────────────────────
+    // --- Constructors ------------------------------------
 
     pub fn cycle(report: CycleReport) -> Self {
         Self::Cycle(report)
@@ -554,7 +554,7 @@ impl InvalidReport {
         }
     }
 
-    // ─── Queries ────────────────────────────────────────────
+    // --- Queries -----------------------------------------
 
     pub fn cause_id(&self) -> CauseId {
         match self {
@@ -617,7 +617,7 @@ impl InvalidReport {
 
 impl std::error::Error for InvalidReport {}
 
-// ─── SkipReport ─────────────────────────────────────────────
+// --- SkipReport ------------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct SkipReport {
@@ -717,7 +717,7 @@ impl fmt::Display for SkipEvaluation {
     }
 }
 
-// ─── CycleReport ────────────────────────────────────────────
+// --- CycleReport -----------------------------------------
 
 #[derive(Debug, Clone)]
 pub enum CycleReport {
@@ -754,7 +754,7 @@ pub struct EffectCycleEntry {
     pub start_span: IrSpan,
 }
 
-// ─── CauseId ────────────────────────────────────────────────
+// --- CauseId ---------------------------------------------
 
 /// Stable mnemonic identifier, e.g. `"broken-walrus-0042"`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -793,7 +793,7 @@ impl fmt::Display for CauseId {
     }
 }
 
-// ─── Cause / Warning ────────────────────────────────────────
+// --- Cause / Warning -------------------------------------
 
 #[derive(Debug, Clone)]
 pub enum Cause {
@@ -842,7 +842,7 @@ impl Warning {
 
 pub type WarningTable = SharedTable<WarningId, Warning>;
 
-// ─── From<&InvalidReport> for Diagnostic ────────────────────
+// --- From<&InvalidReport> for Diagnostic -----------------
 
 impl From<&InvalidReport> for Diagnostic {
     fn from(report: &InvalidReport) -> Self {
@@ -968,7 +968,7 @@ impl From<&InvalidReport> for Diagnostic {
     }
 }
 
-// ─── From<&SkipReport> for Diagnostic ───────────────────────
+// --- From<&SkipReport> for Diagnostic --------------------
 
 impl From<&SkipReport> for Diagnostic {
     fn from(report: &SkipReport) -> Self {
@@ -978,7 +978,7 @@ impl From<&SkipReport> for Diagnostic {
     }
 }
 
-// ─── From<&Cause> for Diagnostic ────────────────────────────
+// --- From<&Cause> for Diagnostic -------------------------
 
 impl From<&Cause> for Diagnostic {
     fn from(cause: &Cause) -> Self {
@@ -989,7 +989,7 @@ impl From<&Cause> for Diagnostic {
     }
 }
 
-// ─── From<&Warning> for Diagnostic ──────────────────────────
+// --- From<&Warning> for Diagnostic -----------------------
 
 impl From<&Warning> for Diagnostic {
     fn from(warning: &Warning) -> Self {
@@ -997,7 +997,7 @@ impl From<&Warning> for Diagnostic {
     }
 }
 
-// ─── Word lists for CauseId ────────────────────────────────
+// --- Word lists for CauseId ------------------------------
 
 /// 256 adjectives evoking brokenness, damage, trouble, and disrepair.
 const ADJECTIVES: [&str; 256] = [
@@ -1036,7 +1036,7 @@ const ADJECTIVES: [&str; 256] = [
     "dismal", "frazzled", "garbled", "ghastly", "gouged", "manky", "pitted",
 ];
 
-/// 256 animal and creature nouns — the charismatic megafauna of your errors.
+/// 256 animal and creature nouns - the charismatic megafauna of your errors.
 const NOUNS: [&str; 256] = [
     // insects and arachnids
     "ant",
@@ -1137,7 +1137,7 @@ const NOUNS: [&str; 256] = [
     "pelican",
     "pigeon",
     "plover",
-    // mammals — small
+    // mammals - small
     "badger",
     "bat",
     "beaver",
@@ -1170,7 +1170,7 @@ const NOUNS: [&str; 256] = [
     "stoat",
     "vole",
     "weasel",
-    // mammals — large
+    // mammals - large
     "alpaca",
     "bison",
     "boar",
@@ -1303,7 +1303,7 @@ const NOUNS: [&str; 256] = [
     "capybara",
 ];
 
-// ─── Tests ──────────────────────────────────────────────────
+// --- Tests -----------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -1347,7 +1347,7 @@ mod tests {
         }
     }
 
-    // ── IrSpan ──────────────────────────────────────────────
+    // --- IrSpan ------------------------------------------
 
     #[test]
     fn ir_span_accessors() {
@@ -1373,7 +1373,7 @@ mod tests {
         assert_ne!(a.file(), b.file());
     }
 
-    // ── FnId ────────────────────────────────────────────────
+    // --- FnId --------------------------------------------
 
     #[test]
     fn fn_id_equality() {
@@ -1469,7 +1469,7 @@ mod tests {
         assert_ne!(a, b);
     }
 
-    // ── EffectId ────────────────────────────────────────────
+    // --- EffectId ----------------------------------------
 
     #[test]
     fn effect_id_equality() {
@@ -1515,7 +1515,7 @@ mod tests {
         assert_eq!(ha.finish(), hb.finish());
     }
 
-    // ── CauseId ─────────────────────────────────────────────
+    // --- CauseId -----------------------------------------
 
     #[test]
     fn cause_id_format() {
@@ -1571,7 +1571,7 @@ mod tests {
         assert_eq!(ha.finish(), hb.finish());
     }
 
-    // ── Diagnostic from InvalidReport ───────────────────────
+    // --- Diagnostic from InvalidReport -------------------
 
     #[test]
     fn diagnostic_from_undefined_function_call() {
@@ -1723,7 +1723,7 @@ mod tests {
         assert!(d.message.contains("Missing"));
     }
 
-    // ── Diagnostic from SkipReport ──────────────────────────
+    // --- Diagnostic from SkipReport ----------------------
 
     fn make_skip(eval: SkipEvaluation) -> SkipReport {
         SkipReport {
@@ -1834,7 +1834,7 @@ mod tests {
         assert!(d.message.contains("test"));
     }
 
-    // ── Severity ────────────────────────────────────────────
+    // --- Severity ----------------------------------------
 
     #[test]
     fn invalid_report_produces_error_severity() {
@@ -1871,7 +1871,7 @@ mod tests {
         assert_eq!(d.severity, Severity::Warning);
     }
 
-    // ── LoweringBail ────────────────────────────────────────
+    // --- LoweringBail ------------------------------------
 
     #[test]
     fn lowering_bail_skip_variant() {
@@ -1891,7 +1891,7 @@ mod tests {
         let _cloned = bail.clone();
     }
 
-    // ── CycleReport ─────────────────────────────────────────
+    // --- CycleReport -------------------------------------
 
     #[test]
     fn cycle_report_function_single() {
@@ -1944,7 +1944,7 @@ mod tests {
         }
     }
 
-    // ── Cause / Warning tables ──────────────────────────────
+    // --- Cause / Warning tables --------------------------
 
     #[test]
     fn cause_table_insert_and_retrieve() {
@@ -2020,7 +2020,7 @@ mod tests {
         assert!(table.get(&id).is_none());
     }
 
-    // ── Display formats ─────────────────────────────────────
+    // --- Display formats ---------------------------------
 
     #[test]
     fn fn_id_display() {

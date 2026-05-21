@@ -146,7 +146,7 @@ fn test_meta_minimal() {
     assert!(meta.timeout().is_none());
 }
 
-// ─── Plan building: happy paths ────────────────────────────
+// --- Plan building: happy paths --------------------------
 
 #[test]
 fn plan_simple_test() {
@@ -394,7 +394,7 @@ test "multi effects" {
     }
 }
 
-// ─── Plan building: skip paths ─────────────────────────────
+// --- Plan building: skip paths ---------------------------
 
 #[test]
 fn plan_skip_unconditional() {
@@ -466,7 +466,7 @@ test "t" {
 }
 "#,
     )]);
-    // Skipped fn dep → test is also skipped (propagation)
+    // Skipped fn dep -> test is also skipped (propagation)
     assert!(is_skipped(&suite.plans[0]));
 }
 
@@ -489,11 +489,11 @@ test "t" {
 }
 "#,
     )]);
-    // Skipped effect dep → test is also skipped
+    // Skipped effect dep -> test is also skipped
     assert!(is_skipped(&suite.plans[0]));
 }
 
-// ─── Plan building: invalid paths ──────────────────────────
+// --- Plan building: invalid paths ------------------------
 
 #[test]
 fn plan_invalid_undefined_fn() {
@@ -583,7 +583,7 @@ test "t" {
     assert!(is_invalid(&suite.plans[0]));
 }
 
-// ─── Plan building: precedence ─────────────────────────────
+// --- Plan building: precedence ---------------------------
 
 #[test]
 fn plan_own_skip_skips_body_lowering() {
@@ -600,7 +600,7 @@ test "t" {
     assert!(is_skipped(&suite.plans[0]));
 }
 
-// ─── Suite assembly ────────────────────────────────────────
+// --- Suite assembly --------------------------------------
 
 #[test]
 fn suite_has_all_plans() {
@@ -705,7 +705,7 @@ test "bad" {
     assert!(is_invalid(bad));
 }
 
-// ─── Effect deduplication ──────────────────────────────────
+// --- Effect deduplication --------------------------------
 
 #[test]
 fn effect_start_no_overlay_same_as_empty_overlay() {
@@ -736,7 +736,7 @@ test "t2" {
     assert!(suite.plans.iter().all(is_runnable));
 }
 
-// ─── build_all_plans ordering ──────────────────────────────
+// --- build_all_plans ordering ----------------------------
 
 #[test]
 fn build_all_plans_tests_within_module_in_order() {
@@ -767,7 +767,7 @@ test "third" {
     assert_eq!(plan_name(&suite.plans[2]), "third");
 }
 
-// ─── Purity enforcement (end-to-end plan building) ───────
+// --- Purity enforcement (end-to-end plan building) -------
 
 #[test]
 fn plan_test_let_impure_fn_invalidates() {

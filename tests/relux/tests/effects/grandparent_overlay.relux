@@ -11,7 +11,7 @@
 // Bug 3: process_env() only exports .own() layer to the spawned PTY process.
 //         Shell commands using $$VAR don't see variables from parent env layers.
 
-// ─── Bug 1: eval_overlay grandparent pass-through ──────────
+// --- Bug 1: eval_overlay grandparent pass-through --------
 
 // Leaf reads PORT from its overlay and echoes it.
 effect Leaf {
@@ -55,7 +55,7 @@ test "overlay reads variable from grandparent env layer" {
     }
 }
 
-// ─── Bug 2: eval_effect_let parent layer access ────────────
+// --- Bug 2: eval_effect_let parent layer access ----------
 
 effect LetReader {
     expect LABEL
@@ -89,7 +89,7 @@ test "effect let binding reads inherited env from parent layer" {
     }
 }
 
-// ─── Bug 3: process_env only exports own layer ─────────────
+// --- Bug 3: process_env only exports own layer -----------
 
 effect ShellEnvLeaf {
     expect LABEL

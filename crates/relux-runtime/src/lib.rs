@@ -68,7 +68,7 @@ pub use runtime_context::ShellConfig;
 
 use relux_core::config;
 
-// ─── RunStrategy ────────────────────────────────────────────
+// --- RunStrategy -----------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunStrategy {
@@ -76,7 +76,7 @@ pub enum RunStrategy {
     FailFast,
 }
 
-// ─── ProgressMode ───────────────────────────────────────────
+// --- ProgressMode ----------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProgressMode {
@@ -88,7 +88,7 @@ pub enum ProgressMode {
     Tui,
 }
 
-// ─── RunContext ─────────────────────────────────────────────
+// --- RunContext ------------------------------------------
 
 pub struct RunContext {
     pub run_id: String,
@@ -106,7 +106,7 @@ pub struct RunContext {
     pub progress: ProgressMode,
 }
 
-// ─── Environment Helpers ────────────────────────────────────
+// --- Environment Helpers ---------------------------------
 
 fn build_env(ctx: &RunContext) -> Arc<LayeredEnv> {
     let mut env = Env::capture();
@@ -142,7 +142,7 @@ fn make_test_env(
     Arc::new(LayeredEnv::child(base.clone(), test_vars))
 }
 
-// ─── Log / Display Helpers ──────────────────────────────────
+// --- Log / Display Helpers -------------------------------
 
 fn test_log_dir(
     run_dir: &Path,
@@ -240,7 +240,7 @@ pub fn slugify(name: &str) -> String {
         .to_string()
 }
 
-// ─── Execute (Suite Entry Point) ────────────────────────────
+// --- Execute (Suite Entry Point) -------------------------
 
 pub struct ExecuteResult {
     pub results: Vec<TestResult>,
@@ -262,7 +262,7 @@ pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> ExecuteResult {
 
     // SIGINT handler: flip the run-wide cancel with `Sigint` reason. The
     // task ends when ctrl_c fires once or when `execute()` returns
-    // (whichever comes first) — the spawned task is detached and dies with
+    // (whichever comes first) - the spawned task is detached and dies with
     // the runtime.
     {
         let sigint_cancel = cancel.clone();
@@ -650,7 +650,7 @@ async fn run_test_cancellable(
     result
 }
 
-// ─── Run Test ───────────────────────────────────────────────
+// --- Run Test --------------------------------------------
 
 /// Create a ProgressTx that forwards events to the TUI renderer tagged with slot.
 fn make_tui_progress_tx(
@@ -724,7 +724,7 @@ async fn run_test(
     // guaranteed to execute) and concatenates marker recordings from
     // the test, every reachable effect, and every reachable function.
     // All recordings become flat `marker-eval` children of the markers
-    // root — no nesting under fn-call or effect-setup, since markers
+    // root - no nesting under fn-call or effect-setup, since markers
     // run before any test execution.
     let recordings = crate::marker_walk::collect_test_marker_recordings(test, meta, tables);
     let _ = replay_markers(&log, &recordings);
@@ -794,7 +794,7 @@ async fn run_test(
 
     // Build the structured log. The verdict is a tagged enum:
     // Pass / Fail(FailureRecord) / Cancelled(CancellationRecord) / Skip.
-    // Runnable tests here produce Pass, Fail, or Cancelled — Skip is
+    // Runnable tests here produce Pass, Fail, or Cancelled - Skip is
     // emitted by `log_skipped_test`.
     let test_outcome = match &outcome {
         Ok(()) => TestOutcome::Pass,
@@ -875,7 +875,7 @@ async fn run_test(
     }
 }
 
-// ─── Run Test Body ──────────────────────────────────────────
+// --- Run Test Body ---------------------------------------
 
 async fn run_test_body(
     meta: &relux_ir::TestMeta,
@@ -1148,7 +1148,7 @@ async fn run_test_body(
     body_result
 }
 
-// ─── Marker replay ─────────────────────────────────────────
+// --- Marker replay ---------------------------------------
 
 pub(crate) fn marker_kind_to_runtime(k: relux_ir::marker::MarkerEvalKind) -> MarkerEvalKind {
     match k {
@@ -1203,7 +1203,7 @@ pub(crate) fn marker_detail_from_evaluation(
     }
 }
 
-// ─── log_skipped_test ──────────────────────────────────────
+// --- log_skipped_test ------------------------------------
 
 /// Emit a markers-only `event.html` and `events.json` for a `Plan::Skipped`
 /// test. Does NOT run the test (no PTY, no shells, no body); the structured
@@ -1252,7 +1252,7 @@ async fn log_skipped_test(
     let handles = replay_markers(&log, recordings);
 
     // Locate the triggering marker. eval_marker returns early on trigger,
-    // so the triggering recording is always the last one — but scan
+    // so the triggering recording is always the last one - but scan
     // defensively in case future changes alter recording order.
     let trigger_idx = recordings
         .iter()
@@ -1334,7 +1334,7 @@ async fn log_skipped_test(
     }
 }
 
-// ─── Marker replay ─────────────────────────────────────────
+// --- Marker replay ---------------------------------------
 
 /// Output of `replay_markers`: one handle per input recording, positionally
 /// aligned. `span` is the `marker-eval` span; `event_seq` is the bool-check
@@ -1554,7 +1554,7 @@ mod tests {
         }
 
         // Flaky markers must reach the rendered MARKERS tree alongside the
-        // skip-triggering one — even on a skipped test.
+        // skip-triggering one - even on a skipped test.
         let has_flaky = log.spans.values().any(|s| {
             matches!(
                 s.kind,

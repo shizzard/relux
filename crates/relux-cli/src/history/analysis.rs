@@ -10,7 +10,7 @@ use relux_runtime::slugify;
 
 use super::loader::LoadedRun;
 
-// ─── Core Types ────────────────────────────────────────────────
+// --- Core Types ------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TestKey {
@@ -127,7 +127,7 @@ impl TestMeta {
     }
 }
 
-// ─── LoadedRunsCollection ──────────────────────────────────────
+// --- LoadedRunsCollection --------------------------------
 
 pub struct LoadedRunsCollection {
     pub(crate) tests: HashMap<TestKey, HashMap<RunId, TestMeta>>,
@@ -213,7 +213,7 @@ impl LoadedRunsCollection {
     }
 }
 
-// ─── Traits ────────────────────────────────────────────────────
+// --- Traits ----------------------------------------------
 
 pub trait Preaggregate {
     type Item: Ord;
@@ -225,7 +225,7 @@ pub trait Aggregate {
     fn aggregate(collection: &LoadedRunsCollection) -> Self::Item;
 }
 
-// ─── Flakiness ─────────────────────────────────────────────────
+// --- Flakiness -------------------------------------------
 
 #[derive(Debug, Serialize)]
 pub struct FlakyRecord {
@@ -320,7 +320,7 @@ impl Preaggregate for FlakyPreaggregate {
     }
 }
 
-// ─── Failure Analysis ──────────────────────────────────────────
+// --- Failure Analysis ------------------------------------
 
 #[derive(Debug, Serialize)]
 pub struct FailureRecord {
@@ -329,7 +329,7 @@ pub struct FailureRecord {
     pub rate: f64,
     /// Run id of the most recent run in which this test failed. Used by
     /// formatters to render a `file://` link to that run's `event.html`.
-    /// Independent of ordering — failures are sorted by rate/count.
+    /// Independent of ordering - failures are sorted by rate/count.
     pub latest_fail_run_id: Option<String>,
 }
 
@@ -431,7 +431,7 @@ pub fn compute_failure_modes(coll: &LoadedRunsCollection) -> Vec<FailureModeEntr
     modes
 }
 
-// ─── First-Fail Analysis ──────────────────────────────────────
+// --- First-Fail Analysis ---------------------------------
 
 #[derive(Debug, Serialize)]
 pub struct FirstFailRecord {
@@ -508,7 +508,7 @@ impl Preaggregate for FirstFailPreaggregate {
     }
 }
 
-// ─── Duration Analysis ─────────────────────────────────────────
+// --- Duration Analysis -----------------------------------
 
 #[derive(Debug, Serialize)]
 pub struct DurationRecord {
@@ -619,7 +619,7 @@ impl Aggregate for DurationAggregate {
     }
 }
 
-// ─── Helpers ───────────────────────────────────────────────────
+// --- Helpers ---------------------------------------------
 
 pub(crate) fn compute_stats(values: &[u64]) -> DurationStats {
     if values.is_empty() {
@@ -691,7 +691,7 @@ pub(crate) fn linear_trend(values: &[u64]) -> String {
     }
 }
 
-// ─── Tests ─────────────────────────────────────────────────────
+// --- Tests -----------------------------------------------
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -887,7 +887,7 @@ pub(crate) mod tests {
         let mut coll = LoadedRunsCollection::new(runs);
         let entries = coll.truncate::<FailurePreaggregate>(None);
 
-        // c.relux fails in run1, run2, run4 → latest is run4.
+        // c.relux fails in run1, run2, run4 -> latest is run4.
         let (_, c) = find_entry(&entries, "c.relux/c-relux").unwrap();
         assert_eq!(c.latest_fail_run_id.as_deref(), Some("run4"));
 
@@ -972,7 +972,7 @@ pub(crate) mod tests {
 
     #[test]
     fn flaky_detects_retried_passes_as_flaky() {
-        // A test that always passes but with retries — no cross-run flips,
+        // A test that always passes but with retries - no cross-run flips,
         // but inner_flips should detect it as flaky.
         let runs = vec![
             make_run(
@@ -993,7 +993,7 @@ pub(crate) mod tests {
         assert_eq!(entries.len(), 1);
         let (_, rec) = find_entry(&entries, "f.relux/f-relux").unwrap();
         // Each run has inner_flips=1 (lower=fail, upper=pass), total=2
-        // Cross-run: run1 upper=pass, run2 lower=fail → 1 more flip
+        // Cross-run: run1 upper=pass, run2 lower=fail -> 1 more flip
         assert_eq!(rec.flips, 3);
         assert_eq!(rec.pass, 2);
         assert_eq!(rec.fail, 0);
@@ -1002,9 +1002,9 @@ pub(crate) mod tests {
 
     #[test]
     fn flaky_retried_pass_then_clean_pass_counts_cross_flip() {
-        // run1: pass with retries (lower=fail, upper=pass) → 1 inner flip
-        // run2: clean pass (lower=pass, upper=pass) → 0 inner flips
-        // Cross: run1 upper=pass vs run2 lower=pass → no cross flip
+        // run1: pass with retries (lower=fail, upper=pass) -> 1 inner flip
+        // run2: clean pass (lower=pass, upper=pass) -> 0 inner flips
+        // Cross: run1 upper=pass vs run2 lower=pass -> no cross flip
         // Total: 1 flip
         let runs = vec![
             make_run(
@@ -1031,7 +1031,7 @@ pub(crate) mod tests {
     #[test]
     fn flaky_clean_pass_then_retried_pass_counts_cross_flip() {
         // run1: clean pass (upper=pass)
-        // run2: pass with retries (lower=fail) → cross flip + inner flip
+        // run2: pass with retries (lower=fail) -> cross flip + inner flip
         let runs = vec![
             make_run(
                 "run1",
@@ -1050,13 +1050,13 @@ pub(crate) mod tests {
 
         assert_eq!(entries.len(), 1);
         let (_, rec) = find_entry(&entries, "h.relux/h-relux").unwrap();
-        // inner: 1 (run2), cross: 1 (pass→fail)
+        // inner: 1 (run2), cross: 1 (pass->fail)
         assert_eq!(rec.flips, 2);
     }
 
     #[test]
     fn flaky_failed_with_retries_no_inner_flip() {
-        // Test that failed even after retries: lower=fail, upper=fail → 0 inner flips
+        // Test that failed even after retries: lower=fail, upper=fail -> 0 inner flips
         let runs = vec![
             make_run(
                 "run1",
@@ -1075,7 +1075,7 @@ pub(crate) mod tests {
 
         assert_eq!(entries.len(), 1);
         let (_, rec) = find_entry(&entries, "i.relux/i-relux").unwrap();
-        // inner: 0 (fail→fail), cross: 1 (pass→fail)
+        // inner: 0 (fail->fail), cross: 1 (pass->fail)
         assert_eq!(rec.flips, 1);
         assert!((rec.avg_retries - 1.5).abs() < 0.01);
     }

@@ -5,7 +5,7 @@
 //! through `RuntimeContext`; every emission site forwards through it.
 //!
 //! The per-event-kind emitters live in concern-grouped submodules
-//! (`lifecycle`, `io`, `matching`, `values`, `diagnostics`) — each one
+//! (`lifecycle`, `io`, `matching`, `values`, `diagnostics`) - each one
 //! adds an `impl StructuredLogBuilder` block. This file owns the core:
 //! the struct itself, the `SpanGuard` RAII handle, helper resolvers
 //! (`now`, `resolve_location`, `timeout_value`, `push_progress`), the
@@ -59,7 +59,7 @@ pub struct StructuredLogBuilder {
 }
 
 /// RAII handle for a span. `Drop` calls `close_span_inner` on the underlying
-/// builder, so `?` early-returns are safe — the span always gets an `end_ts`.
+/// builder, so `?` early-returns are safe - the span always gets an `end_ts`.
 /// Use `id()` to obtain the `SpanId` for emissions and as a parent of
 /// child spans. Use `close()` to close explicitly (gives a tighter `end_ts`
 /// than waiting for drop, useful right before `build()`).
@@ -392,7 +392,7 @@ mod tests {
         let end_after_close = b.inner.lock().unwrap().spans.get(&id).unwrap().end_ts;
         assert!(end_after_close.is_some());
         // Drop happened inside `close()` (Option taken). A subsequent peek
-        // should show the same end_ts — the guard's drop didn't re-touch it
+        // should show the same end_ts - the guard's drop didn't re-touch it
         // because there's no guard left.
         let end_later = b.inner.lock().unwrap().spans.get(&id).unwrap().end_ts;
         assert_eq!(end_after_close, end_later);

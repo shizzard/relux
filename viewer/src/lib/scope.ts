@@ -18,8 +18,8 @@ import { spanById, toNumber as n, type SpanId } from './derive';
 // `effect-cleanup` ancestors are special: the runtime parents them
 // directly under the test span (not the long-closed `effect-setup`),
 // but the cleanup VM still runs with the *effect's* `Scope`. We honour
-// that by hopping to `effect-cleanup.setup_span` — which by
-// construction is an `effect-setup` id — and returning it as
+// that by hopping to `effect-cleanup.setup_span` - which by
+// construction is an `effect-setup` id - and returning it as
 // `ambientScope`.
 export function scopeContext(
   data: StructuredLog,
@@ -179,7 +179,7 @@ export function varsAtSeq(
   return varsAtCutoff(data, n(selected.seq), n(selected.span), selected.shell);
 }
 
-// Variables visible to a selected span — i.e. the *outer* scope the
+// Variables visible to a selected span - i.e. the *outer* scope the
 // span sits in, sampled at the moment the span opens.
 //
 //   shell-block / cleanup-block -> the ambient test/effect scope.
@@ -312,7 +312,7 @@ function outerContextForSpan(
 }
 
 // Seq of the last event that fired *before* `spanId` opens. Used by
-// `outerContextForSpan` as the replay cutoff — variables/captures
+// `outerContextForSpan` as the replay cutoff - variables/captures
 // declared at or after the span are excluded.
 //
 // Two cases:

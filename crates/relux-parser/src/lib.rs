@@ -32,7 +32,7 @@ use relux_lexer::Token;
 
 pub type Span = relux_core::Span;
 
-// ─── Parser Input Type ──────────────────────────────────────
+// --- Parser Input Type -----------------------------------
 
 /// The Chumsky input type for the parser: a slice of `(Token, SimpleSpan)` pairs
 /// mapped so that chumsky tracks byte-offset spans from the source.
@@ -58,7 +58,7 @@ pub(crate) fn make_input<'a>(
     tokens.split_token_span(eoi)
 }
 
-// ─── Span Conversion Helpers ────────────────────────────────
+// --- Span Conversion Helpers -----------------------------
 
 /// Convert a chumsky SimpleSpan to a relux_core::Span.
 pub(crate) fn span_from_chumsky(s: chumsky::span::SimpleSpan) -> relux_core::Span {
@@ -73,7 +73,7 @@ pub(crate) fn spanned_from_chumsky<T>(
     relux_core::Spanned::new(node, span_from_chumsky(s))
 }
 
-// ─── Error Formatting ───────────────────────────────────────
+// --- Error Formatting ------------------------------------
 
 /// Format a Rich error, filtering out `SomethingElse` from the expected list.
 fn format_rich_error(e: &Rich<'_, Token<'_>>) -> String {
@@ -110,7 +110,7 @@ fn format_rich_error(e: &Rich<'_, Token<'_>>) -> String {
     }
 }
 
-// ─── Public API ─────────────────────────────────────────────
+// --- Public API ------------------------------------------
 
 pub fn parse(source: &str) -> Result<relux_ast::AstModule, ParseError> {
     let pairs = lex_to_pairs(source);

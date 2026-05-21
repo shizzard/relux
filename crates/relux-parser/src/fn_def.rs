@@ -28,7 +28,7 @@ use relux_ast::AstStmt;
 /// Sentinel span for dummy blank-line comments.
 const SENTINEL: Span = Span::new(0, 0);
 
-// ─── Helpers ────────────────────────────────────────────────
+// --- Helpers ---------------------------------------------
 
 /// Collects leading markers and comments (with interspersed blank lines).
 /// Returns `(markers, comments)`.
@@ -93,7 +93,7 @@ fn body<'a>()
     punctuation_brace_open()
         .ignore_then(
             stmt()
-                // Fragile: SENTINEL comment must be filtered below — edit with caution.
+                // Fragile: SENTINEL comment must be filtered below - edit with caution.
                 .or(ws().ignore_then(newline()).map_with(|_, _| {
                     Spanned::new(
                         AstStmt::Comment { text: String::new(), span: SENTINEL },
@@ -115,9 +115,9 @@ fn body<'a>()
         })
 }
 
-// ─── L6: Function Definition Combinators ────────────────────
+// --- L6: Function Definition Combinators -----------------
 
-/// `[preamble] fn name(params) { body }` — function definition.
+/// `[preamble] fn name(params) { body }` - function definition.
 pub fn def_fn<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstFnDef>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     preamble()
@@ -145,7 +145,7 @@ pub fn def_fn<'a>()
         .boxed()
 }
 
-/// `[preamble] pure fn name(params) { body }` — pure function definition.
+/// `[preamble] pure fn name(params) { body }` - pure function definition.
 pub fn def_pure_fn<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstPureFnDef>, extra::Err<Rich<'a, Token<'a>>>> + Clone
 {

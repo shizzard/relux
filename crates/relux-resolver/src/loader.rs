@@ -17,7 +17,7 @@ use relux_core::table::SourceFile;
 use relux_core::table::SourceTable;
 use relux_ir::AstTable;
 
-// ─── load_modules ───────────────────────────────────────────
+// --- load_modules ----------------------------------------
 
 /// Load all reachable modules via a demand-driven BFS worklist.
 ///
@@ -54,7 +54,7 @@ pub fn load_modules(
 
         // Load source
         let Some((file_path, source)) = source_loader.load(&mod_path.0) else {
-            // Module not found — record cause
+            // Module not found - record cause
             let cause_id = CauseId::generate(&mod_path.0, "", 0, "module_not_found");
             let ir_span = IrSpan::new(FileId::new(PathBuf::from(&mod_path.0)), Span::new(0, 0));
             cause_table.insert(
@@ -78,7 +78,7 @@ pub fn load_modules(
                 // Walk imports to find transitive dependencies
                 for item in &module.items {
                     if let relux_ast::AstItem::Import { import, .. } = &item.node {
-                        // Imports are relative to lib/ — prepend to form ModulePath
+                        // Imports are relative to lib/ - prepend to form ModulePath
                         let import_path = ModulePath(format!("lib/{}", import.path.node));
                         if !ast_table.contains(&import_path) {
                             queue.push_back(import_path);
@@ -109,7 +109,7 @@ pub fn load_modules(
     (ast_table, source_table)
 }
 
-// ─── InMemoryLoader ─────────────────────────────────────────
+// --- InMemoryLoader --------------------------------------
 
 /// Test helper implementing `SourceLoader` with in-memory sources.
 #[derive(Default)]
@@ -142,7 +142,7 @@ impl SourceLoader for InMemoryLoader {
     }
 }
 
-// ─── Tests ──────────────────────────────────────────────────
+// --- Tests -----------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -157,7 +157,7 @@ mod tests {
         (SharedTable::new(), SharedTable::new())
     }
 
-    // ── InMemoryLoader ─────────────────────────────────────
+    // --- InMemoryLoader ----------------------------------
 
     #[test]
     fn in_memory_loader_returns_source() {
@@ -182,7 +182,7 @@ mod tests {
         assert!(loader.load("anything").is_none());
     }
 
-    // ── Worklist — happy path ──────────────────────────────
+    // --- Worklist - happy path ---------------------------
 
     #[test]
     fn load_single_module_no_imports() {
@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn load_circular_import_no_error() {
         let mut loader = InMemoryLoader::new();
-        // lib/b imports lib/c, lib/c imports lib/b → circular
+        // lib/b imports lib/c, lib/c imports lib/b -> circular
         loader.add("tests/a", "import b\ntest \"a\" {}");
         loader.add("lib/b", "import c\nfn b() {}");
         loader.add("lib/c", "import b\nfn c() {}");
@@ -313,7 +313,7 @@ mod tests {
         loader.add("tests/a", "import helpers\ntest \"a\" {}");
         loader.add("lib/helpers", "fn greet() {}");
         let (causes, warnings) = new_tables();
-        // Only seed with test module — lib loaded via import
+        // Only seed with test module - lib loaded via import
         let (ast, _src) = load_modules(&loader, vec![mp("tests/a")], &causes, &warnings);
         assert!(ast.contains(&mp("lib/helpers")));
     }
@@ -343,7 +343,7 @@ mod tests {
         }
     }
 
-    // ── Error handling ─────────────────────────────────────
+    // --- Error handling ----------------------------------
 
     #[test]
     fn load_missing_module_records_cause() {
@@ -450,9 +450,9 @@ mod tests {
         assert!(causes.get(&cause_id).is_some());
     }
 
-    // ── Freeze semantics ───────────────────────────────────
+    // --- Freeze semantics --------------------------------
 
-    // ── Additional error accumulation ─────────────────────
+    // --- Additional error accumulation -------------------
 
     #[test]
     fn load_multiple_parse_errors_accumulated() {
@@ -475,7 +475,7 @@ mod tests {
     #[test]
     fn load_circular_with_transitive() {
         let mut loader = InMemoryLoader::new();
-        // A→B→C→B (circular), C also→D (transitive)
+        // A->B->C->B (circular), C also->D (transitive)
         loader.add("tests/a", "import b\ntest \"a\" {}");
         loader.add("lib/b", "import c\nfn b() {}");
         loader.add("lib/c", "import b\nimport d\nfn c() {}");

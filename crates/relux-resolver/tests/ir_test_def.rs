@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-// ─── Test lowering ────────────────────────────────────────
+// --- Test lowering ---------------------------------------
 
 #[test]
 fn lower_test_simple() {
@@ -167,7 +167,7 @@ fn lower_test_comments_stripped() {
     assert!(!result.body().is_empty());
 }
 
-// ─── Purity enforcement tests ────────────────────────────
+// --- Purity enforcement tests ----------------------------
 
 #[test]
 fn lower_test_let_rejects_impure_fn_call() {

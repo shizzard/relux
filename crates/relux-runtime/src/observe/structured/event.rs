@@ -77,7 +77,7 @@ pub enum EventKind {
         name: String,
     },
 
-    // Effect exposes — emitted at the end of effect setup, one per
+    // Effect exposes - emitted at the end of effect setup, one per
     // expose decl. Hidden from the viewer timeline; surfaced as inline
     // props on the owning effect-setup span.
     EffectExposeShell {
@@ -107,7 +107,7 @@ pub enum EventKind {
         data: String,
     },
 
-    // Matching — buffer_seq references the corresponding buffer_events entry.
+    // Matching - buffer_seq references the corresponding buffer_events entry.
     MatchStart {
         pattern: String,
         is_regex: bool,
@@ -141,7 +141,7 @@ pub enum EventKind {
         pattern: String,
         is_regex: bool,
         matched_line: String,
-        /// `None` for fail-pattern hits — they observe without advancing the
+        /// `None` for fail-pattern hits - they observe without advancing the
         /// cursor, so no `Matched` buffer event corresponds.
         buffer_seq: Option<EventSeq>,
     },

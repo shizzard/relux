@@ -86,7 +86,7 @@ fn ir_string_part_all_variants() {
     let _ = IrStringPart::EscapedDollar { span: s };
 }
 
-// ─── Lowering tests (moved from lower.rs) ───────────────
+// --- Lowering tests (moved from lower.rs) ----------------
 
 use relux_ast::AstInterpolation;
 use relux_ast::AstStringPart;

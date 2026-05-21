@@ -11,7 +11,7 @@ import {
   varsAtSpan,
 } from './scope';
 
-// ─── Span builders ──────────────────────────────────────────────────
+// --- Span builders ---------------------------------------
 
 type SpanInput = { id: number; parent: number | null } & (
   | { kind: 'test'; name?: string }
@@ -83,7 +83,7 @@ function spansToMap(spans: Span[]): Record<string, Span> {
   return out;
 }
 
-// ─── Event builders ─────────────────────────────────────────────────
+// --- Event builders --------------------------------------
 
 function ev(
   seq: number,
@@ -153,12 +153,12 @@ function matchDone(
 }
 
 // A "marker" event used purely as the selection target. Pick something
-// innocuous — `log` works and doesn't interact with scope replay.
+// innocuous - `log` works and doesn't interact with scope replay.
 function marker(seq: number, span: number, shell: string | null): Event {
   return ev(seq, span, shell, { kind: 'log', message: 'mark' } as never);
 }
 
-// ─── Log builder ────────────────────────────────────────────────────
+// --- Log builder -----------------------------------------
 
 function makeLog(spans: Span[], events: Event[]): StructuredLog {
   return {
@@ -175,7 +175,7 @@ function makeLog(spans: Span[], events: Event[]): StructuredLog {
   };
 }
 
-// ─── scopeContext ───────────────────────────────────────────────────
+// --- scopeContext ----------------------------------------
 
 describe('scopeContext', () => {
   it('returns the test span itself when called on a test span', () => {
@@ -265,7 +265,7 @@ describe('scopeContext', () => {
   });
 });
 
-// ─── varsAtSeq — shell mode ─────────────────────────────────────────
+// varsAtSeq - shell mode
 
 describe('varsAtSeq (shell mode)', () => {
   it('returns an empty map for an empty log', () => {
@@ -459,7 +459,7 @@ describe('varsAtSeq (shell mode)', () => {
   });
 });
 
-// ─── varsAtSeq — fn-call mode ───────────────────────────────────────
+// varsAtSeq - fn-call mode
 
 describe('varsAtSeq (fn-call mode)', () => {
   it('shows fn args at the very first event inside the fn-call', () => {
@@ -577,7 +577,7 @@ describe('varsAtSeq (fn-call mode)', () => {
   });
 });
 
-// ─── capturesAtSeq ──────────────────────────────────────────────────
+// --- capturesAtSeq ---------------------------------------
 
 describe('capturesAtSeq', () => {
   it('returns empty when shell is null', () => {
@@ -690,7 +690,7 @@ describe('capturesAtSeq', () => {
   });
 });
 
-// ─── varsAtSpan ─────────────────────────────────────────────────────
+// --- varsAtSpan ------------------------------------------
 
 describe('varsAtSpan', () => {
   it('returns null for spans that have no surfaceable outer scope (test span)', () => {
@@ -857,7 +857,7 @@ describe('varsAtSpan', () => {
   });
 });
 
-// ─── capturesAtSpan ────────────────────────────────────────────────
+// --- capturesAtSpan --------------------------------------
 
 describe('capturesAtSpan', () => {
   it('returns null for spans with no surfaceable outer scope', () => {
@@ -892,7 +892,7 @@ describe('capturesAtSpan', () => {
   });
 });
 
-describe('scopeContext — transparent BIFs', () => {
+describe('scopeContext - transparent BIFs', () => {
   it('skips a transparent pure-BIF fn-call when computing innermostFn', () => {
     const log = makeLog(
       [

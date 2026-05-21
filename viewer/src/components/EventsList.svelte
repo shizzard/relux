@@ -98,11 +98,11 @@
   let rowsEl: HTMLOListElement | undefined;
 
   // Scroll the currently-selected row into view. Fires on mount (so the
-  // initial selection — e.g. a failed test's match-timeout event — lands
+  // initial selection - e.g. a failed test's match-timeout event - lands
   // in the viewport) and re-fires whenever the selection changes
   // programmatically (revealAndSelect from timeline cards, marker-pill
   // jumps, call-stack frame clicks). Without this an off-screen target
-  // gets selected silently — ancestors expand but the highlighted row
+  // gets selected silently - ancestors expand but the highlighted row
   // can be pushed off-screen and the click looks ignored.
   $effect(() => {
     if (!rowsEl) return;

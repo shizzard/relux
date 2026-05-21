@@ -8,7 +8,7 @@ use super::ParserInput;
 use super::token::text;
 use relux_ast::AstTimeout;
 
-/// `~duration` — tolerance timeout. Validates span contiguity.
+/// `~duration` - tolerance timeout. Validates span contiguity.
 pub fn timeout_tolerance<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstTimeout>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::Tilde)
@@ -37,7 +37,7 @@ pub fn timeout_tolerance<'a>()
         .labelled("tolerance timeout (~Ns)")
 }
 
-/// `@duration` — assertion timeout. Validates span contiguity.
+/// `@duration` - assertion timeout. Validates span contiguity.
 pub fn timeout_assert<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstTimeout>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::At)

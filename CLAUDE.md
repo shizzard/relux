@@ -13,32 +13,36 @@ Each test run produces a **structured event log** (canonical artifact, `events.j
 ### Build
 
 ```bash
-just build                      # Build binary in debug mode
-just release                    # Build binary in release mode
-just intellij                   # Build IntelliJ plugin
-just vscode                     # Build VS Code extension (.vsix)
-just viewer-build               # Rebuild vendored Svelte viewer bundle (vendor/relux-viewer.js.gz)
-just books                      # Build tutorial/reference mdbooks
+just build                      # Build everything (cargo + viewer + intellij + vscode + books)
+just build-cargo                # Build cargo workspace only
+just build-release              # Build binary in release mode (with viewer bundle)
+just build-intellij             # Build IntelliJ plugin
+just build-vscode               # Build VS Code extension (.vsix)
+just build-viewer               # Rebuild vendored Svelte viewer bundle (vendor/relux-viewer.js.gz)
+just build-books                # Build tutorial/reference mdbooks
 just install-hooks              # Point git at .githooks/ (runs check/clippy/fmt/books on commit)
 ```
 
 ### Test
 
 ```bash
-just test                       # Run all tests (unit + e2e)
-just unit                       # Run all Rust unit tests
-just unit lexer                 # Run Rust tests matching "lexer"
-just viewer-test                # Run viewer Vitest suite (in docker)
-just viewer-check               # Run svelte-check on viewer (in docker)
+just test                       # Run all tests (unit + e2e + viewer)
+just test-unit                  # Run all Rust unit tests
+just test-unit lexer            # Run Rust tests matching "lexer"
+just test-viewer                # Run viewer Vitest suite (in docker)
+just test-e2e                   # Run e2e tests (check then run)
+just check-viewer               # Run svelte-check on viewer (in docker)
 just run <args>                 # Run relux with arguments
-just e2e                        # Run e2e tests (check then run)
 just history                    # Analyze e2e run history
 ```
 
 ### Fix
 
 ```bash
-just check                      # Run cargo check + clippy + fmt check
+just check                      # Run ASCII + clippy + fmt + viewer checks
+just check-ascii                # Fail if any tracked source contains non-ASCII bytes
+just check-clippy               # cargo clippy (includes cargo check)
+just check-fmt                  # rustfmt check
 just fix                        # Fix clippy warnings and format code
 ```
 
@@ -127,7 +131,7 @@ Resolver orchestration: module discovery, source loading, and the `resolve()` en
   - **run_index.rs**: Per-run `index.html` — one row per test (outcome, duration, progress string, link to per-test artifact dir). CSS/JS sit in sibling `run_index.css` / `run_index.js` and are `include_str!`-inlined.
   - **console.rs**: Rich console error renderer — formats call stacks, buffer tails, and vars-in-scope on failure.
   - **hljs_init.rs**: Inline script that wires the Relux hljs grammar onto the bundled highlight.js.
-  - **highlight-relux.js**: Canonical Relux hljs grammar, shared between the runtime report and the mdbooks (via `just _sync-book-assets`).
+  - **highlight-relux.js**: Canonical Relux hljs grammar, shared between the runtime report and the mdbooks (via `just _sync-book-assets` (delegates to `.scripts/build-books-sync-book-targets.sh`)).
   - **junit.rs**: JUnit XML report output.
   - **tap.rs**: TAP (Test Anything Protocol) output.
   - **run_summary.rs**: `RunSummary` — serializable run results for history analysis.
@@ -151,24 +155,24 @@ Published crate (`cargo install relux`). CLI subcommands and the `relux` binary.
 
 Svelte 5 + TypeScript SPA bundled by Vite into a single IIFE that the runtime inlines into each `event.html`.
 
-- **`viewer/src/types/`**: Auto-generated TypeScript declarations exported by `ts-rs` from `relux-runtime`'s `observe::structured` types. Regenerate via `just viewer-build` (which first runs `cargo test -p relux-runtime --features ts-export 'export_bindings_'`).
+- **`viewer/src/types/`**: Auto-generated TypeScript declarations exported by `ts-rs` from `relux-runtime`'s `observe::structured` types. Regenerate via `just build-viewer` (which first runs `cargo test -p relux-runtime --features ts-export 'export_bindings_'`).
 - **`viewer/src/lib/`**: Logic modules — `state.svelte.ts` (root reactive state), `derive.ts` (selection-derived projections), `flatten.ts` (timeline flattening), `scope.ts` (variable scope resolution), `timeline.ts` (timeline layout), `format.ts` (display formatting), `source_highlight.ts` (hljs integration), `bif.ts`, `artifacts.ts`, `theme.ts`, `clipboard.ts`, `actions.ts`. Each has a colocated `*.test.ts` (Vitest).
 - **`viewer/src/components/`**: Svelte 5 components — `EventsList`, `DetailPanel`, `TimelineBar`, `LogBar`, modals (`ShellsModal`, `EnvModal`, `ArtifactsModal`), rows (`EventRow`, `BifRow`, `SpanEntryRow`, `GapRow`), atoms (`Chip`, `Panel`, `ValueCell`, `MarkerPill`), plus `sections/` for the main detail tabs.
 - **`viewer/src/styles/`**: CSS tokens shared with the docs theme (`docs/_theme/relux.css`) for product cohesion.
-- **`viewer/scripts/gzip-bundle.mjs`**: Post-build step that gzips the IIFE; the output drops into `viewer/dist/relux-viewer.js.gz` and `just viewer-build` copies it to `vendor/relux-viewer.js.gz`.
+- **`viewer/scripts/gzip-bundle.mjs`**: Post-build step that gzips the IIFE; the output drops into `viewer/dist/relux-viewer.js.gz` and `just build-viewer` copies it to `vendor/relux-viewer.js.gz`.
 
 ### Vendored bundles (`vendor/`)
 
 Pre-built gzip blobs baked into the runtime binary by `relux-runtime::viewer`:
-- **`relux-viewer.js.gz`**: The Svelte IIFE bundle. Rebuilt by `just viewer-build`.
+- **`relux-viewer.js.gz`**: The Svelte IIFE bundle. Rebuilt by `just build-viewer`.
 - **`highlight-11.11.1.min.js.gz`**: Vendored highlight.js v11 (shared between the viewer and the mdbooks).
 
 The pre-commit hook (`.githooks/pre-commit`) and CI verify these files stay in sync with `viewer/` sources and the canonical hljs grammar at `crates/relux-runtime/src/report/highlight-relux.js`.
 
 ### Editor Support (`editors/`)
 
-- **IntelliJ** (`editors/intellij/`): Syntax highlighting plugin for `.relux` files. Build with `just intellij`.
-- **VS Code** (`editors/vscode/`): VS Code extension for `.relux` files. Build with `just vscode`.
+- **IntelliJ** (`editors/intellij/`): Syntax highlighting plugin for `.relux` files. Build with `just build-intellij`.
+- **VS Code** (`editors/vscode/`): VS Code extension for `.relux` files. Build with `just build-vscode`.
 
 ## Key Design Decisions
 
@@ -194,7 +198,7 @@ The pre-commit hook (`.githooks/pre-commit`) and CI verify these files stay in s
 - Documentation as mdbooks in `docs/` — `reference/` (semantics, syntax, BIFs, CI integration, test-log viewer, events.json schema), `dsl-tutorial/`, `suite-tutorial/`
 - **Every code change must be accompanied by updates to the relevant documentation** — review `docs/reference/` (semantics, syntax, BIFs, CI, test-log viewer, events.json schema), `docs/dsl-tutorial/`, and `docs/suite-tutorial/` and update any articles affected by the change
 - **Changes to user-facing DSL syntax** (new keywords, operators, interpolation forms, etc.) **must be reflected in the editor plugins** — update `editors/vscode/syntaxes/relux.tmLanguage.json` and `editors/intellij/src/main/java/eu/spawnlink/relux/ReluxLexer.flex` (plus related token/highlighter files) — and in the canonical hljs grammar at `crates/relux-runtime/src/report/highlight-relux.js` (shared by the viewer and the mdbooks)
-- **Changes to structured-log types** (`crates/relux-runtime/src/observe/structured/`) require regenerating viewer TypeScript bindings via `just viewer-build`; the vendored `vendor/relux-viewer.js.gz` must be committed in the same change. The pre-commit hook + CI verify the vendored bytes stay in sync.
+- **Changes to structured-log types** (`crates/relux-runtime/src/observe/structured/`) require regenerating viewer TypeScript bindings via `just build-viewer`; the vendored `vendor/relux-viewer.js.gz` must be committed in the same change. The pre-commit hook + CI verify the vendored bytes stay in sync.
 - **PRs are squash-merged** — the final squash commit message must be a single conventional commit (type, optional scope, description, and body)
 
 ## RFCs

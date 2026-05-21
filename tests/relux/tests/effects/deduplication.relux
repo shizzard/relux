@@ -20,7 +20,7 @@ effect Parameterized {
 test "same effect needed twice shares one instance" {
     """
     Verify two needs for the same effect (same identity tuple) reuse
-    a single instance — the counter is incremented once, not twice.
+    a single instance - the counter is incremented once, not twice.
     """
     start Counter as C1
     start Counter as C2

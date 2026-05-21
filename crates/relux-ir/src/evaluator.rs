@@ -10,11 +10,11 @@ use relux_core::diagnostics::IrSpan;
 use relux_core::pure::LayeredEnv;
 use relux_core::pure::VarScope;
 
-// ─── Public API ─────────────────────────────────────────────
+// --- Public API ------------------------------------------
 
 /// Evaluate a pure expression to a string value.
 ///
-/// Infallible — all failure modes (undefined functions, wrong arity,
+/// Infallible - all failure modes (undefined functions, wrong arity,
 /// cycles) are caught at lowering time. Missing variables evaluate
 /// to empty string.
 ///
@@ -43,7 +43,7 @@ pub fn eval_pure_expr(
 
 /// Evaluate a resolved pure function with the given arguments.
 ///
-/// Infallible — see `eval_pure_expr`.
+/// Infallible - see `eval_pure_expr`.
 pub fn eval_pure_fn(
     func: &IrPureFn,
     args: Vec<String>,
@@ -63,7 +63,7 @@ pub fn eval_pure_fn(
     }
 }
 
-// ─── Internal helpers ───────────────────────────────────────
+// --- Internal helpers ------------------------------------
 
 fn eval_pure_call(
     call: &IrPureCallExpr,
@@ -209,7 +209,7 @@ fn eval_body(
     last_value
 }
 
-// ─── Tests ──────────────────────────────────────────────────
+// --- Tests -----------------------------------------------
 
 #[cfg(test)]
 mod sink_tests {

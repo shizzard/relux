@@ -19,7 +19,7 @@ use crate::observe::structured::span::SpanId;
 use crate::observe::structured::span::SpanKind;
 
 impl StructuredLogBuilder {
-    // ─── Span lifecycle ───────────────────────────────────────────
+    // --- Span lifecycle ----------------------------------
 
     /// Open a span and return a guard that closes it on drop. The caller
     /// must keep the guard alive for the span's lifetime; passing the id
@@ -56,7 +56,7 @@ impl StructuredLogBuilder {
     /// First close wins. The `SpanGuard`'s `Drop` always calls into here
     /// (so `?` early-returns still get an `end_ts`), but call sites may
     /// also close a span explicitly via id when its semantic end happens
-    /// well before the guard would naturally drop — e.g., a failing
+    /// well before the guard would naturally drop - e.g., a failing
     /// effect's setup span needs to close before its `try_guards!`
     /// awaits `run_effect_cleanup`, or the guard would sit on the stack
     /// through the entire cleanup phase and end up with a misleading
@@ -72,7 +72,7 @@ impl StructuredLogBuilder {
         }
     }
 
-    /// Close a span by id. Idempotent — see `close_span_inner`. Used to
+    /// Close a span by id. Idempotent - see `close_span_inner`. Used to
     /// pin a span's `end_ts` to its actual semantic boundary when the
     /// owning `SpanGuard`'s drop point would otherwise be deferred (the
     /// failing-effect path through `try_guards!` is the canonical case).
@@ -163,7 +163,7 @@ impl StructuredLogBuilder {
         )
     }
 
-    // ─── Shells glossary ──────────────────────────────────────────
+    // --- Shells glossary ---------------------------------
 
     pub fn record_shell_spawn(&self, marker: &str, name: &str, command: &str) {
         let spawn_ts = self.now();
@@ -188,7 +188,7 @@ impl StructuredLogBuilder {
         }
     }
 
-    // ─── Shell lifecycle emitters ─────────────────────────────────
+    // --- Shell lifecycle emitters ------------------------
 
     pub fn emit_shell_spawn(
         &self,
@@ -269,7 +269,7 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::ShellTerminate);
     }
 
-    // ─── Progress-only emitters (no structured event; the surrounding
+    // --- Progress-only emitters (no structured event; the surrounding
     // span already carries the full information). Used to surface
     // lifecycle brackets on the live progress line.
 
@@ -289,7 +289,7 @@ impl StructuredLogBuilder {
         self.push_progress(ProgressEvent::EffectTeardown);
     }
 
-    // ─── Effect exposes ───────────────────────────────────────────
+    // --- Effect exposes ----------------------------------
 
     pub fn emit_effect_expose_shell(
         &self,

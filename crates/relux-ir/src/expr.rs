@@ -15,7 +15,7 @@ use super::ident::IrIdent;
 use super::interpolation::IrInterpolation;
 use super::tables::LocalFnKey;
 
-// ─── IrExpr ──────────────────────────────────────────────────
+// --- IrExpr ----------------------------------------------
 
 #[derive(Debug, Clone)]
 pub enum IrExpr {
@@ -50,7 +50,7 @@ impl_ir_node_enum!(IrExpr {
     CaptureRef
 });
 
-// ─── IrPureExpr ──────────────────────────────────────────────
+// --- IrPureExpr ------------------------------------------
 
 #[derive(Debug, Clone)]
 pub enum IrPureExpr {
@@ -70,7 +70,7 @@ pub enum IrPureExpr {
 
 impl_ir_node_enum!(IrPureExpr { String, Var, Call });
 
-// ─── IrCallExpr ──────────────────────────────────────────────
+// --- IrCallExpr ------------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct IrCallExpr {
@@ -105,7 +105,7 @@ impl IrCallExpr {
 
 impl_ir_node_struct!(IrCallExpr);
 
-// ─── IrPureCallExpr ─────────────────────────────────────────
+// --- IrPureCallExpr --------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct IrPureCallExpr {
@@ -140,7 +140,7 @@ impl IrPureCallExpr {
 
 impl_ir_node_struct!(IrPureCallExpr);
 
-// ─── IrNodeLowering: IrExpr ─────────────────────────────────
+// --- IrNodeLowering: IrExpr ------------------------------
 
 impl IrNodeLowering for IrExpr {
     type Ast = AstExpr;
@@ -185,7 +185,7 @@ impl IrNodeLowering for IrExpr {
     }
 }
 
-// ─── IrNodeLowering: IrPureExpr ─────────────────────────────
+// --- IrNodeLowering: IrPureExpr --------------------------
 
 impl IrNodeLowering for IrPureExpr {
     type Ast = AstExpr;
@@ -235,7 +235,7 @@ impl IrNodeLowering for IrPureExpr {
     }
 }
 
-// ─── IrNodeLowering: IrCallExpr ─────────────────────────────
+// --- IrNodeLowering: IrCallExpr --------------------------
 
 impl IrNodeLowering for IrCallExpr {
     type Ast = AstCallExpr;
@@ -303,7 +303,7 @@ impl IrNodeLowering for IrCallExpr {
     }
 }
 
-// ─── IrNodeLowering: IrPureCallExpr ─────────────────────────
+// --- IrNodeLowering: IrPureCallExpr ----------------------
 
 impl IrNodeLowering for IrPureCallExpr {
     type Ast = AstCallExpr;
@@ -337,7 +337,7 @@ impl IrNodeLowering for IrPureCallExpr {
         let global_key = match global_key {
             Some(key) => key,
             None => {
-                // Check if it's impure (local table or impure BIF) → PurityViolation
+                // Check if it's impure (local table or impure BIF) -> PurityViolation
                 let in_impure = {
                     let scope = ctx.current_scope();
                     scope.tables.fns.get_global_key(&local_key).is_some()
@@ -384,4 +384,4 @@ impl IrNodeLowering for IrPureCallExpr {
     }
 }
 
-// ─── Tests ───────────────────────────────────────────────────
+// --- Tests -----------------------------------------------

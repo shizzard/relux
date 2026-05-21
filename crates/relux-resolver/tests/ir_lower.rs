@@ -36,7 +36,7 @@ use relux_ir::*;
 
 use relux_ast::*;
 
-// ─── Local Test Helpers (not shared) ─────────────────────
+// --- Local Test Helpers (not shared) ---------------------
 
 fn test_span_at(start: usize, end: usize) -> IrSpan {
     IrSpan::new(test_file_id(), Span::new(start, end))
@@ -195,9 +195,9 @@ fn make_import(path: &str, names: Option<Vec<(&str, Option<&str>)>>) -> AstItem 
     }
 }
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 // LoweringContext construction
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
 #[test]
 fn context_new_has_empty_ir_registries() {
@@ -309,9 +309,9 @@ fn context_new_preserves_warning_table() {
     let _ = ctx.warnings();
 }
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 // BIF registration
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
 #[test]
 fn bifs_registered_in_fn_table() {
@@ -475,9 +475,9 @@ fn bif_no_user_module_collides_with_builtin() {
     assert!(builtin_mod().0.starts_with('@'));
 }
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 // Local table factory
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
 #[test]
 fn local_fn_table_sees_registered_bifs() {
@@ -548,9 +548,9 @@ fn local_fn_table_independent_locals() {
     assert!(tables2.fns.get(&LocalFnKey::new("my_trim", 1)).is_none());
 }
 
-// ═══════════════════════════════════════════════════════════
-// Local table population — own definitions
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
+// Local table population - own definitions
+// ===========================================================
 
 #[test]
 fn populate_own_fn_definitions() {
@@ -653,9 +653,9 @@ fn populate_empty_module() {
     assert!(!tables.fns.contains_local(&LocalFnKey::new("anything", 0)));
 }
 
-// ═══════════════════════════════════════════════════════════
-// Local table population — imports
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
+// Local table population - imports
+// ===========================================================
 
 #[test]
 fn populate_wildcard_import() {
@@ -669,7 +669,7 @@ fn populate_wildcard_import() {
 
     let test_path = ModulePath("tests/a".into());
     let test_fid = test_file_id();
-    // import helpers (wildcard — no names)
+    // import helpers (wildcard - no names)
     let test_mod = make_module(vec![make_import("helpers", None)]);
 
     let ctx = make_context_with_ast(vec![
@@ -800,7 +800,7 @@ fn populate_aliased_fn_import() {
 
     // "bar" is the local alias for "foo".
     assert!(tables.fns.contains_local(&LocalFnKey::new("bar", 1)));
-    // "foo" should NOT be in the local table — only the alias.
+    // "foo" should NOT be in the local table - only the alias.
     assert!(!tables.fns.contains_local(&LocalFnKey::new("foo", 1)));
 }
 
@@ -892,9 +892,9 @@ fn populate_wildcard_does_not_import_bifs() {
     assert!(!tables.fns.contains_local(&LocalFnKey::new("trim", 1)));
 }
 
-// ═══════════════════════════════════════════════════════════
-// Local table population — error cases
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
+// Local table population - error cases
+// ===========================================================
 
 #[test]
 fn populate_import_missing_module() {
@@ -1083,9 +1083,9 @@ fn populate_name_conflict_reports_both_spans() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 // Cause registration
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
 #[test]
 fn register_cause_returns_id() {
@@ -1155,9 +1155,9 @@ fn register_cause_invalid_variant() {
     assert!(matches!(ctx.causes().get(&id).unwrap(), Cause::Invalid(_)));
 }
 
-// ═══════════════════════════════════════════════════════════
-// In-progress stacks — function
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
+// In-progress stacks - function
+// ===========================================================
 
 fn make_fn_id(name: &str, arity: usize) -> FnId {
     FnId {
@@ -1257,9 +1257,9 @@ fn find_fn_cycle_chain_preserves_spans() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════
-// In-progress stacks — effect
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
+// In-progress stacks - effect
+// ===========================================================
 
 fn make_effect_id(name: &str) -> EffectId {
     EffectId {
@@ -1306,9 +1306,9 @@ fn find_effect_cycle_not_on_stack() {
     assert!(ctx.find_effect_cycle(&make_effect_id("B")).is_none());
 }
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 // Stack independence
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
 #[test]
 fn fn_and_effect_stacks_independent() {
@@ -1316,7 +1316,7 @@ fn fn_and_effect_stacks_independent() {
     // Push a fn with name "a" and an effect with name "a".
     ctx.push_fn(make_fn_id("a", 0), test_span());
     ctx.push_effect(make_effect_id("a"), test_span());
-    // fn cycle check for effect ID type — different stacks.
+    // fn cycle check for effect ID type - different stacks.
     assert!(ctx.find_fn_cycle(&make_fn_id("a", 0)).is_some());
     assert!(ctx.find_effect_cycle(&make_effect_id("a")).is_some());
     // Cross-check: fn "a" is not an effect cycle trigger.
@@ -1338,9 +1338,9 @@ fn effect_lowering_uses_both_stacks() {
     assert!(ctx.find_effect_cycle(&make_effect_id("A")).is_some());
 }
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 // into_suite
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
 #[test]
 fn into_suite_transfers_plans() {
@@ -1429,7 +1429,7 @@ fn into_suite_empty() {
     assert!(suite.plans.is_empty());
 }
 
-// ─── Cross-module lowering ────────────────────────────────
+// --- Cross-module lowering -------------------------------
 
 #[test]
 fn lower_imported_fn_call() {
@@ -1597,7 +1597,7 @@ fn lower_imported_effect_with_sub_starts() {
     assert!(ctx.effects().get(&db_id).is_some());
 }
 
-// ─── Skip and invalid propagation ─────────────────────────
+// --- Skip and invalid propagation ------------------------
 
 #[test]
 fn lower_fn_invalid_propagates_to_caller() {
@@ -1676,7 +1676,7 @@ fn top() {
     assert!(ctx.functions().get(&bad_id).unwrap().is_err());
 }
 
-// ─── Span accuracy ───────────────────────────────────────
+// --- Span accuracy ---------------------------------------
 
 #[test]
 fn lower_span_points_to_correct_file() {
@@ -1731,11 +1731,11 @@ fn lower_undefined_call_span_covers_name() {
     }
 }
 
-// ─── Plan building: invalid paths ──────────────────────────
+// --- Plan building: invalid paths ------------------------
 
-// ─── Plan building: precedence ─────────────────────────────
+// --- Plan building: precedence ---------------------------
 
-// ─── Memoization ──────────────────────────────────────────
+// --- Memoization -----------------------------------------
 
 #[test]
 fn memoization_shared_fn_lowered_once() {
@@ -1859,7 +1859,7 @@ test "uses bad" {
     assert!(is_invalid(bad_plan));
 }
 
-// ─── Cross-module ──────────────────────────────────────────
+// --- Cross-module ----------------------------------------
 
 #[test]
 fn cross_module_fn_import() {
@@ -2050,7 +2050,7 @@ fn cross_module_plans_sorted_by_module_path() {
     assert_eq!(plan_name(&suite.plans[1]), "z test");
 }
 
-// ─── Integration: cycle detection ─────────────────────────
+// --- Integration: cycle detection ------------------------
 
 #[test]
 fn fn_cycle_self_recursive() {
@@ -2188,7 +2188,7 @@ test "t" {
     assert!(is_invalid(&suite.plans[0]));
 }
 
-// ─── Integration: error propagation ───────────────────────
+// --- Integration: error propagation ----------------------
 
 #[test]
 fn invalid_dependency_propagates_to_caller() {
@@ -2298,9 +2298,9 @@ fn test_with_only_comment_is_invalid() {
     assert!(is_invalid(&suite.plans[0]));
 }
 
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 // Timeout multiplier propagation
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 
 use std::time::Duration;
 
@@ -2452,7 +2452,7 @@ fn default_multiplier_leaves_tolerance_unscaled() {
     assert_eq!(timeout.adjusted_duration(), Duration::from_secs(10));
 }
 
-// ─── Expect satisfiability ──────────────────────────────
+// --- Expect satisfiability -------------------------------
 
 #[test]
 fn expect_satisfied_by_overlay() {

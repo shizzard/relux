@@ -1,4 +1,4 @@
-// ─── IrNode trait and macros ─────────────────────────────────
+// --- IrNode trait and macros -----------------------------
 // Defined here so textual macro scoping makes impl_ir_node_struct!
 // and impl_ir_node_enum! available in all sub-modules declared below.
 
@@ -32,7 +32,7 @@ macro_rules! impl_ir_node_enum {
     };
 }
 
-// ─── Sub-modules ─────────────────────────────────────────────
+// --- Sub-modules -----------------------------------------
 
 mod block;
 mod comment;

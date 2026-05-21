@@ -1,6 +1,6 @@
 //! Transitive marker-recording collection for a test.
 //!
-//! Relux is deterministic — no branching, no recursion. Every fn-call
+//! Relux is deterministic - no branching, no recursion. Every fn-call
 //! and effect-start written in a test's body (or in any function or
 //! effect transitively reachable from it) will execute. Marker
 //! conditions on those functions and effects therefore apply to the
@@ -10,7 +10,7 @@
 //! `FnId` and `EffectId`, deduplicate, and concatenate each
 //! definition's `marker_recordings` (in deterministic visit order)
 //! into a single list. The runtime replays those recordings flat
-//! under the synthetic `markers` root span — no nesting under fn-call
+//! under the synthetic `markers` root span - no nesting under fn-call
 //! or effect-setup spans (markers run before any test execution).
 //!
 //! Test-level recordings come first; effect-level and fn-level

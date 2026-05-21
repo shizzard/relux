@@ -1,10 +1,10 @@
 //! Bridge between the IR's `PureEvalSink` trait and the runtime's
 //! `StructuredLogBuilder`. Used at two sites:
 //!
-//!   1. Test-/effect-level let / overlay evaluation — the sink opens
+//!   1. Test-/effect-level let / overlay evaluation - the sink opens
 //!      pure FnCall spans and emits Interpolation events under the
 //!      enclosing test or setup span.
-//!   2. Marker replay — the sink lays down the buffered
+//!   2. Marker replay - the sink lays down the buffered
 //!      `MarkerRecording::ops` under a per-marker `marker-eval` span.
 //!
 //! The sink owns a stack of `SpanGuard`s so nested pure-fn calls

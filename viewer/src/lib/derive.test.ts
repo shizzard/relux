@@ -12,7 +12,7 @@ import {
 import type { Event } from '../types/Event';
 import type { Span } from '../types/Span';
 
-// Minimal log builder — only `buffer_events` is consulted by
+// Minimal log builder - only `buffer_events` is consulted by
 // replayBufferRegionsAtMarker, so every other field is stubbed.
 function makeLog(buffer_events: BufferEvent[]): StructuredLog {
   return {
@@ -36,7 +36,7 @@ function grew(seq: number, shell: string, data: string): BufferEvent {
   return { seq: BigInt(seq), ts: 0, shell, shell_marker: shell, kind: 'grew', data };
 }
 
-// The runtime emits `before` and `after` untruncated — they are the full
+// The runtime emits `before` and `after` untruncated - they are the full
 // bytes of the buffer tail surrounding the match.  The invariant the
 // viewer enforces:  before + matched + after === current tail.
 function matched(
@@ -332,7 +332,7 @@ describe('replayBufferRegionsAtMarker', () => {
   });
 });
 
-// Helpers for the partner-lookup tests below — only `spans` is read, so
+// Helpers for the partner-lookup tests below - only `spans` is read, so
 // everything else is stubbed.
 type SpanRecord = Record<string, unknown>;
 function spansLog(spans: SpanRecord[]): StructuredLog {
@@ -745,7 +745,7 @@ describe('liveShellsAtSpan', () => {
   it('marks a shell as pending when its spawn has not fired by the anchor', () => {
     // Anchor lands inside shell A's lifetime but before shell B spawns.
     // B's record exists in `data.shells` (it spawns later in the log),
-    // but at the anchor moment B is "not yet started" — must not show
+    // but at the anchor moment B is "not yet started" - must not show
     // as `ready` (which the modal renders as "running").
     const log = logWith(
       {

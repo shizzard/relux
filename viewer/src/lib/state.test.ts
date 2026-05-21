@@ -6,7 +6,7 @@ import type { TestOutcome } from '../types/TestOutcome';
 import { ALL_EVENT_TYPE_IDS } from './flatten';
 import { ViewerState } from './state.svelte';
 
-// ─── Fixtures ───────────────────────────────────────────────────────
+// --- Fixtures --------------------------------------------
 
 function testSpan(id: number, parent: number | null = null): Span {
   return {
@@ -70,7 +70,7 @@ function makeLog(opts: {
   } as unknown as StructuredLog;
 }
 
-// A simple pass log: test span 1 → shell-block 2 with a `send` event.
+// A simple pass log: test span 1 -> shell-block 2 with a `send` event.
 function passLogWithSend(): StructuredLog {
   return makeLog({
     spans: [testSpan(1), shellBlockSpan(2, 1)],
@@ -79,7 +79,7 @@ function passLogWithSend(): StructuredLog {
   });
 }
 
-// ─── Constructor ────────────────────────────────────────────────────
+// --- Constructor -----------------------------------------
 
 describe('ViewerState constructor', () => {
   it('on a pass outcome, leaves selection unset and expands only the test span', () => {
@@ -153,9 +153,9 @@ describe('ViewerState constructor', () => {
   });
 });
 
-// ─── Selection ──────────────────────────────────────────────────────
+// --- Selection -------------------------------------------
 
-describe('ViewerState — selection', () => {
+describe('ViewerState - selection', () => {
   it('selectEvent sets the seq and clears any span selection', () => {
     const state = new ViewerState(passLogWithSend());
     state.selectedSpanId = 1;
@@ -187,7 +187,7 @@ describe('ViewerState — selection', () => {
   });
 
   it('revealAndSelect expands every ancestor of the target and selects it', () => {
-    // 1 (test) ▷ 2 (shell-block) ▷ 3 (fn-call inside the shell)
+    // 1 (test) -> 2 (shell-block) -> 3 (fn-call inside the shell)
     const fnCall: Span = {
       id: 3n,
       parent: 2n,
@@ -214,9 +214,9 @@ describe('ViewerState — selection', () => {
   });
 });
 
-// ─── Error-path / send-match filter presets ─────────────────────────
+// --- Error-path / send-match filter presets --------------
 
-describe('ViewerState — filter presets', () => {
+describe('ViewerState - filter presets', () => {
   it('hasErrorPath is false on a pass outcome', () => {
     const state = new ViewerState(passLogWithSend());
     expect(state.hasErrorPath).toBe(false);
@@ -302,9 +302,9 @@ describe('ViewerState — filter presets', () => {
   });
 });
 
-// ─── Event-type filter operations ───────────────────────────────────
+// --- Event-type filter operations ------------------------
 
-describe('ViewerState — event-type filters', () => {
+describe('ViewerState - event-type filters', () => {
   it('toggleEventType adds and removes a single id', () => {
     const state = new ViewerState(passLogWithSend());
     state.toggleEventType('send');
@@ -340,9 +340,9 @@ describe('ViewerState — event-type filters', () => {
   });
 });
 
-// ─── Span expansion ─────────────────────────────────────────────────
+// --- Span expansion --------------------------------------
 
-describe('ViewerState — span expansion', () => {
+describe('ViewerState - span expansion', () => {
   it('toggleSpan adds and removes a span id', () => {
     const state = new ViewerState(makeLog({ spans: [testSpan(1), shellBlockSpan(2, 1)] }));
     state.toggleSpan(2);
@@ -366,9 +366,9 @@ describe('ViewerState — span expansion', () => {
   });
 });
 
-// ─── Expanded value rows ────────────────────────────────────────────
+// --- Expanded value rows ---------------------------------
 
-describe('ViewerState — expanded value rows', () => {
+describe('ViewerState - expanded value rows', () => {
   it('toggleExpandedValueRow adds and removes a key', () => {
     const state = new ViewerState(passLogWithSend());
     state.toggleExpandedValueRow('var/x');
@@ -378,9 +378,9 @@ describe('ViewerState — expanded value rows', () => {
   });
 });
 
-// ─── Modals ─────────────────────────────────────────────────────────
+// --- Modals ----------------------------------------------
 
-describe('ViewerState — modals', () => {
+describe('ViewerState - modals', () => {
   it('open*/close* methods are independent and single-slot', () => {
     const state = new ViewerState(passLogWithSend());
     state.openEnv();

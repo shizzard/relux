@@ -8,7 +8,7 @@ use super::token::text;
 use super::ws::ws;
 use relux_ast::AstIdent;
 
-// ─── Validation Types ───────────────────────────────────────
+// --- Validation Types ------------------------------------
 
 fn is_snake_case(s: &str) -> bool {
     !s.is_empty()
@@ -33,7 +33,7 @@ fn is_numeric(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_ascii_digit())
 }
 
-// ─── Validated Identifier Combinators ───────────────────────
+// --- Validated Identifier Combinators --------------------
 
 /// Variable name: starts with lowercase or `_`, alphanumeric + `_`.
 pub fn ident_var<'a>()
@@ -106,7 +106,7 @@ pub fn expr_numeric<'a>()
         .labelled("numeric literal")
 }
 
-// ─── Aliased Name ───────────────────────────────────────────
+// --- Aliased Name ----------------------------------------
 
 pub struct AliasedName {
     pub name: Spanned<AstIdent>,

@@ -18,7 +18,7 @@ test "create duplicate database" {
         let response_filename = http_request(200, db_url(db_port, "/db/testdb"), "POST")
         jq_match_query(response_filename, ".created", "^testdb$")
 
-        log("create it again — should fail")
+        log("create it again - should fail")
         let response_filename = http_request(409, db_url(db_port, "/db/testdb"), "POST")
         jq_match_query(response_filename, ".error", "^.*already exists.*$")
     }

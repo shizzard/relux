@@ -12,7 +12,7 @@
   const hint = $derived(`depth ${frames.length}`);
 
   // Clicking a frame "promotes" it to be the new visible stack top by
-  // selecting its inner neighbor's span — i.e. the span whose outer
+  // selecting its inner neighbor's span - i.e. the span whose outer
   // scope is the clicked frame. The topmost frame (i === 0) has no
   // inner neighbor in the displayed stack, so its click is a no-op.
   function selectFrame(i: number): void {

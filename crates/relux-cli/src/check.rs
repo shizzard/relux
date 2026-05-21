@@ -20,7 +20,7 @@ pub fn cmd_check(matches: &clap::ArgMatches) {
     let suite = resolve(&*loader, test_paths, env, 1.0, &project_root);
 
     // Diagnostics are already printed inside resolve().
-    // Check if any plan is Invalid or any cause is Invalid → exit 1.
+    // Check if any plan is Invalid or any cause is Invalid -> exit 1.
     let has_invalid_plan = suite
         .plans
         .iter()

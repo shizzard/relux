@@ -7,7 +7,7 @@ pub use crate::lowering_context::LoweringContext;
 
 /// Trait for lowering AST nodes into IR nodes with optional caching
 /// and cycle detection. Default implementations provide no-op behavior
-/// for non-cacheable types — only `lower` must be implemented.
+/// for non-cacheable types - only `lower` must be implemented.
 pub trait IrNodeLowering: Sized + Clone {
     type Ast;
 
@@ -31,7 +31,7 @@ pub trait IrNodeLowering: Sized + Clone {
 
     fn pop_in_progress(_ctx: &mut LoweringContext) {}
 
-    /// AST → IR lowering for a single node.
+    /// AST -> IR lowering for a single node.
     fn lower(
         ast: &Self::Ast,
         file: &FileId,

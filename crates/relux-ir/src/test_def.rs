@@ -14,7 +14,7 @@ use super::comment::IrComment;
 use super::effect::IrEffectStart;
 use super::stmt::IrPureLetStmt;
 
-// ─── IrTestItem ──────────────────────────────────────────────
+// --- IrTestItem ------------------------------------------
 
 #[derive(Debug, Clone)]
 pub enum IrTestItem {
@@ -35,7 +35,7 @@ impl_ir_node_enum!(IrTestItem {
     Cleanup
 });
 
-// ─── IrTest ──────────────────────────────────────────────────
+// --- IrTest ----------------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct IrTest {
@@ -75,9 +75,9 @@ impl IrTest {
 
 impl_ir_node_struct!(IrTest);
 
-// ═══════════════════════════════════════════════════════════════
+// ===============================================================
 // IrNodeLowering implementations
-// ═══════════════════════════════════════════════════════════════
+// ===============================================================
 
 impl IrNodeLowering for IrTestItem {
     type Ast = AstTestItem;

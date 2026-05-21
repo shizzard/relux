@@ -20,7 +20,7 @@ use super::ident::IrIdent;
 use super::stmt::IrPureLetStmt;
 use super::tables::LocalEffectKey;
 
-// ─── IrOverlayEntry ──────────────────────────────────────────
+// --- IrOverlayEntry --------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct IrOverlayEntry {
@@ -45,7 +45,7 @@ impl IrOverlayEntry {
 
 impl_ir_node_struct!(IrOverlayEntry);
 
-// ─── IrEffectStart ────────────────────────────────────────────
+// --- IrEffectStart ---------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct IrEffectStart {
@@ -85,7 +85,7 @@ impl IrEffectStart {
 
 impl_ir_node_struct!(IrEffectStart);
 
-// ─── IrExposeDecl ───────────────────────────────────────────
+// --- IrExposeDecl ----------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrExposeKind {
@@ -147,7 +147,7 @@ impl IrExposeDecl {
 
 impl_ir_node_struct!(IrExposeDecl);
 
-// ─── IrEffectItem ────────────────────────────────────────────
+// --- IrEffectItem ----------------------------------------
 
 #[derive(Debug, Clone)]
 pub enum IrEffectItem {
@@ -170,7 +170,7 @@ impl_ir_node_enum!(IrEffectItem {
     Cleanup
 });
 
-// ─── IrEffect ────────────────────────────────────────────────
+// --- IrEffect --------------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct IrEffect {
@@ -236,9 +236,9 @@ impl IrEffect {
 
 impl_ir_node_struct!(IrEffect);
 
-// ═══════════════════════════════════════════════════════════════
+// ===============================================================
 // IrNodeLowering implementations
-// ═══════════════════════════════════════════════════════════════
+// ===============================================================
 
 impl IrNodeLowering for IrOverlayEntry {
     type Ast = AstOverlayEntry;
@@ -302,7 +302,7 @@ impl IrNodeLowering for IrEffectStart {
         // IrEffect::lower may mutate ctx.shallow_env (pushing expect/let names
         // for inner start validation), so we must restore the caller's env
         // afterward. We split resolve + restore + `?` to guarantee restoration
-        // even on error — the IrNodeLowering trait signature prevents passing
+        // even on error - the IrNodeLowering trait signature prevents passing
         // the shallow env as a parameter, forcing us to thread it through ctx
         // with manual save/restore.
         let resolved = ctx.resolve_effect(&global_key);
@@ -480,7 +480,7 @@ impl IrNodeLowering for IrEffect {
                 _ => None,
             })
             .collect();
-        // Build maps from alias → set of shells/vars exposed by that dependency
+        // Build maps from alias -> set of shells/vars exposed by that dependency
         let mut dep_exposed_shells: std::collections::HashMap<
             String,
             std::collections::HashSet<String>,
@@ -560,4 +560,4 @@ impl IrNodeLowering for IrEffect {
     }
 }
 
-// ─── Tests ───────────────────────────────────────────────────
+// --- Tests -----------------------------------------------

@@ -105,7 +105,7 @@ fn tolerance_scaled_fractional() {
 #[test]
 fn tolerance_flaky_multiplier() {
     let t = IrTimeout::tolerance_scaled(Duration::from_secs(5), 2.0);
-    // base=5s, static_m=2.0, flaky_m=1.5 → 5*2.0*1.5 = 15s
+    // base=5s, static_m=2.0, flaky_m=1.5 -> 5*2.0*1.5 = 15s
     assert_eq!(t.adjusted_duration_with_flaky(1.5), Duration::from_secs(15));
 }
 

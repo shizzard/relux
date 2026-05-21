@@ -13,12 +13,12 @@ use relux_core::diagnostics::EffectId as DiagEffectId;
 use relux_core::pure::Env;
 use relux_ir::IrCleanupBlock;
 
-// ─── Type Aliases ──────────────────────────────────────────
+// --- Type Aliases ----------------------------------------
 
 pub type ShellMap = HashMap<String, Arc<TokioMutex<Vm>>>;
 pub type VarMap = HashMap<String, String>;
 
-// ─── ExportedEffect / AcquiredEffect ───────────────────────
+// --- ExportedEffect / AcquiredEffect ---------------------
 
 /// Result of instantiating a single effect: identity key + exposed shells and vars.
 pub struct ExportedEffect {
@@ -33,7 +33,7 @@ pub struct AcquiredEffect {
     pub vars: VarMap,
 }
 
-// ─── EffectInstanceKey ──────────────────────────────────────
+// --- EffectInstanceKey -----------------------------------
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EffectInstanceKey {
@@ -46,7 +46,7 @@ impl EffectInstanceKey {
     ///
     /// Only the values of variables declared in `expect` participate in identity.
     /// The order comes from the `expect` declaration, so no sorting is needed.
-    /// Values are joined with `\0` (null byte) to avoid ambiguity — overlay
+    /// Values are joined with `\0` (null byte) to avoid ambiguity - overlay
     /// values are shell strings and cannot contain null bytes.
     pub fn from_expects(
         effect_id: DiagEffectId,
@@ -67,7 +67,7 @@ impl EffectInstanceKey {
         }
     }
 
-    /// Stable mnemonic computed from the dedup identity. Same key →
+    /// Stable mnemonic computed from the dedup identity. Same key ->
     /// same marker; two acquires of the same effect-instance (one
     /// bootstrap + N dedup'd reuses) all share this string.
     pub fn marker(&self) -> String {
@@ -79,7 +79,7 @@ impl EffectInstanceKey {
     }
 }
 
-// ─── ShellInstanceKey ───────────────────────────────────────
+// --- ShellInstanceKey ------------------------------------
 
 /// Stable identity for a shell, regardless of how the shell is
 /// renamed by `reset_for_export` later in its lifetime. The marker
@@ -105,7 +105,7 @@ pub enum ShellInstanceKey {
 }
 
 impl ShellInstanceKey {
-    /// Stable mnemonic computed from the identity. Same key → same
+    /// Stable mnemonic computed from the identity. Same key -> same
     /// marker across runs.
     pub fn marker(&self) -> String {
         use std::collections::hash_map::DefaultHasher;
@@ -116,7 +116,7 @@ impl ShellInstanceKey {
     }
 }
 
-// ─── EffectHandle ───────────────────────────────────────────
+// --- EffectHandle ----------------------------------------
 
 pub struct EffectHandle {
     pub scope: Scope,
@@ -124,7 +124,7 @@ pub struct EffectHandle {
     pub shells: ShellMap,
     /// Names of shells that are exposed to the caller.
     pub exposed: HashSet<String>,
-    /// Variables exposed to the caller (name → value).
+    /// Variables exposed to the caller (name -> value).
     pub exposed_vars: VarMap,
     /// Guards held for each acquired dependency. Dropping a guard via
     /// `release_and_teardown` decrements the dep's refcount; the last
@@ -133,7 +133,7 @@ pub struct EffectHandle {
     pub cleanup: Option<IrCleanupBlock>,
     /// The `EffectSetup` span this handle represents. Threaded into the
     /// `EffectCleanup` span at teardown so the viewer can resolve a
-    /// cleanup shell's scope back to the owning effect — cleanups
+    /// cleanup shell's scope back to the owning effect - cleanups
     /// themselves are now parented directly under the test span, so this
     /// is the only link from cleanup back to the originating setup.
     pub setup_span: SpanId,
@@ -168,7 +168,7 @@ impl EffectHandle {
     }
 }
 
-// ─── EffectSlot ─────────────────────────────────────────────
+// --- EffectSlot ------------------------------------------
 
 pub enum EffectSlot {
     Empty,
@@ -184,17 +184,17 @@ pub enum EffectSlot {
     Failed(ExecError),
 }
 
-// EffectGuard
+// --- EffectGuard -----------------------------------------
 
 /// What `EffectGuard::release` returns.
 ///
-/// - `LastHolder` — refcount went to zero. Caller takes ownership of
+/// - `LastHolder` - refcount went to zero. Caller takes ownership of
 ///   the handle and runs the cleanup body.
-/// - `Deferred` — refcount stayed positive. Caller emits a
+/// - `Deferred` - refcount stayed positive. Caller emits a
 ///   zero-duration deferred `EffectCleanup` span using the supplied
 ///   metadata; the actual cleanup span (and body) will be opened by a
 ///   later releaser.
-/// - `Drift` — slot wasn't `Ready` (only reachable on a bug: a guard
+/// - `Drift` - slot wasn't `Ready` (only reachable on a bug: a guard
 ///   was released against a slot it doesn't belong to). A
 ///   `debug_assert!` fires inside `release`; release builds short-circuit.
 pub enum ReleaseOutcome {
@@ -275,7 +275,7 @@ impl EffectGuard {
     }
 }
 
-// ─── EffectRegistry ─────────────────────────────────────────
+// --- EffectRegistry --------------------------------------
 
 pub struct EffectRegistry {
     slots: std::sync::Mutex<HashMap<EffectInstanceKey, Arc<TokioMutex<EffectSlot>>>>,
@@ -511,7 +511,7 @@ mod tests {
     #[test]
     fn from_expects_uses_only_expected_keys() {
         // Extra overlay keys beyond what the effect expects should not
-        // affect identity — only expected variable values matter.
+        // affect identity - only expected variable values matter.
         use std::collections::HashMap;
         let effect_id = DiagEffectId {
             module: relux_core::diagnostics::ModulePath("test.relux".into()),
@@ -550,7 +550,7 @@ mod tests {
         overlay.insert("B".into(), "2".into());
         let env = relux_core::pure::Env::from_map(overlay);
 
-        // Same expects in same order → same key
+        // Same expects in same order -> same key
         let k1 = EffectInstanceKey::from_expects(effect_id.clone(), &["A", "B"], &env);
         let k2 = EffectInstanceKey::from_expects(effect_id, &["A", "B"], &env);
         assert_eq!(k1, k2);

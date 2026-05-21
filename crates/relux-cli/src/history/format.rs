@@ -25,7 +25,7 @@ use super::analysis::LoadedRunsCollection;
 use super::analysis::TestKey;
 use super::loader::LoadedRun;
 
-// ─── Shared Helpers ────────────────────────────────────────────
+// --- Shared Helpers --------------------------------------
 
 #[derive(Debug, Serialize)]
 struct ReportMeta {
@@ -115,7 +115,7 @@ fn fmt_dur_u64(ms: u64) -> String {
     format_duration(Duration::from_millis(ms))
 }
 
-// ─── Flaky ─────────────────────────────────────────────────────
+// --- Flaky -----------------------------------------------
 
 pub fn format_flaky_human(
     coll: &LoadedRunsCollection,
@@ -189,7 +189,7 @@ pub fn format_flaky_toml(
     toml::to_string_pretty(&report).expect("failed to serialize flaky report")
 }
 
-// ─── Failures ──────────────────────────────────────────────────
+// --- Failures --------------------------------------------
 
 pub fn format_failures_human(
     coll: &LoadedRunsCollection,
@@ -324,7 +324,7 @@ pub fn format_failures_toml(
     toml::to_string_pretty(&report).expect("failed to serialize failure report")
 }
 
-// ─── First-Fail ────────────────────────────────────────────────
+// --- First-Fail ------------------------------------------
 
 pub fn format_first_fail_human(
     coll: &LoadedRunsCollection,
@@ -387,7 +387,7 @@ pub fn format_first_fail_toml(
     toml::to_string_pretty(&report).expect("failed to serialize first-fail report")
 }
 
-// ─── Durations ─────────────────────────────────────────────────
+// --- Durations -------------------------------------------
 
 pub fn format_durations_human(
     coll: &LoadedRunsCollection,
@@ -491,7 +491,7 @@ pub fn format_durations_toml(
     toml::to_string_pretty(&report).expect("failed to serialize duration report")
 }
 
-// ─── Run Index (default mode) ──────────────────────────────────
+// --- Run Index (default mode) ----------------------------
 
 /// Per-run outcome bucket counts, in the canonical display order
 /// (`pass`, `fail`, `skip`, `cancel`). Categories with zero count are
@@ -612,7 +612,7 @@ pub fn format_run_index_toml(runs: &[LoadedRun]) -> String {
     toml::to_string_pretty(&report).expect("failed to serialize run index report")
 }
 
-// ─── Tests ─────────────────────────────────────────────────────
+// --- Tests -----------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -699,7 +699,7 @@ mod tests {
         let runs = sample_runs();
         let output = format_run_index_human(&runs);
         assert!(output.contains("Recent Runs (4 runs)"));
-        // sample_runs has no "skipped" or "cancelled" outcomes — those
+        // sample_runs has no "skipped" or "cancelled" outcomes - those
         // labels must not appear, only pass and fail.
         assert!(output.contains("pass"));
         assert!(output.contains("fail"));

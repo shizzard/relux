@@ -107,7 +107,7 @@ pub fn dispatch(name: &str, args: Vec<String>) -> String {
     }
 }
 
-// ─── Tests ──────────────────────────────────────────────────
+// --- Tests -----------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -207,7 +207,7 @@ mod tests {
     #[test]
     fn bif_len_unicode_bytes() {
         // len counts bytes, not chars
-        assert_eq!(dispatch("len", vec!["héllo".into()]), "6");
+        assert_eq!(dispatch("len", vec!["h\u{e9}llo".into()]), "6");
     }
 
     #[test]
@@ -315,7 +315,7 @@ mod tests {
     fn bif_rand_unknown_mode_falls_back() {
         let result = dispatch("rand", vec!["10".into(), "invalid".into()]);
         assert_eq!(result.len(), 10);
-        // Fallback to ALPHANUM — all chars should be alphanumeric.
+        // Fallback to ALPHANUM - all chars should be alphanumeric.
         assert!(result.chars().all(|c| c.is_ascii_alphanumeric()));
     }
 

@@ -35,7 +35,7 @@ pub enum MarkerEvalModifier {
 pub enum MarkerEvalDecision {
     /// The marker's action did **not** apply.
     Pass,
-    /// The marker's action **applied** — the marker did what its
+    /// The marker's action **applied** - the marker did what its
     /// kind says: skip-as-skip, run-as-run, flaky-as-flaky.
     Mark,
 }
@@ -99,7 +99,7 @@ pub fn eval_marker(
         };
 
         let Some(condition) = &decl.condition else {
-            // No condition — unconditional marker. `# skip` and
+            // No condition - unconditional marker. `# skip` and
             // `# flaky` always apply; `# run` (no condition) is a
             // no-op per the docs.
             let decision = match action {

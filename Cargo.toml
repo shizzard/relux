@@ -23,7 +23,7 @@ keywords = ["testing", "integration-testing", "expect", "pty", "shell"]
 categories = ["development-tools::testing"]
 
 [workspace.dependencies]
-# ── Internal crates ──
+# -- Internal crates --
 relux-core     = { path = "crates/relux-core", version = "0.6.0" }
 relux-ast      = { path = "crates/relux-ast", version = "0.6.0" }
 relux-lexer    = { path = "crates/relux-lexer", version = "0.6.0" }
@@ -32,7 +32,7 @@ relux-ir       = { path = "crates/relux-ir", version = "0.6.0" }
 relux-resolver = { path = "crates/relux-resolver", version = "0.6.0" }
 relux-runtime  = { path = "crates/relux-runtime", version = "0.6.0" }
 
-# ── External deps ──
+# -- External deps --
 logos           = { version = "~0.16" }
 chumsky         = { version = "~0.12" }
 humantime       = { version = "~2.3" }

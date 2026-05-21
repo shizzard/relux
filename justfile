@@ -1,41 +1,71 @@
 # Default: show available targets
 default:
     @just --list
+        
+# Configure git to use the repo-local hooks directory (.githooks/).
+install-hooks:
+    git config core.hooksPath .githooks
+
+# Fix clippy warnings and format code
+fix:
+    cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged -- -D warnings
+    rustup run nightly rustfmt --edition 2024 $(find crates -name '*.rs')
+
+# Run relux with arguments
+run *ARGS:
+    cargo run -p relux -- {{ARGS}}
+
+# Analyze run history
+history *ARGS:
+    cargo run -p relux -- history --manifest tests/Relux.toml {{ARGS}}
+
+## Build targets
 
 # Build in debug mode
-build:
+build: build-cargo build-viewer build-intellij build-vscode build-books
+
+build-cargo:
     cargo build
 
 # Regenerate the vendored Svelte viewer bundle (vendor/relux-viewer.js.gz).
-# Drives ts-rs schema export → docker npm build → copy to vendor/. The
+# Drives ts-rs schema export -> docker npm build -> copy to vendor/. The
 # pre-commit hook (.githooks/pre-commit) and CI verify the vendored bytes
 # stay in sync with viewer/ sources.
-viewer-build:
+build-viewer:
     cargo test -p relux-runtime --features ts-export 'export_bindings_'
     docker run --rm -v {{justfile_directory()}}/viewer:/src -w /src node:lts-slim \
         sh -c 'npm ci && npm run build'
     cp viewer/dist/relux-viewer.js.gz vendor/relux-viewer.js.gz
 
-# Run viewer unit tests (vitest).
-viewer-test:
-    docker run --rm -v {{justfile_directory()}}/viewer:/src -w /src node:lts-slim \
-        sh -c 'npm ci && npm test'
+# Build the IntelliJ plugin
+build-intellij:
+    cd editors/intellij && gradle buildPlugin --info
 
-# Type/Svelte-check the viewer (svelte-check).
-viewer-check:
-    docker run --rm -v {{justfile_directory()}}/viewer:/src -w /src node:lts-slim \
-        sh -c 'npm ci && npm run check'
+# Build the VS Code extension (.vsix)
+build-vscode:
+    mkdir -p editors/vscode/build
+    docker run --rm -v {{justfile_directory()}}/editors/vscode:/src -w /src node:lts-slim \
+        sh -c 'npx --yes @vscode/vsce package --out /src/build/relux.vsix'
 
-# Configure git to use the repo-local hooks directory (.githooks/).
-install-hooks:
-    git config core.hooksPath .githooks
+# Build tutorial books
+build-books: 
+    ./.scripts/build-books-sync-book-targets.sh
+    mdbook build docs/dsl-tutorial
+    mdbook build docs/suite-tutorial
+    mdbook build docs/reference
 
 # Build in release mode
-release:
+build-release: build-viewer
     cargo build --release
 
-# Run all checks: cargo check + clippy + fmt
-check: check-clippy check-fmt
+## Check targets
+
+# Run all checks: cargo check + clippy + fmt + viewer + ASCII
+check: check-ascii check-clippy check-fmt check-viewer
+
+# Fail if any tracked source file contains non-ASCII bytes
+check-ascii:
+    ./.scripts/check-ascii.sh
 
 # Run clippy check (includes cargo check)
 check-clippy:
@@ -45,66 +75,31 @@ check-clippy:
 check-fmt:
     rustup run nightly rustfmt --edition 2024 --check $(find crates -name '*.rs')
 
-# Fix clippy warnings and format code
-fix:
-    cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged -- -D warnings
-    rustup run nightly rustfmt --edition 2024 $(find crates -name '*.rs')
+# Type/Svelte-check the viewer (svelte-check).
+check-viewer:
+    docker run --rm -v {{justfile_directory()}}/viewer:/src -w /src node:lts-slim \
+        sh -c 'npm ci && npm run check'
 
-# Build tutorial books
-books: _sync-book-assets
-    mdbook build docs/dsl-tutorial
-    mdbook build docs/suite-tutorial
-    mdbook build docs/reference
-
-# Copy the canonical hljs grammar, theme CSS, and the vendored
-# highlight.js v11 into each book directory. The vendored hljs goes
-# into `theme/highlight.js` — mdBook's theme-override mechanism
-# replaces its built-in v10.1.1 with our v11 so the runtime report and
-# the books use the same hljs version (and grammar). The per-book
-# copies are all gitignored; this step regenerates them before mdbook
-# reads them.
-_sync-book-assets:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    hljs_gz=vendor/highlight-11.11.1.min.js.gz
-    grammar=crates/relux-runtime/src/report/highlight-relux.js
-    css=docs/_theme/relux.css
-    for book in docs/dsl-tutorial docs/reference docs/suite-tutorial; do
-        mkdir -p "$book/theme"
-        gunzip -c "$hljs_gz" > "$book/theme/highlight.js"
-        cp "$grammar" "$book/highlight-relux.js"
-        cp "$css" "$book/relux.css"
-    done
+## Test targets
 
 # Run all tests (unit + e2e)
-test: unit e2e
+test: test-unit test-e2e test-viewer
 
 # Run unit + integration tests
-unit *ARGS:
+test-unit *ARGS:
     cargo test --workspace {{ARGS}}
 
-# Run relux with arguments
-run *ARGS:
-    cargo run -p relux -- {{ARGS}}
-
 # Run e2e tests (check then run)
-e2e:
+test-e2e:
     cargo run -p relux -- check --manifest tests/Relux.toml
     cargo run -p relux -- run --manifest tests/Relux.toml
 
-# Analyze run history
-history *ARGS:
-    cargo run -p relux -- history --manifest tests/Relux.toml {{ARGS}}
+# Run viewer unit tests (vitest).
+test-viewer:
+    docker run --rm -v {{justfile_directory()}}/viewer:/src -w /src node:lts-slim \
+        sh -c 'npm ci && npm test'
 
-# Build the IntelliJ plugin
-intellij:
-    cd editors/intellij && gradle buildPlugin --info
-
-# Build the VS Code extension (.vsix)
-vscode:
-    mkdir -p editors/vscode/build
-    docker run --rm -v {{justfile_directory()}}/editors/vscode:/src -w /src node:lts-slim \
-        sh -c 'npx --yes @vscode/vsce package --out /src/build/relux.vsix'
+## Clean targets
 
 # Remove build artifacts
 clean:

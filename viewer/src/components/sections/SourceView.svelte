@@ -20,7 +20,7 @@
   // Split the highlighted HTML into one self-contained line per
   // entry. As the walker meets `\n` it closes every currently-open
   // hljs span, finalizes the line, then re-opens those same spans on
-  // the next line — so each rendered line stays a valid HTML fragment.
+  // the next line - so each rendered line stays a valid HTML fragment.
   // `lineCharStarts[i]` is the JS-char index of line `i`'s first char
   // in the **source** string, computed from `src` itself rather than
   // counted off the html (where entity expansion confuses things).
@@ -177,7 +177,7 @@
               (r) => r.width !== 0 || r.height !== 0,
             );
             // `getClientRects()` returns one rect per inline box inside
-            // the range — so a `foo(a, b)` Range yields rects for `foo`,
+            // the range - so a `foo(a, b)` Range yields rects for `foo`,
             // for `(a, b)`, AND for each `<span class="hljs-...">` child
             // inside. The inner rects are visually contained by the
             // outer ones; drop any rect that another rect fully covers.
@@ -293,7 +293,7 @@
   }
   .gutter {
     /* `box-sizing: content-box` overrides the global border-box so
-       `min-width: 4ch` truly reserves 4 chars of *content* width —
+       `min-width: 4ch` truly reserves 4 chars of *content* width -
        otherwise the 8px side padding eats into it and 3-digit line
        numbers force the gutter to grow, shifting the code right at
        line 100. */

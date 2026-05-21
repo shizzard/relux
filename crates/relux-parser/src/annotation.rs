@@ -17,9 +17,9 @@ use relux_ast::AstMarkerCondBody;
 use relux_ast::AstMarkerDecl;
 use relux_ast::AstMarkerKind;
 
-// ─── L4: Annotation Combinators ─────────────────────────────
+// --- L4: Annotation Combinators --------------------------
 
-/// `// comment text` — consumes through newline, returns comment text.
+/// `// comment text` - consumes through newline, returns comment text.
 pub fn comment<'a>()
 -> impl Parser<'a, ParserInput<'a>, String, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     prefix_comment()
@@ -38,7 +38,7 @@ pub fn comment<'a>()
         .boxed()
 }
 
-/// `"""..."""` — docstring. Single/double quotes inside are valid content;
+/// `"""..."""` - docstring. Single/double quotes inside are valid content;
 /// only three consecutive quotes close the docstring.
 pub fn docstring<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<String>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
@@ -107,7 +107,7 @@ fn marker_cond_body<'a>()
     choice((eq_cond, regex_cond, bare_cond))
 }
 
-/// `# skip/run/flaky [if/unless cond]` — marker declaration.
+/// `# skip/run/flaky [if/unless cond]` - marker declaration.
 pub fn marker<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstMarkerDecl>, extra::Err<Rich<'a, Token<'a>>>> + Clone
 {

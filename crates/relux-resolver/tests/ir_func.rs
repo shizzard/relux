@@ -107,7 +107,7 @@ fn ir_pure_fn_builtin() {
     assert!(matches!(f, IrPureFn::Builtin { .. }));
 }
 
-// ─── Function lowering (cacheable) ────────────────────────
+// --- Function lowering (cacheable) -----------------------
 
 #[test]
 fn lower_fn_simple() {
@@ -441,7 +441,7 @@ fn lower_fn_error_cached() {
     assert!(result2.is_err());
 }
 
-// ─── Pure function lowering (cacheable) ───────────────────
+// --- Pure function lowering (cacheable) ------------------
 
 #[test]
 fn lower_pure_fn_simple() {

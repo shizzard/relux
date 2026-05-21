@@ -8,9 +8,9 @@ use super::ParserInput;
 use super::timeout::timeout;
 use relux_ast::AstTimeout;
 
-// ─── L2: Untimed Operators ──────────────────────────────────
+// --- L2: Untimed Operators -------------------------------
 
-/// `>` — send
+/// `>` - send
 pub fn op_send<'a>()
 -> impl Parser<'a, ParserInput<'a>, SimpleSpan, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::Gt)
@@ -18,7 +18,7 @@ pub fn op_send<'a>()
         .labelled("send operator (>)")
 }
 
-/// `=>` — send raw
+/// `=>` - send raw
 pub fn op_send_raw<'a>()
 -> impl Parser<'a, ParserInput<'a>, SimpleSpan, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::Eq)
@@ -28,7 +28,7 @@ pub fn op_send_raw<'a>()
         .labelled("send raw operator (=>)")
 }
 
-/// `<?` — match regex
+/// `<?` - match regex
 pub fn op_match_regex<'a>()
 -> impl Parser<'a, ParserInput<'a>, SimpleSpan, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::Lt)
@@ -38,7 +38,7 @@ pub fn op_match_regex<'a>()
         .labelled("match regex operator (<?)")
 }
 
-/// `<=` — match literal
+/// `<=` - match literal
 pub fn op_match_literal<'a>()
 -> impl Parser<'a, ParserInput<'a>, SimpleSpan, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::Lt)
@@ -48,7 +48,7 @@ pub fn op_match_literal<'a>()
         .labelled("match literal operator (<=)")
 }
 
-/// `!?` — fail regex
+/// `!?` - fail regex
 pub fn op_fail_regex<'a>()
 -> impl Parser<'a, ParserInput<'a>, SimpleSpan, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::Bang)
@@ -58,7 +58,7 @@ pub fn op_fail_regex<'a>()
         .labelled("fail regex operator (!?)")
 }
 
-/// `!=` — fail literal
+/// `!=` - fail literal
 pub fn op_fail_literal<'a>()
 -> impl Parser<'a, ParserInput<'a>, SimpleSpan, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::Bang)
@@ -68,9 +68,9 @@ pub fn op_fail_literal<'a>()
         .labelled("fail literal operator (!=)")
 }
 
-// ─── L3: Timed Operators ────────────────────────────────────
+// --- L3: Timed Operators ---------------------------------
 
-/// `<~5s=` or `<@2s=` — timed match literal
+/// `<~5s=` or `<@2s=` - timed match literal
 pub fn op_timed_match_literal<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstTimeout>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::Lt)
@@ -84,7 +84,7 @@ pub fn op_timed_match_literal<'a>()
         .labelled("timed match literal operator (<~Ns= or <@Ns=)")
 }
 
-/// `<~5s?` or `<@2s?` — timed match regex
+/// `<~5s?` or `<@2s?` - timed match regex
 pub fn op_timed_match_regex<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstTimeout>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     just(Token::Lt)

@@ -18,7 +18,7 @@ use relux_ast::AstExpr;
 use relux_ast::AstInterpolation;
 use relux_ast::AstStringPart;
 
-/// Plain string: `"..."` — all tokens between quotes are literal text (no interpolation).
+/// Plain string: `"..."` - all tokens between quotes are literal text (no interpolation).
 /// Used for test names.
 pub fn plain_string<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<String>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
@@ -94,7 +94,7 @@ pub fn expr<'a>()
                     )
                 });
 
-        // Numeric literal: `42` → AstExpr::String with single literal part
+        // Numeric literal: `42` -> AstExpr::String with single literal part
         let expr_numeric_lit = expr_numeric().map_with(|num, e| {
             let span = crate::span_from_chumsky(e.span());
             Spanned::new(
@@ -337,7 +337,7 @@ mod tests {
                 assert_eq!(call.args.len(), 4);
                 assert!(matches!(call.args[0].node, AstExpr::String { .. }));
                 assert!(matches!(call.args[1].node, AstExpr::Var { .. }));
-                assert!(matches!(call.args[2].node, AstExpr::String { .. })); // numeric → String
+                assert!(matches!(call.args[2].node, AstExpr::String { .. })); // numeric -> String
                 assert!(matches!(call.args[3].node, AstExpr::CaptureRef { .. }));
             }
             _ => panic!("expected Call, got {e:?}"),

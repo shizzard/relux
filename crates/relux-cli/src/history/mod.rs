@@ -32,7 +32,7 @@ use self::loader::filter_summaries;
 use self::loader::load_all_summaries;
 use self::loader::resolve_test_filters;
 
-// ─── LatestRun ──────────────────────────────────────────────
+// --- LatestRun -------------------------------------------
 
 pub struct LatestRun {
     pub summary: RunSummary,
@@ -65,7 +65,7 @@ impl LatestRun {
     }
 }
 
-// ─── History Commands ───────────────────────────────────────
+// --- History Commands ------------------------------------
 
 pub enum HistoryCommand {
     Flaky,
@@ -157,7 +157,7 @@ pub fn run_history(
     print!("{output}");
 }
 
-// ─── CLI Handler ────────────────────────────────────────────
+// --- CLI Handler -----------------------------------------
 
 pub fn cmd_history(matches: &clap::ArgMatches) {
     let (project_root, _config) = crate::resolve_project(matches);

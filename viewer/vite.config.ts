@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [
     svelte({
       // Inline styles into the JS bundle so the build produces a single .js
-      // file — required for the binary-embed pipeline (commit 7).
+      // file - required for the binary-embed pipeline (commit 7).
       emitCss: false,
     }),
   ],

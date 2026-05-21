@@ -11,7 +11,7 @@ use crate::observe::structured::StructuredLogBuilder;
 use crate::observe::structured::Utf8Stream;
 use crate::vm::context::FailPattern;
 
-// ─── FailPatternHit ─────────────────────────────────────────────
+// --- FailPatternHit --------------------------------------
 
 /// A fail pattern matched in the output buffer.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,7 +24,7 @@ pub struct FailPatternHit {
     pub(crate) matched_text: String,
 }
 
-// ─── MatchContext ───────────────────────────────────────────────
+// --- MatchContext ----------------------------------------
 
 /// `(before, matched, after)` slices around a match. Used by the VM to push a
 /// `BufferEventKind::Matched` describing how the cursor advanced.
@@ -35,8 +35,8 @@ pub struct FailPatternHit {
 /// currently-unmatched buffer tail at the moment of the match.
 pub type MatchContext = (String, String, String);
 
-// ─── Tail truncation helpers (failure-context capture only) ────
-// `match_context` does NOT use these — match events ship full bytes so the
+// --- Tail truncation helpers (failure-context capture only) ---
+// `match_context` does NOT use these - match events ship full bytes so the
 // viewer can rebuild append-only history losslessly. These helpers are
 // kept for `snapshot_tail` and other places that intentionally want a
 // human-sized excerpt of the buffer.
@@ -69,7 +69,7 @@ fn match_context(text: &str, pos: usize, end_pos: usize, matched: &str) -> Match
     )
 }
 
-// ─── Match Types ────────────────────────────────────────────────
+// --- Match Types -----------------------------------------
 
 /// Marker trait for match payload types.
 pub trait MatchKind {}
@@ -97,7 +97,7 @@ pub struct Match<T: MatchKind> {
     pub value: T,
 }
 
-// ─── OutputBuffer ───────────────────────────────────────────────
+// --- OutputBuffer ----------------------------------------
 
 struct BufferInner {
     /// Cleanly-decoded bytes available for matching. Always valid UTF-8.
@@ -130,7 +130,7 @@ impl OutputBuffer {
     /// `append`/`consume_*`/`clear` emit their corresponding buffer events
     /// on `log` while still holding the inner mutex, preventing a race
     /// between byte appends and event order. The inner mutex is a
-    /// `std::sync::Mutex` — every critical section is pure CPU work, so no
+    /// `std::sync::Mutex` - every critical section is pure CPU work, so no
     /// `.await` ever happens under the guard and a blocking lock is correct.
     pub fn new(log: StructuredLogBuilder, shell_name: String, shell_marker: String) -> Self {
         Self {
@@ -146,7 +146,7 @@ impl OutputBuffer {
         }
     }
 
-    /// Construct an `OutputBuffer` with no log surface — buffer-event
+    /// Construct an `OutputBuffer` with no log surface - buffer-event
     /// emissions are silently dropped. Unit-test only.
     #[cfg(test)]
     pub fn for_tests() -> Self {
@@ -251,7 +251,7 @@ impl OutputBuffer {
         Some((m, buffer_seq))
     }
 
-    /// Check fail pattern against buffer, then try to consume literal — under one lock.
+    /// Check fail pattern against buffer, then try to consume literal - under one lock.
     /// Returns Err if fail pattern found, Ok(Some) if literal consumed, Ok(None) if not found.
     /// On success the `Matched` buffer event is pushed before releasing the lock.
     pub async fn fail_check_consume_literal(
@@ -291,7 +291,7 @@ impl OutputBuffer {
         Ok(Some((m, buffer_seq)))
     }
 
-    /// Check fail pattern against buffer, then try to consume regex — under one lock.
+    /// Check fail pattern against buffer, then try to consume regex - under one lock.
     /// Returns Err if fail pattern found, Ok(Some) if regex consumed, Ok(None) if not found.
     /// On success the `Matched` buffer event is pushed before releasing the lock.
     pub async fn fail_check_consume_regex(
@@ -378,8 +378,8 @@ impl OutputBuffer {
     /// Drain the cleanly-decoded portion of the buffer, advancing base.
     /// Trailing bytes of an incomplete UTF-8 sequence stay carried over inside
     /// `Utf8Stream`, to be completed by a future `append`. Emits a `Reset`
-    /// buffer event carrying the consumed prefix — byte-identical to the
-    /// concatenation of `Grew` payloads emitted since the previous reset —
+    /// buffer event carrying the consumed prefix - byte-identical to the
+    /// concatenation of `Grew` payloads emitted since the previous reset -
     /// before releasing the lock. Returns the consumed prefix.
     pub async fn clear(&self) -> String {
         let mut inner = self.inner.lock().unwrap();
@@ -413,7 +413,7 @@ impl OutputBuffer {
 }
 
 /// Returns `true` if a `$`-anchored regex matched at the buffer boundary
-/// where the buffer does not end with a newline — meaning the last line may
+/// where the buffer does not end with a newline - meaning the last line may
 /// still be arriving and `$` matched end-of-string rather than end-of-line.
 ///
 /// Only applies when the regex source ends with an *unescaped* `$` anchor.
@@ -456,7 +456,7 @@ fn check_fail_in_buffer(text: &str, pattern: &FailPattern) -> Option<FailPattern
     }
 }
 
-// ─── Tests ──────────────────────────────────────────────────────
+// --- Tests -----------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -521,7 +521,7 @@ mod tests {
             .collect()
     }
 
-    // ── truncate_before ──────────────────────────────────────────────
+    // --- truncate_before ---------------------------------
 
     #[test]
     fn truncate_before_short_string_unchanged() {
@@ -548,7 +548,7 @@ mod tests {
         assert_eq!(truncate_before("hello", 0), "...");
     }
 
-    // ── OutputBuffer::append / remaining ────────────────────────────
+    // --- OutputBuffer::append / remaining ----------------
 
     #[tokio::test]
     async fn output_buffer_append_and_remaining() {
@@ -564,7 +564,7 @@ mod tests {
         assert!(buf.remaining().await.is_empty());
     }
 
-    // ── OutputBuffer::consume_literal ────────────────────────────────
+    // --- OutputBuffer::consume_literal -------------------
 
     #[tokio::test]
     async fn consume_literal_basic() {
@@ -632,7 +632,7 @@ mod tests {
     #[tokio::test]
     async fn consume_literal_handles_invalid_utf8_in_buffer() {
         // Regression test: invalid bytes (here 0xFF) must not corrupt offsets
-        // for the drain after the match — `Utf8Stream` surfaces them as a
+        // for the drain after the match - `Utf8Stream` surfaces them as a
         // U+FFFD replacement and matching works in decoded coordinates.
         let buf = OutputBuffer::for_tests();
         let mut bytes = b"prefix".to_vec();
@@ -644,7 +644,7 @@ mod tests {
         assert_eq!(buf.remaining().await, " suffix".as_bytes());
     }
 
-    // ── OutputBuffer::consume_regex ──────────────────────────────────
+    // --- OutputBuffer::consume_regex ---------------------
 
     #[tokio::test]
     async fn consume_regex_basic() {
@@ -693,7 +693,7 @@ mod tests {
         assert_eq!(m2.end, 15);
     }
 
-    // ── Partial-line guard ─────────────────────────────────────────
+    // --- Partial-line guard ------------------------------
 
     #[tokio::test]
     async fn consume_regex_defers_partial_line() {
@@ -767,7 +767,7 @@ mod tests {
         assert_eq!(m.value.0.get("0").unwrap(), "price: $9");
     }
 
-    // ── has_trailing_anchor ─────────────────────────────────────────
+    // --- has_trailing_anchor -----------------------------
 
     #[test]
     fn has_trailing_anchor_unescaped() {
@@ -790,7 +790,7 @@ mod tests {
         assert!(!super::has_trailing_anchor(""));
     }
 
-    // ── OutputBuffer::clear ─────────────────────────────────────────
+    // --- OutputBuffer::clear -----------------------------
 
     #[tokio::test]
     async fn clear_empties_buffer_and_returns_consumed() {
@@ -818,7 +818,7 @@ mod tests {
     async fn clear_drops_incomplete_utf8_trailing_sequence() {
         let (buf, builder, _rx) = wired_buffer();
         // U+1F389 PARTY POPPER, encoded as F0 9F 8E 89. Feed "ok" then only
-        // the first two bytes of the codepoint — Utf8Stream holds them back.
+        // the first two bytes of the codepoint - Utf8Stream holds them back.
         buf.append(b"ok").await;
         buf.append(&[0xF0, 0x9F]).await;
         let _ = buf.clear().await;
@@ -844,19 +844,19 @@ mod tests {
     #[tokio::test]
     async fn clear_preserves_partial_utf8_in_buffer() {
         let (buf, builder, _rx) = wired_buffer();
-        // First two bytes of U+1F389 only — entire buffer is `pending`.
+        // First two bytes of U+1F389 only - entire buffer is `pending`.
         buf.append(&[0xF0, 0x9F]).await;
         let _ = buf.clear().await;
         let consumed = last_reset(&builder).expect("reset event");
         assert_eq!(consumed, "");
-        // Now finish the codepoint — Grew should fire with the completed char,
+        // Now finish the codepoint - Grew should fire with the completed char,
         // proving the partial bytes survived the reset.
         buf.append(&[0x8E, 0x89]).await;
         let grew: Vec<String> = all_grew(&builder);
         assert_eq!(grew.last().map(String::as_str), Some("\u{1F389}"));
     }
 
-    // ── OutputBuffer::snapshot_tail ─────────────────────────────────
+    // --- OutputBuffer::snapshot_tail ---------------------
 
     #[tokio::test]
     async fn snapshot_tail_returns_truncated_tail() {
@@ -874,7 +874,7 @@ mod tests {
         assert_eq!(tail, "hi");
     }
 
-    // ── check_fail_in_buffer ────────────────────────────────────────
+    // --- check_fail_in_buffer ----------------------------
 
     #[test]
     fn check_fail_in_buffer_regex_match() {

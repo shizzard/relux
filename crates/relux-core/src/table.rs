@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use elsa::sync::FrozenMap;
 
-// ─── SharedTable ────────────────────────────────────────────
+// --- SharedTable -----------------------------------------
 
-/// Mutable shared table — populated incrementally, potentially from multiple threads.
+/// Mutable shared table - populated incrementally, potentially from multiple threads.
 /// Write-once semantics: first insert wins, subsequent inserts for the same key are ignored.
 pub struct SharedTable<K, V> {
     map: Arc<FrozenMap<K, Box<V>>>,
@@ -80,7 +80,7 @@ impl<K, V> Clone for SharedTable<K, V> {
     }
 }
 
-// ─── FileId ─────────────────────────────────────────────────
+// --- FileId ----------------------------------------------
 
 /// Absolute file path, used as the stable file identity.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -98,7 +98,7 @@ impl FileId {
     }
 }
 
-// ─── SourceFile ─────────────────────────────────────────────
+// --- SourceFile ------------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct SourceFile {
@@ -133,11 +133,11 @@ fn build_line_offsets(source: &str) -> Vec<usize> {
     offsets
 }
 
-// ─── SourceTable ────────────────────────────────────────────
+// --- SourceTable -----------------------------------------
 
 pub type SourceTable = SharedTable<FileId, SourceFile>;
 
-// ─── Tests ──────────────────────────────────────────────────
+// --- Tests -----------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -145,7 +145,7 @@ mod tests {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::Hasher;
 
-    // ── SharedTable ─────────────────────────────────────────
+    // --- SharedTable -------------------------------------
 
     #[test]
     fn shared_table_insert_and_get() {
@@ -221,7 +221,7 @@ mod tests {
         t.insert("a", vec![1, 2, 3]);
         let v = t.get(&"a").unwrap();
         assert_eq!(v, &vec![1, 2, 3]);
-        // References are stable — get again returns same value
+        // References are stable - get again returns same value
         let v2 = t.get(&"a").unwrap();
         assert_eq!(v, v2);
     }
@@ -241,7 +241,7 @@ mod tests {
         assert!(t.is_empty());
     }
 
-    // ── FileId ──────────────────────────────────────────────
+    // --- FileId ------------------------------------------
 
     #[test]
     fn file_id_equality() {
@@ -275,7 +275,7 @@ mod tests {
         assert_ne!(abs, rel);
     }
 
-    // ── SourceFile ─────────────────────────────────────────
+    // --- SourceFile --------------------------------------
 
     #[test]
     fn line_at_single_line() {

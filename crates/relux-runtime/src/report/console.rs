@@ -5,7 +5,7 @@ use crate::observe::structured::StackFrame;
 const ARG_VALUE_MAX: usize = 60;
 const ELLIPSIS: char = '\u{2026}';
 
-// ─── Public API ─────────────────────────────────────────────
+// --- Public API ------------------------------------------
 
 pub fn format_call_stack(frames: &[StackFrame]) -> Option<String> {
     if frames.is_empty() {
@@ -59,7 +59,7 @@ pub fn format_vars_in_scope(vars: &[(String, String)]) -> Option<String> {
     Some(out)
 }
 
-// ─── Helpers ────────────────────────────────────────────────
+// --- Helpers ---------------------------------------------
 
 fn format_frame(frame: &StackFrame) -> String {
     let body = format_frame_body(frame);
@@ -137,7 +137,7 @@ fn strip_trailing_cr(s: &str) -> &str {
     s.strip_suffix('\r').unwrap_or(s)
 }
 
-// ─── Tests ──────────────────────────────────────────────────
+// --- Tests -----------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -182,7 +182,7 @@ mod tests {
         colored::control::set_override(false);
     }
 
-    // Call stack ─────────────────────────────────────────────
+    // --- Call stack --------------------------------------
 
     #[test]
     fn call_stack_empty_returns_none() {
@@ -287,7 +287,7 @@ mod tests {
         );
     }
 
-    // Buffer tail ────────────────────────────────────────────
+    // --- Buffer tail -------------------------------------
 
     #[test]
     fn buffer_tail_empty_returns_none() {
@@ -335,7 +335,7 @@ mod tests {
         assert!(!out.contains("(last"));
     }
 
-    // Vars in scope ──────────────────────────────────────────
+    // --- Vars in scope -----------------------------------
 
     #[test]
     fn vars_in_scope_empty_returns_none() {

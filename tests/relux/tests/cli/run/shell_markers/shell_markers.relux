@@ -42,7 +42,7 @@ test "shell markers: exposed shell carries one marker; cleanup shells distinct" 
         <? ^2$
         match_ok()
 
-        // `data.shells` is keyed by marker — every key matches its marker field.
+        // `data.shells` is keyed by marker - every key matches its marker field.
         > jq -M '[.shells | to_entries[] | select(.key != .value.marker)] | length' $events
         <? ^0$
         match_ok()

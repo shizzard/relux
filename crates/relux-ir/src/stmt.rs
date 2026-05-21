@@ -16,7 +16,7 @@ use super::ident::IrIdent;
 use super::interpolation::IrInterpolation;
 use super::timeout::IrTimeout;
 
-// ─── IrLetStmt ───────────────────────────────────────────────
+// --- IrLetStmt -------------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct IrLetStmt {
@@ -41,7 +41,7 @@ impl IrLetStmt {
 
 impl_ir_node_struct!(IrLetStmt);
 
-// ─── IrAssignStmt ────────────────────────────────────────────
+// --- IrAssignStmt ----------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct IrAssignStmt {
@@ -66,7 +66,7 @@ impl IrAssignStmt {
 
 impl_ir_node_struct!(IrAssignStmt);
 
-// ─── IrShellStmt ─────────────────────────────────────────────
+// --- IrShellStmt -----------------------------------------
 
 #[derive(Debug, Clone)]
 pub enum IrShellStmt {
@@ -150,7 +150,7 @@ impl_ir_node_enum!(IrShellStmt {
     BufferReset
 });
 
-// ─── IrPureLetStmt ───────────────────────────────────────────
+// --- IrPureLetStmt ---------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct IrPureLetStmt {
@@ -175,7 +175,7 @@ impl IrPureLetStmt {
 
 impl_ir_node_struct!(IrPureLetStmt);
 
-// ─── IrPureAssignStmt ────────────────────────────────────────
+// --- IrPureAssignStmt ------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct IrPureAssignStmt {
@@ -200,7 +200,7 @@ impl IrPureAssignStmt {
 
 impl_ir_node_struct!(IrPureAssignStmt);
 
-// ─── IrPureStmt ──────────────────────────────────────────────
+// --- IrPureStmt ------------------------------------------
 
 #[derive(Debug, Clone)]
 pub enum IrPureStmt {
@@ -229,9 +229,9 @@ impl_ir_node_enum!(IrPureStmt {
     Expr
 });
 
-// ═══════════════════════════════════════════════════════════════
+// ===============================================================
 // IrNodeLowering implementations
-// ═══════════════════════════════════════════════════════════════
+// ===============================================================
 
 impl IrNodeLowering for IrLetStmt {
     type Ast = AstLetStmt;
@@ -487,4 +487,4 @@ impl IrNodeLowering for IrPureStmt {
     }
 }
 
-// ─── Tests ───────────────────────────────────────────────────
+// --- Tests -----------------------------------------------

@@ -73,7 +73,7 @@ pub fn cmd_dump_ir(matches: &clap::ArgMatches) {
     for plan in &suite.plans {
         if let Plan::Runnable { test, .. } = plan {
             if !first {
-                println!("\n{}", "─".repeat(60));
+                println!("\n{}", "\u{2500}".repeat(60));
             }
             println!("{test:#?}");
             first = false;
