@@ -111,12 +111,15 @@ export function singleEventTypeId(k: Event['kind']): EventTypeId | null {
       return 'error';
     case 'cancelled':
       return 'cancelled';
-    case 'multi-match-start':
     case 'multi-match-pattern-done':
-    case 'multi-match-done':
       return 'multi-match';
     case 'multi-match-timeout':
       return 'multi-match-timeout';
+    case 'multi-match-start':
+    case 'multi-match-done':
+      // Hidden via HIDDEN_EVENT_KINDS - they only delimit the
+      // multi-match span and never produce visible rows.
+      return null;
     default:
       return null;
   }
@@ -146,6 +149,11 @@ const HIDDEN_EVENT_KINDS: ReadonlySet<Event['kind']> = new Set([
   'recv',
   'string-eval',
   'annotate',
+  // multi-match-start / -done only delimit the multi-match span. The
+  // span entry is the visible container; pattern-done and timeout
+  // events surface as individual rows inside it.
+  'multi-match-start',
+  'multi-match-done',
 ]);
 
 const LOG_LEVELS: Partial<Record<Event['kind'], LogLevel>> = {

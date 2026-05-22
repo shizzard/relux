@@ -415,3 +415,50 @@ describe('ViewerState - modals', () => {
     expect(state.openModal).toBeNull();
   });
 });
+
+describe('ViewerState constructor: multi-match failure outcome', () => {
+  it('auto-selects the multi-match-timeout event and expands ancestors', () => {
+    const testSpanRec = {
+      id: 1n, parent: null, start_ts: 0, end_ts: 100, location: null,
+      kind: 'test', name: 't',
+    } as const;
+    const mmSpan = {
+      id: 2n, parent: 1n, start_ts: 10, end_ts: 90, location: null,
+      kind: 'multi-match', shell: 's',
+    } as const;
+    const log = {
+      schema_version: 1,
+      info: { name: 't', path: 'p', duration_ms: 100n },
+      outcome: {
+        kind: 'fail',
+        type: 'multi-match',
+        span: 2n,
+        event_seq: 55n,
+        shell: 's',
+        patterns: [{ pattern: 'a', is_regex: true }],
+        matched: [],
+        effective: { type: 'tolerance', duration: '5s', multiplier: '1.0', total_duration: '5s', source: null },
+        call_stack: [],
+        buffer_tail: '',
+        vars_in_scope: [],
+      },
+      env: { bootstrap: [] },
+      shells: {},
+      spans: { '1': testSpanRec, '2': mmSpan },
+      events: [
+        {
+          seq: 55n, ts: 90, span: 2n, shell: 's', shell_marker: 's', source: null,
+          kind: 'multi-match-timeout', unmatched: [0],
+        },
+      ],
+      buffer_events: [],
+      sources: {},
+      artifacts: [],
+    } as unknown as StructuredLog;
+
+    const state = new ViewerState(log);
+    expect(state.selectedEventSeq).toBe(55);
+    expect(state.expandedSpans.has(2)).toBe(true);
+    expect(state.expandedSpans.has(1)).toBe(true);
+  });
+});

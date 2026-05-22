@@ -12,10 +12,12 @@
     firstEventInSpan,
     lastEventInShell,
     matchingShellSpawn,
+    multiMatchOutcomeFor,
+    patternMatchedTextFor,
     shellBlockLifecycle,
     toNumber as n,
   } from '../lib/derive';
-  import type { SpanId } from '../lib/derive';
+  import type { MultiMatchOutcome, SpanId } from '../lib/derive';
   import MarkerPill from './MarkerPill.svelte';
   import {
     displaySpanCallKind,
@@ -24,6 +26,7 @@
     foldedKindLabel,
     formatBytes,
     formatDuration,
+    formatMultiMatchPatternLabel,
     formatTimeoutLine,
   } from '../lib/format';
   import NameCell from './NameCell.svelte';
@@ -381,8 +384,64 @@
         }
         return out;
       }
-      default:
-        return [];
+      case 'multi-match-start': {
+        const out: Row[] = [
+          { type: 'kv', key: 'patterns', value: String(ev.patterns.length) },
+          { type: 'kv', key: 'timeout', value: formatTimeoutLine(ev.effective), mono: true },
+          { type: 'subhead', text: 'patterns' },
+        ];
+        for (let i = 0; i < ev.patterns.length; i++) {
+          const p = ev.patterns[i]!;
+          out.push({
+            type: 'kv',
+            key: `#${i}`,
+            value: formatMultiMatchPatternLabel(p),
+            mono: true,
+          });
+        }
+        return out;
+      }
+      case 'multi-match-pattern-done': {
+        const matchedText = patternMatchedTextFor(state.data, ev);
+        const outcome = multiMatchOutcomeFor(state.data, n(ev.span));
+        const p = outcome?.patterns[ev.index] ?? null;
+        const out: Row[] = [];
+        if (p !== null) {
+          out.push({
+            type: 'kv',
+            key: 'pattern',
+            value: formatMultiMatchPatternLabel(p),
+            mono: true,
+            accent: true,
+          });
+        }
+        if (matchedText !== null) {
+          out.push({
+            type: 'kv',
+            key: 'matched',
+            value: matchedText,
+            mono: true,
+            accent: true,
+          });
+        }
+        out.push({ type: 'kv', key: 'elapsed', value: formatDuration(ev.elapsed) });
+        return out;
+      }
+      case 'multi-match-done':
+        return [
+          { type: 'kv', key: 'advance_to', value: `\u{2192} #${Number(ev.advance_to)}` },
+        ];
+      case 'multi-match-timeout':
+        return [
+          {
+            type: 'kv',
+            key: 'unmatched',
+            value:
+              ev.unmatched.length === 0
+                ? '(none)'
+                : ev.unmatched.map((i) => `#${i}`).join(', '),
+          },
+        ];
     }
   }
 
@@ -399,9 +458,36 @@
     return null;
   }
 
+  function terminalLabel(t: MultiMatchOutcome['terminal']): string {
+    switch (t) {
+      case 'done':    return 'all matched';
+      case 'timeout': return 'timed out';
+      case 'pending': return 'in flight';
+    }
+  }
+
   function spanRows(span: Span): Row[] {
     if (span.kind === 'shell-block' || span.kind === 'cleanup-block') {
       return shellLikeBlockRows(span);
+    }
+    if (span.kind === 'multi-match') {
+      const outcome = multiMatchOutcomeFor(state.data, n(span.id));
+      const out: Row[] = [
+        { type: 'kv', key: 'shell', value: span.shell, mono: true },
+        { type: 'kv', key: 'elapsed', value: spanElapsed(span) },
+      ];
+      if (outcome === null) return out;
+      out.push({ type: 'kv', key: 'verdict', value: terminalLabel(outcome.terminal), accent: true });
+      out.push({ type: 'subhead', text: 'per-pattern' });
+      for (const row of outcome.rows) {
+        const p = outcome.patterns[row.index]!;
+        const label = formatMultiMatchPatternLabel(p);
+        const value = row.status === 'matched'
+          ? `[+] ${row.matched ?? ''}${row.elapsed !== null ? ` (${formatDuration(row.elapsed)})` : ''}`
+          : '[-] not seen';
+        out.push({ type: 'kv', key: label, value, mono: true, accent: row.status === 'matched' });
+      }
+      return out;
     }
     if (span.kind === 'effect-setup') {
       const props = effectSetupProps(state.data, n(span.id));

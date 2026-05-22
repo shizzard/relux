@@ -1,5 +1,6 @@
 import type { CancelReasonRecord } from '../types/CancelReasonRecord';
 import type { Event } from '../types/Event';
+import type { MultiMatchPattern } from '../types/MultiMatchPattern';
 import type { Span } from '../types/Span';
 import type { TimeoutValue } from '../types/TimeoutValue';
 import type { FoldedEvent } from './flatten';
@@ -77,6 +78,10 @@ const KIND_GLYPHS: Record<string, string> = {
   warning: '\u{0021}',
   error: '\u{2717}',
   cancelled: '\u{23F9}',
+  'multi-match-start': '\u{29C9}',
+  'multi-match-pattern-done': '\u{2713}',
+  'multi-match-done': '\u{29C9}\u{2713}',
+  'multi-match-timeout': '\u{29C9}\u{23F1}',
 };
 
 export function kindGlyph(kind: Event['kind']): string {
@@ -99,6 +104,9 @@ const KIND_FAMILY: Partial<Record<Event['kind'], KindFamily>> = {
   annotate: 'info',
   'sleep-start': 'info',
   'sleep-done': 'info',
+  'multi-match-pattern-done': 'ok',
+  'multi-match-done': 'ok',
+  'multi-match-timeout': 'danger',
 };
 
 export function kindFamily(kind: Event['kind']): KindFamily {
@@ -218,13 +226,13 @@ export function eventSummary(event: Event): string {
     case 'cancelled':
       return cancelReasonSummary(event.reason);
     case 'multi-match-start':
-      return `multimatch (${event.patterns.length} patterns, \u{2264} ${formatTimeout(event.effective)})`;
+      return `${event.patterns.length} patterns (\u{2264} ${formatTimeout(event.effective)})`;
     case 'multi-match-pattern-done':
-      return `pattern #${event.index} (${formatDuration(event.elapsed)})`;
+      return `#${event.index} \u{2192} ${formatDuration(event.elapsed)}`;
     case 'multi-match-done':
-      return '';
+      return 'all patterns matched';
     case 'multi-match-timeout':
-      return `${event.unmatched.length} unmatched`;
+      return `${event.unmatched.length} pattern${event.unmatched.length === 1 ? '' : 's'} unmatched`;
   }
 }
 
@@ -313,6 +321,7 @@ const SPAN_KIND_LABELS: Partial<Record<Span['kind'], string>> = {
   'fn-call': 'call',
   markers: 'MARKERS',
   'marker-eval': 'marker',
+  'multi-match': 'multimatch',
 };
 
 export function displaySpanKind(kind: Span['kind']): string {
@@ -366,4 +375,12 @@ export function displayMarkerModifier(m: 'if' | 'unless'): string {
 
 export function displayMarkerDecision(d: 'pass' | 'mark'): string {
   return d;
+}
+
+// Per-pattern label, matching the surface syntax: `? <pattern>` (regex)
+// or `= <pattern>` (literal). Used by the per-pattern table in
+// SelectionCard and the failure-detail surface.
+export function formatMultiMatchPatternLabel(p: MultiMatchPattern): string {
+  const op = p.is_regex ? '?' : '=';
+  return `${op} ${p.pattern}`;
 }

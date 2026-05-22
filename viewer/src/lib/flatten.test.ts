@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Event } from '../types/Event';
 import type { Span } from '../types/Span';
 import type { StructuredLog } from '../types/StructuredLog';
-import { flattenRows, type FoldedEvent, type Row } from './flatten';
+import { flattenRows, foldEvents, type FoldedEvent, type Row } from './flatten';
 
 // --- Span builders ---------------------------------------
 
@@ -763,5 +763,46 @@ describe('flattenRows - transparent BIFs', () => {
     expect(summarize(flattenRows(log, new Set()))).toEqual([
       { kind: 'span', id: 2, depth: 0 },
     ]);
+  });
+});
+
+describe('foldEvents leaves multimatch lifecycle events alone', () => {
+  function mkEv<K extends Event['kind']>(
+    seq: number,
+    span: number,
+    kind: K,
+    extra: Record<string, unknown> = {},
+  ): Event {
+    return {
+      seq: BigInt(seq), ts: seq, span: BigInt(span), shell: 's',
+      shell_marker: 's', source: null, kind, ...extra,
+    } as unknown as Event;
+  }
+
+  it('does not fold multi-match-start/-done/-pattern-done/-timeout into a single row', () => {
+    // Folding is reserved for sleep and match. Multimatch lifecycle
+    // events stay as singles - flattenRows then drops start/done via
+    // HIDDEN_EVENT_KINDS and renders the rest individually inside the
+    // multi-match span.
+    const events: Event[] = [
+      mkEv(1, 7, 'multi-match-start', { patterns: [], effective: {} }),
+      mkEv(2, 7, 'multi-match-pattern-done', { index: 0, elapsed: 5, buffer_seq: 99n }),
+      mkEv(3, 7, 'multi-match-pattern-done', { index: 1, elapsed: 7, buffer_seq: 100n }),
+      mkEv(4, 7, 'multi-match-done', { advance_to: 100n }),
+    ];
+    const folded = foldEvents(events);
+    expect(folded.length).toBe(4);
+    expect(folded.every((f) => f.kind === 'single')).toBe(true);
+  });
+
+  it('leaves the timeout path as singles too', () => {
+    const events: Event[] = [
+      mkEv(1, 7, 'multi-match-start'),
+      mkEv(2, 7, 'multi-match-pattern-done', { index: 0, elapsed: 5, buffer_seq: 99n }),
+      mkEv(3, 7, 'multi-match-timeout', { unmatched: [1] }),
+    ];
+    const folded = foldEvents(events);
+    expect(folded.length).toBe(3);
+    expect(folded.every((f) => f.kind === 'single')).toBe(true);
   });
 });
