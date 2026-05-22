@@ -154,17 +154,14 @@ EventKind::MultiMatchStart {
 },
 EventKind::MultiMatchPatternDone {
     index: usize,           // index into MultiMatchStart.patterns
-    matched: String,
-    cursor_end: usize,      // absolute byte offset where this pattern ends
     elapsed: Duration,
-    buffer_seq: EventSeq,   // references the corresponding `Matched` buffer event
+    buffer_seq: EventSeq,   // -> the per-pattern `Matched` buffer event
 },
 EventKind::MultiMatchDone {
-    final_cursor: usize,    // = max(cursor_end) across MultiMatchPatternDone events
+    advance_to: EventSeq,   // -> the per-pattern `Matched` whose match ends farthest
 },
 EventKind::MultiMatchTimeout {
     unmatched: Vec<usize>,  // pattern indices that did not match
-    buffer_seq: Option<EventSeq>,
 },
 ```
 
@@ -185,10 +182,23 @@ Sequences:
   existing `FailPatternTriggered` and `Failure::FailPattern` propagation. No
   `MultiMatchDone` / `MultiMatchTimeout` emitted.
 
-Each `MultiMatchPatternDone` emits a buffer event of kind `Matched` carrying the
-pattern's end offset, just as single-match `MatchDone` does. The aggregate
-`MultiMatchDone.final_cursor` is derived from those per-pattern buffer events
-and is not a separate buffer event of its own.
+Each `MultiMatchPatternDone` emits a `BufferEventKind::Matched` event with the
+same shape as single-match (`before + matched + after` equals the buffer state
+at the moment the pattern succeeded; `before` carries any stale prefix that
+was already in the buffer). The per-pattern matched text and end offset live
+on that buffer event - they are not duplicated on `MultiMatchPatternDone`.
+
+`MultiMatchDone.advance_to` references the per-pattern `Matched` event whose
+pattern ends farthest in the buffer. The viewer applies the cursor advance
+once, at `MultiMatchDone` time, by dropping `len(before) + len(matched)`
+bytes of the referenced event from its reconstructed buffer. Other per-
+pattern `Matched` events inside the multi-match span are not, on their own,
+cursor-advancing - they describe their pattern's match against the undrained
+buffer for rendering and audit, and the actual block-end drain is the single
+advance applied at `MultiMatchDone`.
+
+The runtime drains its in-memory buffer at block exit without emitting a
+new buffer event. No synthetic "drain" event is needed.
 
 The viewer renders the block as a single row with per-pattern bullets - check /
 cross / pending - and on failure surfaces the unmatched pattern list at the top
