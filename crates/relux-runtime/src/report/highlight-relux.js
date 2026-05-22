@@ -83,6 +83,19 @@ hljs.registerLanguage("relux", function (hljs) {
   // / duration / close char) without giving the duration segment the
   // outer `keyword` boldness.
 
+  // Multimatch open: <{ or <~Ns{ or <@Ns{ - highlights the opener as a
+  // keyword. The block body and closer fall back to inline match-operator
+  // and brace rules respectively.
+  const OP_MULTIMATCH_OPEN = {
+    match: /<\{/,
+    className: "keyword"
+  };
+
+  const OP_TIMED_MULTIMATCH_OPEN = {
+    match: [/</, /[~@][0-9][0-9a-zA-Z]*/, /\{/],
+    scope: { 1: "keyword", 2: "keyword.duration", 3: "keyword" }
+  };
+
   const OP_TIMED_MATCH_REGEX = {
     begin: [/</, /[~@][0-9][0-9a-zA-Z]*/, /\?/],
     beginScope: { 1: "keyword", 2: "keyword.duration", 3: "keyword" },
@@ -357,6 +370,10 @@ hljs.registerLanguage("relux", function (hljs) {
       FN_CALL_ARGS,
 
       // Shell operator + payload pairs (longest first).
+      // Multimatch openers must come before single-match timed/untimed rules
+      // because `<{` shares a `<` prefix with `<?`, `<=`, and `<~Ns?` / `<~Ns=`.
+      OP_TIMED_MULTIMATCH_OPEN,
+      OP_MULTIMATCH_OPEN,
       OP_TIMED_MATCH_REGEX,
       OP_TIMED_MATCH_LITERAL,
       OP_MATCH_REGEX,

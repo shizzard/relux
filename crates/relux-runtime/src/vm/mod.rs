@@ -26,6 +26,8 @@ use crate::report::result::FailureContext;
 /// instead of the expected pattern".
 const BUFFER_TAIL_BYTES: usize = 4096;
 use crate::vm::buffer::FailPatternHit;
+use crate::vm::buffer::MultiMatchHit;
+use crate::vm::buffer::PatternSlot;
 use crate::vm::buffer::regex_error_summary;
 use crate::vm::context::Captures;
 use crate::vm::context::ExecutionContext;
@@ -36,11 +38,29 @@ use relux_ir::IrCallExpr;
 use relux_ir::IrExpr;
 use relux_ir::IrFn;
 use relux_ir::IrInterpolation;
+use relux_ir::IrMultiMatchPattern;
 use relux_ir::IrPureFn;
 use relux_ir::IrShellStmt;
 use relux_ir::IrStringPart;
 use relux_ir::IrTimeout;
 use relux_ir::Tables;
+
+/// Per-pattern state while a multimatch block is running.
+#[derive(Debug)]
+struct MultiSlot {
+    slot: PatternSlot,
+    /// Pattern source string (preserved verbatim from the IR for log
+    /// emission and the failure record).
+    source: String,
+    is_regex: bool,
+    /// `Some` once the pattern has matched in the current block.
+    hit: Option<MultiMatchHit>,
+    /// Set once `MultiMatchPatternDone` is emitted, so we never double-emit.
+    done: bool,
+    /// Set when the per-pattern `Matched` buffer event has been pushed -
+    /// referenced by `MultiMatchPatternDone.buffer_seq`.
+    buffer_seq: Option<EventSeq>,
+}
 
 // --- Interpolation helpers -------------------------------
 
@@ -625,11 +645,260 @@ impl Vm {
                 self.set_captures_from_map(captures);
                 Ok(full)
             }
+            IrShellStmt::MultiMatch {
+                timeout, patterns, ..
+            } => self.exec_multimatch(patterns, timeout.as_ref(), span).await,
             IrShellStmt::BufferReset { .. } => {
                 // `clear` emits the `Reset` buffer event internally under
                 // the output_buf lock, so no separate emit is needed here.
                 let _consumed = self.pty.output_buf.clear().await;
                 Ok(String::new())
+            }
+        }
+    }
+
+    async fn exec_multimatch(
+        &mut self,
+        patterns: &[IrMultiMatchPattern],
+        timeout: Option<&IrTimeout>,
+        span: IrSpan,
+    ) -> Result<String, ExecError> {
+        use relux_ir::IrNode;
+        let effective = timeout
+            .cloned()
+            .unwrap_or_else(|| self.ctx.timeout().clone());
+
+        // 1. Interpolate patterns + emit per-pattern interpolation events.
+        let mut compiled: Vec<MultiSlot> = Vec::with_capacity(patterns.len());
+        for ir_pat in patterns {
+            let resolved = interpolate_ir(ir_pat.pattern(), &self.ctx).await;
+            self.emit_interpolation(ir_pat.pattern(), &resolved, Some(&span))
+                .await;
+            let slot = if ir_pat.is_regex() {
+                let re = match RegexBuilder::new(&resolved)
+                    .multi_line(true)
+                    .crlf(true)
+                    .build()
+                {
+                    Ok(re) => re,
+                    Err(e) => {
+                        let context = self.capture_failure_context().await;
+                        return Err(Failure::Runtime {
+                            message: format!("invalid regex: {}", regex_error_summary(&e)),
+                            span: Some(ir_pat.pattern().span().clone()),
+                            shell: Some(self.ctx.current_name().to_string()),
+                            context,
+                        }
+                        .into());
+                    }
+                };
+                PatternSlot::regex(resolved.clone(), re)
+            } else {
+                PatternSlot::literal(resolved.clone())
+            };
+            compiled.push(MultiSlot {
+                slot,
+                source: resolved.clone(),
+                is_regex: ir_pat.is_regex(),
+                hit: None,
+                done: false,
+                buffer_seq: None,
+            });
+        }
+
+        // 2. Open the multi-match span.
+        let shell = self.ctx.current_name();
+        let parent_span = self.current_span();
+        let mm_guard = self
+            .log
+            .open_multimatch_span(parent_span, &shell, Some(&span));
+        let mm_span_id = mm_guard.id();
+        self.ctx.push_span(mm_span_id);
+
+        // 3. Emit MultiMatchStart with pattern metadata.
+        let pattern_meta: Vec<crate::observe::structured::MultiMatchPattern> = compiled
+            .iter()
+            .map(|m| crate::observe::structured::MultiMatchPattern {
+                pattern: m.source.clone(),
+                is_regex: m.is_regex,
+            })
+            .collect();
+        self.log.emit_multimatch_start(
+            mm_span_id,
+            &shell,
+            &self.shell_marker,
+            &pattern_meta,
+            &effective,
+            Some(&span),
+        );
+
+        // 4. Snapshot block-entry offset and start timer.
+        let block_entry = self.pty.output_buf.base_offset().await;
+        let block_start = Instant::now();
+
+        // 5. Run the scan loop. Terminal lifecycle events emit while the
+        //    span is still open.
+        let outcome = self
+            .wait_multimatch(
+                &mut compiled,
+                block_entry,
+                block_start,
+                &effective,
+                &span,
+                mm_span_id,
+            )
+            .await;
+
+        // 6. Close the multi-match span.
+        self.ctx.pop_span();
+        drop(mm_guard);
+
+        outcome.map(|()| String::new())
+    }
+
+    async fn wait_multimatch(
+        &self,
+        slots: &mut [MultiSlot],
+        block_entry: usize,
+        block_start: Instant,
+        timeout: &IrTimeout,
+        span: &IrSpan,
+        mm_span_id: SpanId,
+    ) -> Result<(), ExecError> {
+        let dur = timeout.adjusted_duration_with_flaky(self.flaky_timeout_multiplier);
+        let shell = self.ctx.current_name();
+
+        let fut = async {
+            loop {
+                let notified = self.pty.output_buf.notify.notified();
+
+                // 1. Fail-pattern check (peek-only, no drain).
+                let fail_pat = self.ctx.fail_pattern();
+                if let Some(hit) = self.pty.output_buf.check_fail_pattern(fail_pat).await {
+                    return Err(self.make_fail_pattern_error(hit, span.clone()).await);
+                }
+
+                // 2. Build a temporary slice of pattern slots that are still
+                //    unmatched, then scan in one pass.
+                let mut active_idx: Vec<usize> = Vec::with_capacity(slots.len());
+                let mut active_slots: Vec<PatternSlot> = Vec::with_capacity(slots.len());
+                for (i, s) in slots.iter().enumerate() {
+                    if s.hit.is_none() {
+                        active_idx.push(i);
+                        active_slots.push(s.slot.clone());
+                    }
+                }
+                let hits = self
+                    .pty
+                    .output_buf
+                    .multimatch_scan(&mut active_slots, block_entry)
+                    .await;
+
+                // 3. For each newly-matched slot, emit the per-pattern
+                //    `Matched` buffer event then `MultiMatchPatternDone`.
+                let mut max_end: Option<(usize, EventSeq)> = None;
+                for (k, hit_opt) in hits.into_iter().enumerate() {
+                    let Some(hit) = hit_opt else { continue };
+                    let i = active_idx[k];
+                    let buffer_seq = self.pty.output_buf.push_multimatch_matched_event(
+                        hit.before.clone(),
+                        hit.matched_text.clone(),
+                        hit.after.clone(),
+                    );
+                    let end_abs = hit.end_abs;
+                    slots[i].hit = Some(hit);
+                    slots[i].buffer_seq = Some(buffer_seq);
+                    slots[i].done = true;
+                    let elapsed = block_start.elapsed();
+                    self.log.emit_multimatch_pattern_done(
+                        mm_span_id,
+                        &shell,
+                        &self.shell_marker,
+                        i,
+                        elapsed,
+                        buffer_seq,
+                        Some(span),
+                    );
+                    match max_end {
+                        Some((cur, _)) if end_abs <= cur => {}
+                        _ => max_end = Some((end_abs, buffer_seq)),
+                    }
+                }
+                // Recompute across all matched slots so the chosen advance
+                // is the farthest hit overall, not just within this round.
+                for s in slots.iter() {
+                    if let (Some(h), Some(seq)) = (s.hit.as_ref(), s.buffer_seq) {
+                        match max_end {
+                            Some((cur, _)) if h.end_abs <= cur => {}
+                            _ => max_end = Some((h.end_abs, seq)),
+                        }
+                    }
+                }
+
+                // 4. All slots done?
+                if slots.iter().all(|s| s.hit.is_some()) {
+                    let (final_end, advance_seq) =
+                        max_end.expect("all slots matched -> max_end set");
+                    self.pty.output_buf.drain_to(final_end).await;
+                    self.log.emit_multimatch_done(
+                        mm_span_id,
+                        &shell,
+                        &self.shell_marker,
+                        advance_seq,
+                        Some(span),
+                    );
+                    return Ok::<(), ExecError>(());
+                }
+
+                // 5. Wait for the buffer to grow or cancellation.
+                tokio::select! {
+                    _ = notified => {}
+                    _ = self.cancel.cancelled() => {
+                        return Err(self.observed_cancel(Some(span.clone())).await);
+                    }
+                }
+            }
+        };
+
+        match tokio::time::timeout(dur, fut).await {
+            Ok(result) => result,
+            Err(_) => {
+                let unmatched: Vec<usize> = slots
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, s)| s.hit.is_none())
+                    .map(|(i, _)| i)
+                    .collect();
+                let matched: Vec<usize> = slots
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, s)| s.hit.is_some())
+                    .map(|(i, _)| i)
+                    .collect();
+                self.log.emit_multimatch_timeout(
+                    mm_span_id,
+                    &shell,
+                    &self.shell_marker,
+                    &unmatched,
+                    Some(span),
+                );
+                let pattern_meta: Vec<crate::observe::structured::MultiMatchPattern> = slots
+                    .iter()
+                    .map(|m| crate::observe::structured::MultiMatchPattern {
+                        pattern: m.source.clone(),
+                        is_regex: m.is_regex,
+                    })
+                    .collect();
+                let context = self.capture_failure_context().await;
+                Err(Failure::MultiMatch {
+                    shell: self.ctx.current_name().to_string(),
+                    patterns: pattern_meta,
+                    matched,
+                    span: span.clone(),
+                    effective: Box::new(timeout.clone()),
+                    context,
+                }
+                .into())
             }
         }
     }

@@ -120,6 +120,7 @@ public class ReluxSyntaxHighlighter extends SyntaxHighlighterBase {
             tokenType.equals(ReluxTokenTypes.OP_MATCH_LITERAL) ||
             tokenType.equals(ReluxTokenTypes.OP_FAIL_REGEX) ||
             tokenType.equals(ReluxTokenTypes.OP_FAIL_LITERAL) ||
+            tokenType.equals(ReluxTokenTypes.OP_MULTIMATCH_OPEN) ||
             tokenType.equals(ReluxTokenTypes.OP_ASSIGN) ||
             tokenType.equals(ReluxTokenTypes.CONDITION_OP)) {
             return OPERATOR_KEYS;

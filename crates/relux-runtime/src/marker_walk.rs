@@ -167,6 +167,7 @@ impl<'a> Visitor<'a> {
             | IrShellStmt::FailRegex { .. }
             | IrShellStmt::FailLiteral { .. }
             | IrShellStmt::ClearFailPattern { .. }
+            | IrShellStmt::MultiMatch { .. }
             | IrShellStmt::BufferReset { .. } => {}
             IrShellStmt::Let { stmt, .. } => {
                 if let Some(expr) = stmt.value() {

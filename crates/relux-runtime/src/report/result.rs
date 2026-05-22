@@ -272,23 +272,39 @@ impl From<&Failure> for relux_core::error::DiagnosticReport {
                 matched,
                 span,
                 ..
-            } => DiagnosticReport {
-                severity: Severity::Error,
-                message: format!("multimatch did not satisfy all patterns in shell `{shell}`"),
-                labels: vec![
-                    (
-                        span.clone(),
-                        format!(
-                            "{}/{} patterns matched before timeout",
-                            matched.len(),
-                            patterns.len()
-                        ),
-                    )
-                        .into(),
-                ],
-                help: None,
-                note: None,
-            },
+            } => {
+                let matched_set: std::collections::HashSet<usize> =
+                    matched.iter().copied().collect();
+                let total = patterns.len();
+                let hit_count = matched_set.len();
+                let header = format!(
+                    "multimatch did not satisfy all patterns ({hit_count} matched, {} timed out)",
+                    total.saturating_sub(hit_count),
+                );
+                let mut lines = String::with_capacity(header.len() + patterns.len() * 48);
+                lines.push_str(&header);
+                lines.push('\n');
+                for (i, p) in patterns.iter().enumerate() {
+                    let label = if matched_set.contains(&i) {
+                        "matched:"
+                    } else {
+                        "timed out:"
+                    };
+                    let kind = if p.is_regex { "?" } else { "=" };
+                    let line = format!("{label:<13}{kind} {pat}", pat = p.pattern);
+                    lines.push_str(&line);
+                    lines.push('\n');
+                }
+                DiagnosticReport {
+                    severity: Severity::Error,
+                    message: format!("multimatch in shell `{shell}` did not satisfy all patterns"),
+                    labels: vec![
+                        (span.clone(), "multimatch block timed out here".to_string()).into(),
+                    ],
+                    help: None,
+                    note: Some(lines.trim_end().to_string()),
+                }
+            }
         }
     }
 }
@@ -652,6 +668,46 @@ mod tests {
             context: FailureContext::pre_vm(),
         };
         assert_eq!(f.failure_type(), "MultiMatch");
+    }
+
+    #[test]
+    fn diagnostic_report_multimatch_lists_per_pattern_status() {
+        use crate::observe::structured::event::MultiMatchPattern;
+        use relux_core::error::DiagnosticReport;
+        let f = Failure::MultiMatch {
+            shell: "default".into(),
+            patterns: vec![
+                MultiMatchPattern {
+                    pattern: "^a$".into(),
+                    is_regex: true,
+                },
+                MultiMatchPattern {
+                    pattern: "^b$".into(),
+                    is_regex: true,
+                },
+                MultiMatchPattern {
+                    pattern: "^c$".into(),
+                    is_regex: true,
+                },
+            ],
+            matched: vec![0, 2],
+            span: dummy_span(),
+            effective: Box::new(IrTimeout::tolerance(std::time::Duration::from_secs(5))),
+            context: FailureContext::pre_vm(),
+        };
+        let rep: DiagnosticReport = (&f).into();
+        let note = rep
+            .note
+            .expect("multimatch DiagnosticReport must carry a per-pattern note");
+        assert!(note.contains("matched:"), "matched label present: {note}");
+        assert!(
+            note.contains("timed out:"),
+            "timed-out label present: {note}"
+        );
+        assert!(note.contains("^a$"), "pattern 0 listed");
+        assert!(note.contains("^b$"), "pattern 1 listed");
+        assert!(note.contains("^c$"), "pattern 2 listed");
+        assert!(note.is_ascii(), "diagnostic note must be ASCII-only");
     }
 
     #[test]

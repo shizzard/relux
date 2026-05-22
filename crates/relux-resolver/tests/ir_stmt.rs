@@ -690,3 +690,70 @@ fn lower_pure_stmt_rejects_clear_fail() {
     let result = IrPureStmt::lower(&stmt, &file, &mut ctx);
     assert!(matches!(result, Err(LoweringBail::Invalid(_))));
 }
+
+#[test]
+fn ir_shell_stmt_multimatch_node_span() {
+    let s = test_span();
+    let pat = IrMultiMatchPattern::new(IrInterpolation::new(vec![], s.clone()), true, s.clone());
+    let stmt = IrShellStmt::MultiMatch {
+        timeout: None,
+        patterns: vec![pat],
+        span: s,
+    };
+    assert!(matches!(stmt, IrShellStmt::MultiMatch { .. }));
+}
+
+#[test]
+fn lower_multimatch_basic() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let stmt = extract_first_stmt(
+        r#"fn t() {
+  <{
+    ? ^done$
+  }
+}
+"#,
+    );
+    let ir = IrShellStmt::lower(&stmt, &file, &mut ctx);
+    let ir = ir.expect("multimatch should lower successfully");
+    assert!(matches!(ir, IrShellStmt::MultiMatch { .. }));
+}
+
+#[test]
+fn lower_multimatch_rejects_in_pure_context() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let stmt = extract_first_stmt(
+        r#"fn t() {
+  <{
+    ? ^x$
+  }
+}
+"#,
+    );
+    let result = IrPureStmt::lower(&stmt, &file, &mut ctx);
+    assert!(matches!(result, Err(LoweringBail::Invalid(_))));
+}
+
+#[test]
+fn lower_multimatch_invalid_regex_diagnoses() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let stmt = extract_first_stmt(
+        r#"fn t() {
+  <{
+    ? (unclosed
+  }
+}
+"#,
+    );
+    let result = IrShellStmt::lower(&stmt, &file, &mut ctx);
+    assert!(
+        result.is_err(),
+        "invalid regex inside multimatch must surface at lowering"
+    );
+}

@@ -344,4 +344,32 @@ mod tests {
         assert_eq!(sb.name.node.name, "main");
         assert!(sb.stmts.is_empty());
     }
+
+    #[test]
+    fn shell_block_with_multimatch_stmt() {
+        let sb = parse_shell(
+            r#"shell main {
+  > go
+  <{
+    ? ^a$
+    ? ^b$
+  }
+}"#,
+        );
+        assert_eq!(sb.stmts.len(), 2);
+        assert!(matches!(&sb.stmts[1].node, AstStmt::MultiMatch { .. }));
+    }
+
+    #[test]
+    fn cleanup_block_with_multimatch_stmt() {
+        let cb = parse_cleanup(
+            r#"cleanup {
+  <{
+    ? ^done$
+  }
+}"#,
+        );
+        assert_eq!(cb.stmts.len(), 1);
+        assert!(matches!(&cb.stmts[0].node, AstStmt::MultiMatch { .. }));
+    }
 }

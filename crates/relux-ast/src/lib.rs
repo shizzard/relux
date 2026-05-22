@@ -135,6 +135,15 @@ pub struct AstCallExpr {
 // --- Statements ------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AstMultiMatchPattern {
+    pub pattern: AstInterpolation,
+    pub is_regex: bool,
+    pub span: Span,
+}
+
+impl_ast_node_struct!(AstMultiMatchPattern);
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum AstStmt {
     Comment {
         text: String,
@@ -192,6 +201,11 @@ pub enum AstStmt {
     BufferReset {
         span: Span,
     },
+    MultiMatch {
+        timeout: Option<AstTimeout>,
+        patterns: Vec<Spanned<AstMultiMatchPattern>>,
+        span: Span,
+    },
     Expr {
         expr: AstExpr,
         span: Span,
@@ -213,6 +227,7 @@ impl_ast_node_enum!(AstStmt {
     TimedMatchRegex,
     TimedMatchLiteral,
     BufferReset,
+    MultiMatch,
     Expr,
 });
 
@@ -513,3 +528,28 @@ impl_ast_node_struct!(
     AstTestDef,
     AstModule,
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ast_stmt_multimatch_node_span() {
+        let span = Span::new(10, 50);
+        let pat_span = Span::new(12, 25);
+        let pat = AstMultiMatchPattern {
+            pattern: AstInterpolation {
+                parts: vec![],
+                span: pat_span,
+            },
+            is_regex: true,
+            span: pat_span,
+        };
+        let stmt = AstStmt::MultiMatch {
+            timeout: None,
+            patterns: vec![Spanned::new(pat, pat_span)],
+            span,
+        };
+        assert_eq!(stmt.span(), &span);
+    }
+}

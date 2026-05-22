@@ -106,11 +106,29 @@
       "patterns": [
         { "include": "#op-send-raw" },
         { "include": "#op-send" },
+        { "include": "#op-timed-multimatch-open" },
+        { "include": "#op-multimatch-open" },
         { "include": "#op-timed-match-regex" },
         { "include": "#op-timed-match-literal" },
         { "include": "#op-match-regex" },
         { "include": "#op-match-literal" }
       ]
+    },
+
+    "op-multimatch-open": {
+      "match": "(<\\{)",
+      "captures": {
+        "1": { "name": "keyword.operator.multimatch.relux" }
+      }
+    },
+
+    "op-timed-multimatch-open": {
+      "match": "(<)([~@][0-9][0-9a-zA-Z]*)(\\{)",
+      "captures": {
+        "1": { "name": "keyword.operator.multimatch.relux" },
+        "2": { "name": "constant.other.duration.relux" },
+        "3": { "name": "keyword.operator.multimatch.relux" }
+      }
     },
 
     "op-send-raw": {

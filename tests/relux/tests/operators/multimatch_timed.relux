@@ -1,0 +1,29 @@
+test "multimatch with tolerance timeout passes well within bound" {
+    """
+    Block-level tolerance timeout. The patterns print immediately; the
+    10s budget is far in excess of what is needed.
+    """
+    shell s {
+        > echo a
+        > echo b
+        <~10s{
+            ? ^a$
+            ? ^b$
+        }
+    }
+}
+
+test "multimatch with assertion timeout" {
+    """
+    Block-level assertion timeout. `@` timeouts are never scaled by the
+    flaky multiplier.
+    """
+    shell s {
+        > echo a
+        > echo b
+        <@5s{
+            ? ^a$
+            ? ^b$
+        }
+    }
+}

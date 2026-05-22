@@ -128,6 +128,13 @@ CONDITION_OP = [=?]
     "cleanup"                   { return ReluxTokenTypes.CLEANUP; }
 }
 
+// Multimatch openers: <{, <~5s{, <@2s{  (placed above single-match timed
+// rules because they share the `<` and `~Ns` / `@Ns` prefix).
+<YYINITIAL> {
+    "<" {LINE_SPACE} [~@] {DURATION} {LINE_SPACE} "{"  { return ReluxTokenTypes.OP_MULTIMATCH_OPEN; }
+    "<{"                                               { return ReluxTokenTypes.OP_MULTIMATCH_OPEN; }
+}
+
 // Operators with inline timeout: <~5s?  <~10s=  (also @-prefixed assertion timeouts)
 <YYINITIAL> {
     "<" {LINE_SPACE} [~@] {DURATION} {LINE_SPACE} "?"  { yybegin(IN_REGEX_PAYLOAD); return ReluxTokenTypes.OP_MATCH_REGEX; }
