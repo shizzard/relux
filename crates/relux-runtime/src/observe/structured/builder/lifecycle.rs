@@ -124,6 +124,25 @@ impl StructuredLogBuilder {
         self.open_span(SpanKind::Markers, None, location)
     }
 
+    /// Open a `multi-match` span as a child of `parent`. Carries the
+    /// owning shell's display name; the viewer keys on this span kind
+    /// to apply the observation-vs-drain rule to inner `Matched` buffer
+    /// events.
+    pub fn open_multimatch_span(
+        &self,
+        parent: SpanId,
+        shell: &str,
+        location: Option<&IrSpan>,
+    ) -> SpanGuard {
+        self.open_span(
+            SpanKind::MultiMatch {
+                shell: shell.to_string(),
+            },
+            Some(parent),
+            location,
+        )
+    }
+
     /// Open a `marker-eval` span as a child of a `markers` root.
     pub fn open_marker_eval_span(
         &self,

@@ -131,6 +131,15 @@ pub enum SpanKind {
     ShellBlock {
         shell: String,
     },
+    /// Block opened by the runtime when entering `<{ ... }` (and timed
+    /// variants). Spans the multipattern scan; closes at
+    /// `MultiMatchDone` or `MultiMatchTimeout` (or via the failure path
+    /// on fail-pattern abort). Mirrors `ShellBlock`'s shape; the viewer
+    /// keys on this kind to apply the observation-vs-drain rule for
+    /// per-pattern `Matched` buffer events.
+    MultiMatch {
+        shell: String,
+    },
     CleanupBlock,
     FnCall {
         name: String,
@@ -164,6 +173,7 @@ impl SpanKind {
             SpanKind::EffectSetup { .. } => "effect-setup",
             SpanKind::EffectCleanup { .. } => "effect-cleanup",
             SpanKind::ShellBlock { .. } => "shell-block",
+            SpanKind::MultiMatch { .. } => "multi-match",
             SpanKind::CleanupBlock => "cleanup-block",
             SpanKind::FnCall { .. } => "fn-call",
             SpanKind::Markers => "markers",
@@ -182,6 +192,7 @@ impl SpanKind {
             } => (Some(effect.clone()), overlay.clone()),
             SpanKind::EffectCleanup { effect, .. } => (Some(effect.clone()), Vec::new()),
             SpanKind::ShellBlock { shell } => (Some(shell.clone()), Vec::new()),
+            SpanKind::MultiMatch { shell } => (Some(shell.clone()), Vec::new()),
             SpanKind::FnCall { name, args, .. } => (Some(name.clone()), args.clone()),
             SpanKind::Markers => (None, Vec::new()),
             SpanKind::MarkerEval { .. } => (None, Vec::new()),
@@ -238,6 +249,28 @@ mod tests {
         assert_eq!(json["name"], "trim");
         assert_eq!(json["callee_kind"], "bif");
         assert_eq!(json["is_pure"], true);
+    }
+
+    #[test]
+    fn multi_match_span_kind_serialises() {
+        let kind = SpanKind::MultiMatch {
+            shell: "default".into(),
+        };
+        let v = serde_json::to_value(&kind).unwrap();
+        assert_eq!(v["kind"], serde_json::json!("multi-match"));
+        assert_eq!(v["shell"], serde_json::json!("default"));
+    }
+
+    #[test]
+    fn multi_match_span_kind_str_and_frame_data() {
+        let kind = SpanKind::MultiMatch {
+            shell: "default".into(),
+        };
+        assert_eq!(kind.kind_str(), "multi-match");
+        let (name, args) = kind.frame_data();
+        assert_eq!(name.as_deref(), Some("default"));
+        assert!(args.is_empty());
+        assert_eq!(kind.frame_alias(), None);
     }
 }
 

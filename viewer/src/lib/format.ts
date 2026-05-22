@@ -217,6 +217,14 @@ export function eventSummary(event: Event): string {
       return `${event.name} = ${truncate(escapeBytes(event.value), SUMMARY_MAX)}`;
     case 'cancelled':
       return cancelReasonSummary(event.reason);
+    case 'multi-match-start':
+      return `multimatch (${event.patterns.length} patterns, \u{2264} ${formatTimeout(event.effective)})`;
+    case 'multi-match-pattern-done':
+      return `pattern #${event.index} (${formatDuration(event.elapsed)})`;
+    case 'multi-match-done':
+      return '';
+    case 'multi-match-timeout':
+      return `${event.unmatched.length} unmatched`;
   }
 }
 
@@ -331,6 +339,8 @@ export function spanTitle(span: Span): string {
     case 'effect-cleanup':
       return span.effect;
     case 'shell-block':
+      return span.shell;
+    case 'multi-match':
       return span.shell;
     case 'cleanup-block':
       return 'cleanup';

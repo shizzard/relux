@@ -32,6 +32,21 @@ pub enum TimeoutValue {
     },
 }
 
+/// Per-pattern descriptor for a `MultiMatch*` event. Carries the pattern's
+/// source text and whether it is a regex or literal. The matched substring
+/// and offsets live on the corresponding `BufferEventKind::Matched` event
+/// referenced by `MultiMatchPatternDone.buffer_seq` - they are not
+/// duplicated here.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
+pub struct MultiMatchPattern {
+    pub pattern: String,
+    pub is_regex: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[cfg_attr(
     feature = "ts-export",
@@ -222,6 +237,47 @@ pub enum EventKind {
     Cancelled {
         reason: CancelReasonRecord,
     },
+
+    // --- Multimatch (R014) -------------------------------
+    //
+    // `<{ ?... =... }` and timed variants record this set of events:
+    //   Success: MultiMatchStart + N MultiMatchPatternDone (in completion
+    //            order, not source order) + MultiMatchDone.
+    //   Timeout: MultiMatchStart + 0..N MultiMatchPatternDone +
+    //            MultiMatchTimeout.
+    //   Fail-pattern abort: MultiMatchStart + 0..N MultiMatchPatternDone,
+    //            then the existing FailPatternTriggered path takes over.
+    MultiMatchStart {
+        /// The block-level timeout that bounds this wait.
+        effective: TimeoutValue,
+        /// All patterns in source order. Indices into this vec are
+        /// referenced by `MultiMatchPatternDone.index` and
+        /// `MultiMatchTimeout.unmatched`.
+        patterns: Vec<MultiMatchPattern>,
+    },
+    MultiMatchPatternDone {
+        /// Index into `MultiMatchStart.patterns`.
+        index: usize,
+        /// Time since block entry (not test start).
+        #[serde(with = "super::ts_duration_ms")]
+        #[ts(as = "f64")]
+        elapsed: Duration,
+        /// `EventSeq` of the per-pattern `BufferEventKind::Matched` event
+        /// emitted under the same buf lock as this pattern's success.
+        /// Single source of truth for matched text and absolute offsets.
+        buffer_seq: EventSeq,
+    },
+    MultiMatchDone {
+        /// `EventSeq` of the per-pattern `Matched` whose match ends
+        /// farthest in the buffer. The viewer applies the block-end
+        /// cursor advance by `len(before) + len(matched)` of this event.
+        advance_to: EventSeq,
+    },
+    MultiMatchTimeout {
+        /// Indices into `MultiMatchStart.patterns` that did not match
+        /// before the block timeout fired.
+        unmatched: Vec<usize>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -286,5 +342,63 @@ mod pure_match_tests {
         assert_eq!(v["kind"], serde_json::json!("pure-match"));
         assert_eq!(v["match_kind"], serde_json::json!("regex"));
         assert_eq!(v["result"], serde_json::json!("abc"));
+    }
+
+    #[test]
+    fn multimatch_start_event_kind_serialises() {
+        let k = EventKind::MultiMatchStart {
+            effective: TimeoutValue::Assertion {
+                duration: "5s".into(),
+                source: None,
+            },
+            patterns: vec![
+                MultiMatchPattern {
+                    pattern: "^ok$".into(),
+                    is_regex: true,
+                },
+                MultiMatchPattern {
+                    pattern: "batch complete".into(),
+                    is_regex: false,
+                },
+            ],
+        };
+        let v = serde_json::to_value(&k).unwrap();
+        assert_eq!(v["kind"], serde_json::json!("multi-match-start"));
+        assert_eq!(v["patterns"][0]["is_regex"], serde_json::json!(true));
+        assert_eq!(
+            v["patterns"][1]["pattern"],
+            serde_json::json!("batch complete")
+        );
+    }
+
+    #[test]
+    fn multimatch_pattern_done_event_kind_serialises() {
+        let k = EventKind::MultiMatchPatternDone {
+            index: 1,
+            elapsed: Duration::from_millis(42),
+            buffer_seq: 17,
+        };
+        let v = serde_json::to_value(&k).unwrap();
+        assert_eq!(v["kind"], serde_json::json!("multi-match-pattern-done"));
+        assert_eq!(v["index"], serde_json::json!(1));
+        assert_eq!(v["buffer_seq"], serde_json::json!(17));
+    }
+
+    #[test]
+    fn multimatch_done_event_kind_serialises() {
+        let k = EventKind::MultiMatchDone { advance_to: 23 };
+        let v = serde_json::to_value(&k).unwrap();
+        assert_eq!(v["kind"], serde_json::json!("multi-match-done"));
+        assert_eq!(v["advance_to"], serde_json::json!(23));
+    }
+
+    #[test]
+    fn multimatch_timeout_event_kind_serialises() {
+        let k = EventKind::MultiMatchTimeout {
+            unmatched: vec![0, 2],
+        };
+        let v = serde_json::to_value(&k).unwrap();
+        assert_eq!(v["kind"], serde_json::json!("multi-match-timeout"));
+        assert_eq!(v["unmatched"], serde_json::json!([0, 2]));
     }
 }

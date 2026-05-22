@@ -77,6 +77,66 @@ pub enum FailureRecord {
         call_stack: Vec<StackFrame>,
         vars_in_scope: Vec<(String, String)>,
     },
+    MultiMatch {
+        span: SpanId,
+        event_seq: EventSeq,
+        shell: String,
+        /// All patterns in source order (mirrors `MultiMatchStart.patterns`).
+        patterns: Vec<super::event::MultiMatchPattern>,
+        /// Indices into `patterns` that matched before the block timed out.
+        /// The unmatched indices are the complement.
+        matched: Vec<usize>,
+        /// The block-level timeout that fired.
+        effective: TimeoutValue,
+        call_stack: Vec<StackFrame>,
+        buffer_tail: String,
+        vars_in_scope: Vec<(String, String)>,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::observe::structured::event::MultiMatchPattern;
+
+    #[test]
+    fn failure_record_multimatch_round_trips_serde() {
+        let original = FailureRecord::MultiMatch {
+            span: 3,
+            event_seq: 11,
+            shell: "default".into(),
+            patterns: vec![
+                MultiMatchPattern {
+                    pattern: "^a$".into(),
+                    is_regex: true,
+                },
+                MultiMatchPattern {
+                    pattern: "b".into(),
+                    is_regex: false,
+                },
+            ],
+            matched: vec![1],
+            effective: TimeoutValue::Assertion {
+                duration: "5s".into(),
+                source: None,
+            },
+            call_stack: vec![],
+            buffer_tail: "tail".into(),
+            vars_in_scope: vec![("k".into(), "v".into())],
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        assert!(json.contains("\"type\":\"multi-match\""), "json: {json}");
+        let parsed: FailureRecord = serde_json::from_str(&json).unwrap();
+        match parsed {
+            FailureRecord::MultiMatch {
+                matched, patterns, ..
+            } => {
+                assert_eq!(matched, vec![1usize]);
+                assert_eq!(patterns.len(), 2);
+            }
+            other => panic!("expected MultiMatch, got {other:?}"),
+        }
+    }
 }
 
 /// Self-contained record of a test cancellation. Distinct from

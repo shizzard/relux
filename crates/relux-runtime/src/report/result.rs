@@ -136,6 +136,23 @@ pub enum Failure {
         shell: Option<String>,
         context: FailureContext,
     },
+    #[error(
+        "multimatch did not satisfy all patterns in shell '{shell}' ({matched_count}/{total} matched)",
+        matched_count = matched.len(),
+        total = patterns.len(),
+    )]
+    MultiMatch {
+        shell: String,
+        /// All patterns in source order.
+        patterns: Vec<crate::observe::structured::event::MultiMatchPattern>,
+        /// Indices into `patterns` that matched before the block timed out.
+        matched: Vec<usize>,
+        span: IrSpan,
+        /// The block-level timeout that fired. Boxed to keep variant size in
+        /// line with the other failures (see clippy::large_enum_variant).
+        effective: Box<IrTimeout>,
+        context: FailureContext,
+    },
 }
 
 impl Failure {
@@ -149,6 +166,7 @@ impl Failure {
             Failure::FailPatternMatched { .. } => "FailPatternMatched",
             Failure::ShellExited { .. } => "ShellExited",
             Failure::Runtime { .. } => "Runtime",
+            Failure::MultiMatch { .. } => "MultiMatch",
         }
     }
 
@@ -157,7 +175,8 @@ impl Failure {
             Failure::MatchTimeout { context, .. }
             | Failure::FailPatternMatched { context, .. }
             | Failure::ShellExited { context, .. }
-            | Failure::Runtime { context, .. } => context,
+            | Failure::Runtime { context, .. }
+            | Failure::MultiMatch { context, .. } => context,
         }
     }
 }
@@ -247,6 +266,29 @@ impl From<&Failure> for relux_core::error::DiagnosticReport {
                     },
                 }
             }
+            Failure::MultiMatch {
+                shell,
+                patterns,
+                matched,
+                span,
+                ..
+            } => DiagnosticReport {
+                severity: Severity::Error,
+                message: format!("multimatch did not satisfy all patterns in shell `{shell}`"),
+                labels: vec![
+                    (
+                        span.clone(),
+                        format!(
+                            "{}/{} patterns matched before timeout",
+                            matched.len(),
+                            patterns.len()
+                        ),
+                    )
+                        .into(),
+                ],
+                help: None,
+                note: None,
+            },
         }
     }
 }
@@ -566,6 +608,50 @@ mod tests {
             context: FailureContext::pre_vm(),
         };
         assert_eq!(f.summary(), "runtime error: something broke");
+    }
+
+    #[test]
+    fn summary_multimatch() {
+        use crate::observe::structured::event::MultiMatchPattern;
+        let f = Failure::MultiMatch {
+            shell: "default".into(),
+            patterns: vec![
+                MultiMatchPattern {
+                    pattern: "^a$".into(),
+                    is_regex: true,
+                },
+                MultiMatchPattern {
+                    pattern: "b".into(),
+                    is_regex: false,
+                },
+            ],
+            matched: vec![0],
+            span: dummy_span(),
+            effective: Box::new(IrTimeout::tolerance(std::time::Duration::from_secs(5))),
+            context: FailureContext::pre_vm(),
+        };
+        let summary = f.summary();
+        assert!(
+            summary.starts_with("multimatch did not satisfy all patterns"),
+            "got: {summary}"
+        );
+    }
+
+    #[test]
+    fn failure_type_multimatch() {
+        use crate::observe::structured::event::MultiMatchPattern;
+        let f = Failure::MultiMatch {
+            shell: "default".into(),
+            patterns: vec![MultiMatchPattern {
+                pattern: "^a$".into(),
+                is_regex: true,
+            }],
+            matched: vec![],
+            span: dummy_span(),
+            effective: Box::new(IrTimeout::tolerance(std::time::Duration::from_secs(5))),
+            context: FailureContext::pre_vm(),
+        };
+        assert_eq!(f.failure_type(), "MultiMatch");
     }
 
     #[test]

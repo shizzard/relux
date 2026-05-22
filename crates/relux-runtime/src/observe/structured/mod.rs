@@ -35,6 +35,7 @@ pub use event::CancelReasonRecord;
 pub use event::Event;
 pub use event::EventKind;
 pub use event::EventSeq;
+pub use event::MultiMatchPattern;
 pub use failure::CancellationRecord;
 pub use failure::FailureRecord;
 pub use failure::StackFrame;

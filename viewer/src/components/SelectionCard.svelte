@@ -381,6 +381,8 @@
         }
         return out;
       }
+      default:
+        return [];
     }
   }
 
