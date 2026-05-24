@@ -265,10 +265,18 @@ export function foldedGlyph(f: FoldedEvent): string {
   }
 }
 
+// Viewer-side display label for an event kind. Most kinds render their
+// schema string verbatim; entries here override that for readability.
+// Per-pattern multimatch completions read as `match` so they look the
+// same as a folded single-shell match-start/match-done pair.
+const EVENT_KIND_LABELS: Partial<Record<Event['kind'], string>> = {
+  'multi-match-pattern-done': 'match',
+};
+
 export function foldedKindLabel(f: FoldedEvent): string {
   switch (f.kind) {
     case 'single':
-      return f.event.kind;
+      return EVENT_KIND_LABELS[f.event.kind] ?? f.event.kind;
     case 'sleep':
       return 'sleep';
     case 'match':

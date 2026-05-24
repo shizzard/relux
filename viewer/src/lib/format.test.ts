@@ -425,6 +425,14 @@ describe('folded helpers', () => {
     expect(foldedKindLabel(matchTimeout)).toBe('match');
   });
 
+  it('foldedKindLabel relabels per-pattern multimatch completions as match', () => {
+    const mmPatternDone: FoldedEvent = {
+      kind: 'single',
+      event: ev('multi-match-pattern-done', { index: 0, elapsed: 5, buffer_seq: 99n }),
+    };
+    expect(foldedKindLabel(mmPatternDone)).toBe('match');
+  });
+
   it('foldedSummary stitches the pair into a single line', () => {
     expect(foldedSummary(single)).toBe(eventSummary(single.event));
     expect(foldedSummary(sleep)).toBe('100ms');
