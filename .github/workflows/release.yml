@@ -72,6 +72,54 @@ jobs:
         with:
           files: relux-vscode-${{ github.ref_name }}.vsix
 
+      - name: Upload .vsix as workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: vscode-vsix
+          path: relux-vscode-${{ github.ref_name }}.vsix
+          retention-days: 7
+
+  vscode-publish:
+    name: VSCode Publish
+    needs: [vscode-plugin]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Download .vsix artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: vscode-vsix
+
+      - name: Publish to VS Code Marketplace
+        run: |
+          npm install -g @vscode/vsce
+          output=$(vsce publish --packagePath relux-vscode-${{ github.ref_name }}.vsix 2>&1) && exit 0
+          if echo "$output" | grep -qE "already exists|already published"; then
+            echo "Version already published to VS Marketplace, skipping."
+          else
+            echo "$output"
+            exit 1
+          fi
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Publish to Open VSX
+        run: |
+          npm install -g ovsx
+          output=$(ovsx publish relux-vscode-${{ github.ref_name }}.vsix 2>&1) && exit 0
+          if echo "$output" | grep -qE "already exists|already published"; then
+            echo "Version already published to Open VSX, skipping."
+          else
+            echo "$output"
+            exit 1
+          fi
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+
   publish:
     name: Publish to crates.io
     needs: [build]
