@@ -1,2 +1,4 @@
 .gitignore
+.vscodeignore
 *.vsix
+CONTRIBUTING.md
