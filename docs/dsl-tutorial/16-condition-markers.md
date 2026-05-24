@@ -1,6 +1,6 @@
 # Condition Markers
 
-[Previous: Modules and Imports](14-modules-and-imports.md)
+[Previous: Modules and Imports](15-modules-and-imports.md)
 
 Integration tests exercise real systems, and real systems have prerequisites. Some tests only make sense on a particular operating system. Some require a tool like `docker` or `psql` to be installed. Some are too slow to run locally on every test run, and belong exclusively to CI.
 
@@ -215,7 +215,7 @@ Each marker on a test produces a **marker-eval span** in the [test log viewer](0
 
 ## Pure function calls in markers
 
-Marker expressions are not limited to variable interpolation. You can call [pure functions](12-pure-functions.md) to compute values or perform checks. This is where markers become truly powerful for asserting environment preconditions.
+Marker expressions are not limited to variable interpolation. You can call [pure functions](13-pure-functions.md) to compute values or perform checks. This is where markers become truly powerful for asserting environment preconditions.
 
 The [built-in function](05-built-in-functions.md) `which()` checks whether an executable exists in PATH — it returns the path if found, or an empty string (falsy) if not:
 
@@ -283,7 +283,7 @@ The exact combination semantics for multiple markers are not yet established and
 
 ## Markers on functions
 
-Markers work on [functions](08-functions.md) and [pure functions](12-pure-functions.md) too:
+Markers work on [functions](09-functions.md) and [pure functions](13-pure-functions.md) too:
 
 ```relux
 # skip unless which("jq")
@@ -311,7 +311,7 @@ In the test log viewer, a skip that cascades from a marker on a function or effe
 
 ## Markers on effects
 
-Markers work on [effects](11-effects-and-dependencies.md) too. This is particularly useful for effects that provision heavy infrastructure:
+Markers work on [effects](12-effects-and-dependencies.md) too. This is particularly useful for effects that provision heavy infrastructure:
 
 ```relux
 # skip if "${SKIP_EFFECT}"
@@ -352,7 +352,7 @@ The distinction is:
 - **Markers** assert what the environment *already has* — an installed binary, a particular OS, a running CI server. These are things outside the test's control.
 - **Effects** provision what the test *needs* — starting a service, creating a temp directory, seeding a database. These are things the test can set up and tear down.
 
-If you can set it up, use an [effect](11-effects-and-dependencies.md). If you can only check for it, use a marker. A test that needs a PostgreSQL database running should have an effect that starts one. A test that needs `psql` to be installed should have a marker that checks for it.
+If you can set it up, use an [effect](12-effects-and-dependencies.md). If you can only check for it, use a marker. A test that needs a PostgreSQL database running should have an effect that starts one. A test that needs `psql` to be installed should have a marker that checks for it.
 
 ### Choose the marker that reads like intent
 
@@ -374,4 +374,4 @@ Putting a marker on an effect skips every test that depends on it. This is power
 
 ---
 
-Next: [The CLI](16-the-cli.md) — complete coverage of `relux init`, `new`, `check`, `run`, and `history`
+Next: [The CLI](17-the-cli.md) — complete coverage of `relux init`, `new`, `check`, `run`, and `history`

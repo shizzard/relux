@@ -38,7 +38,9 @@ export type EventTypeId =
   | 'log'
   | 'warning'
   | 'error'
-  | 'cancelled';
+  | 'cancelled'
+  | 'multi-match'
+  | 'multi-match-timeout';
 
 export const ALL_EVENT_TYPE_IDS: readonly EventTypeId[] = [
   'send',
@@ -59,6 +61,8 @@ export const ALL_EVENT_TYPE_IDS: readonly EventTypeId[] = [
   'warning',
   'error',
   'cancelled',
+  'multi-match',
+  'multi-match-timeout',
 ];
 
 export function foldedTypeId(f: FoldedEvent): EventTypeId | null {
@@ -107,6 +111,15 @@ export function singleEventTypeId(k: Event['kind']): EventTypeId | null {
       return 'error';
     case 'cancelled':
       return 'cancelled';
+    case 'multi-match-pattern-done':
+      return 'multi-match';
+    case 'multi-match-timeout':
+      return 'multi-match-timeout';
+    case 'multi-match-start':
+    case 'multi-match-done':
+      // Hidden via HIDDEN_EVENT_KINDS - they only delimit the
+      // multi-match span and never produce visible rows.
+      return null;
     default:
       return null;
   }
@@ -136,6 +149,11 @@ const HIDDEN_EVENT_KINDS: ReadonlySet<Event['kind']> = new Set([
   'recv',
   'string-eval',
   'annotate',
+  // multi-match-start / -done only delimit the multi-match span. The
+  // span entry is the visible container; pattern-done and timeout
+  // events surface as individual rows inside it.
+  'multi-match-start',
+  'multi-match-done',
 ]);
 
 const LOG_LEVELS: Partial<Record<Event['kind'], LogLevel>> = {

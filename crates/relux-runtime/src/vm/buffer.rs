@@ -97,6 +97,60 @@ pub struct Match<T: MatchKind> {
     pub value: T,
 }
 
+// --- Multimatch types ------------------------------------
+
+/// A pattern the multimatch scan is still looking for.
+/// `regex` is `None` for literal patterns; the source string lives in
+/// `pattern_str` either way so the builder can record it without going
+/// back to the IR.
+#[derive(Debug, Clone)]
+pub struct PatternSlot {
+    pub(crate) pattern_str: String,
+    pub(crate) regex: Option<Regex>,
+}
+
+impl PatternSlot {
+    pub fn literal(needle: String) -> Self {
+        Self {
+            pattern_str: needle,
+            regex: None,
+        }
+    }
+
+    pub fn regex(source: String, compiled: Regex) -> Self {
+        Self {
+            pattern_str: source,
+            regex: Some(compiled),
+        }
+    }
+
+    pub fn is_regex(&self) -> bool {
+        self.regex.is_some()
+    }
+
+    pub fn pattern(&self) -> &str {
+        &self.pattern_str
+    }
+}
+
+/// Result of a successful scan against one pattern slot.
+#[derive(Debug, Clone)]
+pub struct MultiMatchHit {
+    /// The full bytes that matched. Equal to `whole.as_str()` for regex,
+    /// equal to the needle for literal.
+    pub matched_text: String,
+    /// Absolute byte offset of match start (accounts for all prior drains).
+    pub start_abs: usize,
+    /// Absolute byte offset of match end.
+    pub end_abs: usize,
+    /// `before` slice (the prefix of `decoded` ahead of the match) captured
+    /// at the moment the scan ran. Used by the caller when emitting the
+    /// per-pattern `Matched` buffer event.
+    pub before: String,
+    /// `after` slice (the suffix of `decoded` after the match).
+    pub after: String,
+}
+
 // --- OutputBuffer ----------------------------------------
 
 struct BufferInner {
@@ -365,6 +419,81 @@ impl OutputBuffer {
         }
     }
 
+    /// Scan every still-unmatched slot against the current decoded buffer
+    /// **without draining and without checking fail patterns**. Returns,
+    /// per slot index, an `Option<MultiMatchHit>` (`Some` iff the slot
+    /// matched this round). Regex slots respect the partial-line guard.
+    ///
+    /// `block_entry` is the absolute offset of the multimatch block's entry
+    /// point. The scan operates against `decoded[block_entry - base ..]`.
+    pub async fn multimatch_scan(
+        &self,
+        slots: &mut [PatternSlot],
+        block_entry: usize,
+    ) -> Vec<Option<MultiMatchHit>> {
+        let inner = self.inner.lock().unwrap();
+        let start_rel = block_entry.saturating_sub(inner.base);
+        let text = if start_rel >= inner.decoded.len() {
+            ""
+        } else {
+            &inner.decoded[start_rel..]
+        };
+
+        let mut results = Vec::with_capacity(slots.len());
+        for slot in slots.iter() {
+            let hit = match &slot.regex {
+                Some(re) => scan_regex_in(re, text, inner.base + start_rel),
+                None => scan_literal_in(&slot.pattern_str, text, inner.base + start_rel),
+            };
+            results.push(hit);
+        }
+        results
+    }
+
+    /// Drop the prefix of `decoded` up to absolute offset `target` without
+    /// emitting any buffer event. Used at multimatch block exit to advance
+    /// past `max(end_abs)` across all pattern hits in a single step.
+    pub async fn drain_to(&self, target: usize) {
+        let mut inner = self.inner.lock().unwrap();
+        if target <= inner.base {
+            return;
+        }
+        let advance = target - inner.base;
+        debug_assert!(
+            advance <= inner.decoded.len(),
+            "drain_to target {target} exceeds buffer end {base}+{len}={end}",
+            base = inner.base,
+            len = inner.decoded.len(),
+            end = inner.base + inner.decoded.len(),
+        );
+        let advance = advance.min(inner.decoded.len());
+        inner.decoded.drain(..advance);
+        inner.base += advance;
+    }
+
+    /// Current absolute `base` offset - the byte position in this shell's
+    /// lifetime stream where `decoded` starts. Used by the VM at multimatch
+    /// block entry so the loop's scan operates in absolute coordinates that
+    /// remain stable across in-block `Grew` appends.
+    pub async fn base_offset(&self) -> usize {
+        let inner = self.inner.lock().unwrap();
+        inner.base
+    }
+
+    /// Push a `Matched` buffer event for a multimatch per-pattern hit.
+    /// Same `before`/`matched`/`after` shape as single-match, but **does
+    /// not drain** - the actual drain happens once at block exit via
+    /// `drain_to`. Returns the `EventSeq` of the just-emitted event.
+    pub fn push_multimatch_matched_event(
+        &self,
+        before: String,
+        matched: String,
+        after: String,
+    ) -> EventSeq {
+        let _guard = self.inner.lock().unwrap();
+        self.emit_matched(before, matched, after)
+    }
+
     /// Check fail pattern against current buffer (peek only, no drain).
     pub async fn check_fail_pattern(
         &self,
@@ -432,6 +561,36 @@ fn has_trailing_anchor(src: &str) -> bool {
     };
     let trailing_backslashes = stripped.bytes().rev().take_while(|&b| b == b'\\').count();
     trailing_backslashes % 2 == 0
+}
+
+fn scan_regex_in(re: &Regex, text: &str, base: usize) -> Option<MultiMatchHit> {
+    let cap = re.captures(text)?;
+    let whole = cap.get(0)?;
+    let pos = whole.start();
+    let end_pos = whole.end();
+    if is_partial_line_match(re, end_pos, text) {
+        return None;
+    }
+    let matched = whole.as_str().to_string();
+    Some(MultiMatchHit {
+        matched_text: matched.clone(),
+        start_abs: base + pos,
+        end_abs: base + end_pos,
+        before: text[..pos].to_string(),
+        after: text[end_pos..].to_string(),
+    })
+}
+
+fn scan_literal_in(needle: &str, text: &str, base: usize) -> Option<MultiMatchHit> {
+    let pos = text.find(needle)?;
+    let end_pos = pos + needle.len();
+    Some(MultiMatchHit {
+        matched_text: needle.to_string(),
+        start_abs: base + pos,
+        end_abs: base + end_pos,
+        before: text[..pos].to_string(),
+        after: text[end_pos..].to_string(),
+    })
 }
 
 /// Check if a fail pattern matches in the given text. Returns (pattern_str, matched_text).
@@ -902,5 +1061,123 @@ mod tests {
     fn check_fail_in_buffer_literal_no_match() {
         let fp = FailPattern::Literal("FATAL".to_string());
         assert!(check_fail_in_buffer("all good", &fp).is_none());
+    }
+
+    // --- multimatch_scan / drain_to ----------------------
+
+    #[tokio::test]
+    async fn multimatch_scan_finds_literal_and_regex_without_drain() {
+        let (buf, _builder, _rx) = wired_buffer();
+        buf.append(
+            b"job-a: started\njob-b: started\njob-a: complete (id=17)\njob-b: complete (id=23)\n",
+        )
+        .await;
+        let block_entry = 0;
+
+        let re_a = RegexBuilder::new(r"^job-a: complete \(id=\d+\)$")
+            .multi_line(true)
+            .crlf(true)
+            .build()
+            .unwrap();
+        let re_b = RegexBuilder::new(r"^job-b: complete \(id=\d+\)$")
+            .multi_line(true)
+            .crlf(true)
+            .build()
+            .unwrap();
+
+        let mut slots = vec![
+            PatternSlot::regex("^job-a: complete \\(id=\\d+\\)$".to_string(), re_a),
+            PatternSlot::regex("^job-b: complete \\(id=\\d+\\)$".to_string(), re_b),
+        ];
+
+        let hits = buf.multimatch_scan(&mut slots, block_entry).await;
+        assert!(hits[0].is_some(), "first slot should hit");
+        assert!(hits[1].is_some(), "second slot should hit");
+        // Critical: scan did not drain.
+        let remaining_len = buf.remaining().await.len();
+        assert_eq!(
+            remaining_len, 78,
+            "scan must be non-destructive (got len {remaining_len})"
+        );
+    }
+
+    #[tokio::test]
+    async fn multimatch_scan_returns_absolute_offsets() {
+        let buf = OutputBuffer::for_tests();
+        // Prime + drain to advance base.
+        buf.append(b"prefix ").await;
+        let _ = buf.consume_literal("prefix ").await.unwrap();
+        buf.append(b"target line\n").await;
+
+        let re = RegexBuilder::new(r"^target line$")
+            .multi_line(true)
+            .crlf(true)
+            .build()
+            .unwrap();
+        let mut slots = vec![PatternSlot::regex("^target line$".to_string(), re)];
+        let hits = buf.multimatch_scan(&mut slots, 7).await;
+        let hit = hits[0].as_ref().expect("hit");
+        assert_eq!(
+            hit.start_abs, 7,
+            "start is absolute, accounting for prior drain"
+        );
+        assert_eq!(hit.end_abs, 7 + "target line".len());
+    }
+
+    #[tokio::test]
+    async fn multimatch_scan_defers_partial_line_regex() {
+        let buf = OutputBuffer::for_tests();
+        // No trailing newline - `^line$` should be deferred.
+        buf.append(b"line").await;
+        let re = RegexBuilder::new(r"^line$")
+            .multi_line(true)
+            .crlf(true)
+            .build()
+            .unwrap();
+        let mut slots = vec![PatternSlot::regex("^line$".to_string(), re)];
+        let hits = buf.multimatch_scan(&mut slots, 0).await;
+        assert!(
+            hits[0].is_none(),
+            "trailing-anchored regex must defer until newline"
+        );
+    }
+
+    #[tokio::test]
+    async fn multimatch_scan_duplicate_patterns_match_independently() {
+        let buf = OutputBuffer::for_tests();
+        buf.append(b"hello world hello world\n").await;
+        let mut slots = vec![
+            PatternSlot::literal("hello".to_string()),
+            PatternSlot::literal("hello".to_string()),
+        ];
+        let hits = buf.multimatch_scan(&mut slots, 0).await;
+        // Both slots get a hit. Caller is responsible for deciding whether
+        // they want distinct ranges - the scan reports the first occurrence
+        // for each slot. R014 v1 accepts this; the test pins the contract.
+        assert!(hits[0].is_some());
+        assert!(hits[1].is_some());
+    }
+
+    #[tokio::test]
+    async fn drain_to_advances_base_and_drops_prefix_no_event() {
+        let (buf, builder, _rx) = wired_buffer();
+        buf.append(b"abc\ndef\n").await;
+        let grew_count_before = all_grew(&builder).len();
+        buf.drain_to(4).await; // drop "abc\n"
+        let remaining = buf.remaining().await;
+        assert_eq!(remaining, b"def\n");
+        assert_eq!(
+            all_grew(&builder).len(),
+            grew_count_before,
+            "drain_to must not emit any buffer event"
+        );
+    }
+
+    #[tokio::test]
+    async fn drain_to_is_noop_when_offset_equals_base() {
+        let buf = OutputBuffer::for_tests();
+        buf.append(b"abc\n").await;
+        buf.drain_to(0).await;
+        assert_eq!(buf.remaining().await, b"abc\n");
     }
 }

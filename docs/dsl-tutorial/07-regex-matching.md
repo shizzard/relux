@@ -227,4 +227,4 @@ This exercise combines capture groups, the save-to-variable pattern, and the eph
 
 ---
 
-Next: [Functions](08-functions.md) — extract reusable test logic into named, parameterized functions
+Next: [Multimatch](08-multimatch.md) — wait for several patterns at once, in any order

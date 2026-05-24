@@ -3,13 +3,18 @@ import type { BufferEvent } from '../types/BufferEvent';
 import type { StructuredLog } from '../types/StructuredLog';
 import {
   bootstrapForReuse,
+  buildMultiMatchIndex,
   finalCleanupForDeferred,
   firstUseShellBlockForMarker,
   liveShellsAtSpan,
+  multiMatchOutcomeFor,
+  patternMatchedTextFor,
   replayBufferRegionsAtMarker,
+  replayBufferRegionsAtPerPatternDone,
   selectionSourceRange,
 } from './derive';
 import type { Event } from '../types/Event';
+import type { MultiMatchPattern } from '../types/MultiMatchPattern';
 import type { Span } from '../types/Span';
 
 // Minimal log builder - only `buffer_events` is consulted by
@@ -762,5 +767,666 @@ describe('liveShellsAtSpan', () => {
     const byName = new Map(result.map((s) => [s.name, s.state]));
     expect(byName.get('a')).toBe('ready');
     expect(byName.get('b')).toBe('pending');
+  });
+});
+
+// Helpers reused by the multimatch tests below. A buffer-events-only
+// helper would mask the events/spans plumbing that the index walks; we
+// provide a fuller make function that accepts all three streams.
+function bufferEvent(
+  seq: number,
+  shell: string,
+  kind: 'grew' | 'matched',
+  payload: Record<string, string>,
+): BufferEvent {
+  return {
+    seq: BigInt(seq),
+    ts: 0,
+    shell,
+    shell_marker: shell,
+    kind,
+    ...payload,
+  } as unknown as BufferEvent;
+}
+
+function makeLogWithMultiMatch(
+  buffer_events: BufferEvent[],
+  events: Event[],
+  spans: Record<string, Span>,
+): StructuredLog {
+  return {
+    schema_version: 1,
+    info: { name: 't', path: 'p', duration_ms: 0n },
+    outcome: { kind: 'pass' },
+    env: { bootstrap: [] },
+    shells: {},
+    spans: spans as unknown as StructuredLog['spans'],
+    events,
+    buffer_events,
+    sources: {},
+    artifacts: [],
+  };
+}
+
+describe('buildMultiMatchIndex', () => {
+  it('marks per-pattern Matched events inside a multi-match span as observation-only', () => {
+    const mmSpan: Span = {
+      id: 7n, parent: null, start_ts: 0, end_ts: 100, location: null,
+      kind: 'multi-match', shell: 's',
+    } as unknown as Span;
+    const events: Event[] = [
+      {
+        seq: 10n, ts: 0, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-start',
+      } as unknown as Event,
+      {
+        seq: 11n, ts: 1, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-pattern-done',
+        index: 0, elapsed: 5, buffer_seq: 12n,
+      } as unknown as Event,
+      {
+        seq: 13n, ts: 2, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-done',
+        advance_to: 12n,
+      } as unknown as Event,
+    ];
+    const buf: BufferEvent[] = [
+      bufferEvent(12, 's', 'matched', { before: 'ab', matched: 'cd', after: 'ef' }),
+    ];
+    const log = makeLogWithMultiMatch(buf, events, { '7': mmSpan });
+    const idx = buildMultiMatchIndex(log);
+
+    expect(idx.observationSeqs.has(12)).toBe(true);
+    expect(idx.endBySeq.get(13)).toEqual({ advanceBytes: 4, matchedSeq: 12 });
+  });
+
+  it('omits the advance entry on the timeout path', () => {
+    const mmSpan: Span = {
+      id: 7n, parent: null, start_ts: 0, end_ts: 100, location: null,
+      kind: 'multi-match', shell: 's',
+    } as unknown as Span;
+    const events: Event[] = [
+      {
+        seq: 10n, ts: 0, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-start',
+      } as unknown as Event,
+      {
+        seq: 11n, ts: 1, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-pattern-done',
+        index: 0, elapsed: 5, buffer_seq: 12n,
+      } as unknown as Event,
+      {
+        seq: 13n, ts: 2, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-timeout',
+        unmatched: [1],
+      } as unknown as Event,
+    ];
+    const buf: BufferEvent[] = [
+      bufferEvent(12, 's', 'matched', { before: '', matched: 'cd', after: 'ef' }),
+    ];
+    const log = makeLogWithMultiMatch(buf, events, { '7': mmSpan });
+    const idx = buildMultiMatchIndex(log);
+
+    expect(idx.observationSeqs.has(12)).toBe(true);
+    // Timeout still registers in endBySeq (as a null entry, so the
+    // replay loop clears the observation highlight) but carries no
+    // drain.
+    expect(idx.endBySeq.get(13)).toBeNull();
+  });
+
+  it('does not flag Matched events outside any multi-match span', () => {
+    const events: Event[] = [
+      {
+        seq: 10n, ts: 0, span: 1n, shell: 's', shell_marker: 's', source: null,
+        kind: 'match-done', matched: 'cd', elapsed: 5, captures: null, buffer_seq: 12n,
+      } as unknown as Event,
+    ];
+    const buf: BufferEvent[] = [
+      bufferEvent(12, 's', 'matched', { before: 'ab', matched: 'cd', after: 'ef' }),
+    ];
+    const shellBlockSpan: Span = {
+      id: 1n, parent: null, start_ts: 0, end_ts: 100, location: null,
+      kind: 'shell-block', shell: 's',
+    } as unknown as Span;
+    const log = makeLogWithMultiMatch(buf, events, { '1': shellBlockSpan });
+    const idx = buildMultiMatchIndex(log);
+    expect(idx.observationSeqs.size).toBe(0);
+    expect(idx.endBySeq.size).toBe(0);
+  });
+});
+
+describe('replayBufferRegionsAtMarker with multimatch index', () => {
+  it('observation-only Matched events highlight without advancing the cursor', () => {
+    const mmSpan: Span = {
+      id: 7n, parent: null, start_ts: 0, end_ts: 100, location: null,
+      kind: 'multi-match', shell: 's',
+    } as unknown as Span;
+    const buf: BufferEvent[] = [
+      grew(1, 's', 'AABBCC'),
+      matched(2, 's', 'AA', 'BB', 'CC'),
+    ];
+    const events: Event[] = [
+      {
+        seq: 10n, ts: 1, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-start',
+      } as unknown as Event,
+      {
+        seq: 11n, ts: 2, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-pattern-done',
+        index: 0, elapsed: 5, buffer_seq: 2n,
+      } as unknown as Event,
+    ];
+    const log = makeLogWithMultiMatch(buf, events, { '7': mmSpan });
+    const idx = buildMultiMatchIndex(log);
+    expect(replayBufferRegionsAtMarker(log, 100, 's', idx)).toEqual({
+      consumed: '',
+      matched: { bytes: 'BB', seq: 2 },
+      tail: 'AABBCC',
+    });
+  });
+
+  it('multi-match-done drains the cursor by len(before)+len(matched)', () => {
+    const mmSpan: Span = {
+      id: 7n, parent: null, start_ts: 0, end_ts: 100, location: null,
+      kind: 'multi-match', shell: 's',
+    } as unknown as Span;
+    const buf: BufferEvent[] = [
+      grew(1, 's', 'AABBCC'),
+      matched(2, 's', 'AA', 'BB', 'CC'),
+    ];
+    const events: Event[] = [
+      {
+        seq: 10n, ts: 1, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-start',
+      } as unknown as Event,
+      {
+        seq: 11n, ts: 2, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-pattern-done',
+        index: 0, elapsed: 5, buffer_seq: 2n,
+      } as unknown as Event,
+      {
+        seq: 12n, ts: 3, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-done',
+        advance_to: 2n,
+      } as unknown as Event,
+    ];
+    const log = makeLogWithMultiMatch(buf, events, { '7': mmSpan });
+    const idx = buildMultiMatchIndex(log);
+    expect(replayBufferRegionsAtMarker(log, 100, 's', idx)).toEqual({
+      consumed: 'AABB',
+      matched: null,
+      tail: 'CC',
+    });
+  });
+
+  it('multi-match-timeout does not drain but clears the observation highlight', () => {
+    // The observation matched 'BB' inside the undrained tail. On the
+    // timeout path no bytes are drained from `tail`, but the highlight
+    // must be cleared - the matched bytes are still in `tail`, so
+    // leaving the highlight active would render them twice.
+    const mmSpan: Span = {
+      id: 7n, parent: null, start_ts: 0, end_ts: 100, location: null,
+      kind: 'multi-match', shell: 's',
+    } as unknown as Span;
+    const buf: BufferEvent[] = [
+      grew(1, 's', 'AABBCC'),
+      matched(2, 's', 'AA', 'BB', 'CC'),
+    ];
+    const events: Event[] = [
+      {
+        seq: 10n, ts: 1, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-start',
+      } as unknown as Event,
+      {
+        seq: 11n, ts: 2, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-pattern-done',
+        index: 0, elapsed: 5, buffer_seq: 2n,
+      } as unknown as Event,
+      {
+        seq: 12n, ts: 3, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-timeout',
+        unmatched: [1],
+      } as unknown as Event,
+    ];
+    const log = makeLogWithMultiMatch(buf, events, { '7': mmSpan });
+    const idx = buildMultiMatchIndex(log);
+    expect(replayBufferRegionsAtMarker(log, 100, 's', idx)).toEqual({
+      consumed: '',
+      matched: null,
+      tail: 'AABBCC',
+    });
+  });
+
+  it('keeps the observation highlight active while the block is still in flight', () => {
+    // No multi-match-done or -timeout in the events: the user is
+    // looking at a snapshot taken mid-block. The highlight stays so
+    // the user sees what one of the patterns saw against the
+    // undrained buffer.
+    const mmSpan: Span = {
+      id: 7n, parent: null, start_ts: 0, end_ts: 100, location: null,
+      kind: 'multi-match', shell: 's',
+    } as unknown as Span;
+    const buf: BufferEvent[] = [
+      grew(1, 's', 'AABBCC'),
+      matched(2, 's', 'AA', 'BB', 'CC'),
+    ];
+    const events: Event[] = [
+      {
+        seq: 10n, ts: 1, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-start',
+      } as unknown as Event,
+      {
+        seq: 11n, ts: 2, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-pattern-done',
+        index: 0, elapsed: 5, buffer_seq: 2n,
+      } as unknown as Event,
+    ];
+    const log = makeLogWithMultiMatch(buf, events, { '7': mmSpan });
+    const idx = buildMultiMatchIndex(log);
+    expect(replayBufferRegionsAtMarker(log, 11, 's', idx)).toEqual({
+      consumed: '',
+      matched: { bytes: 'BB', seq: 2 },
+      tail: 'AABBCC',
+    });
+  });
+
+  it('handles two observation Matched events: only the second highlights, no advance', () => {
+    const mmSpan: Span = {
+      id: 7n, parent: null, start_ts: 0, end_ts: 100, location: null,
+      kind: 'multi-match', shell: 's',
+    } as unknown as Span;
+    const buf: BufferEvent[] = [
+      grew(1, 's', 'AABBCC'),
+      matched(2, 's', 'AA', 'BB', 'CC'),
+      matched(3, 's', '', 'AA', 'BBCC'),
+    ];
+    const events: Event[] = [
+      {
+        seq: 10n, ts: 1, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-start',
+      } as unknown as Event,
+      {
+        seq: 11n, ts: 2, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-pattern-done',
+        index: 0, elapsed: 5, buffer_seq: 2n,
+      } as unknown as Event,
+      {
+        seq: 12n, ts: 3, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-pattern-done',
+        index: 1, elapsed: 6, buffer_seq: 3n,
+      } as unknown as Event,
+    ];
+    const log = makeLogWithMultiMatch(buf, events, { '7': mmSpan });
+    const idx = buildMultiMatchIndex(log);
+    expect(replayBufferRegionsAtMarker(log, 100, 's', idx)).toEqual({
+      consumed: '',
+      matched: { bytes: 'AA', seq: 3 },
+      tail: 'AABBCC',
+    });
+  });
+
+  it('falls back to the existing behaviour when no multimatch index is passed', () => {
+    const log = makeLog([
+      grew(1, 's', 'abcdef'),
+      matched(2, 's', 'ab', 'cd', 'ef'),
+    ]);
+    expect(replayBufferRegionsAtMarker(log, 100, 's')).toEqual({
+      consumed: 'ab',
+      matched: { bytes: 'cd', seq: 2 },
+      tail: 'ef',
+    });
+  });
+});
+
+describe('patternMatchedTextFor', () => {
+  it('returns the matched substring on the referenced Matched buffer event', () => {
+    const buf: BufferEvent[] = [
+      bufferEvent(5, 's', 'matched', { before: 'a', matched: 'b', after: 'c' }),
+    ];
+    const events: Event[] = [
+      {
+        seq: 10n, ts: 0, span: 1n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-pattern-done',
+        index: 0, elapsed: 1, buffer_seq: 5n,
+      } as unknown as Event,
+    ];
+    const log = makeLogWithMultiMatch(buf, events, {});
+    expect(patternMatchedTextFor(log, events[0]!)).toBe('b');
+  });
+
+  it('returns null when the referenced buffer event is missing', () => {
+    const events: Event[] = [
+      {
+        seq: 10n, ts: 0, span: 1n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-pattern-done',
+        index: 0, elapsed: 1, buffer_seq: 5n,
+      } as unknown as Event,
+    ];
+    const log = makeLogWithMultiMatch([], events, {});
+    expect(patternMatchedTextFor(log, events[0]!)).toBeNull();
+  });
+});
+
+describe('multiMatchOutcomeFor', () => {
+  function mmSpan(): Span {
+    return {
+      id: 7n, parent: null, start_ts: 0, end_ts: 100, location: null,
+      kind: 'multi-match', shell: 's',
+    } as unknown as Span;
+  }
+  const patterns: MultiMatchPattern[] = [
+    { pattern: 'job-a: done', is_regex: false },
+    { pattern: 'job-b: done', is_regex: false },
+  ];
+
+  it('reports matched for every pattern with a pattern-done event, on the done terminal', () => {
+    const buf: BufferEvent[] = [
+      bufferEvent(20, 's', 'matched', { before: '', matched: 'job-a: done', after: '' }),
+      bufferEvent(21, 's', 'matched', { before: 'job-a: done\n', matched: 'job-b: done', after: '' }),
+    ];
+    const events: Event[] = [
+      {
+        seq: 10n, ts: 0, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-start',
+        patterns,
+        effective: { type: 'tolerance', duration: '5s', multiplier: '1.0', total_duration: '5s', source: null },
+      } as unknown as Event,
+      {
+        seq: 22n, ts: 1, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-pattern-done',
+        index: 0, elapsed: 50, buffer_seq: 20n,
+      } as unknown as Event,
+      {
+        seq: 23n, ts: 2, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-pattern-done',
+        index: 1, elapsed: 60, buffer_seq: 21n,
+      } as unknown as Event,
+      {
+        seq: 24n, ts: 3, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-done',
+        advance_to: 21n,
+      } as unknown as Event,
+    ];
+    const log = makeLogWithMultiMatch(buf, events, { '7': mmSpan() });
+    expect(multiMatchOutcomeFor(log, 7)).toEqual({
+      patterns,
+      terminal: 'done',
+      rows: [
+        { index: 0, status: 'matched', matched: 'job-a: done', elapsed: 50 },
+        { index: 1, status: 'matched', matched: 'job-b: done', elapsed: 60 },
+      ],
+    });
+  });
+
+  it('reports not-seen for unmatched patterns on the timeout terminal', () => {
+    const buf: BufferEvent[] = [
+      bufferEvent(20, 's', 'matched', { before: '', matched: 'job-a: done', after: '' }),
+    ];
+    const events: Event[] = [
+      {
+        seq: 10n, ts: 0, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-start',
+        patterns,
+        effective: { type: 'tolerance', duration: '5s', multiplier: '1.0', total_duration: '5s', source: null },
+      } as unknown as Event,
+      {
+        seq: 22n, ts: 1, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-pattern-done',
+        index: 0, elapsed: 50, buffer_seq: 20n,
+      } as unknown as Event,
+      {
+        seq: 23n, ts: 2, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-timeout',
+        unmatched: [1],
+      } as unknown as Event,
+    ];
+    const log = makeLogWithMultiMatch(buf, events, { '7': mmSpan() });
+    expect(multiMatchOutcomeFor(log, 7)).toEqual({
+      patterns,
+      terminal: 'timeout',
+      rows: [
+        { index: 0, status: 'matched', matched: 'job-a: done', elapsed: 50 },
+        { index: 1, status: 'not-seen', matched: null, elapsed: null },
+      ],
+    });
+  });
+
+  it('reports pending terminal for an in-flight block (no done, no timeout)', () => {
+    const events: Event[] = [
+      {
+        seq: 10n, ts: 0, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-start',
+        patterns,
+        effective: { type: 'tolerance', duration: '5s', multiplier: '1.0', total_duration: '5s', source: null },
+      } as unknown as Event,
+    ];
+    const log = makeLogWithMultiMatch([], events, { '7': mmSpan() });
+    expect(multiMatchOutcomeFor(log, 7)).toEqual({
+      patterns,
+      terminal: 'pending',
+      rows: [
+        { index: 0, status: 'not-seen', matched: null, elapsed: null },
+        { index: 1, status: 'not-seen', matched: null, elapsed: null },
+      ],
+    });
+  });
+
+  it('returns null when the span id is not a multi-match span', () => {
+    const log = makeLogWithMultiMatch([], [], {});
+    expect(multiMatchOutcomeFor(log, 999)).toBeNull();
+  });
+});
+
+describe('replayBufferRegionsAtPerPatternDone', () => {
+  it('splits the tail around the observed match for the event own shell', () => {
+    const mmSpan: Span = {
+      id: 7n, parent: null, start_ts: 0, end_ts: 100, location: null,
+      kind: 'multi-match', shell: 's',
+    } as unknown as Span;
+    const buf: BufferEvent[] = [
+      grew(1, 's', 'AABBCC'),
+      matched(2, 's', 'AA', 'BB', 'CC'),
+    ];
+    const patternDone: Event = {
+      seq: 11n, ts: 2, span: 7n, shell: 's', shell_marker: 's', source: null,
+      kind: 'multi-match-pattern-done',
+      index: 0, elapsed: 5, buffer_seq: 2n,
+    } as unknown as Event;
+    const events: Event[] = [
+      {
+        seq: 10n, ts: 1, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-start',
+      } as unknown as Event,
+      patternDone,
+    ];
+    const log = makeLogWithMultiMatch(buf, events, { '7': mmSpan });
+    const idx = buildMultiMatchIndex(log);
+
+    expect(replayBufferRegionsAtPerPatternDone(log, patternDone, 's', idx)).toEqual({
+      consumed: '',
+      matched: { bytes: 'BB', seq: 2 },
+      tail: 'AABBCC',
+      tailSplit: { tailBefore: 'AA', tailAfter: 'CC' },
+    });
+  });
+
+  it('folds a stale highlight from before the block into consumed before splitting', () => {
+    // A regular match-done fires before the block; its highlight is
+    // the active matched at block entry. The per-pattern view should
+    // show only the observation's match, so the stale highlight is
+    // folded into consumed.
+    const mmSpan: Span = {
+      id: 7n, parent: null, start_ts: 0, end_ts: 100, location: null,
+      kind: 'multi-match', shell: 's',
+    } as unknown as Span;
+    const buf: BufferEvent[] = [
+      grew(1, 's', 'prefix:'),
+      matched(2, 's', '', 'prefix:', ''),
+      grew(3, 's', 'AABBCC'),
+      matched(4, 's', 'AA', 'BB', 'CC'),
+    ];
+    const patternDone: Event = {
+      seq: 21n, ts: 4, span: 7n, shell: 's', shell_marker: 's', source: null,
+      kind: 'multi-match-pattern-done',
+      index: 0, elapsed: 5, buffer_seq: 4n,
+    } as unknown as Event;
+    const events: Event[] = [
+      {
+        seq: 20n, ts: 3, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-start',
+      } as unknown as Event,
+      patternDone,
+    ];
+    const log = makeLogWithMultiMatch(buf, events, { '7': mmSpan });
+    const idx = buildMultiMatchIndex(log);
+
+    expect(replayBufferRegionsAtPerPatternDone(log, patternDone, 's', idx)).toEqual({
+      consumed: 'prefix:',
+      matched: { bytes: 'BB', seq: 4 },
+      tail: 'AABBCC',
+      tailSplit: { tailBefore: 'AA', tailAfter: 'CC' },
+    });
+  });
+
+  it('preserves a pre-block regular match in consumed when selecting an observation inside the block', () => {
+    // The bug: a regular match-done before the multi-match block
+    // drained its `matched` bytes out of `tail`. When the first
+    // observation inside the block fires, the prev highlight (the
+    // regular match) must fold into `consumed` - otherwise its bytes
+    // vanish from the rendered history. This regression test
+    // mirrors the e2e fixture where 'relux> ' was lost on the
+    // second-observation click.
+    const mmSpan: Span = {
+      id: 7n, parent: null, start_ts: 0, end_ts: 100, location: null,
+      kind: 'multi-match', shell: 's',
+    } as unknown as Span;
+    const buf: BufferEvent[] = [
+      grew(1, 's', 'pre\nrelux> '),
+      // Regular (non-observation) match: drains 'relux> ' out of tail.
+      matched(2, 's', 'pre\n', 'relux> ', ''),
+      // More bytes accumulate.
+      grew(3, 's', 'A\nB\n'),
+      // First observation inside the block.
+      matched(4, 's', '', 'A', '\nB\n'),
+      // Second observation inside the block.
+      matched(5, 's', 'A\n', 'B', '\n'),
+    ];
+    const secondPatternDone: Event = {
+      seq: 12n, ts: 5, span: 7n, shell: 's', shell_marker: 's', source: null,
+      kind: 'multi-match-pattern-done',
+      index: 1, elapsed: 6, buffer_seq: 5n,
+    } as unknown as Event;
+    const events: Event[] = [
+      {
+        seq: 10n, ts: 3, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-start',
+      } as unknown as Event,
+      {
+        seq: 11n, ts: 4, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-pattern-done',
+        index: 0, elapsed: 5, buffer_seq: 4n,
+      } as unknown as Event,
+      secondPatternDone,
+    ];
+    const log = makeLogWithMultiMatch(buf, events, { '7': mmSpan });
+    const idx = buildMultiMatchIndex(log);
+
+    expect(replayBufferRegionsAtPerPatternDone(log, secondPatternDone, 's', idx)).toEqual({
+      consumed: 'pre\nrelux> ',
+      matched: { bytes: 'B', seq: 5 },
+      tail: 'A\nB\n',
+      tailSplit: { tailBefore: 'A\n', tailAfter: '\n' },
+    });
+  });
+
+  it('does not double-count when an earlier per-pattern observation is still active', () => {
+    // Two observations in the same multi-match span. The user clicks
+    // the second one. The first observation's match is still in
+    // `base.matched` when we replay up to (buffer_seq - 1), but its
+    // bytes are still inside `tail` too - folding into `consumed`
+    // would render those bytes twice.
+    const mmSpan: Span = {
+      id: 7n, parent: null, start_ts: 0, end_ts: 100, location: null,
+      kind: 'multi-match', shell: 's',
+    } as unknown as Span;
+    const buf: BufferEvent[] = [
+      grew(1, 's', 'job-a: done\r\njob-b: done\r\n'),
+      // First observation matches 'job-a: done'.
+      matched(2, 's', '', 'job-a: done', '\r\njob-b: done\r\n'),
+      // Second observation matches 'job-b: done' within the same tail.
+      matched(3, 's', 'job-a: done\r\n', 'job-b: done', '\r\n'),
+    ];
+    const firstPatternDone: Event = {
+      seq: 11n, ts: 2, span: 7n, shell: 's', shell_marker: 's', source: null,
+      kind: 'multi-match-pattern-done',
+      index: 0, elapsed: 5, buffer_seq: 2n,
+    } as unknown as Event;
+    const secondPatternDone: Event = {
+      seq: 12n, ts: 3, span: 7n, shell: 's', shell_marker: 's', source: null,
+      kind: 'multi-match-pattern-done',
+      index: 1, elapsed: 6, buffer_seq: 3n,
+    } as unknown as Event;
+    const events: Event[] = [
+      {
+        seq: 10n, ts: 1, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-start',
+      } as unknown as Event,
+      firstPatternDone,
+      secondPatternDone,
+    ];
+    const log = makeLogWithMultiMatch(buf, events, { '7': mmSpan });
+    const idx = buildMultiMatchIndex(log);
+
+    // Selecting the second pattern-done: consumed must NOT include
+    // 'job-a: done' even though the first observation matched it -
+    // those bytes are still in the tail, surrounded by tailBefore and
+    // tailAfter of the second observation.
+    expect(replayBufferRegionsAtPerPatternDone(log, secondPatternDone, 's', idx)).toEqual({
+      consumed: '',
+      matched: { bytes: 'job-b: done', seq: 3 },
+      tail: 'job-a: done\r\njob-b: done\r\n',
+      tailSplit: { tailBefore: 'job-a: done\r\n', tailAfter: '\r\n' },
+    });
+  });
+
+  it('falls back to the regular replay for other shells', () => {
+    const mmSpan: Span = {
+      id: 7n, parent: null, start_ts: 0, end_ts: 100, location: null,
+      kind: 'multi-match', shell: 's',
+    } as unknown as Span;
+    const buf: BufferEvent[] = [
+      grew(1, 'other', 'XYZ'),
+      grew(2, 's', 'AABBCC'),
+      matched(3, 's', 'AA', 'BB', 'CC'),
+    ];
+    const patternDone: Event = {
+      seq: 11n, ts: 3, span: 7n, shell: 's', shell_marker: 's', source: null,
+      kind: 'multi-match-pattern-done',
+      index: 0, elapsed: 5, buffer_seq: 3n,
+    } as unknown as Event;
+    const events: Event[] = [
+      {
+        seq: 10n, ts: 1, span: 7n, shell: 's', shell_marker: 's', source: null,
+        kind: 'multi-match-start',
+      } as unknown as Event,
+      patternDone,
+    ];
+    const log = makeLogWithMultiMatch(buf, events, { '7': mmSpan });
+    const idx = buildMultiMatchIndex(log);
+    // For shell 'other', no per-pattern view applies.
+    const other = replayBufferRegionsAtPerPatternDone(log, patternDone, 'other', idx);
+    expect(other.tailSplit).toBeUndefined();
+    expect(other.tail).toBe('XYZ');
+  });
+
+  it('falls back to the regular replay when the referenced buffer event is missing', () => {
+    const patternDone: Event = {
+      seq: 11n, ts: 3, span: 7n, shell: 's', shell_marker: 's', source: null,
+      kind: 'multi-match-pattern-done',
+      index: 0, elapsed: 5, buffer_seq: 999n,
+    } as unknown as Event;
+    const log = makeLogWithMultiMatch([], [patternDone], {});
+    const result = replayBufferRegionsAtPerPatternDone(log, patternDone, 's');
+    expect(result.tailSplit).toBeUndefined();
   });
 });

@@ -1,0 +1,15 @@
+test "multimatch times out when one pattern never appears" {
+    """
+    Only patterns A and B print; pattern C is never produced. The block
+    has a 20ms assertion timeout, so the multimatch must fail with
+    `Failure::MultiMatch` listing C as the unmatched pattern.
+    """
+    shell s {
+        > printf 'job-a: done\njob-b: done\n'
+        <@20ms{
+            ? ^job-a: done$
+            ? ^job-b: done$
+            ? ^job-c: done$
+        }
+    }
+}

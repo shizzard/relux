@@ -1,6 +1,6 @@
 # Fail Patterns
 
-[Previous: Timeouts](09-timeouts.md)
+[Previous: Timeouts](10-timeouts.md)
 
 So far, every check in a test has been explicit: you send a command, then match the output you expect. But what about output you *don't* expect? An `ERROR` buried in a log stream, a `Segfault` from a crashing service, a `PANIC` from an unhandled exception — these can appear at any point, and you can't predict exactly when. Writing a match for every line of output just to catch them would be impractical.
 
@@ -156,7 +156,7 @@ Clearing emits a row of its own — an empty-flag glyph, distinguishable from th
 
 ## Scoping across function calls
 
-Fail patterns follow the same scoping rule as [timeouts](09-timeouts.md): a [function](08-functions.md) inherits the caller's fail pattern, but any changes the function makes are reverted when it returns.
+Fail patterns follow the same scoping rule as [timeouts](10-timeouts.md): a [function](09-functions.md) inherits the caller's fail pattern, but any changes the function makes are reverted when it returns.
 
 ```relux
 fn set_fail_pattern_inside() {
@@ -233,4 +233,4 @@ Write a test that starts a simulated service and monitors it for errors:
 
 ---
 
-Next: [Effects and Dependencies](11-effects-and-dependencies.md) — reusable test infrastructure with dependency graphs and overlay variables
+Next: [Effects and Dependencies](12-effects-and-dependencies.md) — reusable test infrastructure with dependency graphs and overlay variables

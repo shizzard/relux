@@ -20,6 +20,7 @@ import {
   foldedSummary,
   formatBytes,
   formatDuration,
+  formatMultiMatchPatternLabel,
   formatTimeout,
   formatTimeoutLine,
   formatTimestamp,
@@ -424,6 +425,14 @@ describe('folded helpers', () => {
     expect(foldedKindLabel(matchTimeout)).toBe('match');
   });
 
+  it('foldedKindLabel relabels per-pattern multimatch completions as match', () => {
+    const mmPatternDone: FoldedEvent = {
+      kind: 'single',
+      event: ev('multi-match-pattern-done', { index: 0, elapsed: 5, buffer_seq: 99n }),
+    };
+    expect(foldedKindLabel(mmPatternDone)).toBe('match');
+  });
+
   it('foldedSummary stitches the pair into a single line', () => {
     expect(foldedSummary(single)).toBe(eventSummary(single.event));
     expect(foldedSummary(sleep)).toBe('100ms');
@@ -552,5 +561,67 @@ describe('marker display helpers', () => {
     expect(displayMarkerModifier('unless')).toBe('unless');
     expect(displayMarkerDecision('pass')).toBe('pass');
     expect(displayMarkerDecision('mark')).toBe('mark');
+  });
+});
+
+describe('multimatch glyphs, families, and summaries', () => {
+  it('exposes distinct glyphs for the four multimatch event kinds', () => {
+    expect(kindGlyph('multi-match-start')).toBe('\u{29C9}');
+    expect(kindGlyph('multi-match-pattern-done')).toBe('\u{2713}');
+    expect(kindGlyph('multi-match-done')).toBe('\u{29C9}\u{2713}');
+    expect(kindGlyph('multi-match-timeout')).toBe('\u{29C9}\u{23F1}');
+  });
+
+  it('marks multi-match-done as ok and multi-match-timeout as danger', () => {
+    expect(kindFamily('multi-match-start')).toBe('event');
+    expect(kindFamily('multi-match-pattern-done')).toBe('ok');
+    expect(kindFamily('multi-match-done')).toBe('ok');
+    expect(kindFamily('multi-match-timeout')).toBe('danger');
+  });
+
+  it('summarises multi-match-start with pattern count and effective timeout', () => {
+    const ev = {
+      seq: 1n, ts: 0, span: 1n, shell: 's', shell_marker: 's', source: null,
+      kind: 'multi-match-start',
+      patterns: [
+        { pattern: 'a', is_regex: true },
+        { pattern: 'b', is_regex: false },
+      ],
+      effective: { type: 'tolerance', duration: '5s', multiplier: '1.0', total_duration: '5s', source: null },
+    } as unknown as Event;
+    expect(eventSummary(ev)).toBe('2 patterns (\u{2264} 5s)');
+  });
+
+  it('summarises multi-match-pattern-done with the index and elapsed', () => {
+    const ev = {
+      seq: 1n, ts: 0, span: 1n, shell: 's', shell_marker: 's', source: null,
+      kind: 'multi-match-pattern-done',
+      index: 2, elapsed: 42, buffer_seq: 7n,
+    } as unknown as Event;
+    expect(eventSummary(ev)).toBe('#2 \u{2192} 42ms');
+  });
+
+  it('summarises multi-match-done and multi-match-timeout with terse phrases', () => {
+    expect(eventSummary({
+      seq: 1n, ts: 0, span: 1n, shell: 's', shell_marker: 's', source: null,
+      kind: 'multi-match-done', advance_to: 5n,
+    } as unknown as Event)).toBe('all patterns matched');
+
+    expect(eventSummary({
+      seq: 1n, ts: 0, span: 1n, shell: 's', shell_marker: 's', source: null,
+      kind: 'multi-match-timeout', unmatched: [1, 2],
+    } as unknown as Event)).toBe('2 patterns unmatched');
+
+    expect(eventSummary({
+      seq: 1n, ts: 0, span: 1n, shell: 's', shell_marker: 's', source: null,
+      kind: 'multi-match-timeout', unmatched: [1],
+    } as unknown as Event)).toBe('1 pattern unmatched');
+  });
+});
+
+describe('formatMultiMatchPatternLabel', () => {
+  it('uses ? for regex and = for literal', () => {
+    expect(formatMultiMatchPatternLabel({ pattern: '^job-a$', is_regex: true })).toBe('? ^job-a$');
+    expect(formatMultiMatchPatternLabel({ pattern: 'batch complete', is_regex: false })).toBe('= batch complete');
   });
 });

@@ -27,26 +27,41 @@
   // Escape each region independently, concatenate to form the user-visible
   // text. Search positions live in this concatenated space so a hit that
   // straddles the consumed/matched boundary is just a normal interval.
+  //
+  // When `tailSplit` is set (per-pattern-done selection) the layout is
+  //   [consumed] [tailBefore] [matched] [tailAfter]
+  // - the matched highlight sits inside the still-undrained tail at
+  // the split point. Otherwise the layout is
+  //   [consumed] [matched] [tail]
+  // - the regular three-region rendering.
   const escaped = $derived(buildEscaped(regions));
 
   function buildEscaped(r: BufferRegions | null): {
     consumed: string;
-    matched: string;
-    tail: string;
     full: string;
     matchedRange: { s: number; e: number } | null;
   } {
-    if (r === null) {
-      return { consumed: '', matched: '', tail: '', full: '', matchedRange: null };
-    }
+    if (r === null) return { consumed: '', full: '', matchedRange: null };
     const consumed = escapeBufferBytes(r.consumed);
     const matched = r.matched ? escapeBufferBytes(r.matched.bytes) : '';
+    if (r.tailSplit !== undefined) {
+      const tailBefore = escapeBufferBytes(r.tailSplit.tailBefore);
+      const tailAfter = escapeBufferBytes(r.tailSplit.tailAfter);
+      const full = consumed + tailBefore + matched + tailAfter;
+      const matchedRange = r.matched
+        ? {
+          s: consumed.length + tailBefore.length,
+          e: consumed.length + tailBefore.length + matched.length,
+        }
+        : null;
+      return { consumed, full, matchedRange };
+    }
     const tail = escapeBufferBytes(r.tail);
     const full = consumed + matched + tail;
     const matchedRange = r.matched
       ? { s: consumed.length, e: consumed.length + matched.length }
       : null;
-    return { consumed, matched, tail, full, matchedRange };
+    return { consumed, full, matchedRange };
   }
 
   // Build a list of segments [start, end, classes, hitIndex] over the

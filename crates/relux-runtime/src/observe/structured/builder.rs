@@ -823,4 +823,164 @@ mod tests {
             other => panic!("expected TestOutcome::Skip, got {other:?}"),
         }
     }
+
+    #[test]
+    fn open_multimatch_span_attaches_to_parent_and_uses_shell() {
+        let (b, _rx) = make_builder();
+        let parent = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let parent_id = parent.id();
+        let mm = b.open_multimatch_span(parent_id, "default", None);
+        let mm_id = mm.id();
+        let inner = b.inner.lock().unwrap();
+        let stored = inner.spans.get(&mm_id).unwrap();
+        assert_eq!(stored.parent, Some(parent_id));
+        match &stored.kind {
+            SpanKind::MultiMatch { shell } => assert_eq!(shell, "default"),
+            _ => panic!("expected MultiMatch span"),
+        }
+    }
+
+    #[test]
+    fn emit_multimatch_start_pushes_event_with_patterns_and_effective() {
+        use crate::observe::structured::event::MultiMatchPattern;
+        use relux_ir::IrTimeout;
+        let (b, _rx) = make_builder();
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let effective = IrTimeout::tolerance(Duration::from_secs(5));
+        let patterns = vec![
+            MultiMatchPattern {
+                pattern: "^ok$".into(),
+                is_regex: true,
+            },
+            MultiMatchPattern {
+                pattern: "done".into(),
+                is_regex: false,
+            },
+        ];
+        b.emit_multimatch_start(span.id(), "sh", "m", &patterns, &effective, None);
+        let inner = b.inner.lock().unwrap();
+        match &inner.events.last().unwrap().kind {
+            EventKind::MultiMatchStart { patterns: p, .. } => {
+                assert_eq!(p.len(), 2);
+                assert_eq!(p[0].pattern, "^ok$");
+                assert!(p[0].is_regex);
+                assert!(!p[1].is_regex);
+            }
+            other => panic!("expected MultiMatchStart, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn emit_multimatch_pattern_done_records_index_elapsed_and_buffer_seq() {
+        let (b, _rx) = make_builder();
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let buffer_seq = b.push_buffer_event(
+            "sh",
+            "m",
+            BufferEventKind::Matched {
+                before: "".into(),
+                matched: "ok".into(),
+                after: "".into(),
+            },
+        );
+        b.emit_multimatch_pattern_done(
+            span.id(),
+            "sh",
+            "m",
+            1,
+            Duration::from_millis(7),
+            buffer_seq,
+            None,
+        );
+        let inner = b.inner.lock().unwrap();
+        match &inner.events.last().unwrap().kind {
+            EventKind::MultiMatchPatternDone {
+                index,
+                buffer_seq: ev_seq,
+                ..
+            } => {
+                assert_eq!(*index, 1);
+                assert_eq!(*ev_seq, buffer_seq);
+            }
+            other => panic!("expected MultiMatchPatternDone, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn emit_multimatch_done_records_advance_to_seq() {
+        let (b, _rx) = make_builder();
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let buffer_seq = b.push_buffer_event(
+            "sh",
+            "m",
+            BufferEventKind::Matched {
+                before: "".into(),
+                matched: "longest".into(),
+                after: "".into(),
+            },
+        );
+        b.emit_multimatch_done(span.id(), "sh", "m", buffer_seq, None);
+        let inner = b.inner.lock().unwrap();
+        match &inner.events.last().unwrap().kind {
+            EventKind::MultiMatchDone { advance_to } => assert_eq!(*advance_to, buffer_seq),
+            other => panic!("expected MultiMatchDone, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn emit_multimatch_timeout_records_unmatched_indices() {
+        let (b, _rx) = make_builder();
+        let span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        b.emit_multimatch_timeout(span.id(), "sh", "m", &[0, 2], None);
+        let inner = b.inner.lock().unwrap();
+        match &inner.events.last().unwrap().kind {
+            EventKind::MultiMatchTimeout { unmatched } => {
+                assert_eq!(unmatched, &vec![0usize, 2]);
+            }
+            other => panic!("expected MultiMatchTimeout, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn failure_record_translates_multimatch() {
+        use crate::observe::structured::event::MultiMatchPattern;
+        use crate::observe::structured::failure::FailureRecord;
+        use crate::report::result::Failure;
+        use crate::report::result::FailureContext;
+        use relux_core::diagnostics::IrSpan;
+        use relux_ir::IrTimeout;
+
+        let (b, _rx) = make_builder();
+        let f = Failure::MultiMatch {
+            shell: "default".into(),
+            patterns: vec![
+                MultiMatchPattern {
+                    pattern: "^a$".into(),
+                    is_regex: true,
+                },
+                MultiMatchPattern {
+                    pattern: "b".into(),
+                    is_regex: false,
+                },
+            ],
+            matched: vec![1],
+            span: IrSpan::synthetic(),
+            effective: Box::new(IrTimeout::tolerance(Duration::from_secs(5))),
+            context: FailureContext::pre_vm(),
+        };
+        let rec = b.failure_record(&f);
+        match rec {
+            FailureRecord::MultiMatch {
+                shell,
+                patterns,
+                matched,
+                ..
+            } => {
+                assert_eq!(shell, "default");
+                assert_eq!(patterns.len(), 2);
+                assert_eq!(matched, vec![1]);
+            }
+            other => panic!("expected MultiMatch, got {other:?}"),
+        }
+    }
 }

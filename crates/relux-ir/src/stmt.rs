@@ -66,6 +66,35 @@ impl IrAssignStmt {
 
 impl_ir_node_struct!(IrAssignStmt);
 
+// --- IrMultiMatchPattern ---------------------------------
+
+#[derive(Debug, Clone)]
+pub struct IrMultiMatchPattern {
+    pattern: IrInterpolation,
+    is_regex: bool,
+    span: IrSpan,
+}
+
+impl IrMultiMatchPattern {
+    pub fn new(pattern: IrInterpolation, is_regex: bool, span: IrSpan) -> Self {
+        Self {
+            pattern,
+            is_regex,
+            span,
+        }
+    }
+
+    pub fn pattern(&self) -> &IrInterpolation {
+        &self.pattern
+    }
+
+    pub fn is_regex(&self) -> bool {
+        self.is_regex
+    }
+}
+
+impl_ir_node_struct!(IrMultiMatchPattern);
+
 // --- IrShellStmt -----------------------------------------
 
 #[derive(Debug, Clone)]
@@ -127,6 +156,11 @@ pub enum IrShellStmt {
     ClearFailPattern {
         span: IrSpan,
     },
+    MultiMatch {
+        timeout: Option<IrTimeout>,
+        patterns: Vec<IrMultiMatchPattern>,
+        span: IrSpan,
+    },
     BufferReset {
         span: IrSpan,
     },
@@ -147,6 +181,7 @@ impl_ir_node_enum!(IrShellStmt {
     FailRegex,
     FailLiteral,
     ClearFailPattern,
+    MultiMatch,
     BufferReset
 });
 
@@ -427,6 +462,39 @@ impl IrNodeLowering for IrShellStmt {
             AstStmt::ClearFailPattern { span } => {
                 Ok(IrShellStmt::ClearFailPattern { span: s(span) })
             }
+            AstStmt::MultiMatch {
+                timeout,
+                patterns,
+                span,
+            } => {
+                let ir_timeout = timeout
+                    .as_ref()
+                    .map(|t| IrTimeout::lower(t, file, ctx))
+                    .transpose()?;
+                if patterns.is_empty() {
+                    return Err(LoweringBail::invalid(InvalidReport::multimatch_empty(s(
+                        span,
+                    ))));
+                }
+                let mut ir_patterns = Vec::with_capacity(patterns.len());
+                for p in patterns {
+                    let ast_pat = &p.node;
+                    let ir_interp = IrInterpolation::lower(&ast_pat.pattern, file, ctx)?;
+                    if ast_pat.is_regex {
+                        super::regex_validate::validate_static_regex(&ast_pat.pattern, file)?;
+                    }
+                    ir_patterns.push(IrMultiMatchPattern::new(
+                        ir_interp,
+                        ast_pat.is_regex,
+                        IrSpan::new(file.clone(), ast_pat.span),
+                    ));
+                }
+                Ok(IrShellStmt::MultiMatch {
+                    timeout: ir_timeout,
+                    patterns: ir_patterns,
+                    span: s(span),
+                })
+            }
             AstStmt::BufferReset { span } => Ok(IrShellStmt::BufferReset { span: s(span) }),
         }
     }
@@ -480,6 +548,7 @@ impl IrNodeLowering for IrPureStmt {
             | AstStmt::FailRegex { span, .. }
             | AstStmt::FailLiteral { span, .. }
             | AstStmt::ClearFailPattern { span }
+            | AstStmt::MultiMatch { span, .. }
             | AstStmt::BufferReset { span } => Err(LoweringBail::invalid(
                 InvalidReport::purity_violation(s(span)),
             )),

@@ -406,4 +406,19 @@ fn greet() {
         assert_eq!(f.params[0].node.name, "name");
         assert_eq!(f.params[1].node.name, "greeting");
     }
+
+    #[test]
+    fn fn_body_with_multimatch_stmt() {
+        let f = parse_fn(
+            r#"fn await_all() {
+  <~30s{
+    ? ^a$
+    ? ^b$
+  }
+}
+"#,
+        );
+        assert_eq!(f.body.len(), 1);
+        assert!(matches!(&f.body[0].node, AstStmt::MultiMatch { .. }));
+    }
 }

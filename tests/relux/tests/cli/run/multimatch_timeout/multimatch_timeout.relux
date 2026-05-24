@@ -1,0 +1,18 @@
+test "run reports multimatch timeout with per-pattern table" {
+    """
+    Verify relux run reports a multimatch failure when one pattern in a
+    `<{ ... }` block never appears. The inner fixture prints A and B but
+    never C; the block has a 20ms assertion timeout so the failure
+    surfaces with the per-pattern `matched:` / `timed out:` table and
+    exit code 1.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? multimatch in shell
+        <? did not satisfy all patterns
+        <? matched:\s+\? \^job-a: done\$
+        <? matched:\s+\? \^job-b: done\$
+        <? timed out:\s+\? \^job-c: done\$
+        match_not_ok(1)
+    }
+}

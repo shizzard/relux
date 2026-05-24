@@ -13,10 +13,13 @@ use super::operator::op_fail_literal;
 use super::operator::op_fail_regex;
 use super::operator::op_match_literal;
 use super::operator::op_match_regex;
+use super::operator::op_multimatch_open;
 use super::operator::op_send;
 use super::operator::op_send_raw;
 use super::operator::op_timed_match_literal;
 use super::operator::op_timed_match_regex;
+use super::operator::op_timed_multimatch_open;
+use super::punctuation::punctuation_brace_close;
 use super::timeout::timeout;
 use super::token::keyword;
 use super::ws::leading_ws;
@@ -25,6 +28,7 @@ use super::ws::ws;
 use relux_ast::AstAssignStmt;
 use relux_ast::AstInterpolation;
 use relux_ast::AstLetStmt;
+use relux_ast::AstMultiMatchPattern;
 use relux_ast::AstStmt;
 use relux_ast::AstStringPart;
 
@@ -192,6 +196,102 @@ fn stmt_timed_match_regex<'a>()
         .then_ignore(newline())
 }
 
+/// One inner line of a multimatch block: `? pat` or `= pat`, terminated by newline.
+fn multimatch_inner_line<'a>()
+-> impl Parser<'a, ParserInput<'a>, Spanned<AstMultiMatchPattern>, extra::Err<Rich<'a, Token<'a>>>>
++ Clone {
+    let regex_line = leading_ws()
+        .ignore_then(just(Token::Question).map_with(|_, e| e.span()))
+        .then_ignore(ws())
+        .then(interp_regex(Token::Newline))
+        .map_with(|(_, payload), e| {
+            let span = crate::span_from_chumsky(e.span());
+            let pat = AstMultiMatchPattern {
+                pattern: payload.node,
+                is_regex: true,
+                span,
+            };
+            Spanned::new(pat, span)
+        })
+        .then_ignore(newline());
+
+    let literal_line = leading_ws()
+        .ignore_then(just(Token::Eq).map_with(|_, e| e.span()))
+        .then_ignore(ws())
+        .then(interp_literal(Token::Newline))
+        .map_with(|(_, payload), e| {
+            let span = crate::span_from_chumsky(e.span());
+            let pat = AstMultiMatchPattern {
+                pattern: payload.node,
+                is_regex: false,
+                span,
+            };
+            Spanned::new(pat, span)
+        })
+        .then_ignore(newline());
+
+    choice((regex_line, literal_line))
+        .labelled("multimatch inner pattern (? <regex> or = <literal>)")
+}
+
+/// `<{ <line>+ }` or `<~Ns{ <line>+ }` or `<@Ns{ <line>+ }` -> `AstStmt::MultiMatch`
+fn stmt_multimatch<'a>()
+-> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+    // Either a real inner line or a blank/comment line. Blank/comment lines
+    // produce `None`; the collector filters them out so they do not count
+    // toward the at-least-one-pattern requirement.
+    let inner = choice((
+        multimatch_inner_line().map(Some),
+        leading_ws().ignore_then(comment()).map(|_| None),
+        ws().ignore_then(newline()).map(|_| None),
+    ));
+
+    let untimed = op_multimatch_open()
+        .ignore_then(ws())
+        .ignore_then(newline().or_not())
+        .ignore_then(inner.clone().repeated().collect::<Vec<_>>())
+        .then_ignore(leading_ws())
+        .then_ignore(punctuation_brace_close())
+        .map_with(|patterns, e| {
+            let span = crate::span_from_chumsky(e.span());
+            let patterns: Vec<_> = patterns.into_iter().flatten().collect();
+            (None, patterns, span)
+        });
+
+    let timed = op_timed_multimatch_open()
+        .then_ignore(ws())
+        .then_ignore(newline().or_not())
+        .then(inner.repeated().collect::<Vec<_>>())
+        .then_ignore(leading_ws())
+        .then_ignore(punctuation_brace_close())
+        .map_with(|(t, patterns), e| {
+            let span = crate::span_from_chumsky(e.span());
+            let patterns: Vec<_> = patterns.into_iter().flatten().collect();
+            (Some(t.node), patterns, span)
+        });
+
+    choice((timed, untimed))
+        .try_map(|(timeout, patterns, span), chumsky_span| {
+            if patterns.is_empty() {
+                Err(Rich::custom(
+                    chumsky_span,
+                    "multimatch block must contain at least one pattern",
+                ))
+            } else {
+                Ok(Spanned::new(
+                    AstStmt::MultiMatch {
+                        timeout,
+                        patterns,
+                        span,
+                    },
+                    span,
+                ))
+            }
+        })
+        .then_ignore(newline().or_not())
+        .labelled("multimatch statement (<{ ... } or <~Ns{ ... } or <@Ns{ ... })")
+}
+
 /// `~5s` or `@10s` followed by newline -> `AstStmt::Timeout`
 fn stmt_timeout<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
@@ -276,6 +376,7 @@ pub fn stmt<'a>()
         .ignore_then(
             choice((
                 stmt_comment,
+                stmt_multimatch(),
                 stmt_timed_match_literal(),
                 stmt_timed_match_regex(),
                 stmt_match_regex(),
@@ -828,5 +929,178 @@ mod tests {
             }
             _ => panic!("expected MatchRegex, got {s:?}"),
         }
+    }
+
+    #[test]
+    fn multimatch_two_regex_patterns() {
+        let s = parse_stmt(
+            r#"<{
+  ? ^job-a: done$
+  ? ^job-b: done$
+}
+"#,
+        );
+        match s {
+            AstStmt::MultiMatch {
+                timeout, patterns, ..
+            } => {
+                assert!(timeout.is_none());
+                assert_eq!(patterns.len(), 2);
+                assert!(patterns[0].node.is_regex);
+                assert!(patterns[1].node.is_regex);
+            }
+            _ => panic!("expected MultiMatch, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn multimatch_mixed_literal_and_regex() {
+        let s = parse_stmt(
+            r#"<{
+  = batch complete
+  ? ^\d+ items processed$
+}
+"#,
+        );
+        match s {
+            AstStmt::MultiMatch { patterns, .. } => {
+                assert_eq!(patterns.len(), 2);
+                assert!(
+                    !patterns[0].node.is_regex,
+                    "first pattern should be literal"
+                );
+                assert!(patterns[1].node.is_regex, "second pattern should be regex");
+            }
+            _ => panic!("expected MultiMatch, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn multimatch_with_tolerance_timeout() {
+        let s = parse_stmt(
+            r#"<~10s{
+  = a
+  = b
+}
+"#,
+        );
+        match s {
+            AstStmt::MultiMatch {
+                timeout, patterns, ..
+            } => {
+                let t = timeout.expect("expected a timeout");
+                assert!(matches!(t, AstTimeout::Tolerance { .. }));
+                assert_eq!(t.duration(), Duration::from_secs(10));
+                assert_eq!(patterns.len(), 2);
+            }
+            _ => panic!("expected MultiMatch, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn multimatch_with_assertion_timeout() {
+        let s = parse_stmt(
+            r#"<@30s{
+  ? ^a$
+  ? ^b$
+  ? ^c$
+}
+"#,
+        );
+        match s {
+            AstStmt::MultiMatch {
+                timeout, patterns, ..
+            } => {
+                let t = timeout.expect("expected a timeout");
+                assert!(matches!(t, AstTimeout::Assertion { .. }));
+                assert_eq!(patterns.len(), 3);
+            }
+            _ => panic!("expected MultiMatch, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn multimatch_comments_between_patterns() {
+        let s = parse_stmt(
+            r#"<{
+  // first line
+  ? ^a$
+  // mid
+  ? ^b$
+}
+"#,
+        );
+        match s {
+            AstStmt::MultiMatch { patterns, .. } => {
+                assert_eq!(
+                    patterns.len(),
+                    2,
+                    "comments must not be counted as patterns"
+                );
+            }
+            _ => panic!("expected MultiMatch, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn multimatch_single_pattern_parses() {
+        let s = parse_stmt(
+            r#"<{
+  ? ^solo$
+}
+"#,
+        );
+        match s {
+            AstStmt::MultiMatch { patterns, .. } => assert_eq!(patterns.len(), 1),
+            _ => panic!("expected MultiMatch, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn multimatch_with_interpolation_in_pattern() {
+        let s = parse_stmt(
+            r#"<{
+  ? ^user=${name}$
+}
+"#,
+        );
+        match s {
+            AstStmt::MultiMatch { patterns, .. } => {
+                assert_eq!(patterns.len(), 1);
+                let parts = &patterns[0].node.pattern.parts;
+                assert!(
+                    parts
+                        .iter()
+                        .any(|p| matches!(p, AstStringPart::VarRef { name, .. } if name == "name"))
+                );
+            }
+            _ => panic!("expected MultiMatch, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn multimatch_empty_body_is_parse_error() {
+        let source = r#"<{
+}
+"#;
+        let pairs = lex_to_pairs(source);
+        let input = make_input(&pairs, source.len());
+        let result = stmt().parse(input).into_result();
+        assert!(
+            result.is_err(),
+            "empty multimatch body must be a parse error"
+        );
+        let errs = format!("{:?}", result.unwrap_err());
+        // Chumsky's Debug format reports the expected tokens, not the labelled
+        // context. After `<{` the next token must be `?` (regex pattern) or
+        // `=` (literal pattern); the error message lists those alongside the
+        // timed-form expectation. Either signal counts as a useful hint.
+        assert!(
+            errs.contains("multimatch")
+                || errs.contains("pattern")
+                || errs.contains("'?'")
+                || errs.contains("'='"),
+            "expected error to mention multimatch context; got {errs}"
+        );
     }
 }

@@ -1,4 +1,6 @@
+import type { BufferEvent } from '../types/BufferEvent';
 import type { Event } from '../types/Event';
+import type { MultiMatchPattern } from '../types/MultiMatchPattern';
 import type { SourceLocation } from '../types/SourceLocation';
 import type { Span } from '../types/Span';
 import type { StackFrame } from '../types/StackFrame';
@@ -127,7 +129,17 @@ function toStackFrame(span: Span): StackFrame {
 export interface BufferRegions {
   consumed: string;
   matched: { bytes: string; seq: number } | null;
+  // When `tailSplit` is omitted, the rendered layout is:
+  //   [consumed gray] [matched highlight if any] [tail plain]
+  // When `tailSplit` is set (per-pattern-done selection), the matched
+  // highlight sits inside the tail at the split point; the layout is:
+  //   [consumed gray] [tailSplit.tailBefore plain]
+  //   [matched highlight] [tailSplit.tailAfter plain]
+  // In the split case, `tail === tailSplit.tailBefore + matched.bytes
+  // + tailSplit.tailAfter` so consumers that ignore the split (e.g.
+  // the search-buffer text join) still see coherent contents.
   tail: string;
+  tailSplit?: { tailBefore: string; tailAfter: string };
 }
 
 // Per-shell buffer reconstruction up to a given event seq.
@@ -233,15 +245,150 @@ export function spanBufferCutoffSeq(data: StructuredLog, span: Span): number | n
   return null;
 }
 
+/// Index over a StructuredLog's events and buffer events that captures
+/// the multimatch observation-vs-drain rule:
+///
+///   - `observationSeqs`: every `Matched` buffer-event seq that was
+///     emitted inside a `multi-match` span. Replay treats these as
+///     observations (no cursor advance on their own).
+///   - `endBySeq`: keyed by every multi-match block-end event seq
+///     (`multi-match-done` and `multi-match-timeout`). On a done, the
+///     value carries the bytes-to-drop count and the `Matched` whose
+///     pattern ended farthest. On a timeout, the value is `null` -
+///     no drain, but the loop still uses the entry to clear any active
+///     observation highlight (whose bytes are still in `tail` and would
+///     otherwise render twice).
+///
+/// Built once per StructuredLog in `ViewerState`'s constructor; reused
+/// across every per-marker buffer replay.
+export interface MultiMatchIndex {
+  readonly observationSeqs: ReadonlySet<number>;
+  readonly endBySeq: ReadonlyMap<
+    number,
+    { advanceBytes: number; matchedSeq: number } | null
+  >;
+}
+
+export function buildMultiMatchIndex(data: StructuredLog): MultiMatchIndex {
+  const multiMatchSpanIds = new Set<SpanId>();
+  const spans = data.spans as unknown as Record<string, Span | undefined>;
+  for (const key of Object.keys(spans)) {
+    const span = spans[key];
+    if (span && span.kind === 'multi-match') multiMatchSpanIds.add(n(span.id));
+  }
+  if (multiMatchSpanIds.size === 0) {
+    return { observationSeqs: new Set(), endBySeq: new Map() };
+  }
+
+  // Per-pattern Matched buffer events: the multi-match-pattern-done
+  // structured event points at the Matched buffer event by seq.
+  const observationSeqs = new Set<number>();
+  for (const ev of data.events) {
+    if (ev.kind !== 'multi-match-pattern-done') continue;
+    if (!multiMatchSpanIds.has(n(ev.span))) continue;
+    observationSeqs.add(n(ev.buffer_seq));
+  }
+
+  // Look up Matched buffer events by seq so the drain pass can resolve
+  // `len(before) + len(matched)` in O(1).
+  const matchedBySeq = new Map<number, { before: string; matched: string }>();
+  for (const bev of data.buffer_events) {
+    if (bev.kind !== 'matched') continue;
+    matchedBySeq.set(n(bev.seq), { before: bev.before, matched: bev.matched });
+  }
+
+  const endBySeq = new Map<
+    number,
+    { advanceBytes: number; matchedSeq: number } | null
+  >();
+  for (const ev of data.events) {
+    if (!multiMatchSpanIds.has(n(ev.span))) continue;
+    if (ev.kind === 'multi-match-done') {
+      const advanceMatched = matchedBySeq.get(n(ev.advance_to));
+      if (advanceMatched === undefined) continue;
+      endBySeq.set(n(ev.seq), {
+        advanceBytes: advanceMatched.before.length + advanceMatched.matched.length,
+        matchedSeq: n(ev.advance_to),
+      });
+    } else if (ev.kind === 'multi-match-timeout') {
+      endBySeq.set(n(ev.seq), null);
+    }
+  }
+
+  return { observationSeqs, endBySeq };
+}
+
+type ReplayStep =
+  | { kind: 'buffer'; event: BufferEvent }
+  | { kind: 'multi-end'; seq: number; advance: { advanceBytes: number; matchedSeq: number } | null };
+
+function buildReplaySteps(
+  data: StructuredLog,
+  multiMatchIndex: MultiMatchIndex,
+): ReplayStep[] {
+  const steps: ReplayStep[] = [];
+  const buffer = data.buffer_events;
+  const ends = Array.from(multiMatchIndex.endBySeq.entries())
+    .map(([seq, advance]) => ({ seq, advance }))
+    .sort((a, b) => a.seq - b.seq);
+  let bi = 0;
+  let ai = 0;
+  while (bi < buffer.length || ai < ends.length) {
+    const bSeq = bi < buffer.length ? n(buffer[bi]!.seq) : Infinity;
+    const aSeq = ai < ends.length ? ends[ai]!.seq : Infinity;
+    if (bSeq <= aSeq) {
+      steps.push({ kind: 'buffer', event: buffer[bi]! });
+      bi++;
+    } else {
+      steps.push({ kind: 'multi-end', seq: aSeq, advance: ends[ai]!.advance });
+      ai++;
+    }
+  }
+  return steps;
+}
+
 export function replayBufferRegionsAtMarker(
   data: StructuredLog,
   seq: number,
   marker: string,
+  multiMatchIndex?: MultiMatchIndex,
 ): BufferRegions {
+  const idx: MultiMatchIndex =
+    multiMatchIndex ?? { observationSeqs: new Set(), endBySeq: new Map() };
+  const steps = buildReplaySteps(data, idx);
+
   let consumed = '';
   let matched: { bytes: string; seq: number } | null = null;
   let tail = '';
-  for (const ev of data.buffer_events) {
+
+  for (const step of steps) {
+    if (step.kind === 'multi-end') {
+      if (step.seq > seq) break;
+      // An observation highlight never moved bytes out of `tail`. On
+      // both block-end paths the right move is to drop it (folding
+      // would double-count - the bytes are either still in `tail` on
+      // timeout or about to be drained on done). A non-observation
+      // highlight (a regular match active before the block) represents
+      // bytes already removed from `tail`, so fold it into consumed.
+      if (matched !== null) {
+        if (!idx.observationSeqs.has(matched.seq)) {
+          consumed += matched.bytes;
+        }
+        matched = null;
+      }
+      if (step.advance !== null) {
+        const toDrop = step.advance.advanceBytes;
+        if (toDrop <= tail.length) {
+          consumed += tail.slice(0, toDrop);
+          tail = tail.slice(toDrop);
+        } else {
+          consumed += tail;
+          tail = '';
+        }
+      }
+      continue;
+    }
+    const ev = step.event;
     if (n(ev.seq) > seq) break;
     if (ev.shell_marker !== marker) continue;
     switch (ev.kind) {
@@ -249,6 +396,20 @@ export function replayBufferRegionsAtMarker(
         tail += ev.data;
         break;
       case 'matched': {
+        if (idx.observationSeqs.has(n(ev.seq))) {
+          // Observation-only: replace the highlight but do not advance.
+          // For the previous highlight (if any):
+          //   - if it was itself an observation, its bytes are still
+          //     in tail; drop without folding (folding double-counts).
+          //   - if it was a regular match-done, those bytes were
+          //     drained out of tail at that time; fold into consumed
+          //     so they don't vanish from the rendered history.
+          if (matched !== null && !idx.observationSeqs.has(matched.seq)) {
+            consumed += matched.bytes;
+          }
+          matched = { bytes: ev.matched, seq: n(ev.seq) };
+          break;
+        }
         if (matched !== null) consumed += matched.bytes;
         consumed += ev.before;
         matched = { bytes: ev.matched, seq: n(ev.seq) };
@@ -265,6 +426,148 @@ export function replayBufferRegionsAtMarker(
     }
   }
   return { consumed, matched, tail };
+}
+
+/// Buffer-state view for a `multi-match-pattern-done` event selection.
+/// Same shape as the regular replay, but populates `tailSplit` so the
+/// renderer can place the matched highlight inside the still-undrained
+/// tail at the observation's split point. The `before` bytes (which
+/// regular `match-done` would fold into `consumed`) stay in the tail
+/// region - they were never drained.
+///
+/// For shells other than the event's own, falls back to the regular
+/// replay at the event's seq.
+export function replayBufferRegionsAtPerPatternDone(
+  data: StructuredLog,
+  ev: Event,
+  marker: string,
+  multiMatchIndex?: MultiMatchIndex,
+): BufferRegions {
+  if (ev.kind !== 'multi-match-pattern-done' || ev.shell_marker !== marker) {
+    return replayBufferRegionsAtMarker(data, n(ev.seq), marker, multiMatchIndex);
+  }
+  const targetBufferSeq = n(ev.buffer_seq);
+  let targetBev: BufferEvent | null = null;
+  for (const bev of data.buffer_events) {
+    if (n(bev.seq) === targetBufferSeq) {
+      targetBev = bev;
+      break;
+    }
+  }
+  if (targetBev === null || targetBev.kind !== 'matched') {
+    return replayBufferRegionsAtMarker(data, n(ev.seq), marker, multiMatchIndex);
+  }
+
+  // Reconstruct the buffer state at the instant just before the
+  // observation's Matched buffer event. Drop any previously-active
+  // highlight - the renderer can only show one at a time, and the
+  // per-pattern's match is what we want to display.
+  //
+  // Crucially: an observation highlight (an earlier per-pattern-done
+  // in this same block) did NOT drain bytes out of `tail`, so folding
+  // its bytes into `consumed` would double-count - the same bytes are
+  // about to reappear inside the new tail. Only fold non-observation
+  // highlights (a regular match-done before the block), whose bytes
+  // really were removed from `tail`.
+  const base = replayBufferRegionsAtMarker(
+    data,
+    targetBufferSeq - 1,
+    marker,
+    multiMatchIndex,
+  );
+  let consumed = base.consumed;
+  if (base.matched !== null) {
+    const isObservation =
+      multiMatchIndex !== undefined &&
+      multiMatchIndex.observationSeqs.has(base.matched.seq);
+    if (!isObservation) consumed += base.matched.bytes;
+  }
+
+  const fullTail = targetBev.before + targetBev.matched + targetBev.after;
+  return {
+    consumed,
+    matched: { bytes: targetBev.matched, seq: targetBufferSeq },
+    tail: fullTail,
+    tailSplit: {
+      tailBefore: targetBev.before,
+      tailAfter: targetBev.after,
+    },
+  };
+}
+
+/// Resolve the matched substring on the `Matched` buffer event referenced
+/// by a `multi-match-pattern-done` event's `buffer_seq`. Returns null if
+/// the event isn't a pattern-done or the referenced buffer event is
+/// missing (defensive only; the runtime always pairs them).
+export function patternMatchedTextFor(
+  data: StructuredLog,
+  ev: Event,
+): string | null {
+  if (ev.kind !== 'multi-match-pattern-done') return null;
+  const targetSeq = n(ev.buffer_seq);
+  for (const bev of data.buffer_events) {
+    if (n(bev.seq) !== targetSeq) continue;
+    if (bev.kind !== 'matched') return null;
+    return bev.matched;
+  }
+  return null;
+}
+
+export type MultiMatchTerminal = 'done' | 'timeout' | 'pending';
+
+export interface MultiMatchPatternRow {
+  index: number;
+  status: 'matched' | 'not-seen';
+  matched: string | null;
+  elapsed: number | null;
+}
+
+export interface MultiMatchOutcome {
+  patterns: MultiMatchPattern[];
+  terminal: MultiMatchTerminal;
+  rows: MultiMatchPatternRow[];
+}
+
+/// Aggregate the per-pattern status for a `multi-match` span: walk its
+/// inner events, collect the pattern list from `MultiMatchStart`,
+/// resolve matched text for every `MultiMatchPatternDone`, and label the
+/// terminal state. Returns null when the span id is not a multi-match
+/// span.
+export function multiMatchOutcomeFor(
+  data: StructuredLog,
+  spanId: SpanId,
+): MultiMatchOutcome | null {
+  const span = spanById(data, spanId);
+  if (!span || span.kind !== 'multi-match') return null;
+
+  let patterns: MultiMatchPattern[] = [];
+  const matchedByIndex = new Map<number, { matched: string | null; elapsed: number }>();
+  let terminal: MultiMatchTerminal = 'pending';
+  for (const ev of data.events) {
+    if (n(ev.span) !== spanId) continue;
+    if (ev.kind === 'multi-match-start') {
+      patterns = ev.patterns;
+    } else if (ev.kind === 'multi-match-pattern-done') {
+      matchedByIndex.set(ev.index, {
+        matched: patternMatchedTextFor(data, ev),
+        elapsed: ev.elapsed,
+      });
+    } else if (ev.kind === 'multi-match-done') {
+      terminal = 'done';
+    } else if (ev.kind === 'multi-match-timeout') {
+      terminal = 'timeout';
+    }
+  }
+
+  const rows: MultiMatchPatternRow[] = patterns.map((_, i) => {
+    const hit = matchedByIndex.get(i);
+    if (hit !== undefined) {
+      return { index: i, status: 'matched', matched: hit.matched, elapsed: hit.elapsed };
+    }
+    return { index: i, status: 'not-seen', matched: null, elapsed: null };
+  });
+
+  return { patterns, terminal, rows };
 }
 
 export { capturesAtSeq, scopeContext, varsAtSeq } from './scope';

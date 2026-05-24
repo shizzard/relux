@@ -1,6 +1,6 @@
 # Modules and Imports
 
-[Previous: Cleanup](13-cleanup.md)
+[Previous: Cleanup](14-cleanup.md)
 
 The previous articles built up everything you need to test programs thoroughly, but every example so far has lived in a single file. As a test suite grows, you end up with the same helper functions and effect definitions duplicated across test files. Change the startup sequence for a service, and you are editing the same code in five different places.
 
@@ -70,7 +70,7 @@ import utils/greeter { greet }
 
 This brings the `greet` function into scope. The module `utils/greeter` may export other things — in this case it also defines `farewell` — but only `greet` is available in this file. Calling `farewell` would be an error.
 
-You can import multiple items from the same module by listing them — both functions and [effects](11-effects-and-dependencies.md):
+You can import multiple items from the same module by listing them — both functions and [effects](12-effects-and-dependencies.md):
 
 ```relux
 import utils/greeter { greet, StartGreeter }
@@ -161,4 +161,4 @@ There is no visibility modifier. If a function exists in a module, it is exporte
 
 ---
 
-Next: [Condition Markers](15-condition-markers.md) — conditionally skipping or running tests based on environment
+Next: [Condition Markers](16-condition-markers.md) — conditionally skipping or running tests based on environment

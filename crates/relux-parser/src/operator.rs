@@ -98,6 +98,30 @@ pub fn op_timed_match_regex<'a>()
         .labelled("timed match regex operator (<~Ns? or <@Ns?)")
 }
 
+/// `<{` - multimatch block opener.
+pub fn op_multimatch_open<'a>()
+-> impl Parser<'a, ParserInput<'a>, SimpleSpan, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+    just(Token::Lt)
+        .map_with(|_, e| e.span())
+        .then(just(Token::BraceOpen).map_with(|_, e| e.span()))
+        .map(|(a, b): (SimpleSpan, SimpleSpan)| SimpleSpan::from(a.start..b.end))
+        .labelled("multimatch open (<{)")
+}
+
+/// `<~5s{` or `<@2s{` - timed multimatch block opener.
+pub fn op_timed_multimatch_open<'a>()
+-> impl Parser<'a, ParserInput<'a>, Spanned<AstTimeout>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+    just(Token::Lt)
+        .map_with(|_, e| e.span())
+        .then(timeout())
+        .then(just(Token::BraceOpen).map_with(|_, e| e.span()))
+        .map(|((lt_span, t), brace_span)| {
+            let full_span = Span::new(lt_span.start, brace_span.end);
+            Spanned::new(t.node, full_span)
+        })
+        .labelled("timed multimatch open (<~Ns{ or <@Ns{)")
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -202,5 +226,48 @@ mod tests {
         assert!(matches!(t.node, AstTimeout::Assertion { .. }));
         assert_eq!(t.node.duration(), Duration::from_secs(2));
         assert_eq!(t.span, Span::new(0, 5));
+    }
+
+    #[test]
+    fn multimatch_open_operator() {
+        let source = "<{";
+        let pairs = lex_to_pairs(source);
+        let input = make_input(&pairs, source.len());
+        let result = op_multimatch_open().parse(input).into_result();
+        assert!(result.is_ok(), "expected `<{{` to parse, got {result:?}");
+        let span = result.unwrap();
+        assert_eq!(span, SimpleSpan::from(0..2));
+    }
+
+    #[test]
+    fn timed_multimatch_open_tolerance() {
+        let source = "<~5s{";
+        let pairs = lex_to_pairs(source);
+        let input = make_input(&pairs, source.len());
+        let result = op_timed_multimatch_open().parse(input).into_result();
+        assert!(result.is_ok(), "expected `<~5s{{` to parse, got {result:?}");
+        let t = result.unwrap();
+        assert!(matches!(t.node, AstTimeout::Tolerance { .. }));
+        assert_eq!(t.node.duration(), Duration::from_secs(5));
+    }
+
+    #[test]
+    fn timed_multimatch_open_assertion() {
+        let source = "<@2s{";
+        let pairs = lex_to_pairs(source);
+        let input = make_input(&pairs, source.len());
+        let result = op_timed_multimatch_open().parse(input).into_result();
+        assert!(result.is_ok());
+        let t = result.unwrap();
+        assert!(matches!(t.node, AstTimeout::Assertion { .. }));
+        assert_eq!(t.node.duration(), Duration::from_secs(2));
+    }
+
+    #[test]
+    fn multimatch_open_rejects_lone_lt() {
+        let source = "<";
+        let pairs = lex_to_pairs(source);
+        let input = make_input(&pairs, source.len());
+        assert!(op_multimatch_open().parse(input).into_result().is_err());
     }
 }

@@ -1,5 +1,6 @@
 import type { CancelReasonRecord } from '../types/CancelReasonRecord';
 import type { Event } from '../types/Event';
+import type { MultiMatchPattern } from '../types/MultiMatchPattern';
 import type { Span } from '../types/Span';
 import type { TimeoutValue } from '../types/TimeoutValue';
 import type { FoldedEvent } from './flatten';
@@ -77,6 +78,10 @@ const KIND_GLYPHS: Record<string, string> = {
   warning: '\u{0021}',
   error: '\u{2717}',
   cancelled: '\u{23F9}',
+  'multi-match-start': '\u{29C9}',
+  'multi-match-pattern-done': '\u{2713}',
+  'multi-match-done': '\u{29C9}\u{2713}',
+  'multi-match-timeout': '\u{29C9}\u{23F1}',
 };
 
 export function kindGlyph(kind: Event['kind']): string {
@@ -99,6 +104,9 @@ const KIND_FAMILY: Partial<Record<Event['kind'], KindFamily>> = {
   annotate: 'info',
   'sleep-start': 'info',
   'sleep-done': 'info',
+  'multi-match-pattern-done': 'ok',
+  'multi-match-done': 'ok',
+  'multi-match-timeout': 'danger',
 };
 
 export function kindFamily(kind: Event['kind']): KindFamily {
@@ -217,6 +225,14 @@ export function eventSummary(event: Event): string {
       return `${event.name} = ${truncate(escapeBytes(event.value), SUMMARY_MAX)}`;
     case 'cancelled':
       return cancelReasonSummary(event.reason);
+    case 'multi-match-start':
+      return `${event.patterns.length} patterns (\u{2264} ${formatTimeout(event.effective)})`;
+    case 'multi-match-pattern-done':
+      return `#${event.index} \u{2192} ${formatDuration(event.elapsed)}`;
+    case 'multi-match-done':
+      return 'all patterns matched';
+    case 'multi-match-timeout':
+      return `${event.unmatched.length} pattern${event.unmatched.length === 1 ? '' : 's'} unmatched`;
   }
 }
 
@@ -249,10 +265,18 @@ export function foldedGlyph(f: FoldedEvent): string {
   }
 }
 
+// Viewer-side display label for an event kind. Most kinds render their
+// schema string verbatim; entries here override that for readability.
+// Per-pattern multimatch completions read as `match` so they look the
+// same as a folded single-shell match-start/match-done pair.
+const EVENT_KIND_LABELS: Partial<Record<Event['kind'], string>> = {
+  'multi-match-pattern-done': 'match',
+};
+
 export function foldedKindLabel(f: FoldedEvent): string {
   switch (f.kind) {
     case 'single':
-      return f.event.kind;
+      return EVENT_KIND_LABELS[f.event.kind] ?? f.event.kind;
     case 'sleep':
       return 'sleep';
     case 'match':
@@ -305,6 +329,7 @@ const SPAN_KIND_LABELS: Partial<Record<Span['kind'], string>> = {
   'fn-call': 'call',
   markers: 'MARKERS',
   'marker-eval': 'marker',
+  'multi-match': 'multimatch',
 };
 
 export function displaySpanKind(kind: Span['kind']): string {
@@ -332,6 +357,8 @@ export function spanTitle(span: Span): string {
       return span.effect;
     case 'shell-block':
       return span.shell;
+    case 'multi-match':
+      return span.shell;
     case 'cleanup-block':
       return 'cleanup';
     case 'fn-call': {
@@ -356,4 +383,12 @@ export function displayMarkerModifier(m: 'if' | 'unless'): string {
 
 export function displayMarkerDecision(d: 'pass' | 'mark'): string {
   return d;
+}
+
+// Per-pattern label, matching the surface syntax: `? <pattern>` (regex)
+// or `= <pattern>` (literal). Used by the per-pattern table in
+// SelectionCard and the failure-detail surface.
+export function formatMultiMatchPatternLabel(p: MultiMatchPattern): string {
+  const op = p.is_regex ? '?' : '=';
+  return `${op} ${p.pattern}`;
 }

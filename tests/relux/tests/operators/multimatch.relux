@@ -1,0 +1,67 @@
+test "multimatch any-order regex" {
+    """
+    Both jobs print "done" in some order; multimatch waits for both.
+    A single printf emits both lines atomically so the shell prompt
+    cannot slip between them on slower PTYs.
+    """
+    shell s {
+        > printf 'job-a: done\njob-b: done\n'
+        <{
+            ? ^job-a: done$
+            ? ^job-b: done$
+        }
+    }
+}
+
+test "multimatch any-order reversed" {
+    """
+    Same patterns; underlying output arrives in the opposite order.
+    multimatch must still satisfy both.
+    """
+    shell s {
+        > printf 'job-b: done\njob-a: done\n'
+        <{
+            ? ^job-a: done$
+            ? ^job-b: done$
+        }
+    }
+}
+
+test "multimatch literal plus regex" {
+    shell s {
+        > printf 'batch complete\n12 items processed\n'
+        <{
+            = batch complete
+            ? ^\d+ items processed$
+        }
+    }
+}
+
+test "multimatch single pattern equivalence" {
+    """
+    Single-pattern multimatch is equivalent to a single match.
+    """
+    shell s {
+        > echo solo
+        <{
+            ? ^solo$
+        }
+    }
+}
+
+test "multimatch advances cursor to max end" {
+    """
+    After the block exits, the cursor sits at max(end). A follow-up
+    match against later output works because the multimatch drain
+    advanced past both pattern hits.
+    """
+    shell s {
+        > printf 'a\nb\n'
+        <{
+            ? ^a$
+            ? ^b$
+        }
+        > echo c
+        <? ^c$
+    }
+}

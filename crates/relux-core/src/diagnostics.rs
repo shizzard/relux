@@ -373,6 +373,9 @@ pub enum InvalidReport {
         name: String,
         span: IrSpan,
     },
+    MultiMatchEmpty {
+        span: IrSpan,
+    },
     UnsatisfiedExpect(Box<UnsatisfiedExpectData>),
     InvalidShellExpose {
         effect_name: String,
@@ -425,6 +428,9 @@ impl fmt::Display for InvalidReport {
             }
             InvalidReport::EmptyTestBody { name, .. } => {
                 write!(f, "test `{name}` has no shell blocks")
+            }
+            InvalidReport::MultiMatchEmpty { .. } => {
+                write!(f, "multimatch block must contain at least one pattern")
             }
             InvalidReport::UnsatisfiedExpect(data) => {
                 write!(
@@ -524,6 +530,10 @@ impl InvalidReport {
         Self::EmptyTestBody { name, span }
     }
 
+    pub fn multimatch_empty(span: IrSpan) -> Self {
+        Self::MultiMatchEmpty { span }
+    }
+
     pub fn unsatisfied_expect(
         effect_name: String,
         var_name: String,
@@ -597,6 +607,9 @@ impl InvalidReport {
             }
             InvalidReport::EmptyTestBody { name, .. } => {
                 CauseId::generate("", name, 0, "empty_test_body")
+            }
+            InvalidReport::MultiMatchEmpty { .. } => {
+                CauseId::generate("", "", 0, "multimatch_empty")
             }
             InvalidReport::UnsatisfiedExpect(data) => {
                 CauseId::generate(&data.effect_name, &data.var_name, 0, "unsatisfied_expect")
@@ -937,6 +950,11 @@ impl From<&InvalidReport> for Diagnostic {
                 span.clone(),
                 "test body must contain at least one shell block",
             ),
+            InvalidReport::MultiMatchEmpty { span } => Diagnostic::new(
+                Severity::Error,
+                "multimatch block must contain at least one pattern".into(),
+            )
+            .with_label(span.clone(), "this block has no `?`/`=` pattern lines"),
             InvalidReport::UnsatisfiedExpect(data) => Diagnostic::new(
                 Severity::Error,
                 format!(

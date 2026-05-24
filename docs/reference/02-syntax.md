@@ -217,6 +217,22 @@ All operators are followed by a space, then payload to end of line.
 - `<=` matches literal with variable substitution
 - Both block until match or timeout
 
+### Multi-Pattern Match
+
+```
+<{
+    ? <regex>
+    = <literal>
+}
+```
+
+- Inner lines are `? <regex>` (regex) or `= <literal>` (literal), one per line
+- The block waits for every pattern to match at least once, in any order
+- The cursor advances once at block exit, to `max(end)` across all per-pattern matches
+- Capture groups in inner regex patterns do not bind
+- The empty form `<{ }` is a parse error
+- Comments are permitted between inner lines
+
 ### Buffer Reset
 
 ```relux
@@ -236,11 +252,13 @@ Any match operator can be prefixed with `~<duration>` (tolerance) or `@<duration
 <~500ms= literal text     # literal match with 500ms tolerance timeout
 <@2s? regex pattern       # regex match with 2s assertion timeout
 <@500ms= literal text     # literal match with 500ms assertion timeout
+<~10s{ ? a  ? b }         # multi-pattern block with 10s tolerance timeout
+<@500ms{ = a  = b }       # multi-pattern block with 500ms assertion timeout
 ```
 
 - Duration uses compact humantime format (no spaces): `2s`, `500ms`, `1m30s`
 - Applies only to that single operation — does not affect the scoped timeout
-- Works with both match operators: `?`, `=`
+- Works with both match operators (`?`, `=`) and the multi-pattern form `<{ ... }`
 - Tolerance (`~`) timeouts are scaled by `--timeout-multiplier`; assertion (`@`) timeouts are never scaled
 
 ### Fail Pattern

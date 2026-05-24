@@ -58,6 +58,7 @@ Row types:
 - **Log bar** — emitted by the `log` BIF; rendered as a horizontal bar carrying the log level and message.
 - **BIF row** — a transparent impure BIF call (e.g. `match_prompt`) shown as a single row instead of a foldable span.
 - **Gap** — a synthetic row marking a duration with no events.
+- **Per-pattern match** — inside a `<{ ... }` block, each `multi-match-pattern-done` event renders as its own selectable row, labelled `match` in the kind column (the same label used by a folded single-match `match-start` / `match-done` pair).
 
 The footer below the list carries chips for filtering and bulk fold control:
 
@@ -107,6 +108,8 @@ Renders three regions concatenated, top to bottom:
 - **Tail** — bytes still in the buffer after the cursor. Default ink.
 
 The header hint surfaces the shell's state at the moment of selection: timestamp, `matched ✓` if the selected event was a successful match, the active timeout, and the count of fail patterns armed in scope.
+
+Inside a multi-match span, selecting a per-pattern match row splits the **Tail** region into two halves around the matched bytes: **tail-before** (bytes that appear before the match in the undrained buffer), the **matched highlight** (the pattern's own match), and **tail-after** (bytes that appear after). The **Consumed** region remains the cursor's position at block entry — because the multimatch block advances the cursor once, at block exit, individual per-pattern matches inside the block do not move the consumed boundary.
 
 When the selection has no shell context (e.g. a pure-function span), the pane shows `this event has no shell context`.
 

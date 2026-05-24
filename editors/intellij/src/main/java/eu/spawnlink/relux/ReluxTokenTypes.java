@@ -35,6 +35,7 @@ public interface ReluxTokenTypes {
     IElementType OP_MATCH_LITERAL = new ReluxElementType("OP_MATCH_LITERAL");     // <=
     IElementType OP_FAIL_REGEX = new ReluxElementType("OP_FAIL_REGEX");           // !?
     IElementType OP_FAIL_LITERAL = new ReluxElementType("OP_FAIL_LITERAL");       // !=
+    IElementType OP_MULTIMATCH_OPEN = new ReluxElementType("OP_MULTIMATCH_OPEN"); // <{ or <~Ns{ or <@Ns{
     IElementType OP_ASSIGN = new ReluxElementType("OP_ASSIGN");                   // =
 
     // Timeout

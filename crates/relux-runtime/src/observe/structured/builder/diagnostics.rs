@@ -199,6 +199,24 @@ impl StructuredLogBuilder {
                 call_stack: context.call_stack().to_vec(),
                 vars_in_scope: context.vars_in_scope().to_vec(),
             },
+            Failure::MultiMatch {
+                shell,
+                patterns,
+                matched,
+                effective,
+                context,
+                ..
+            } => FailureRecord::MultiMatch {
+                span: context.span().unwrap_or(0),
+                event_seq: context.event_seq().unwrap_or(0),
+                shell: shell.clone(),
+                patterns: patterns.clone(),
+                matched: matched.clone(),
+                effective: self.timeout_value(effective),
+                call_stack: context.call_stack().to_vec(),
+                buffer_tail: context.buffer_tail().to_string(),
+                vars_in_scope: context.vars_in_scope().to_vec(),
+            },
         }
     }
 

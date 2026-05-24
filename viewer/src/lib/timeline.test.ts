@@ -337,3 +337,4 @@ describe('candidateSpansAt', () => {
     expect(candidateSpansAt(log, 950)).toEqual([]);
   });
 });
+

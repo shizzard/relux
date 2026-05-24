@@ -141,6 +141,20 @@ fn format_failure_detail(failure: &Failure, source_table: &SourceTable) -> Strin
             };
             format!("{shell_line}message: {message}{loc_line}")
         }
+        Failure::MultiMatch {
+            shell,
+            patterns,
+            matched,
+            span,
+            ..
+        } => {
+            let loc = source_location(span, source_table);
+            format!(
+                "shell: {shell}\nmultimatch: {matched_count}/{total} patterns matched\n{loc}",
+                matched_count = matched.len(),
+                total = patterns.len(),
+            )
+        }
     }
 }
 

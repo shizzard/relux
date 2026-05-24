@@ -101,6 +101,7 @@ last bytes of the PTY buffer when the failure landed).
 | `"fail-pattern-matched"`| an installed `fail` pattern matched a recv line                          |
 | `"shell-exited"`        | the PTY shell died unexpectedly (carries `exit_code: i32 \| null`)       |
 | `"runtime"`             | any other runtime error (carries `message`; `span`/`event_seq` optional) |
+| `"multi-match"`         | a `<{ ... }` block timed out before all patterns matched (carries `patterns`, `matched` indices, `effective`) |
 
 Each variant also carries the `span` and `event_seq` that pinpoint the
 event-stream location of the failure.
@@ -191,6 +192,7 @@ A span represents one bracketed region of execution. Spans nest via
 | `"fn-call"`        | A function call (user or BIF). `name`, `args`, `result`, `callee_kind` (`"user" \| "bif"`), `is_pure`. |
 | `"markers"`        | Synthetic root grouping per-test marker evaluations.                 |
 | `"marker-eval"`    | One marker evaluation under `markers`. `marker_kind`, `modifier` (`"if" \| "unless"`), `decision` (`"pass" \| "mark"`). |
+| `"multi-match"`    | A `<{ ... }` block. `shell`.                                         |
 
 ## Events
 
@@ -243,6 +245,30 @@ display name at that moment.
 | `"match-start"` | `pattern`, `is_regex`, `effective` (a [`TimeoutValue`](#timeoutvalue))                       |
 | `"match-done"`  | `matched`, `elapsed` (ms), `captures: { [name]: string } \| null`, `buffer_seq`              |
 | `"timeout"`     | `pattern`, `buffer_seq: u64 \| null`, `effective`. `buffer_seq` is null when no buffer event corresponds (the failure record's `buffer_tail` is canonical in that case). |
+
+| `kind`                       | Extra fields                                                                                                |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `"multi-match-start"`        | `effective` (a [`TimeoutValue`](#timeoutvalue)), `patterns: MultiMatchPattern[]`                            |
+| `"multi-match-pattern-done"` | `index` (into `patterns`), `elapsed` (ms), `buffer_seq` (-> the per-pattern `Matched` buffer event)         |
+| `"multi-match-done"`         | `advance_to` (`EventSeq` -> the per-pattern `Matched` whose match ends farthest)                            |
+| `"multi-match-timeout"`      | `unmatched: number[]` (pattern indices that did not match)                                                  |
+
+The per-pattern payload type:
+
+```jsonc
+{
+  "pattern": "<string>",
+  "is_regex": <bool>
+}
+```
+
+Event sequences:
+
+- **Success:** `multi-match-start` + N x `multi-match-pattern-done` (emitted in match-completion order, not source order) + `multi-match-done`.
+- **Timeout:** `multi-match-start` + 0..N x `multi-match-pattern-done` + `multi-match-timeout`.
+- **Fail-pattern abort:** `multi-match-start` + 0..N x `multi-match-pattern-done`, then the standard `fail-pattern-triggered` propagation. No `multi-match-done` or `multi-match-timeout` follow.
+
+The per-pattern `Matched` buffer events have the same `before + matched + after` shape as single-match. Inside a `multi-match` span, individual `Matched` events do **not** advance the reconstructed cursor; the block-end cursor advance is applied once at `multi-match-done` by dropping `len(before) + len(matched)` bytes from the front of the buffer of the `Matched` event referenced by `advance_to`.
 
 **Fail patterns**
 

@@ -5,10 +5,12 @@ import {
   ancestors,
   buildCallStack,
   buildCallStackForSpan,
+  buildMultiMatchIndex,
   eventBySeq,
   liveShellsAtSeq,
   liveShellsAtSpan,
   replayBufferRegionsAtMarker,
+  replayBufferRegionsAtPerPatternDone,
   replayShellCtxAtSeq,
   spanBufferCutoffSeq,
   spanBufferKey,
@@ -16,6 +18,7 @@ import {
   toNumber as n,
   type BufferRegions,
   type LiveShell,
+  type MultiMatchIndex,
   type ShellContextSnapshot,
   type SpanId,
 } from './derive';
@@ -69,6 +72,7 @@ export class ViewerState {
   // see that, so we assert here to silence the false-positive
   // "used before initialization" diagnostic.
   readonly data!: StructuredLog;
+  private readonly multiMatchIndex!: MultiMatchIndex;
 
   selectedEventSeq = $state<number | null>(null);
   selectedSpanId = $state<SpanId | null>(null);
@@ -159,6 +163,7 @@ export class ViewerState {
 
   constructor(data: StructuredLog) {
     this.data = data;
+    this.multiMatchIndex = buildMultiMatchIndex(data);
 
     const initial = new Set<SpanId>();
     for (const key of Object.keys(data.spans)) {
@@ -359,12 +364,35 @@ export class ViewerState {
   }
 
   private computeBufferRegions(): Map<string, BufferRegions> {
+    // Per-pattern-done selection: split the tail around the observed
+    // match for the event's own shell; other shells fall back to the
+    // regular replay at the event's seq.
+    const selected = this.selected;
+    if (selected !== null && selected.kind === 'multi-match-pattern-done') {
+      const out = new Map<string, BufferRegions>();
+      for (const marker of Object.keys(this.data.shells)) {
+        out.set(
+          marker,
+          replayBufferRegionsAtPerPatternDone(
+            this.data,
+            selected,
+            marker,
+            this.multiMatchIndex,
+          ),
+        );
+      }
+      return out;
+    }
+
     const targetSeq = this.computeBufferTargetSeq();
     if (targetSeq === null) return new Map();
 
     const out = new Map<string, BufferRegions>();
     for (const marker of Object.keys(this.data.shells)) {
-      out.set(marker, replayBufferRegionsAtMarker(this.data, targetSeq, marker));
+      out.set(
+        marker,
+        replayBufferRegionsAtMarker(this.data, targetSeq, marker, this.multiMatchIndex),
+      );
     }
     return out;
   }

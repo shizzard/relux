@@ -1,8 +1,8 @@
 # Functions
 
-[Previous: Regex Matching](07-regex-matching.md)
+[Previous: Multimatch](08-multimatch.md)
 
-The previous articles covered the core toolkit for interacting with a shell: [sending commands](03-send-match-and-logs.md), [matching output](04-the-output-buffer.md), [calling built-in functions](05-built-in-functions.md), [storing values in variables](06-variables.md), and [extracting data with regex](07-regex-matching.md). With these tools you can write any test — but you will quickly find yourself repeating the same sequences of operations across tests. A health check that sends an HTTP request and verifies the status code. A login sequence that types a username, a password, and waits for a prompt. A cleanup step that kills a background process.
+The previous articles covered the core toolkit for interacting with a shell: [sending commands](03-send-match-and-logs.md), [matching output](04-the-output-buffer.md), [calling built-in functions](05-built-in-functions.md), [storing values in variables](06-variables.md), [extracting data with regex](07-regex-matching.md), and [waiting for several patterns at once](08-multimatch.md). With these tools you can write any test — but you will quickly find yourself repeating the same sequences of operations across tests. A health check that sends an HTTP request and verifies the status code. A login sequence that types a username, a password, and waits for a prompt. A cleanup step that kills a background process.
 
 Relux lets you extract these sequences into **functions** — named, reusable blocks of test logic that you define once and call from any test:
 
@@ -406,4 +406,4 @@ Then write a test that exercises both arities and verifies the return values.
 
 ---
 
-Next: [Timeouts](09-timeouts.md) — control how long Relux waits for output, from individual matches to entire test suites
+Next: [Timeouts](10-timeouts.md) — control how long Relux waits for output, from individual matches to entire test suites

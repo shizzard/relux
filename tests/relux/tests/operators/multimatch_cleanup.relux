@@ -1,0 +1,20 @@
+test "multimatch inside a cleanup block" {
+    """
+    The body just produces some output and exits. The cleanup block
+    drains two final messages from the (still-running) shell via a
+    multimatch wait, demonstrating that the construct is legal in
+    cleanup contexts.
+    """
+    shell s {
+        > echo starting
+        <= starting
+    }
+    cleanup {
+        > echo final-a
+        > echo final-b
+        <~2s{
+            = final-a
+            = final-b
+        }
+    }
+}

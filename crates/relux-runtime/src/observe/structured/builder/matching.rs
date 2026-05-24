@@ -182,4 +182,104 @@ impl StructuredLogBuilder {
             EventKind::TimeoutSet { timeout, previous },
         );
     }
+
+    /// Emit the `multi-match-start` event for `<{ ... }`. `patterns` is in
+    /// source order; the runtime will reference these indices from later
+    /// `multi-match-pattern-done` and `multi-match-timeout` events.
+    #[allow(clippy::too_many_arguments)]
+    pub fn emit_multimatch_start(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        patterns: &[crate::observe::structured::event::MultiMatchPattern],
+        effective: &IrTimeout,
+        location: Option<&IrSpan>,
+    ) {
+        let effective = self.timeout_value(effective);
+        self.push_event(
+            span,
+            Some(shell),
+            Some(marker),
+            location,
+            EventKind::MultiMatchStart {
+                effective,
+                patterns: patterns.to_vec(),
+            },
+        );
+    }
+
+    /// Emit a `multi-match-pattern-done` event for a single pattern within
+    /// an in-flight multimatch block. `buffer_seq` references the
+    /// `BufferEventKind::Matched` event pushed atomically with the
+    /// pattern's success under the buf lock; that event carries the
+    /// matched text and offsets (single source of truth).
+    #[allow(clippy::too_many_arguments)]
+    pub fn emit_multimatch_pattern_done(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        index: usize,
+        elapsed: Duration,
+        buffer_seq: EventSeq,
+        location: Option<&IrSpan>,
+    ) {
+        self.push_event(
+            span,
+            Some(shell),
+            Some(marker),
+            location,
+            EventKind::MultiMatchPatternDone {
+                index,
+                elapsed,
+                buffer_seq,
+            },
+        );
+    }
+
+    /// Emit a `multi-match-done` event - the block satisfied every
+    /// pattern. `advance_to` references the per-pattern `Matched` buffer
+    /// event whose match ends farthest in the buffer (the single drain
+    /// the runtime applies at block exit advances the cursor by
+    /// `len(before) + len(matched)` of that referenced event).
+    pub fn emit_multimatch_done(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        advance_to: EventSeq,
+        location: Option<&IrSpan>,
+    ) {
+        self.push_event(
+            span,
+            Some(shell),
+            Some(marker),
+            location,
+            EventKind::MultiMatchDone { advance_to },
+        );
+    }
+
+    /// Emit a `multi-match-timeout` event - the block deadline expired
+    /// with at least one pattern still unmatched. `unmatched` is a list
+    /// of indices into the original `MultiMatchStart.patterns` vec.
+    pub fn emit_multimatch_timeout(
+        &self,
+        span: SpanId,
+        shell: &str,
+        marker: &str,
+        unmatched: &[usize],
+        location: Option<&IrSpan>,
+    ) {
+        self.push_event(
+            span,
+            Some(shell),
+            Some(marker),
+            location,
+            EventKind::MultiMatchTimeout {
+                unmatched: unmatched.to_vec(),
+            },
+        );
+        self.push_progress(ProgressEvent::Timeout);
+    }
 }

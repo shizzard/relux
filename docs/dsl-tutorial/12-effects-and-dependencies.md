@@ -1,8 +1,8 @@
 # Effects and Dependencies
 
-[Previous: Fail Patterns](10-fail-patterns.md)
+[Previous: Fail Patterns](11-fail-patterns.md)
 
-The previous articles covered everything you need to test a single program in a single shell: [sending commands](03-send-match-and-logs.md), [matching output](07-regex-matching.md), [reusable functions](08-functions.md), [timeouts](09-timeouts.md), and [fail patterns](10-fail-patterns.md). For a self-contained CLI tool, that is enough. But most real systems do not run in isolation.
+The previous articles covered everything you need to test a single program in a single shell: [sending commands](03-send-match-and-logs.md), [matching output](07-regex-matching.md), [reusable functions](09-functions.md), [timeouts](10-timeouts.md), and [fail patterns](11-fail-patterns.md). For a self-contained CLI tool, that is enough. But most real systems do not run in isolation.
 
 Consider a web service that depends on a database and a message queue. Before you can test the service, the database needs to be running and migrated, the queue needs to be up, and maybe you want to tail the service's logs in a separate shell with a fail pattern watching for crashes. Every test that exercises this service needs all of that infrastructure in place.
 
@@ -510,4 +510,4 @@ Write a two-effect dependency chain that simulates a database setup:
 
 ---
 
-Next: [Pure Functions](12-pure-functions.md) — functions that compute values without touching a shell
+Next: [Pure Functions](13-pure-functions.md) — functions that compute values without touching a shell

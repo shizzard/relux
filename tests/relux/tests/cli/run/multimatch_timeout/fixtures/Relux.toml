@@ -1,0 +1,2 @@
+# Minimal manifest - the inner test relies on the block-level multimatch
+# timeout to fire, not a suite-level setting.
