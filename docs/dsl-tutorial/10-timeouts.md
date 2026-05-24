@@ -1,6 +1,6 @@
 # Timeouts
 
-[Previous: Functions](08-functions.md)
+[Previous: Functions](09-functions.md)
 
 Every match operation in Relux has a timeout — a maximum duration to wait for the expected output to appear. If the output does not arrive in time, the test fails. So far, the tutorials have relied on the default timeout from `Relux.toml` without thinking about it. That works for simple cases, but real test suites need more control: some commands respond in milliseconds, others take seconds, and some tests must enforce strict time boundaries on the system under test.
 
@@ -168,6 +168,8 @@ Both prefixes work with both match operators:
 | `<~[duration]=` | [Literal match](03-send-match-and-logs.md) with tolerance override (scaled) |
 | `<@[duration]?` | Regex match with assertion override (not scaled) |
 | `<@[duration]=` | Literal match with assertion override (not scaled) |
+| `<~[duration]{ ... }` | [Multi-pattern block](08-multimatch.md) with tolerance override (scaled) |
+| `<@[duration]{ ... }` | Multi-pattern block with assertion override (not scaled) |
 
 The prefix only changes the timeout. Everything else about the operator stays the same — you can use [captures](07-regex-matching.md), [variable interpolation](06-variables.md), and all other features exactly as before:
 
@@ -195,6 +197,26 @@ test "assertion timeout inline regex match" {
 ```
 
 The `<@3s?` asserts the system responds within 3 seconds. The multiplier will not stretch it.
+
+### Timing a multi-pattern block
+
+A [multi-pattern block](08-multimatch.md) accepts the same inline-timeout prefix as `<?` and `<=`. The prefix attaches to the whole block — every pattern must be matched before the block timeout fires:
+
+```relux
+test "multimatch with tolerance timeout" {
+    shell s {
+        > printf 'job-a: ok\njob-b: ok\n'
+        <~10s{
+            ? ^job-a: ok$
+            ? ^job-b: ok$
+        }
+    }
+}
+```
+
+The `<~10s{ ... }` block waits up to 10 seconds for both patterns to match. The `~` prefix makes that a tolerance — it scales with `--timeout-multiplier`. The `<@10s{ ... }` form is the assertion variant; it never scales.
+
+If the block timeout fires before all patterns have matched, the test fails with a per-pattern report listing which patterns matched and which did not. The deadline is for the block as a whole, not per-pattern: a slow but eventually-arriving line still counts, as long as every pattern resolves before the budget runs out.
 
 On the match itself, the test log viewer shows which timeout actually applied. Click any match event and the detail panel includes a `timeout` row with the **effective duration** and its source — like `5s (smoke.relux:12)`, or `... (default)` when the value came straight from `Relux.toml`. For a scaled tolerance, the row spells out the multiplier breakdown — `5s × 1.5 = 7.5s` — so you can see how `--timeout-multiplier` reshaped the budget. The precedence chain that resolves config defaults, shell scopes, and inline overrides is opaque in the source; the effective value tells you which one won.
 
@@ -240,7 +262,7 @@ If neither prefix is used on the test definition, the config `test` timeout appl
 
 ## Timeout scoping across function calls
 
-When you call a [function](08-functions.md), the function inherits the caller's current timeout. When the function returns, the timeout reverts to what the caller had before the call:
+When you call a [function](09-functions.md), the function inherits the caller's current timeout. When the function returns, the timeout reverts to what the caller had before the call:
 
 ```relux
 fn slow_operation() {
@@ -291,8 +313,8 @@ When a match operation runs, Relux resolves the timeout using this precedence ch
 
 | Priority | Source | Example | Scaled by `-m`? |
 |----------|--------|---------|-----------------|
-| 1 (highest) | Inline tolerance | `<~3s? pattern` | Yes |
-| 1 (highest) | Inline assertion | `<@3s? pattern` | No |
+| 1 (highest) | Inline tolerance | `<~3s? pattern` or `<~3s{ ... }` | Yes |
+| 1 (highest) | Inline assertion | `<@3s? pattern` or `<@3s{ ... }` | No |
 | 2 | Shell scope tolerance | `~2s` | Yes |
 | 2 | Shell scope assertion | `@2s` | No |
 | 3 (lowest) | Config default | `match = "5s"` | Yes |
@@ -333,4 +355,4 @@ Write a test that exercises both kinds of timeout:
 
 ---
 
-Next: [Fail Patterns](10-fail-patterns.md) — continuous monitoring for errors with `!?` and `!=`
+Next: [Fail Patterns](11-fail-patterns.md) — continuous monitoring for errors with `!?` and `!=`

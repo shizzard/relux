@@ -1,8 +1,8 @@
 # Cleanup
 
-[Previous: Pure Functions](12-pure-functions.md)
+[Previous: Pure Functions](13-pure-functions.md)
 
-The [effects article](11-effects-and-dependencies.md) introduced effects as reusable infrastructure — start a database, launch a service, tail a log file. Relux handles the lifecycle of those services automatically: when a test ends, it terminates all effect shells, which kills any processes running in them. You do not need to stop services yourself.
+The [effects article](12-effects-and-dependencies.md) introduced effects as reusable infrastructure — start a database, launch a service, tail a log file. Relux handles the lifecycle of those services automatically: when a test ends, it terminates all effect shells, which kills any processes running in them. You do not need to stop services yourself.
 
 But services are not the only thing effects and tests create. A database effect might generate a data directory. A build effect might produce temporary files. A test might create artifacts that should not survive past the run. These leftovers are not tied to any shell — killing the shell does not clean them up.
 
@@ -68,7 +68,7 @@ Here, the effect creates a marker file during setup and removes it during cleanu
 
 Cleanup does not run in the effect's shell, or the test shell. Relux spawns a **new, implicit shell** dedicated to cleanup. This is a deliberate design choice: by the time cleanup runs, the original shells have already been terminated. Even if they were still around, they might be in an unpredictable state — a command may have crashed, a prompt may be missing, the buffer may contain unexpected output. A fresh shell sidesteps all of that. Cleanup starts from a clean slate every time.
 
-This means you cannot rely on working directory changes or any shell-level state from the original shells. However, cleanup **does** have access to variables declared at the effect or test level with `let`, [overlay variables](11-effects-and-dependencies.md#overlay-variables) (for effects), and environment variables. If cleanup needs to know a path or a port number, declare it as a top-level `let` variable so both the shell blocks and the cleanup block can reference it.
+This means you cannot rely on working directory changes or any shell-level state from the original shells. However, cleanup **does** have access to variables declared at the effect or test level with `let`, [overlay variables](12-effects-and-dependencies.md#overlay-variables) (for effects), and environment variables. If cleanup needs to know a path or a port number, declare it as a top-level `let` variable so both the shell blocks and the cleanup block can reference it.
 
 In the [test log viewer](03-send-match-and-logs.md), each cleanup block runs as its own **cleanup-block span** at the end of the test — a foldable subtree hanging off the test span, with the implicit cleanup shell as its context. Expand the span and you see the cleanup's sends and `let` declarations stacked beneath; the buffer pane (the one from the [output buffer article](04-the-output-buffer.md)) shows the cleanup shell's own buffer, independent of any test shells that already terminated. The variables-in-scope pane reflects what cleanup can actually see: top-level `let` bindings, overlay values, environment variables.
 
@@ -85,7 +85,7 @@ That is the complete list. These operations are enough to run teardown commands 
 
 ## What you cannot do
 
-Cleanup blocks do not support [match operators](03-send-match-and-logs.md) (`<=`, `<?`), [function](08-functions.md) calls, [timeouts](09-timeouts.md), [fail patterns](10-fail-patterns.md), or buffer resets. This applies to both effect and test cleanup blocks. Relux enforces these restrictions at parse time — `relux check` rejects any cleanup block that uses a disallowed operation.
+Cleanup blocks do not support [match operators](03-send-match-and-logs.md) (`<=`, `<?`), [function](09-functions.md) calls, [timeouts](10-timeouts.md), [fail patterns](11-fail-patterns.md), or buffer resets. This applies to both effect and test cleanup blocks. Relux enforces these restrictions at parse time — `relux check` rejects any cleanup block that uses a disallowed operation.
 
 The reason is pragmatic: cleanup exists to run teardown after something has already gone wrong — a test failed, a timeout fired, a match never arrived. If cleanup itself could fail on a match, Relux would need to handle a failure during failure recovery. That is the classic panic-on-unwind problem: the teardown path must not introduce new failures, or the system becomes unpredictable. Restricting cleanup to fire-and-forget operations keeps the teardown path simple and reliable.
 
@@ -230,7 +230,7 @@ Write cleanup commands defensively. Assume nothing about what actually happened 
 
 ## Try it yourself
 
-Take the two-effect dependency chain from the [previous article's challenge](11-effects-and-dependencies.md#try-it-yourself) and add cleanup:
+Take the two-effect dependency chain from the [previous article's challenge](12-effects-and-dependencies.md#try-it-yourself) and add cleanup:
 
 1. Add a cleanup block to `StartDb` that removes the data directory it created during setup
 2. Add a cleanup block to `Migrate` that removes any migration log files
@@ -239,4 +239,4 @@ Take the two-effect dependency chain from the [previous article's challenge](11-
 
 ---
 
-Next: [Modules and Imports](14-modules-and-imports.md) — organizing a multi-file test suite with shared effects and functions
+Next: [Modules and Imports](15-modules-and-imports.md) — organizing a multi-file test suite with shared effects and functions

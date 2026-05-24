@@ -1,8 +1,8 @@
 # The CLI
 
-[Previous: Condition Markers](15-condition-markers.md)
+[Previous: Condition Markers](16-condition-markers.md)
 
-This is the final article in the tutorial series. You have come a long way — from your [first test](02-getting-started.md) through [send and match](03-send-match-and-logs.md), [variables](06-variables.md), [functions](08-functions.md), [effects](11-effects-and-dependencies.md), [modules](14-modules-and-imports.md), and [condition markers](15-condition-markers.md). You now know the entire Relux DSL. Congratulations — that is a real achievement.
+This is the final article in the tutorial series. You have come a long way — from your [first test](02-getting-started.md) through [send and match](03-send-match-and-logs.md), [variables](06-variables.md), [functions](09-functions.md), [effects](12-effects-and-dependencies.md), [modules](15-modules-and-imports.md), and [condition markers](16-condition-markers.md). You now know the entire Relux DSL. Congratulations — that is a real achievement.
 
 This article covers the tool that drives everything: the `relux` binary itself. You have already used `relux init`, `relux new`, `relux check`, and `relux run` throughout the series. Here we go deeper into every subcommand, every flag, and the workflows they enable.
 
@@ -54,13 +54,13 @@ relux new --test auth/login
 
 This creates `relux/tests/auth/login.relux` with a starter test you can run immediately. The path you provide maps directly to the filesystem under `relux/tests/`. Intermediate directories are created automatically.
 
-To create an [effect](11-effects-and-dependencies.md) module:
+To create an [effect](12-effects-and-dependencies.md) module:
 
 ```text
 relux new --effect services/database
 ```
 
-This creates `relux/lib/services/database.relux` with a skeleton effect definition. Effect modules go under `relux/lib/`, matching the [module resolution rules](14-modules-and-imports.md) you already know.
+This creates `relux/lib/services/database.relux` with a skeleton effect definition. Effect modules go under `relux/lib/`, matching the [module resolution rules](15-modules-and-imports.md) you already know.
 
 To create a library module with function templates:
 
@@ -158,7 +158,7 @@ relux run --progress tui --strategy fail-fast
 
 ### Timeout multiplier
 
-The `-m` (or `--timeout-multiplier`) flag scales [tolerance timeouts](09-timeouts.md):
+The `-m` (or `--timeout-multiplier`) flag scales [tolerance timeouts](10-timeouts.md):
 
 ```text
 relux run -m 2.0
@@ -166,7 +166,7 @@ relux run -m 2.0
 
 This doubles every tolerance (`~`) timeout in the suite. If a shell-scoped `~10s` would normally wait 10 seconds, with `-m 2.0` it waits 20 seconds.
 
-Critically, [assertion (`@`) timeouts](09-timeouts.md) are **never scaled**. An `@2s` timeout means "the system must respond within 2 seconds" — that is a correctness check, and stretching it would defeat its purpose.
+Critically, [assertion (`@`) timeouts](10-timeouts.md) are **never scaled**. An `@2s` timeout means "the system must respond within 2 seconds" — that is a correctness check, and stretching it would defeat its purpose.
 
 The default multiplier is `1.0`. It must be a positive finite number.
 
@@ -214,7 +214,7 @@ Both flags can be used together. They are independent of each other and of the c
 
 ### Flaky retries
 
-Tests marked with the `@flaky` [condition marker](15-condition-markers.md) can be automatically retried on failure. The `--flaky-retries` flag sets the maximum retry count:
+Tests marked with the `@flaky` [condition marker](16-condition-markers.md) can be automatically retried on failure. The `--flaky-retries` flag sets the maximum retry count:
 
 ```text
 relux run --flaky-retries 3

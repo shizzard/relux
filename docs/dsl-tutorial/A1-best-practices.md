@@ -1,6 +1,6 @@
 # Appendix A1: Best Practices
 
-[Previous: The CLI](16-the-cli.md)
+[Previous: The CLI](17-the-cli.md)
 
 This appendix collects every best-practices guideline from the tutorial series into a single reference, grouped by topic. Each item links back to the article where it was originally introduced.
 
@@ -20,7 +20,7 @@ Only switch away from `/bin/sh` if your system under test genuinely requires a s
 
 The default match timeout of 5 seconds is generous for most commands. You might think "I'll set timeout to 500 ms to speed up failure detection". Don't — not yet.
 
-Timeout tuning is one of those things that should be driven by actual pain, not preemptive optimization. Tight timeouts cause flaky tests on slower machines or under CI load. The defaults are deliberately conservative. When you encounter a specific situation where the default is genuinely wrong — a command that reliably takes 30 seconds — that's the time to tune. Relux provides fine-grained timeout control at the operator, shell, and test level, as covered in [Timeouts](09-timeouts.md).
+Timeout tuning is one of those things that should be driven by actual pain, not preemptive optimization. Tight timeouts cause flaky tests on slower machines or under CI load. The defaults are deliberately conservative. When you encounter a specific situation where the default is genuinely wrong — a command that reliably takes 30 seconds — that's the time to tune. Relux provides fine-grained timeout control at the operator, shell, and test level, as covered in [Timeouts](10-timeouts.md).
 
 ### The shell prompt must be static
 
@@ -123,9 +123,42 @@ The catch is that after interpolation, the variable's value becomes part of the 
 
 When the variable comes from your own `let` and you know the value, this is fine — just be aware of what you are putting into the pattern. When the variable comes from captured output or an environment variable, the content is unpredictable and the regex may compile into something you did not intend, or fail to compile entirely.
 
+## Multimatch
+
+*From [Multimatch](08-multimatch.md):*
+
+### Captures don't bind in multimatch
+
+After a single `<?`, `$1` and `$2` hold the values from the capture groups in your pattern. After a `<{ ... }` block, capture variables hold whatever they had **before** the block — multimatch ignores capture groups entirely.
+
+```relux
+// Looks fine, silently wrong: $1 holds nothing useful here.
+<{
+    ? ^port=(\d+)$
+    ? ^host=(.+)$
+}
+> curl http://localhost:${1}/health
+```
+
+`$1` either resolves to the empty string (if no prior `<?` set it) or to whatever an earlier `<?` left there. The parentheses in the multimatch patterns are syntactic only.
+
+If you need to extract a value, do the match outside the block with a regular `<?`:
+
+```relux
+<{
+    = batch complete
+    ? ^\d+ items processed$
+}
+<? ^port=(\d+)$
+let port = $1
+> curl http://localhost:${port}/health
+```
+
+Multimatch is for "wait for these things to all appear", not for parsing.
+
 ## Functions
 
-*From [Functions](08-functions.md):*
+*From [Functions](09-functions.md):*
 
 ### Captures do not survive function calls
 
@@ -214,7 +247,7 @@ Prefer small functions that do one thing: check a status code, verify a service 
 
 ## Pure functions
 
-*From [Pure Functions](12-pure-functions.md):*
+*From [Pure Functions](13-pure-functions.md):*
 
 ### Prefer `pure fn` when a function has no shell operators
 
@@ -268,7 +301,7 @@ test "extracted into pure function" {
 
 ## Timeouts
 
-*From [Timeouts](09-timeouts.md):*
+*From [Timeouts](10-timeouts.md):*
 
 ### Use the multiplier for CI flakiness, not longer timeouts
 
@@ -291,7 +324,7 @@ If you put `@` on everything, the multiplier becomes useless — nothing scales,
 
 ## Fail patterns
 
-*From [Fail Patterns](10-fail-patterns.md):*
+*From [Fail Patterns](11-fail-patterns.md):*
 
 ### Set fail patterns early
 
@@ -335,7 +368,7 @@ Only `FATAL` is active after line 4 — the first two patterns are gone.
 
 ## Effects and dependencies
 
-*From [Effects and Dependencies](11-effects-and-dependencies.md):*
+*From [Effects and Dependencies](12-effects-and-dependencies.md):*
 
 ### Set fail patterns early in effects
 
@@ -368,7 +401,7 @@ start MyEffect as B { INSTANCE = "2" }
 
 ## Cleanup
 
-*From [Cleanup](13-cleanup.md):*
+*From [Cleanup](14-cleanup.md):*
 
 ### Do not use cleanup to stop services
 
@@ -394,7 +427,7 @@ Write cleanup commands defensively. Assume nothing about what actually happened 
 
 ## Condition markers
 
-*From [Condition Markers](15-condition-markers.md):*
+*From [Condition Markers](16-condition-markers.md):*
 
 ### Markers assert, effects provision
 
@@ -417,7 +450,7 @@ Putting a marker on an effect skips every test that depends on it. This is power
 
 ## The CLI
 
-*From [The CLI](16-the-cli.md):*
+*From [The CLI](17-the-cli.md):*
 
 ### Use `--rerun` after fixing a failure
 

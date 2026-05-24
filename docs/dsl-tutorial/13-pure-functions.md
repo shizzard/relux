@@ -1,8 +1,8 @@
 # Pure Functions
 
-[Previous: Effects and Dependencies](11-effects-and-dependencies.md)
+[Previous: Effects and Dependencies](12-effects-and-dependencies.md)
 
-In the [functions](08-functions.md) article, you learned to extract reusable test logic into named functions. Those functions work well for sequences of shell operations — sending commands, matching output, consuming prompts. But they have a limitation: they can only be called inside a `shell` block, because their bodies contain shell operators that need an active PTY session to run in.
+In the [functions](09-functions.md) article, you learned to extract reusable test logic into named functions. Those functions work well for sequences of shell operations — sending commands, matching output, consuming prompts. But they have a limitation: they can only be called inside a `shell` block, because their bodies contain shell operators that need an active PTY session to run in.
 
 That restriction becomes frustrating when you need to compute a value *before* a shell block exists. Suppose you write a helper that builds a URL:
 
@@ -27,7 +27,7 @@ test "connect to API" {
 
 This does not work. `format_url` is a regular function, and regular functions require a shell context. The `let` on line 2 sits outside any shell block, so Relux has no shell to execute the function in.
 
-The same problem appears in other places. You cannot call a regular function in an [effect](11-effects-and-dependencies.md#defining-an-effect)-scope `let`, and you cannot use one in an [overlay value](11-effects-and-dependencies.md#overlay-variables) for a [`start`](11-effects-and-dependencies.md#starting-an-effect) declaration. Anywhere outside a shell block, regular functions are off limits.
+The same problem appears in other places. You cannot call a regular function in an [effect](12-effects-and-dependencies.md#defining-an-effect)-scope `let`, and you cannot use one in an [overlay value](12-effects-and-dependencies.md#overlay-variables) for a [`start`](12-effects-and-dependencies.md#starting-an-effect) declaration. Anywhere outside a shell block, regular functions are off limits.
 
 Pure functions solve this. Add the `pure` keyword before `fn`, and the function becomes shell-independent — callable from anywhere:
 
@@ -317,4 +317,4 @@ Write a pure function `format_config(app, env, port)` that returns a structured 
 
 ---
 
-Next: [Cleanup](13-cleanup.md) — teardown blocks for effects and tests
+Next: [Cleanup](14-cleanup.md) — teardown blocks for effects and tests

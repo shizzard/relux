@@ -72,6 +72,16 @@
 - A match operator with no payload (`<?` or `<=` with nothing after it) resets the output buffer cursor, consuming all current output
 - Each shell has one active timeout value, initially set to a framework default
 - Multiple `shell <name>` blocks with the same name in a test/effect refer to the same shell (switching the active shell, like lux's `[shell name]`)
+- A multi-pattern match block (`<{ <line>+ }`) waits for several patterns at once:
+  - Each inner line is `? <pattern>` (regex) or `= <pattern>` (literal); patterns are mixed freely
+  - The block is atomic with respect to the cursor: every byte that arrives is offered to every still-unmatched pattern, the cursor sits still until block exit
+  - A pattern transitions to matched the first time it succeeds against the slice `[block_entry, current_buffer_end]`; once matched, it no longer participates in subsequent scans
+  - The block completes when every pattern has matched at least once
+  - At block exit the cursor advances once, to the maximum of the per-pattern match-end offsets (overlapping matches are permitted; duplicate inner patterns are independent slots that may land on the same bytes)
+  - Capture groups in inner regex patterns do not bind - `$n` is not written by a multimatch block
+  - If the block timeout fires before all patterns have matched, the test fails; the failure record lists every pattern with its matched/unmatched status
+  - Fail patterns remain active during the block; a fail-pattern hit aborts the block exactly as it would abort a single `<?` / `<=`
+  - The inline-timeout prefix shape `<~Ns{ ... }` / `<@Ns{ ... }` carries the standard tolerance/assertion semantics, applied to the whole block
 
 ## Effects
 
