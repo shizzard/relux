@@ -5,8 +5,7 @@ test "multimatch times out when one pattern never appears" {
     `Failure::MultiMatch` listing C as the unmatched pattern.
     """
     shell s {
-        > echo job-a: done
-        > echo job-b: done
+        > printf 'job-a: done\njob-b: done\n'
         <@20ms{
             ? ^job-a: done$
             ? ^job-b: done$

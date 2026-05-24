@@ -4,8 +4,7 @@ test "multimatch with tolerance timeout passes well within bound" {
     10s budget is far in excess of what is needed.
     """
     shell s {
-        > echo a
-        > echo b
+        > printf 'a\nb\n'
         <~10s{
             ? ^a$
             ? ^b$
@@ -19,8 +18,7 @@ test "multimatch with assertion timeout" {
     flaky multiplier.
     """
     shell s {
-        > echo a
-        > echo b
+        > printf 'a\nb\n'
         <@5s{
             ? ^a$
             ? ^b$
