@@ -35,4 +35,4 @@ Substantial changes to Relux are proposed and discussed through RFCs (Requests f
 | R011 | Expose Variables and Naming Conventions | implemented       |
 | R012 | Interactive Debugger      | rejected (superseded by structured logging) |
 | R013 | Pure String Match         | draft                         |
-| R014 | Multimatch                | draft                         |
+| R014 | Multimatch                | implemented                   |

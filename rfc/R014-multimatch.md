@@ -1,6 +1,6 @@
 # R014: Multimatch
 
-- **Status**: draft
+- **Status**: implemented
 - **Created**: 2026-05-22
 
 ## Abstract
