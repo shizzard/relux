@@ -75,8 +75,8 @@ for d in "$PLUGIN_DIR"/skills/*/; do
         continue
     fi
     fm="$(awk '/^---$/{c++; if(c==2) exit; next} c==1' "$file")"
-    fm_name="$(printf '%s\n' "$fm" | awk -F': *' '/^name:/{print $2; exit}')"
-    fm_desc="$(printf '%s\n' "$fm" | awk -F': *' '/^description:/{print $2; exit}')"
+    fm_name="$(printf '%s\n' "$fm" | awk '/^name:/{sub(/^name: */,""); print; exit}')"
+    fm_desc="$(printf '%s\n' "$fm" | awk '/^description:/{sub(/^description: */,""); print; exit}')"
     expected="relux:$name"
     if [[ "$fm_name" != "$expected" ]]; then
         err "$file frontmatter 'name' is '$fm_name' but expected '$expected'"

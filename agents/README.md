@@ -1,6 +1,6 @@
 # Relux Agent Plugin
 
-Skills for authoring, running, and diagnosing [Relux](https://github.com/spawnlink/relux) test suites.
+Skills for authoring, running, and diagnosing [Relux](https://github.com/shizzard/relux) test suites.
 
 v1 targets Claude Code. The directory layout is positioned so manifests for Cursor, OpenCode, Gemini CLI, and Codex can be added later without restructuring the portable content.
 
