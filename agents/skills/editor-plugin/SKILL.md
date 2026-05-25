@@ -37,6 +37,14 @@ Agent-task signals:
 - A `.relux` file is open in the conversation and the user remarks on
   missing or stale highlighting.
 
+**Direct invocation (`/relux:editor-plugin`).** Ask which editor family
+the user is targeting (VS Code / Cursor / VSCodium / code-server /
+Gitpod / a JetBrains IDE) before starting -- the registry and install
+command depend on it. If the user picks a derivative (Cursor,
+VSCodium), name the underlying registry (Marketplace vs Open VSX) in
+the confirmation so they understand which catalog the plugin is
+coming from.
+
 ## Pre-flight checks
 
 - [ ] Confirm target editor *family* (ask if ambiguous; both is fine if the

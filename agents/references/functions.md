@@ -167,4 +167,4 @@ test "explicit: env var name and expected pattern passed in" {
 
 - [statements](statements.md) -- read if you need `let`, captures, or where shell ops are valid
 - [bifs](bifs.md) -- read if you need pure vs impure built-ins
-- [markers](markers.md) -- read if you need `pure fn` usage in marker conditions
+- [markers](markers.md) -- read if you need `pure fn` usage in marker conditions, or if the function calls an external command (`docker`, `kubectl`, `jq`, etc.) that may not be on every target host -- guard it with a marker so callers inherit the skip

@@ -25,6 +25,10 @@ Agent-task signals:
 - `relux --version` reports a version older than the latest published release.
 - The user is about to run `relux check` or `relux run` for the first time.
 
+**Direct invocation (`/relux:install`).** No clarification needed; the
+workflow always runs against the local host. Proceed straight to
+pre-flight checks.
+
 ## Pre-flight checks
 
 - [ ] `relux --version` -- captures the installed version, or confirms absence.

@@ -184,6 +184,37 @@ Do:
 effect Db { ... }
 ```
 
+### Guard functions that depend on external commands
+
+A `fn` that shells out to a command implicitly assumes that command is on the caller's PATH. For commands beyond the standard POSIX set -- `docker`, `kubectl`, `psql`, `jq`, `redis-cli`, custom tooling -- the function's runnability becomes host-dependent. Without a guard, a missing command surfaces as a timeout or as a fail-pattern match midway through the test, and the failure mode looks like "the test is broken" rather than "the host lacks the tool".
+
+Guard the function with a marker that probes for the command via `which()`. Every test that calls the function inherits the skip via propagation -- one guard, N protected tests, no per-test boilerplate.
+
+Don't:
+
+```relux
+fn start_postgres() {
+    > docker run -d --name pg postgres:16
+    <? ^[0-9a-f]{64}$
+    match_ok()
+}
+```
+
+Do:
+
+```relux
+# skip unless which("docker")
+fn start_postgres() {
+    > docker run -d --name pg postgres:16
+    <? ^[0-9a-f]{64}$
+    match_ok()
+}
+```
+
+Standard POSIX tools (`ls`, `cat`, `grep`, `awk`, `echo`) are usually safe to leave unguarded. Minimal containers (Alpine without coreutils, `FROM scratch` images) can lack even these -- guard whenever there is real doubt the tool is on every target host.
+
+When multiple functions depend on the same tool, place the marker on each `fn` directly. Do not hoist onto a shared `pure fn`.
+
 ## See also
 
 - [effects-identity](effects-identity.md) -- read if you need effect-level marker propagation rules
