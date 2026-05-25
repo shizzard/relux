@@ -56,6 +56,11 @@
           "type": "generic",
           "path": "editors/intellij/gradle.properties"
         },
+        {
+          "type": "json",
+          "path": "agents/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
         "Cargo.lock"
       ]
     }

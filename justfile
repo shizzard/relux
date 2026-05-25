@@ -22,7 +22,7 @@ history *ARGS:
 ## Build targets
 
 # Build in debug mode
-build: build-cargo build-viewer build-intellij build-vscode build-books
+build: build-cargo build-viewer build-intellij build-vscode build-plugin build-books
 
 build-cargo:
     cargo build
@@ -52,6 +52,10 @@ check-vscode:
     mkdir -p editors/vscode/build
     docker run --rm -v {{justfile_directory()}}/editors/vscode:/src -w /src node:lts-slim \
         sh -c 'npx --yes @vscode/vsce package --out /src/build/relux-check.vsix 2>&1 | tee /tmp/vsce.log && ! grep -E "WARNING|ERROR" /tmp/vsce.log'
+
+# Validate the agents/ plugin (manifest, skill frontmatter, link resolution).
+build-plugin:
+    ./.scripts/build-plugin.sh
 
 # Build tutorial books
 build-books: 

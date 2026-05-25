@@ -24,6 +24,11 @@ mdbook_build() {
     mdbook build docs/reference
 }
 
+validate_plugin() {
+    echo "Validating agents/ plugin..."
+    ./.scripts/build-plugin.sh
+}
+
 # Verify vendor/relux-viewer.js.gz is in sync with viewer/ sources, but
 # only when the commit actually touches them - Rust-only commits skip
 # the (slow) docker build entirely.
@@ -55,4 +60,5 @@ cargo_check
 cargo_clippy
 cargo_fmt
 mdbook_build
+validate_plugin
 verify_viewer_bundle
