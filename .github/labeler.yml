@@ -52,6 +52,10 @@ editors:
   - changed-files:
       - any-glob-to-any-file: editors/**
 
+agents:
+  - changed-files:
+      - any-glob-to-any-file: agents/**
+
 rfc:
   - changed-files:
       - any-glob-to-any-file: rfc/**

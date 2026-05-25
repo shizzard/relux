@@ -20,7 +20,7 @@ Skills surface as `/relux:<skill-name>` slash commands and as auto-triggered beh
 - `AGENTS.md` -- cross-agent guidance (placeholder; v1 targets Claude Code only).
 - `LICENSE` -- MIT, matching the repo.
 
-Validation runs via `just build-plugin` from the repo root; it is folded into `just check` and the pre-commit hook.
+Validation runs via `just build-agents` from the repo root; it is folded into `just build` and the pre-commit hook.
 
 ## Versioning
 

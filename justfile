@@ -22,7 +22,7 @@ history *ARGS:
 ## Build targets
 
 # Build in debug mode
-build: build-cargo build-viewer build-intellij build-vscode build-plugin build-books
+build: build-cargo build-viewer build-intellij build-vscode build-agents build-books
 
 build-cargo:
     cargo build
@@ -54,8 +54,8 @@ check-vscode:
         sh -c 'npx --yes @vscode/vsce package --out /src/build/relux-check.vsix 2>&1 | tee /tmp/vsce.log && ! grep -E "WARNING|ERROR" /tmp/vsce.log'
 
 # Validate the agents/ plugin (manifest, skill frontmatter, link resolution).
-build-plugin:
-    ./.scripts/build-plugin.sh
+build-agents:
+    ./.scripts/build-agents.sh
 
 # Build tutorial books
 build-books: 

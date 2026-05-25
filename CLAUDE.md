@@ -176,7 +176,7 @@ The pre-commit hook (`.githooks/pre-commit`) and CI verify these files stay in s
 
 ### Agent Plugin (`agents/`)
 
-In-repo Claude Code plugin packaging composable skills for authoring, running, and diagnosing Relux test suites. Installable via `claude plugin install <path>/agents`; skills surface as `/relux:<skill-name>`. Validation runs via `just build-plugin` (folded into `just build` and the pre-commit hook). The manifest at `agents/.claude-plugin/plugin.json` is version-synced with the workspace by release-please. See `agents/README.md`.
+In-repo Claude Code plugin packaging composable skills for authoring, running, and diagnosing Relux test suites. Installable via `claude plugin install <path>/agents`; skills surface as `/relux:<skill-name>`. Validation runs via `just build-agents` (folded into `just build` and the pre-commit hook). The manifest at `agents/.claude-plugin/plugin.json` is version-synced with the workspace by release-please. See `agents/README.md`.
 
 ## Key Design Decisions
 

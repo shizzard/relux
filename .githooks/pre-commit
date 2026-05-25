@@ -26,7 +26,7 @@ mdbook_build() {
 
 validate_plugin() {
     echo "Validating agents/ plugin..."
-    ./.scripts/build-plugin.sh
+    ./.scripts/build-agents.sh
 }
 
 # Verify vendor/relux-viewer.js.gz is in sync with viewer/ sources, but
