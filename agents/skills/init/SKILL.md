@@ -1,6 +1,6 @@
 ---
 name: relux:init
-description: Bootstrap a Relux test suite in a project that does not yet have one -- create `Relux.toml`, the `relux/{tests,lib,out}` layout, and a smoke test. Use when the user asks to start using Relux in a repo, scaffold a new suite, add Relux to an existing project, set up Relux from scratch, or initialize tests in a directory. Also fires when the agent is about to author a `.relux` file in a project where `Relux.toml` does not exist anywhere on the ancestor chain. Idempotent: if a suite already exists at or above the current directory, hand off to `configure-relux-toml` for tuning rather than re-scaffolding (Wave 2 leaf; not yet drafted).
+description: Bootstrap a Relux test suite in a project that does not yet have one -- create `Relux.toml`, the `relux/{tests,lib,out}` layout, and a smoke test. Use when the user asks to start using Relux in a repo, scaffold a new suite, add Relux to an existing project, set up Relux from scratch, or initialize tests in a directory. Also fires when the agent is about to author a `.relux` file in a project where `Relux.toml` does not exist anywhere on the ancestor chain. Idempotent: if a suite already exists at or above the current directory, hand off to `relux:configure` for tuning rather than re-scaffolding.
 ---
 
 # Bootstrap a Relux suite
@@ -32,15 +32,15 @@ Agent-task signals:
 
 **Out of scope:** if `Relux.toml` already exists, this skill does
 nothing -- adjusting shell, timeouts, jobs, or flaky retries is the
-configure-relux-toml skill's territory (Wave 2 leaf; not yet drafted).
-If the user wants a new *module* (test / effect / library file) inside
-an existing suite, that is the write-test / write-effect /
-write-library-fn skills' territory (Wave 2 leaves; not yet drafted).
+`relux:configure` skill's territory. If the user wants a new *module*
+(test / effect / library file) inside an existing suite, that is the
+write-test / write-effect / write-library-fn skills' territory
+(Wave 2 leaves; not yet drafted).
 
 **Direct invocation (`/relux:init`).** No clarification needed;
 the workflow detects whether a suite already exists by walking upward
 from the current directory. If one exists, the skill exits with a
-pointer to configure-relux-toml. If not, the current directory becomes
+pointer to `relux:configure`. If not, the current directory becomes
 the suite root.
 
 ## Pre-flight checks
@@ -61,7 +61,7 @@ the suite root.
       ```
 
       If found, **stop**: the suite is already initialized. Surface the
-      path to the user and hand off to configure-relux-toml. Do not
+      path to the user and hand off to `relux:configure`. Do not
       re-scaffold.
 
 - [ ] Check the cwd for a `relux/` directory that might predate the
@@ -86,7 +86,7 @@ This creates:
 
 The default manifest is empty on purpose -- every field has a default
 documented in `references/project-layout.md`. Do not edit `Relux.toml`
-during init; tuning belongs to configure-relux-toml.
+during init; tuning belongs to `relux:configure`.
 
 ### 2. Add a starter smoke test
 
@@ -212,11 +212,11 @@ flags.
 
 - `relux:install` -- pre-flight handoff when `relux --version` fails.
 - `relux:editor-plugin` -- offered after step 5 on consent.
-- Future: the configure-relux-toml skill (handoff when `Relux.toml`
-  already exists at or above the cwd, or after init if the user wants
-  to tune shell / timeouts / jobs) and the write-test skill (natural
-  next step once the smoke test passes) -- both Wave 2 leaves, not yet
-  drafted.
+- `relux:configure` -- handoff when `Relux.toml` already exists at or
+  above the cwd, or after init if the user wants to tune shell /
+  timeouts / jobs.
+- Future: the write-test skill (natural next step once the smoke test
+  passes) -- Wave 2 leaf, not yet drafted.
 
 ## References
 
@@ -247,7 +247,7 @@ Do:
 
 ```bash
 # Pre-flight detected Relux.toml at existing-suite/.
-# Hand off to configure-relux-toml; do not re-init.
+# Hand off to relux:configure; do not re-init.
 ```
 
 ### Don't edit `Relux.toml` during init
@@ -255,7 +255,7 @@ Do:
 The default manifest is intentionally empty (every field has a
 default). Editing it during init couples scaffolding to tuning and
 makes the first commit harder to review. Leave defaults; let
-configure-relux-toml own the tuning step when the user has a concrete
+`relux:configure` own the tuning step when the user has a concrete
 reason to deviate (custom shell, longer timeouts, parallel jobs).
 
 ### Don't author tests before `relux check` passes
