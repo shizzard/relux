@@ -34,8 +34,9 @@ Agent-task signals:
 nothing -- adjusting shell, timeouts, jobs, or flaky retries is the
 `relux:configure` skill's territory. If the user wants a new *module*
 (test / effect / library file) inside an existing suite, that is the
-write-test / write-effect / write-library-fn skills' territory
-(Wave 2 leaves; not yet drafted).
+`test-write` / `relux:effect-write` / `library-fn-write` skills'
+territory (only `relux:effect-write` is drafted today; the others
+are Wave 2 leaves not yet drafted).
 
 **Direct invocation (`/relux:init`).** No clarification needed;
 the workflow detects whether a suite already exists by walking upward
@@ -215,8 +216,8 @@ flags.
 - `relux:configure` -- handoff when `Relux.toml` already exists at or
   above the cwd, or after init if the user wants to tune shell /
   timeouts / jobs.
-- Future: the write-test skill (natural next step once the smoke test
-  passes) -- Wave 2 leaf, not yet drafted.
+- Future: the `test-write` skill (natural next step once the smoke
+  test passes) -- Wave 2 leaf, not yet drafted.
 
 ## References
 

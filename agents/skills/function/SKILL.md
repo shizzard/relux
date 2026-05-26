@@ -41,8 +41,10 @@ Agent-task signals:
 (handoff after authoring if the new function needs a guard); tuning
 timeouts or fail-patterns is inline `<~Ns? pattern` for one match and
 `relux:configure` for global defaults; authoring tests, authoring
-effects, and reorganizing `relux/lib/` are the write-test / write-effect
-/ organize-lib skills' territory (Wave 2 leaves; not yet drafted).
+effects, and reorganizing `relux/lib/` are the `test-write` /
+`relux:effect-write` / `lib-organize` skills' territory (only
+`relux:effect-write` is drafted today; the others are Wave 2 leaves
+not yet drafted).
 
 **Direct invocation (`/relux:function`).** Ask the user which operation
 (add / modify / remove / move / extract), the target file path, and the
@@ -395,9 +397,11 @@ After every operation, re-walk the chain.
 - `relux:markers` -- when the function being authored or modified needs
   a `# skip` / `# flaky` / `# run if` guard. This skill writes the
   declaration; `relux:markers` places the marker.
-- Future: write-test, write-effect, organize-lib (Wave 2 leaves; not
-  yet drafted) -- natural callers when authoring tests or effects that
-  need helpers, or when reorganizing the library directory.
+- `relux:effect-write` -- the natural caller when authoring an effect
+  whose shell body needs helper functions; that skill hands off here.
+- Future: `test-write`, `lib-organize` (Wave 2 leaves; not yet drafted)
+  -- natural callers when authoring tests or reorganizing the library
+  directory.
 
 ## References
 

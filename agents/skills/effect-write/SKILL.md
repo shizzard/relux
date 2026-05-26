@@ -1,5 +1,5 @@
 ---
-name: relux:write-effect
+name: relux:effect-write
 description: Author a new `effect` declaration -- `expect` set, deps, expose surface, shell body, and cleanup -- with discipline about identity (one effect per service, unique-resources rule), config decomposition (Config + Service when the service rejects ENV), and the wrapper-effect re-expose rule. Use when the user asks to write a new effect, add an effect for a service the suite does not yet manage, wrap an existing effect with seed data / migrations / post-init steps, or decompose a file-configured service into Config + Service. Fires on phrasings like "write an effect for X", "add a Postgres effect", "wrap Db with seeded data", "this service needs a config file -- how do I model it". Modifying, moving, or removing existing effects is out of scope (future leaves, not yet drafted); this skill writes new declarations.
 ---
 
@@ -43,13 +43,13 @@ Agent-task signals:
 **Out of scope:** modifying an existing effect's body, `expect` set,
 or `expose` set; removing an effect; moving an effect between
 modules. Those are refactoring operations against a live caller set
-and belong to a future effect-refactor / move-effect skill (Wave 2
+and belong to future `effect-edit` / `effect-move` skills (Wave 2
 leaves; not yet drafted). Marker placement on the effect is
 `relux:markers` (handoff after authoring if a guard is needed);
 authoring helper functions used inside the effect's shells is
 `relux:function`.
 
-**Direct invocation (`/relux:write-effect`).** Ask the user which
+**Direct invocation (`/relux:effect-write`).** Ask the user which
 service the effect models, whether it accepts ENV-only configuration
 or needs a config file, and whether it layers on top of an existing
 effect (Wrap) or stands alone (Plain). Without those three pieces,
@@ -679,8 +679,8 @@ After authoring, re-walk the effect and its caller surface.
   preconditions. Hand off after authoring.
 - `relux:configure` -- `[run].jobs` and effect dedup interact;
   parallel runs amplify the cost of fragmented `expect` sets.
-- Future write-test (Wave 2 leaf; not yet drafted) -- the natural
-  caller of this skill. Future effect-refactor / move-effect (Wave
+- Future `test-write` (Wave 2 leaf; not yet drafted) -- the natural
+  caller of this skill. Future `effect-edit` / `effect-move` (Wave
   2 leaves; not yet drafted) -- for Modify / Remove / Move
   operations not covered here.
 
