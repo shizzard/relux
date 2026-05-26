@@ -1,6 +1,6 @@
 {
   "name": "relux",
   "description": "Skills for authoring, running, and diagnosing Relux test suites.",
-  "author": "Denis Farr <denis@spawnlink.eu>",
+  "author": { "name": "Denis Farr", "email": "denis@spawnlink.eu" },
   "version": "0.6.0"
 }

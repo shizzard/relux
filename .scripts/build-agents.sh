@@ -1,50 +1,38 @@
 #!/usr/bin/env bash
 # Validate the agents/ plugin:
-#   1. plugin.json parses and has required fields.
-#   2. Every skill directory has a SKILL.md with valid frontmatter
-#      (name == "relux:<dir>"; description is non-empty).
-#   3. Every references/<file>.md link mentioned in any .md under
-#      agents/ resolves to an existing file.
-#   4. Every relux:<name> mention -- in any section of any .md under
-#      agents/, not just Cross-skill handoffs -- resolves to an
-#      existing skill directory. The token is the contract; there
-#      are no "soft" references that escape validation.
+#   1. claude plugin validate -- manifest schema, SKILL.md frontmatter
+#      YAML, plugin.json JSON syntax. This is the same validator
+#      `claude plugin install` runs at install time, so passing here
+#      means the plugin is installable.
+#   2. Skill-name convention: each `skills/<dir>/SKILL.md` frontmatter
+#      must declare `name: relux:<dir>`. Our project contract; not
+#      enforced by Claude Code.
+#   3. `references/<file>.md` links in any .md under agents/ resolve
+#      to an existing file.
+#   4. `relux:<name>` mentions in any .md under agents/ resolve to an
+#      existing skill directory.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
 PLUGIN_DIR="agents"
-MANIFEST="$PLUGIN_DIR/.claude-plugin/plugin.json"
 
 err() {
     echo "ERROR: $*" >&2
 }
 
-if ! command -v jq >/dev/null 2>&1; then
-    err "jq is required to validate $MANIFEST but was not found on PATH"
+if ! command -v claude >/dev/null 2>&1; then
+    err "claude is required to validate $PLUGIN_DIR/ but was not found on PATH"
+    exit 1
+fi
+
+# 1. Schema validation via the official Claude Code validator.
+if ! claude plugin validate "$PLUGIN_DIR"; then
+    err "claude plugin validate failed for $PLUGIN_DIR"
     exit 1
 fi
 
 status=0
-
-# 1. Manifest exists, parses, and has required fields.
-if [[ ! -f "$MANIFEST" ]]; then
-    err "missing plugin manifest at $MANIFEST"
-    exit 1
-fi
-
-if ! jq empty "$MANIFEST" >/dev/null 2>&1; then
-    err "$MANIFEST is not valid JSON"
-    exit 1
-fi
-
-for field in name description author version; do
-    val="$(jq -r --arg f "$field" '.[$f] // ""' "$MANIFEST")"
-    if [[ -z "$val" ]]; then
-        err "$MANIFEST is missing required field '$field'"
-        status=1
-    fi
-done
 
 # Collect existing skill directory names.
 shopt -s nullglob
@@ -65,30 +53,19 @@ is_known_skill() {
     return 1
 }
 
-# 2. SKILL.md frontmatter check.
+# 2. Skill-name convention check.
 for d in "$PLUGIN_DIR"/skills/*/; do
     name="$(basename "$d")"
     file="${d}SKILL.md"
-    if [[ ! -f "$file" ]]; then
-        err "skill directory '$d' has no SKILL.md"
-        status=1
-        continue
-    fi
-    fm="$(awk '/^---$/{c++; if(c==2) exit; next} c==1' "$file")"
-    fm_name="$(printf '%s\n' "$fm" | awk '/^name:/{sub(/^name: */,""); print; exit}')"
-    fm_desc="$(printf '%s\n' "$fm" | awk '/^description:/{sub(/^description: */,""); print; exit}')"
+    fm_name="$(awk '/^---$/{c++; if(c==2) exit; next} c==1 && /^name:/{sub(/^name: */,""); print; exit}' "$file")"
     expected="relux:$name"
     if [[ "$fm_name" != "$expected" ]]; then
         err "$file frontmatter 'name' is '$fm_name' but expected '$expected'"
         status=1
     fi
-    if [[ -z "$fm_desc" ]]; then
-        err "$file frontmatter is missing 'description'"
-        status=1
-    fi
 done
 
-# 3. and 4. Scan every .md file under agents/ for link / mention resolution.
+# 3. and 4. Cross-reference resolution across every .md under agents/.
 while IFS= read -r f; do
     while IFS= read -r ref; do
         [[ -z "$ref" ]] && continue

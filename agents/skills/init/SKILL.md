@@ -1,6 +1,6 @@
 ---
 name: relux:init
-description: Bootstrap a Relux test suite in a project that does not yet have one -- create `Relux.toml`, the `relux/{tests,lib,out}` layout, and a smoke test. Use when the user asks to start using Relux in a repo, scaffold a new suite, add Relux to an existing project, set up Relux from scratch, or initialize tests in a directory. Also fires when the agent is about to author a `.relux` file in a project where `Relux.toml` does not exist anywhere on the ancestor chain. Idempotent: if a suite already exists at or above the current directory, hand off to `relux:configure` for tuning rather than re-scaffolding.
+description: Bootstrap a Relux test suite in a project that does not yet have one -- create `Relux.toml`, the `relux/{tests,lib,out}` layout, and a smoke test. Use when the user asks to start using Relux in a repo, scaffold a new suite, add Relux to an existing project, set up Relux from scratch, or initialize tests in a directory. Also fires when the agent is about to author a `.relux` file in a project where `Relux.toml` does not exist anywhere on the ancestor chain. Idempotent -- if a suite already exists at or above the current directory, hand off to `relux:configure` for tuning rather than re-scaffolding.
 ---
 
 # Bootstrap a Relux suite
