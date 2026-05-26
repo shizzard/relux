@@ -33,10 +33,10 @@ Agent-task signals:
 **Out of scope:** if `Relux.toml` already exists, this skill does
 nothing -- adjusting shell, timeouts, jobs, or flaky retries is the
 `relux:configure` skill's territory. If the user wants a new *module*
-(test / effect / library file) inside an existing suite, that is the
-`test-write` / `relux:effect-write` / `library-fn-write` skills'
-territory (only `relux:effect-write` is drafted today; the others
-are Wave 2 leaves not yet drafted).
+inside an existing suite, that is the `relux:test-write` /
+`relux:effect-write` / `relux:function` skills' territory; organizing
+the `relux/lib/` directory is a future `lib-organize` leaf (not yet
+drafted).
 
 **Direct invocation (`/relux:init`).** No clarification needed;
 the workflow detects whether a suite already exists by walking upward
@@ -184,8 +184,11 @@ in one sentence each. Flags and full shapes live in
 - `relux:configure` -- handoff when `Relux.toml` already exists at or
   above the cwd, or after init if the user wants to tune shell /
   timeouts / jobs.
-- Future: the `test-write` skill (natural next step once the smoke
-  test passes) -- Wave 2 leaf, not yet drafted.
+- `relux:effect-write` -- natural next step once the smoke test
+  passes. A real test virtually always starts by modelling the SUT
+  (or its dependencies) as an effect, and `relux:test-write` would
+  hard-switch back here anyway if no effect exists yet; entering
+  via `relux:effect-write` skips the round trip.
 
 ## References
 

@@ -85,6 +85,46 @@ import services/db { greet }
 import services/db { Db, greet }
 ```
 
+### Group tests by SUT then scope
+
+Tests under `relux/tests/` nest at minimum two levels: `relux/tests/<sut>/<scope>/`. The first level is the **service under test** -- one subdirectory per distinct SUT the suite covers (a project that tests several binaries or services gets one each: `relux/tests/api/`, `relux/tests/worker/`, `relux/tests/cli/`). The second level is a **scope** within that SUT -- a categorical bucket the tests share.
+
+The only universal scope is `smoke/`: collects smoke tests across the SUT's various surfaces. Every SUT subdirectory gets a `smoke/` for the "does the service come up and serve its primary surface" tests. After `smoke`, scope choices depend on the service and should be **proposed to the user** before authoring -- the right categories vary by what the SUT exposes and how the suite groups them naturally. Common candidates worth proposing (pick 3-5 to surface, do not commit any silently): `auth/`, `api/`, `crud/`, `cli/`, `db/`, `errors/`, `migrations/`, `lifecycle/`, `streaming/`, `config/`, `compat/`.
+
+All names use `snake_case`. SUT subdirectories, scope subdirectories, and the test filenames inside them all share the convention. Kebab-case is not viable: the import-path parser rejects `-` in segment names, so any `relux/lib/` module must be `snake_case` -- and the test tree follows the same convention for consistency (no source-level enforcement, but no precedent in the workspace either). CamelCase is reserved for effect-kind identifiers and reads wrong on a path component.
+
+The filename inside the chosen scope reads as the assertion the test makes, in `snake_case.relux` (e.g. `starts_and_serves_health.relux`, not `smoke.relux` or `test_1.relux`). The filename and the test's `"name string"` are independent: the name string is full prose, the filename is its snake_case condensation.
+
+Don't (flat layout; cross-SUT and cross-category confusion at the top level):
+
+```text
+relux/tests/
+|-- starts_up.relux
+|-- api_creates_user.relux
+|-- worker_drains_queue.relux
+|-- auth_rejects_expired_token.relux
+```
+
+Do (SUT first, scope second; `smoke` is the always-present bucket):
+
+```text
+relux/tests/
+|-- api/
+|   |-- smoke/
+|   |   `-- starts_and_serves_health.relux
+|   |-- auth/
+|   |   |-- rejects_expired_token.relux
+|   |   `-- refresh_extends_session.relux
+|   `-- crud/
+|       |-- creates_user.relux
+|       `-- updates_user.relux
+`-- worker/
+    |-- smoke/
+    |   `-- starts_and_drains.relux
+    `-- queue/
+        `-- drains_in_fifo_order.relux
+```
+
 ### Group library modules by scope
 
 Do not park every shared helper in a flat `relux/lib/helpers.relux`. Place each helper in the module that names its natural scope:

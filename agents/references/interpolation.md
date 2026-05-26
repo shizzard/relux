@@ -54,6 +54,31 @@ Inside a `<?` or `!?` payload, the interpolated value is inserted as raw regex t
 
 ## Pitfalls and best practices
 
+### `${...}` only accepts a name, not an expression
+
+The braces hold exactly one reference: `${name}` (variable), `${1}` (capture index), or `${Alias.var}` (qualified var). Function calls, BIF calls, arithmetic, or any other expression inside the braces fail to parse. Bind the expression to a `let` first, then interpolate the binding.
+
+Don't:
+
+```relux
+let db_path = "${__RELUX_RUN_ARTIFACTS}/users-${uuid()}.db"
+> curl http://localhost:${available_port()}/health
+<? port=${default(PORT, "8080")}
+```
+
+Do:
+
+```relux
+let suffix = uuid()
+let db_path = "${__RELUX_RUN_ARTIFACTS}/users-${suffix}.db"
+
+let port = available_port()
+> curl http://localhost:${port}/health
+
+let port = default(PORT, "8080")
+<? port=${port}
+```
+
 ### Empty or unset variables interpolate to empty string
 
 A pattern with `${name}` where `name` is empty becomes a pattern with the surrounding text only. It can match unexpectedly.

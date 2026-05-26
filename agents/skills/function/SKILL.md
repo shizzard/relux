@@ -40,11 +40,10 @@ Agent-task signals:
 **Out of scope:** marker placement on functions is `relux:markers`
 (handoff after authoring if the new function needs a guard); tuning
 timeouts or fail-patterns is inline `<~Ns? pattern` for one match and
-`relux:configure` for global defaults; authoring tests, authoring
-effects, and reorganizing `relux/lib/` are the `test-write` /
-`relux:effect-write` / `lib-organize` skills' territory (only
-`relux:effect-write` is drafted today; the others are Wave 2 leaves
-not yet drafted).
+`relux:configure` for global defaults; authoring tests is
+`relux:test-write`; authoring effects is `relux:effect-write`;
+reorganizing the `relux/lib/` directory is a future `lib-organize`
+leaf (not yet drafted).
 
 **Direct invocation (`/relux:function`).** Ask the user which operation
 (add / modify / remove / move / extract), the target file path, and the
@@ -379,9 +378,11 @@ After every operation, re-walk the chain.
   declaration; `relux:markers` places the marker.
 - `relux:effect-write` -- the natural caller when authoring an effect
   whose shell body needs helper functions; that skill hands off here.
-- Future: `test-write`, `lib-organize` (Wave 2 leaves; not yet drafted)
-  -- natural callers when authoring tests or reorganizing the library
-  directory.
+- `relux:test-write` -- the natural caller when authoring a test that
+  needs a helper or a project-local anchor function for a non-POSIX
+  shell; that skill hands off here.
+- Future `lib-organize` (not yet drafted) -- the natural caller when
+  reorganizing the `relux/lib/` directory.
 
 ## References
 

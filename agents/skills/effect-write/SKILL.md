@@ -1,6 +1,6 @@
 ---
 name: relux:effect-write
-description: Author a new `effect` declaration -- `expect` set, deps, expose surface, shell body, and cleanup -- with discipline about identity (one effect per service, unique-resources rule), config decomposition (Config + Service when the service rejects ENV), and the wrapper-effect re-expose rule. Use when the user asks to write a new effect, add an effect for a service the suite does not yet manage, wrap an existing effect with seed data / migrations / post-init steps, or decompose a file-configured service into Config + Service. Fires on phrasings like "write an effect for X", "add a Postgres effect", "wrap Db with seeded data", "this service needs a config file -- how do I model it". Modifying, moving, or removing existing effects is out of scope (future leaves, not yet drafted); this skill writes new declarations.
+description: Author a new `effect` declaration -- `expect` set, deps, expose surface, shell body, and cleanup -- with discipline about identity (one effect per service, unique-resources rule), config decomposition (Config + Service when the service rejects ENV), and the wrapper-effect re-expose rule. Use when the user asks to write a new effect, add an effect for a service the suite does not yet manage, wrap an existing effect with seed data / migrations / post-init steps, or decompose a file-configured service into Config + Service. Fires on phrasings like "write an effect for X", "add a Postgres effect", "wrap Db with seeded data", "this service needs a config file -- how do I model it". Modifying an existing effect's body or surface is `relux:effect-edit`; moving an effect between modules or removing one are mechanical operations with no skill of their own. Authoring tests that use the effect is `relux:test-write` (which hard-switches here when a required service has no effect yet).
 ---
 
 # Author a new effect
@@ -41,13 +41,14 @@ Agent-task signals:
   path covers it.
 
 **Out of scope:** modifying an existing effect's body, `expect` set,
-or `expose` set; removing an effect; moving an effect between
-modules. Those are refactoring operations against a live caller set
-and belong to future `effect-edit` / `effect-move` skills (Wave 2
-leaves; not yet drafted). Marker placement on the effect is
+or `expose` set is `relux:effect-edit`; removing or moving an effect
+between modules are mechanical operations (grep callers, relocate or
+delete) with no skill of their own. Marker placement on the effect is
 `relux:markers` (handoff after authoring if a guard is needed);
 authoring helper functions used inside the effect's shells is
-`relux:function`.
+`relux:function`. The natural caller of this skill is `relux:test-write`,
+which hard-switches here when a test it is authoring needs a service the
+suite does not yet model.
 
 **Direct invocation (`/relux:effect-write`).** Ask the user which
 service the effect models, whether it accepts ENV-only configuration
@@ -520,6 +521,38 @@ After authoring, re-walk the effect and its caller surface.
   touches paths under `${__RELUX_RUN_ARTIFACTS}/` is removing test
   evidence. Pull those lines.
 
+### Shared: Follow-up -- propose a smoke test
+
+After the effect lands and `relux check` is green, propose to the
+user that the next move is `relux:test-write` to author a smoke
+test that `start`s this effect and exercises its basic behaviour
+(the service comes up, the readiness match fires, the
+re-exposed dep surface is reachable from the caller). The smoke
+test is what gives `relux run` something to execute against the
+new effect -- `relux check` alone never spawns shells, so until a
+test runs it the effect's body is unverified.
+
+Two cases:
+
+- **Hard-switch return.** If this effect was authored because
+  `relux:test-write` hard-switched here for a missing service, the
+  pending test is the smoke test. Hand off to `relux:test-write`
+  to resume that work.
+- **Standalone authoring.** If the user came directly to this
+  skill (no pending test), propose a small `test "starts and ..."`
+  via `relux:test-write` that walks the effect's expected surface
+  once.
+
+When you hand off to `relux:test-write`, surface the marker
+inheritance: every marker carried by this effect (external-tool
+guards via `# skip unless which("...")`, conditional markers,
+`# flaky`) propagates to every test that `start`s it
+(`references/markers.md` > *Skip propagates transitively*). The
+smoke test must not duplicate those markers -- the propagation
+already covers it. Reach for `relux:markers` only for *additional*
+gates this specific test needs that the effect chain does not
+already supply.
+
 ## Done when
 
 - The effect declares the right body sections in the right order,
@@ -570,10 +603,18 @@ After authoring, re-walk the effect and its caller surface.
   preconditions. Hand off after authoring.
 - `relux:configure` -- `[run].jobs` and effect dedup interact;
   parallel runs amplify the cost of fragmented `expect` sets.
-- Future `test-write` (Wave 2 leaf; not yet drafted) -- the natural
-  caller of this skill. Future `effect-edit` / `effect-move` (Wave
-  2 leaves; not yet drafted) -- for Modify / Remove / Move
-  operations not covered here.
+- `relux:test-write` -- two-way handoff. (a) The natural caller:
+  hard-switches here when a test it is authoring needs a service
+  that has no effect yet. (b) The natural follow-up: after this
+  effect lands, propose a smoke test that exercises it (see
+  *Shared: Follow-up -- propose a smoke test*). Surface marker
+  inheritance when handing off: markers on this effect propagate
+  to every test that `start`s it
+  (`references/markers.md` > *Skip propagates transitively*),
+  so the smoke test should not duplicate them.
+- `relux:effect-edit` -- for modifying an existing effect's body,
+  `expect`, `expose`, deps, or cleanup. Moving an effect between
+  modules or removing one are mechanical operations with no skill.
 
 ## References
 

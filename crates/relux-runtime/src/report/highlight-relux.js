@@ -270,7 +270,7 @@ hljs.registerLanguage("relux", function (hljs) {
 
   // Parenthesised argument / parameter lists. Activated by any `(...)`
   // - covers fn declaration params `fn foo(p1, p2)` AND call-site args
-  // `trim(input)` / `${match_exit_code(0)}`.
+  // `trim(input)` / `let code = match_exit_code(0)`.
   const FN_CALL_ARGS = {
     begin: /\(/,
     end: /\)/,
