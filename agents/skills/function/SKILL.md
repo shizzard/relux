@@ -86,21 +86,21 @@ Pick the operation path based on the classification done in pre-flight.
 
 Two axes need a pick when placing a function.
 
-**Purity.**
+**Purity.** (Pure vs impure BIF lists in `references/bifs.md`;
+callable positions for each form in `references/functions.md`.)
 
 - Body only manipulates strings, computes values, or calls other
-  `pure fn`s / pure BIFs (`trim`, `upper`, `lower`, `replace`, `split`,
-  `len`, `uuid`, `rand`, `available_port`, `which`, `default`) -- write
+  `pure fn`s / pure BIFs (`trim`, `uuid`, `which`, etc.) -- write
   `pure fn`.
 - Body sends to a shell, matches against output, sets timeout or
-  fail-pattern, or calls impure BIFs (`sleep`, `match_prompt`,
-  `match_ok`, ctrl-keys) -- must be `fn`.
+  fail-pattern, or calls impure BIFs (`sleep`, `match_ok`,
+  ctrl-keys) -- must be `fn`.
 
-The discipline is not "pure is nicer"; it is "if it can be pure, future
-callers will need it pure." `pure fn` is callable from marker
-expressions, overlay expressions, `let` RHS, and shell-block
-expressions; `fn` is callable only inside a shell block. Defaulting to
-`pure fn` keeps options open.
+The discipline is not "pure is nicer"; it is "if it can be pure,
+future callers will need it pure." `pure fn` is callable from
+marker / overlay / `let` RHS / shell positions; `fn` is callable
+only inside a shell block. Defaulting to `pure fn` keeps options
+open.
 
 **Location.**
 

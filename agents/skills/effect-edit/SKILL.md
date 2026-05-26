@@ -167,10 +167,10 @@ vars the effect's identity is computed from.
   (and got distinct ephemeral instances) will suddenly share a
   single instance with whichever overlay won the dedup race.
   Surface this to the user before removing.
-- Callers may still pass the var in their overlay -- that is
-  legal (overlays may set non-expected vars; they are visible in
-  the body's lexical env but ignored for identity). Resolve-time
-  is happy; runtime dedup is changed.
+- Callers may keep passing the var in their overlay -- legal but
+  no longer identity-relevant (`references/effects-identity.md`
+  > *The `expect` contract* covers the "contract, not sandbox"
+  rule).
 
 **Renaming a var (`expect old_name` -> `expect new_name`).**
 
@@ -205,19 +205,19 @@ vars the effect's identity is computed from.
 
 ### Dimension 2: `expose`
 
-What lives here: `expose shell <name> [as <alias>]` and
-`expose var <name>` lines. The effect's caller-visible surface.
+The effect's caller-visible surface. Forms, caller access syntax,
+and the non-exposed-shell termination rule live in
+`references/effects-expose.md`.
 
 **Adding an expose.**
 
 - Additive -- no existing caller breaks. Safe.
 - Confirm the new exposure is *useful* to callers per the
-  rubric carried over from `relux:effect-write`: the
-  service-running shell is always useful and always exposed;
-  other shells and vars are exposed only when a caller has a
-  reason to operate on them. Don't expose setup-only shells (they
-  must terminate cleanly; exposing them is a buffer-pollution
-  trap).
+  Expose rubric in `relux:effect-write`: the service-running
+  shell is always useful and always exposed; other shells and
+  vars are exposed only when a caller has a reason to operate on
+  them. The "don't expose setup-only shells" pitfall in
+  `references/effects-expose.md` still applies.
 
 **Removing an expose.**
 
@@ -227,19 +227,12 @@ What lives here: `expose shell <name> [as <alias>]` and
 - The grep (pre-flight item) lists the breaks. Decide per site:
   edit the caller to drop the reference, or keep the exposure
   and revisit why removal seemed right.
-- **Wrapper-transparency check.** If this effect is a wrapper
-  (has `start <Dep>` and re-exposes part of `<Dep>`'s surface),
-  you cannot drop a re-exposed dep shell or var without
-  un-layering the chain. Callers that depend on the dep's
-  surface through the wrapper expect to find it there; dropping
-  it forces them to bypass the wrapper, which defeats the
-  layering. If a re-export feels surplus, the question is
-  usually "should this still be a wrapper at all?" not "should
-  we drop the re-export?"
-- **Layer-own additions** (extra exposures the wrapper added on
-  top of the dep's surface) are different -- those can be
-  dropped when callers no longer need them, just like a Plain
-  effect's expose.
+- **Wrapper-transparency check.** If this effect is a wrapper,
+  dropping a re-exposed dep var/shell un-layers the chain (the
+  Layering Transparency rule in `relux:effect-write` is
+  load-bearing on edits too). Layer-own additions can be dropped
+  freely; the transparency baseline -- the dep's surface flowing
+  through -- cannot.
 
 **Renaming an expose (`expose shell s as new_alias`).**
 
@@ -319,20 +312,19 @@ the actual send/match/sleep statements.
 
 - Most edits are local: a new match, a different sleep, a
   reworded prompt assertion. No caller surface implication.
-- **Fail patterns must be set inline** in the shell body, not in
-  a called `fn`. Fail-pattern slot is shell-scoped per
-  `references/fail-patterns.md`; a `fn` opens a frame that
-  snapshots and restores the slot, so any pattern set in a `fn`
-  reverts the moment the `fn` returns. This rule carries over
-  unchanged from `relux:effect-write`.
-- **Service-running shell** edits: keep the foreground-run
-  discipline. No `&` / `nohup` / `docker run -d`. Containers
-  remain `docker run --rm -i`. If the edit is rewriting the
-  launch line, this discipline still applies.
-- **Artifact paths** under `${__RELUX_RUN_ID}/<svc>/` continue to
-  surface in `event.html`. Adding new artifacts: pick a stable
-  filename; the runtime's `scan_artifacts` will find it. Don't
-  write outside the run dir.
+- **Fail patterns** must be set inline in the shell body, not in
+  a called `fn`. Frame scope reverts the slot on return; see
+  `references/functions.md` > *`fn`* (per-frame state) and
+  `references/fail-patterns.md`.
+- **Service-running shell** edits: the foreground-run discipline
+  from `relux:effect-write` > *Composing the service shell*
+  still applies (no `&` / `nohup` / `docker run -d`; containers
+  use `docker run --rm -i`).
+- **Artifact paths** under `${__RELUX_RUN_ARTIFACTS}` are
+  scanned by the runtime and surfaced in `event.html` (see
+  `references/project-layout.md` > Built-in environment
+  variables). Writes outside that path are invisible to the
+  viewer.
 
 **Adding or removing a `shell` block.**
 
@@ -347,45 +339,36 @@ the actual send/match/sleep statements.
 
 ### Dimension 5: cleanup
 
-What lives here: `cleanup { ... }` blocks. Fresh implicit shell,
-uncancellable token, reverse topological order (root cleans up
-first, leaf last).
+Cleanup semantics -- fresh implicit shell, reverse topological
+order, the no-fail-patterns / no-service-kills / idempotency /
+artifact-preservation rules -- all live in
+`references/cleanup.md`. Read it before touching this dimension.
+The skill-level discipline below is *when and why* to edit, not
+*how* the block behaves.
 
 **Adding cleanup.**
 
 - Confirm one is actually needed. Most effects don't have one --
-  the run directory is preserved as a test artifact, and
-  service processes exit when their shell terminates.
-- The usual cases: external resources the effect created outside
-  the run dir (e.g., a database the effect created on a real
-  server, a cloud resource), state on shared infrastructure
-  (queues, caches with persistent keyspace).
-- **Don't set fail patterns** in cleanup; the fresh shell starts
-  with an empty fail-pattern slot and setting one risks
-  cleanup-time matches that prematurely fail the teardown.
-- **Don't stop services that already exit on shell termination.**
-  Cleanup is for external state, not for `kill` of the SUT
-  binary.
-- Cleanup must be **idempotent.** It may run after a partial
-  setup or after a previous cleanup attempt; the operations
-  should not error on already-cleaned state.
+  service processes exit on shell termination; the run dir is
+  preserved as a test artifact. The usual cases are external
+  resources outside the run dir (real databases, cloud
+  resources, shared queues / cache keyspaces).
 
 **Removing cleanup.**
 
-- Surface to the user the actual mechanism that will clean up
-  what cleanup used to handle. If the answer is "nothing, the
-  state will leak," the removal is wrong.
+- Surface to the user the mechanism that will clean up what
+  cleanup used to handle. If the answer is "nothing, the state
+  will leak," the removal is wrong.
 
 **Editing cleanup body.**
 
-- The artifact-preservation rule still binds: do not delete files
-  under `${__RELUX_RUN_ID}/<svc>/`. They are the post-mortem
-  surface; the viewer reads them via `scan_artifacts`.
-- **Wrapper cleanup direction:** if this effect is a wrapper, its
-  cleanup runs *before* its dep's cleanup (root-to-leaf, test
-  first). Any state the wrapper added on top of the dep should
-  unwind here; the dep handles its own teardown when its turn
-  comes.
+- The artifact-preservation pitfall in `references/cleanup.md`
+  applies as much on edits as on initial authoring -- do not
+  delete files under `${__RELUX_RUN_ARTIFACTS}`.
+- **Wrapper cleanup direction:** when this effect is a wrapper,
+  its cleanup runs *before* its dep's (root-to-leaf, per
+  `references/cleanup.md` > *When it runs*). Unwind only what
+  the wrapper added; the dep handles its own teardown.
 
 ### Extract (split): recognize + delegate
 
@@ -593,33 +576,11 @@ still be a wrapper?" If yes, keep the re-export.
 
 ### Setting a fail pattern in a `fn` that the shell calls
 
-Fail-pattern slot scope is the shell, but `fn` frames snapshot
-and restore the slot. A pattern set inside a `fn` reverts the
-moment the `fn` returns -- the shell body that called it loses
-the protection immediately after.
-
-Don't:
-
-```relux
-fn set_db_fail_patterns() {
-  !? "ERROR:.*"
-  !? "FATAL:.*"
-}
-
-effect Db {
-  expect data_dir
-  shell run {
-    set_db_fail_patterns()     # patterns set, then immediately
-                               # restored when fn returns
-    send "./db --data ${data_dir}"
-    <"ready"
-    # Patterns are NOT in effect here.
-  }
-}
-```
-
-Do: set fail patterns directly in the shell body, before the
-send that needs them.
+`fn` frames snapshot and restore the fail-pattern slot
+(`references/functions.md` > *`fn`* > per-frame state). A
+pattern set inside a `fn` reverts the moment the `fn` returns,
+leaving the calling shell unprotected. Set fail patterns
+directly in the shell body, not in a helper.
 
 ### Body-only edits that leak through `expose var`
 
@@ -645,25 +606,13 @@ expose-rename / expose-remove discipline.
 
 ### Cleanup that deletes the run-dir artifacts
 
-The viewer reads files under `${__RELUX_RUN_ID}/<svc>/` via
-`scan_artifacts`. Cleanup that deletes those files erases the
-post-mortem surface for any test that uses this effect.
-
-Don't:
-
-```relux
-effect Db {
-  expect data_dir
-  shell run { ... }
-  cleanup {
-    send "rm -rf ${__RELUX_RUN_ID}/db/"   # erases the viewer's surface
-  }
-}
-```
-
-Do: leave the run-dir artifacts in place. Cleanup is for state
-external to the run dir (real databases, cloud resources, shared
-queues).
+A Modify on the cleanup body that introduces a `rm -rf` or
+similar under `${__RELUX_RUN_ARTIFACTS}` erases the viewer's
+post-mortem surface. See `references/cleanup.md` > *Don't delete
+files under `${__RELUX_RUN_ARTIFACTS}`* for the rule and the
+canonical example. The Modify-specific framing: this commonly
+sneaks in during a "while I'm in here, let me also tidy up" pass.
+Resist; cleanup is for state outside the run dir.
 
 ### Skipping `relux run`
 

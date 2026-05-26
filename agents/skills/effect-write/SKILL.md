@@ -122,7 +122,7 @@ muddies what the test author has to set. The right move is to split:
      share one `<Svc>Config` instance, rendering the wrong file;
      over-list and dedup fragments needlessly).
    - Renders the config file to a deterministic artifact path under
-     `${__RELUX_RUN_ID}/<svc>/config.<ext>`.
+     `${__RELUX_RUN_ARTIFACTS}/<svc>/config.<ext>`.
    - Exposes the full path as a let-bound var:
      `let config_path = "..."` then `expose var config_path`.
    - **No `cleanup`** -- the rendered file is a meaningful test
@@ -228,7 +228,7 @@ genuinely need to send commands against the provisioning layer
 itself; rare but not prohibited.
 
 The layer's own shell **may still write provisioning artifacts**
-under `${__RELUX_RUN_ID}/<svc>/<layer>/` regardless of expose --
+under `${__RELUX_RUN_ARTIFACTS}/<svc>/<layer>/` regardless of expose --
 artifact-writing is independent of whether the shell is exposed.
 The migration log, the applied schema dump, even copies of the
 migration SQL files themselves -- whatever rounds out the
@@ -277,25 +277,21 @@ The rule reframes the rubric from "what matters for behaviour"
 collide on" (concrete). The latter has an answer for every effect.
 
 **Expose surface.** Decide which shells survive setup and what
-publishes to callers.
+publishes to callers. Forms, the non-exposed-shell termination
+rule, the expose-var-must-target-a-let constraint, the let-shim
+trick for overlay vars, and the `as` rename syntax all live in
+`references/effects-expose.md`. The skill-level discipline:
 
-- **The service-running shell must always be exposed.** This is the
-  shell that holds the actual service process. Without
-  `expose shell ...`, the shell terminates when setup completes and
-  the service dies with it -- the effect is useless. Every other
-  expose decision follows from "does the caller need to operate on
-  this shell?"; the service shell is the one non-negotiable expose.
-- Other shells the caller will operate on must be exposed too.
-  Non-exposed shells terminate when setup completes.
-- Setup-only shells (init, migrations, seed) **must not** be exposed
-  -- leave them out so they free resources. See
-  `references/effects-expose.md` > *Don't expose setup-only shells*.
-- Let-bound values that callers need to read get
-  `expose var <name>`. The target must be a `let` in the same
-  effect; expose-as-passthrough of an overlay var requires a let
-  shim (`let port = PORT` then `expose var port`).
-- Names default to the local name; rename via `as` when the caller
-  should read a different identifier (`expose shell s as service`).
+- **The service-running shell must always be exposed.** It holds
+  the actual service process; if it terminates with setup, the
+  service dies and the effect is useless. This is the one
+  non-negotiable expose.
+- Other shells follow "does the caller need to operate on this
+  shell?" -- expose only when yes.
+- Setup-only shells (init, migrations, seed) must stay out of
+  `expose` so they free resources (the
+  `references/effects-expose.md` > *Don't expose setup-only
+  shells* pitfall).
 
 ### Shared: Composing the service shell
 
@@ -337,39 +333,35 @@ to the PTY so termination propagates. No `-d`, no backgrounding, no
 nohup. The same rule applies to other containerisation systems
 (Podman, containerd, systemd-nspawn) -- foreground + auto-cleanup.
 
-**Map meaningful service artifacts into the run directory.** Most
-services produce artifacts worth keeping for post-mortem -- logs,
-core dumps, query traces, intermediate state. Anything written
-under `${__RELUX_RUN_ID}/<svc>/` is scanned by the artifact scanner
-and surfaced in `event.html`; anything written elsewhere is
-invisible to the viewer and lost when the host's `/tmp` or
-`/var/log` rolls.
+**Map meaningful service artifacts into the run directory.**
+Anything written under `${__RELUX_RUN_ARTIFACTS}/<svc>/` is
+scanned by the runtime and surfaced in `event.html` (see
+`references/project-layout.md` > Built-in environment variables);
+anything written elsewhere is invisible to the viewer.
 
 **Ask the user which service artifacts are meaningful** (logs are
-the canonical case), then configure the service to write them under
-the run dir:
+the canonical case), then configure the service to write them
+under the run dir:
 
 ```relux
 shell svc {
     > postgres -D ${PG_DATA_DIR} \
-        -c log_directory=${__RELUX_RUN_ID}/postgres/ \
+        -c log_directory=${__RELUX_RUN_ARTIFACTS}/postgres/ \
         -c log_filename=postgres.log
     <? listening
 }
 ```
 
 For services that hard-code their log path, redirect at the shell
-level (`> svc > ${__RELUX_RUN_ID}/svc/svc.log 2>&1`) or symlink the
-hard-coded path into the run dir during setup. The goal is that
-when a test fails, the relevant log lands beside `events.json` and
-the viewer renders it inline.
+level (`> svc > ${__RELUX_RUN_ARTIFACTS}/svc/svc.log 2>&1`) or
+symlink the hard-coded path into the run dir during setup.
 
 **Fail patterns: ask, then set inline.** Ask the user whether the
 service has known fatal output signatures -- panic markers, segfault
 prints, `FATAL:` / `panic:` / `Segmentation fault` lines -- that
 should immediately fail any test interacting with the service. If
-yes, set the fail pattern **inline in the service shell**, before
-the readiness match:
+yes, set the fail pattern inline in the service shell, before the
+readiness match:
 
 ```relux
 shell svc {
@@ -379,19 +371,12 @@ shell svc {
 }
 ```
 
-The fail pattern lives in the shell's slot, which persists from
-setup into every `shell Alias.svc { ... }` block in the test -- the
-inheritance happens because the *shell* is exposed (its slot
-travels with it). Do **not** wrap `!?` in a `fn`; the fail-pattern
-slot is frame-scoped (`references/functions.md` > *`fn`*), so the
-slot reverts when the function returns and the guard never reaches
-the test.
-
-If a negative test legitimately needs to emit the fail-pattern
-string (e.g., exercising the panic path), clear the slot inline
-before that section with `!?` (no payload) and re-set it afterward
-(`!? FATAL` again). See `references/fail-patterns.md` > *Clear the
-slot before reusing the shell for unrelated work*.
+The slot travels with the *shell* (it persists into every
+`shell Alias.svc { ... }` block in the test, because the shell is
+exposed). Do not wrap `!?` in a `fn` -- the slot is frame-scoped
+and reverts on return (`references/functions.md` > *`fn`* >
+per-frame state; `references/fail-patterns.md` covers slot scope
+and clear-then-reset for negative tests).
 
 ### Path: Plain
 
@@ -438,7 +423,7 @@ plumbing, not a wrap).
    service-running shell, walk *Shared: Composing the service shell*
    above -- foreground run (no `&` / `nohup` / `docker -d`),
    container auto-removal (`--rm`), artifact mapping into
-   `${__RELUX_RUN_ID}/`, and inline fail patterns. Helper functions
+   `${__RELUX_RUN_ARTIFACTS}/`, and inline fail patterns. Helper functions
    for repetitive sequences belong in a library module -- handoff to
    `relux:function`.
 
@@ -480,29 +465,17 @@ both the wrapped dep's shells and (optionally) the wrapper's own.
    }
    ```
 
-4. **Re-expose the dep's full surface.** Load-bearing wrapper rule
-   -- applies to both shells and vars. `start Db as Dep` runs `Db`
-   and gives the wrapper dot-access to `Dep.<name>`, but does
-   **not** surface anything of `Dep` to whoever starts the wrapper.
-   Without `expose shell Dep.<name>` / `expose var Dep.<name>`,
-   callers cannot reach `Db`'s shells or vars -- alive (held by the
-   wrapper's guard) but invisible. See
-   `references/effects-expose.md` > *Wrapper effects must re-expose
-   dependency shells*.
+4. **Re-expose the dep's full surface.** Wrapper rule; without
+   it, dep shells and vars are alive (held by the wrapper's guard)
+   but unreachable from callers. See
+   `references/effects-expose.md` > *Wrapper effects must
+   re-expose dependency shells*.
 
-   For provisioning-chain layers, transparency is the rule: every
-   shell and var the dep exposed must be re-exposed under its
-   original name, no `as` rename. The caller reaches `Db.service`
-   regardless of which layer they started:
-
-   ```relux
-   expose shell Dep.service    // original name; transparent passthrough
-   expose var Dep.port         // same
-   ```
-
-   `as` rename is reserved for cases where the wrapper genuinely
-   reshapes the surface (e.g., a non-chain wrapper that renames a
-   shell from `Dep.s` to a caller-facing `service`).
+   For provisioning-chain layers, re-export under the dep's
+   *original* names (no `as` rename) -- transparency means the
+   caller reaches `Db.service` regardless of which layer they
+   started. `as` rename is reserved for non-chain wrappers that
+   genuinely reshape the surface.
 
 5. **Compose the wrapper's own shell.** This is where the layering
    work happens (running migrations against `Dep.service`, seeding
@@ -523,7 +496,7 @@ both the wrapped dep's shells and (optionally) the wrapper's own.
    when genuinely useful to the caller.
 
    The layer's own shell **may still write provisioning artifacts**
-   under `${__RELUX_RUN_ID}/<svc>/<layer>/` regardless of expose
+   under `${__RELUX_RUN_ARTIFACTS}/<svc>/<layer>/` regardless of expose
    -- migration logs, applied-schema dumps, copies of the migration
    SQL itself. Apply the artifact-mapping discipline from *Shared:
    Composing the service shell*; expose is about caller interaction,
@@ -537,28 +510,20 @@ Then run **Verify**, then **Audit**.
 
 ### Shared: Cleanup
 
-Ask "do I even need cleanup?" first. The answer is usually no.
+Ask "do I even need cleanup?" first. The answer is usually no --
+PTY death already kills service children, and the run dir is
+post-mortem evidence (do not delete it; see
+`references/cleanup.md` > *Don't delete files under
+`${__RELUX_RUN_ARTIFACTS}`*). Cleanup is for filesystem side
+effects *outside* `${__RELUX_RUN_ARTIFACTS}` -- sockets in
+`/tmp`, files in `/var`, anything the next test would trip
+over. `<Svc>Config` typically has no cleanup for this reason:
+its rendered file is exactly what a failed-run post-mortem
+wants to read.
 
-Cleanup runs in a fresh implicit shell after the effect's exposed
-shells terminate; it cannot stop the service (PTY death already
-killed children) and cannot see buffer/captures/shell-scoped `let`s
-from setup. Cleanup is for **filesystem side effects that live
-outside `${__RELUX_RUN_ID}/`** -- sockets in `/tmp`, files in
-`/var`, anything the next test would trip over.
-
-Anything written under `${__RELUX_RUN_ID}/` is the run's intentional
-output, scanned by the artifact scanner, and surfaced in
-`event.html` for post-mortem. **Do not delete it in cleanup.** This
-is why the `<Svc>Config` leaf typically has no cleanup -- the
-rendered config file is exactly what you want to inspect when a
-run fails.
-
-Cleanup runs in reverse topological order: the test (root) tears
-down first; effects tear down root -> leaf. A leaf's cleanup runs
-last, after every dependent has already cleaned up.
-
-See `references/cleanup.md` > *Pitfalls and best practices* for the
-worked examples.
+Behavioural rules (fresh shell, no fail patterns, no service
+kills, idempotency, reverse topological order) all live in
+`references/cleanup.md`; read it before writing the block.
 
 ### Shared: Verify
 
@@ -617,7 +582,7 @@ After authoring, re-walk the effect and its caller surface.
   own shell) pass the general "useful for the caller" rule from
   the Expose rubric; if the provisioning step produces meaningful
   artifacts (logs, applied schema), the layer's shell writes them
-  under `${__RELUX_RUN_ID}/<svc>/<layer>/`.
+  under `${__RELUX_RUN_ARTIFACTS}/<svc>/<layer>/`.
 - **External-tool guard.** If the body invokes a non-standard
   external tool (`docker`, `pg_ctl`, `psql`, `kubectl`, project
   CLIs), confirm the effect carries a `# skip unless which("...")`
@@ -626,7 +591,7 @@ After authoring, re-walk the effect and its caller surface.
   loudly instead of skipping. Handoff to `relux:markers` (Add
   path) if missing.
 - **No cleanup deleting artifacts.** Any `cleanup` block that
-  touches paths under `${__RELUX_RUN_ID}/` is removing test
+  touches paths under `${__RELUX_RUN_ARTIFACTS}/` is removing test
   evidence. Pull those lines.
 
 ## Done when
@@ -638,7 +603,7 @@ After authoring, re-walk the effect and its caller surface.
 - For Config + Service: both halves exist, both `expect` the same
   set, `<Svc>` reads `${Cfg.config_path}` in its shell, and the
   rendered config file is a documented test artifact under
-  `${__RELUX_RUN_ID}/`.
+  `${__RELUX_RUN_ARTIFACTS}/`.
 - For Wrap: every dep shell *and* var the caller could have reached
   by starting the dep directly is re-exposed; the wrapper's own
   shells are exposed only when callers need to operate on them.
@@ -649,12 +614,12 @@ After authoring, re-walk the effect and its caller surface.
   when the caller genuinely needs to operate on it), and any
   layer-added exposures pass the general "useful for the caller"
   rule; meaningful provisioning artifacts write under
-  `${__RELUX_RUN_ID}/<svc>/<layer>/`.
+  `${__RELUX_RUN_ARTIFACTS}/<svc>/<layer>/`.
 - The service-running shell is exposed; the service launches in the
   foreground (no `&` / `nohup` / `docker -d`); containerised
   services use `--rm` for auto-cleanup.
 - Meaningful service artifacts (logs, dumps) write under
-  `${__RELUX_RUN_ID}/<svc>/`; the user has confirmed what is
+  `${__RELUX_RUN_ARTIFACTS}/<svc>/`; the user has confirmed what is
   worth preserving for post-mortem.
 - If the service has known fatal output signatures, a `!?` / `!=`
   guard is set inline in the service shell (not in a function --
@@ -664,7 +629,7 @@ After authoring, re-walk the effect and its caller surface.
 - Non-standard external tools the body invokes are guarded by a
   marker (handoff to `relux:markers` completed).
 - Cleanup, if present, touches only state outside
-  `${__RELUX_RUN_ID}/`, is idempotent, and does not set fail
+  `${__RELUX_RUN_ARTIFACTS}/`, is idempotent, and does not set fail
   patterns.
 
 ## Cross-skill handoffs
@@ -699,7 +664,7 @@ After authoring, re-walk the effect and its caller surface.
   `${Alias.var}` interpolation.
 - `references/markers.md` -- effect-level marker propagation
   (markers on effects reach every test that `start`s them).
-- `references/project-layout.md` -- the `${__RELUX_RUN_ID}/`
+- `references/project-layout.md` -- the `${__RELUX_RUN_ARTIFACTS}/`
   artifact directory layout and built-in env vars.
 
 ## Pitfalls
@@ -804,26 +769,14 @@ effect Postgres { ... }
 
 ### Don't use cleanup to delete artifacts
 
-Anything under `${__RELUX_RUN_ID}/` is the run's intentional output,
-visible in `event.html` for post-mortem. Deleting it in cleanup
-removes the evidence that makes failures debuggable. Cleanup is for
-state that lives *outside* the run dir and would leak otherwise.
-
-Don't:
-
-```relux
-cleanup {
-    > rm -rf ${__RELUX_RUN_ID}/postgres/    # deletes config + logs
-}
-```
-
-Do:
-
-```relux
-cleanup {
-    > rm -rf /tmp/postgres-${PG_PORT}.sock    # outside run dir; OK
-}
-```
+The artifact-preservation rule lives in `references/cleanup.md` >
+*Don't delete files under `${__RELUX_RUN_ARTIFACTS}`*. Authoring
+framing for this skill: a fresh effect that immediately includes
+`rm -rf ${__RELUX_RUN_ARTIFACTS}/<svc>/` in cleanup is almost
+always wrong -- the rendered config, captured logs, and any
+artifact dropped under the run dir is exactly the post-mortem
+surface that makes failures debuggable. Cleanup is for state
+*outside* `${__RELUX_RUN_ARTIFACTS}`.
 
 ### Don't background the service process
 
@@ -860,34 +813,13 @@ daemon has one.
 
 ### Don't author a wrapper without re-exposing dep shells
 
-A wrapper that seeds data into `Dep.service` but does not
-`expose shell Dep.service as service` leaves the caller unable to
-talk to the underlying service -- the shell is alive (held by the
-wrapper's guard) but unreachable. The test starts `SeededDb` to get
-a seeded `Db`; if `Db`'s shell is invisible, the wrapper is
-useless.
-
-Don't:
-
-```relux
-effect SeededDb {
-    start Db as Dep
-    expose shell seed    # Db.service unreachable to callers
-    shell seed {
-        > psql -c "INSERT INTO ..."
-    }
-}
-```
-
-Do:
-
-```relux
-effect SeededDb {
-    start Db as Dep
-    expose shell Dep.service    # original name; caller reads as 'service'
-    shell seed {
-        > psql -c "INSERT INTO ..."
-    }
-    # seed terminates after setup; caller does not operate on it
-}
-```
+The wrapper re-export rule lives in `references/effects-expose.md`
+> *Wrapper effects must re-expose dependency shells* (with the
+canonical Don't/Do). Authoring framing: a wrapper's first draft
+that lists `start <Dep>` but no `expose shell <Dep>.<name>` is
+not a wrapper -- it is an effect that consumes the dep
+internally. For provisioning-chain layers the omission is
+load-bearing (callers cannot reach the underlying service); for
+internal-only deps it is the right shape (the dep's surface
+should not leak through). Decide which the caller needs before
+writing the `expose` block.

@@ -117,24 +117,23 @@ penalises every match in every test on every run.
    suite-wide -- most matches across most tests legitimately need
    more time than the defaults provide.
 
-The knobs:
+The knobs (defaults shown in the snippet above; field semantics in
+`references/project-layout.md`, scope and `~` vs `@` in
+`references/timeouts.md`):
 
-- **`match`** -- per match operation. Default `5s`. Suite-wide step-3
-  knob.
-- **`test`** -- per-test wall-clock budget. Default `5m`. Raise only
-  when an individual test legitimately takes longer than five
-  minutes; most slow-test problems are slow-match problems in
-  disguise (handled by `match`).
-- **`suite`** -- whole-run budget. Default `10m`. Raise proportionally
-  to test count once the suite legitimately grows past it. If `suite`
-  fires before any individual test times out, the answer is `jobs`
+- **`match`** -- per match operation. The suite-wide step-3 knob.
+- **`test`** -- per-test wall-clock budget. Raise only when an
+  individual test legitimately takes longer than the default;
+  most slow-test problems are slow-match problems in disguise
+  (handled by `match`).
+- **`suite`** -- whole-run budget. Raise proportionally to test
+  count once the suite legitimately outgrows it. If `suite` fires
+  before any individual test times out, the answer is `jobs`
   (parallelism), not a larger budget.
 
-All three are *tolerance* timeouts (`~`); they scale with CI's
-`--timeout-multiplier`. Assertion timeouts (`@`) live only inline in
-test files and are not configurable here.
-
-Durations are humantime: `500ms`, `2s`, `1m30s`.
+All three are tolerance timeouts that scale with
+`--timeout-multiplier`; assertion timeouts (`@`) are inline-only
+and not configurable here.
 
 ### Parallel jobs (`[run]`)
 
@@ -163,14 +162,14 @@ max_retries = 0
 timeout_multiplier = 1.5
 ```
 
-- `max_retries` defaults to `0`, meaning `# flaky` markers are
+- `max_retries` -- defaulting to `0` means `# flaky` markers are
   recorded but have no retry effect. Set to `1` or `2` only when:
   (a) tests are marked `# flaky` for known, isolated reasons
   (network jitter, kernel-scheduled delays), and (b) the user has
   decided masking those races is the right business call.
-- `timeout_multiplier` (must be `> 1.0`, default `1.5`) scales
-  tolerance timeouts on each retry: `base * m^(retry-1)`. Assertion
-  timeouts (`@`) are never scaled.
+- `timeout_multiplier` -- scales tolerance timeouts on each retry
+  (formula and `~` vs `@` scope in `references/timeouts.md` >
+  *Flaky multiplier*). Must be `> 1.0`.
 
 **Discipline.** Flaky retries are a confession of unknown
 nondeterminism. They mask the symptom; they do not fix the race.

@@ -122,6 +122,28 @@ cleanup {
 }
 ```
 
+### Don't delete files under `${__RELUX_RUN_ARTIFACTS}`
+
+Files dropped under `${__RELUX_RUN_ARTIFACTS}` are scanned by the runtime and surfaced as the test's artifact list (see [project-layout](project-layout.md) > Built-in environment variables). They are the post-mortem surface for the viewer -- logs, rendered configs, captured outputs. Cleanup that removes them erases that surface for every test that shared the effect instance.
+
+Cleanup is for state *outside* the run dir (real databases, cloud resources, shared queues). Leave the run dir alone.
+
+Don't:
+
+```relux
+cleanup {
+    > rm -rf ${__RELUX_RUN_ARTIFACTS}/db/
+}
+```
+
+Do:
+
+```relux
+cleanup {
+    > psql -h prod-db -c "DROP DATABASE test_${run_id}"
+}
+```
+
 ### Don't use cleanup to stop services
 
 Shell termination already kills any process the shell launched (children of the PTY). Cleanup runs in a separate shell with no link to those processes -- if Relux is killed, cleanup never runs and orphans anything you tried to stop here. Reserve cleanup for filesystem side effects (temp dirs, log collection) that survive shell termination.
