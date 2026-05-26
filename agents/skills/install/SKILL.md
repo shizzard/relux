@@ -189,6 +189,11 @@ relux completions --shell zsh --install --path ~/.zsh/completions
   skill via the Skill tool. Do not invoke unprompted; the user may already
   have it installed or may not use a supported editor. Skip the prompt
   entirely on a no-op same-version verification.
+- If no `Relux.toml` exists on the current directory's ancestor chain,
+  ask the user whether they want to bootstrap a suite here. On consent,
+  invoke the `relux:init` skill via the Skill tool. Skip the prompt
+  if a suite already exists (the user is upgrading inside a known
+  project) or on a no-op same-version verification.
 - Point the user at the tutorials matching the installed version:
   - Latest: <https://shizzard.github.io/relux/latest/>
   - Specific version: `https://shizzard.github.io/relux/v<X.Y.Z>/`
@@ -199,13 +204,19 @@ relux completions --shell zsh --install --path ~/.zsh/completions
 - The user has been offered shell completions (and either declined or had
   them installed on consent).
 - The user has been offered the `relux:editor-plugin` follow-up
-  (and either declined or had the skill invoked on consent), and pointed
-  at the tutorials URL matching their installed version.
+  (and either declined or had the skill invoked on consent).
+- If no `Relux.toml` exists on the cwd's ancestor chain, the user has
+  been offered the `relux:init` follow-up (and either declined or had
+  the skill invoked on consent).
+- The user has been pointed at the tutorials URL matching their
+  installed version.
 
 ## Cross-skill handoffs
 
 - `relux:editor-plugin` -- offered after step 5 on a fresh install
   or upgrade, gated on user consent (see step 6).
+- `relux:init` -- offered in step 6 when the cwd has no `Relux.toml`
+  on its ancestor chain, gated on user consent.
 
 ## References
 
