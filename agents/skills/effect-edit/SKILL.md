@@ -61,8 +61,8 @@ Agent-task signals:
   decisions are case-by-case; no rubric beyond "find the callers
   and ask the user."
 - **Extracting effect logic from a test** -- that is pure
-  `relux:effect-write` plus a future `test-edit` to swap the
-  inline ops for a `start <NewEffect>`. Not this skill.
+  `relux:effect-write` plus `relux:test-edit` to swap the inline
+  ops for a `start <NewEffect>`. Not this skill.
 - **Marker placement** on the effect -- `relux:markers`. Handoff
   after the edit if the modification introduces a need for `@skip`
   / `@flaky` / `@if`.
@@ -496,9 +496,10 @@ is necessary but never sufficient for a Modify.
   change interacts with `[run].jobs`. Splitting one shared
   instance into N per-test instances amplifies setup cost; the
   user may want to revisit parallelism.
-- Future `test-edit` (Wave 2 leaf; not yet drafted) -- when the
-  Modify breaks caller tests' surface and the fix is on the test
-  side rather than rolling back the edit.
+- `relux:test-edit` -- when the Modify breaks caller tests'
+  surface (a `<Alias>.<x>` reference that no longer resolves
+  after this edit) and the fix is on the test side rather than
+  rolling back the edit.
 
 ## References
 

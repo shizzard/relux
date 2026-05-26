@@ -1,6 +1,6 @@
 ---
 name: relux:test-write
-description: Author a new `test` declaration -- name, docstring, `start` deps, `let` bindings, `shell` body following the command-match-anchor rhythm, optional cleanup -- with discipline about one behavior per test, test isolation, mandatory detail docstring, and context-budget management when required effects are not yet implemented. Use when the user asks to write a new test, add a relux test for a command or binary, verify a behavior with PTY matches, or assert a shell program's output. Fires on phrasings like "write a test for `<binary>`", "add a relux test that runs X and matches Y", "test that `<feature>` works", "verify `<behavior>` with a relux test", "I need a test that asserts X happens after Y". Modeling a service / dependency is `relux:effect-write` (with the hard-switch protocol below when the test needs one that does not exist yet); modifying an existing test is out of scope (future `test-edit` leaf, not yet drafted).
+description: Author a new `test` declaration -- name, docstring, `start` deps, `let` bindings, `shell` body following the command-match-anchor rhythm, optional cleanup -- with discipline about one behavior per test, test isolation, mandatory detail docstring, and context-budget management when required effects are not yet implemented. Use when the user asks to write a new test, add a relux test for a command or binary, verify a behavior with PTY matches, or assert a shell program's output. Fires on phrasings like "write a test for `<binary>`", "add a relux test that runs X and matches Y", "test that `<feature>` works", "verify `<behavior>` with a relux test", "I need a test that asserts X happens after Y". Modeling a service / dependency is `relux:effect-write` (with the hard-switch protocol below when the test needs one that does not exist yet); modifying or relocating an existing test, or splitting a fat test into siblings, is `relux:test-edit`.
 ---
 
 # Author a new test
@@ -44,9 +44,11 @@ Agent-task signals:
   a service that does not exist yet, follow the hard-switch protocol
   in *Before you start: required-effect handover* below rather than
   bundling effect authoring into this skill's session.
-- **Modifying an existing test** -- future `test-edit` leaf (not yet
-  drafted). Renaming, splitting, retuning matches, switching shells,
-  adding or removing `start` deps on an existing test belong there.
+- **Modifying an existing test** -- `relux:test-edit`. Renaming,
+  retuning matches, switching shells, adding or removing `start`
+  deps, relocating under a different `<sut>/<scope>/`, or splitting
+  one fat test into siblings (which hard-switches *back* here for
+  the new sibling) all belong there.
 - **Authoring helper functions** -- `relux:function`. Helpers used in
   the test body (`compose_url`, `parse_pid`, project-local anchor
   functions like `match_pyrepl`) are that skill's territory; this
@@ -496,8 +498,12 @@ After the run passes, re-walk the test once.
 - Future `run-and-fix` (Wave 4 leaf; not yet drafted) -- the
   iterate loop when `relux run` fails. This skill stops at the
   first verify; the loop is its own discipline.
-- Future `test-edit` (Wave 2 leaf; not yet drafted) -- for any
-  Modify / Remove / Move operation against an existing test.
+- `relux:test-edit` -- two-way handoff. (a) The natural follow-up
+  when the user asks to modify, relocate, or split an existing
+  test rather than author a new one; this skill stops at the
+  first author and verify. (b) The hard-switch *caller*: when
+  `relux:test-edit` runs a split-by-extraction, it hard-switches
+  here for the new sibling, then returns to strip the original.
 
 ## References
 
