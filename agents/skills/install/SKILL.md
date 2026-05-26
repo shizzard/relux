@@ -185,15 +185,15 @@ relux completions --shell zsh --install --path ~/.zsh/completions
 ### 6. Follow-ups
 
 - Ask the user whether they want to install a `.relux` editor plugin for
-  VS Code or IntelliJ. On consent, invoke the `relux:editor-plugin`
-  skill via the Skill tool. Do not invoke unprompted; the user may already
-  have it installed or may not use a supported editor. Skip the prompt
-  entirely on a no-op same-version verification.
+  VS Code or IntelliJ. On consent, hand off to `relux:editor-plugin`. Do
+  not hand off unprompted; the user may already have it installed or may
+  not use a supported editor. Skip the prompt entirely on a no-op
+  same-version verification.
 - If no `Relux.toml` exists on the current directory's ancestor chain,
   ask the user whether they want to bootstrap a suite here. On consent,
-  invoke the `relux:init` skill via the Skill tool. Skip the prompt
-  if a suite already exists (the user is upgrading inside a known
-  project) or on a no-op same-version verification.
+  hand off to `relux:init`. Skip the prompt if a suite already exists
+  (the user is upgrading inside a known project) or on a no-op
+  same-version verification.
 - Point the user at the tutorials matching the installed version:
   - Latest: <https://shizzard.github.io/relux/latest/>
   - Specific version: `https://shizzard.github.io/relux/v<X.Y.Z>/`
@@ -204,10 +204,10 @@ relux completions --shell zsh --install --path ~/.zsh/completions
 - The user has been offered shell completions (and either declined or had
   them installed on consent).
 - The user has been offered the `relux:editor-plugin` follow-up
-  (and either declined or had the skill invoked on consent).
+  (and either declined or had the handoff fire on consent).
 - If no `Relux.toml` exists on the cwd's ancestor chain, the user has
   been offered the `relux:init` follow-up (and either declined or had
-  the skill invoked on consent).
+  the handoff fire on consent).
 - The user has been pointed at the tutorials URL matching their
   installed version.
 

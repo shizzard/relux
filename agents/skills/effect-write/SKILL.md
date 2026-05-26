@@ -249,38 +249,19 @@ the layer's own additions are optional.
 Two design picks apply once you know how many effects you are
 writing.
 
-**Identity (`expect` set).** `expect` lists the variables that name
-unique external resources the effect *contends for*. Concretely:
+**Identity (`expect` set).** The resource taxonomy (filesystem /
+network / logical-shared-state) and the dummy-discriminator
+escape hatch live in `references/effects-identity.md` >
+*What goes in `expect`* and *Force a fresh instance with a
+dummy overlay key*. The skill-level framing: ask "what would two
+simultaneous instances physically collide on?" -- that has an
+answer for every effect; "what matters for behaviour" does not.
 
-- **Filesystem resources** -- data dirs, log dirs, socket paths,
-  lockfile paths.
-- **Network resources** -- ports, host bindings, named pipes.
-- **Logical shared state** -- database names in a shared cluster,
-  S3 prefixes, Redis keyspace prefixes.
-
-Everything else stays out of `expect`: log levels, debug flags,
-feature toggles, internal timeouts. Those ride inherited env
-transparently; the resolver does not gate on them and they do not
-fragment dedup. Two instances with the same `PORT` + different
-`LOG_LEVEL` are the same instance; the second `start` is a `reused`
-setup.
-
-When you need N independent instances of an effect that has no
-natural resource differentiator, add an `INSTANCE` discriminator to
-`expect` and pass distinct values per `start` site -- the
-instance-id *is* the unique resource. See
-`references/effects-identity.md` > *Force a fresh instance with a
-dummy overlay key*.
-
-The rule reframes the rubric from "what matters for behaviour"
-(squishy) to "what would two simultaneous instances physically
-collide on" (concrete). The latter has an answer for every effect.
-
-**Expose surface.** Decide which shells survive setup and what
-publishes to callers. Forms, the non-exposed-shell termination
-rule, the expose-var-must-target-a-let constraint, the let-shim
-trick for overlay vars, and the `as` rename syntax all live in
-`references/effects-expose.md`. The skill-level discipline:
+**Expose surface.** Forms, caller access, the non-exposed-shell
+termination rule, the expose-var-must-target-a-let constraint,
+the let-shim trick for overlay vars, and the `as` rename syntax
+all live in `references/effects-expose.md`. Skill-level
+discipline:
 
 - **The service-running shell must always be exposed.** It holds
   the actual service process; if it terminates with setup, the
@@ -288,95 +269,40 @@ trick for overlay vars, and the `as` rename syntax all live in
   non-negotiable expose.
 - Other shells follow "does the caller need to operate on this
   shell?" -- expose only when yes.
-- Setup-only shells (init, migrations, seed) must stay out of
-  `expose` so they free resources (the
-  `references/effects-expose.md` > *Don't expose setup-only
-  shells* pitfall).
+- Setup-only shells (init, migrations, seed) stay out of `expose`
+  so they free resources (`references/effects-expose.md` >
+  *Don't expose setup-only shells*).
 
 ### Shared: Composing the service shell
 
 Three disciplines apply to the shell that runs the actual service,
 regardless of path.
 
-**Run the service in the foreground.** PTY (shell) termination kills
-the process tree the shell launched. A backgrounded service
-(`./run.sh &`, `nohup ...`, `setsid ...`) detaches from that tree
-and survives the shell's death -- the test ends but the service
-keeps running, the next test trips over leftover ports, sockets,
-lockfiles, or data files. Always launch the service foreground; the
-service runs until the PTY dies, and PTY death is how Relux
-guarantees teardown.
-
-For containerised services this means foreground mode *and*
-auto-removal of the container resources:
-
-Don't:
-
-```relux
-shell svc {
-    > docker run -d --name pg-${PORT} postgres
-    <? ready
-}
-```
-
-Do:
-
-```relux
-shell svc {
-    > docker run --rm -i postgres
-    <? listening on
-}
-```
-
-`--rm` removes the container layer on exit; `-i` keeps it attached
-to the PTY so termination propagates. No `-d`, no backgrounding, no
-nohup. The same rule applies to other containerisation systems
-(Podman, containerd, systemd-nspawn) -- foreground + auto-cleanup.
+**Run the service in the foreground.** Rule and canonical
+Don't/Do: `references/effects-identity.md` > *Run the service in
+the foreground*. Skill-level note: this is the discipline a fresh
+draft most often violates -- check the launch line(s) before
+moving on.
 
 **Map meaningful service artifacts into the run directory.**
-Anything written under `${__RELUX_RUN_ARTIFACTS}/<svc>/` is
-scanned by the runtime and surfaced in `event.html` (see
-`references/project-layout.md` > Built-in environment variables);
-anything written elsewhere is invisible to the viewer.
-
-**Ask the user which service artifacts are meaningful** (logs are
-the canonical case), then configure the service to write them
-under the run dir:
-
-```relux
-shell svc {
-    > postgres -D ${PG_DATA_DIR} \
-        -c log_directory=${__RELUX_RUN_ARTIFACTS}/postgres/ \
-        -c log_filename=postgres.log
-    <? listening
-}
-```
-
-For services that hard-code their log path, redirect at the shell
-level (`> svc > ${__RELUX_RUN_ARTIFACTS}/svc/svc.log 2>&1`) or
-symlink the hard-coded path into the run dir during setup.
+`${__RELUX_RUN_ARTIFACTS}` is scanned and surfaced in `event.html`
+(`references/project-layout.md` > *Built-in environment
+variables*); writes outside it are invisible to the viewer.
+**Ask the user which artifacts are meaningful** (logs are the
+canonical case), then either configure the service to write
+under the run dir (`-c log_directory=${__RELUX_RUN_ARTIFACTS}/...`)
+or redirect at the shell level
+(`> svc > ${__RELUX_RUN_ARTIFACTS}/svc/svc.log 2>&1`) when the
+path is hard-coded.
 
 **Fail patterns: ask, then set inline.** Ask the user whether the
-service has known fatal output signatures -- panic markers, segfault
-prints, `FATAL:` / `panic:` / `Segmentation fault` lines -- that
-should immediately fail any test interacting with the service. If
-yes, set the fail pattern inline in the service shell, before the
-readiness match:
-
-```relux
-shell svc {
-    !? FATAL
-    > postgres -D ${PG_DATA_DIR}
-    <? listening
-}
-```
-
-The slot travels with the *shell* (it persists into every
-`shell Alias.svc { ... }` block in the test, because the shell is
-exposed). Do not wrap `!?` in a `fn` -- the slot is frame-scoped
-and reverts on return (`references/functions.md` > *`fn`* >
-per-frame state; `references/fail-patterns.md` covers slot scope
-and clear-then-reset for negative tests).
+service has known fatal output signatures (`FATAL:`, `panic:`,
+`Segmentation fault`) that should immediately fail any test
+interacting with it. If yes, set `!?` / `!=` inline in the service
+shell before the readiness match. Slot scope and the frame-scoped
+reversion that forbids wrapping `!?` in a `fn` are covered by
+`references/fail-patterns.md` and `references/functions.md` >
+*`fn`*.
 
 ### Path: Plain
 
@@ -669,77 +595,25 @@ After authoring, re-walk the effect and its caller surface.
 
 ## Pitfalls
 
-### Don't bundle multiple services into one effect
+The recurring effect-authoring mistakes -- one-service-per-effect,
+non-identity ENV in `expect`, foreground vs backgrounded service,
+artifact-deleting cleanup, wrappers that don't re-export -- live
+in `references/effects-identity.md`, `references/effects-expose.md`,
+and `references/cleanup.md` with canonical Don't/Do examples. The
+pre-flight reads of those files load them; this section is
+intentionally empty to avoid drift.
 
-Two peer services (an API and a database; a web server and a cache)
-get two effects with a dep relationship, not one effect with a setup
-shell that spawns both. The one-service-per-effect rule makes the
-dep graph explicit, makes dedup work correctly, and lets the
-cleanup chain run in the right order.
+One discipline has no reference home because it is a Relux authoring
+convention rather than a language rule:
 
-Don't:
-
-```relux
-effect ApiWithDb {
-    shell setup {
-        > pg_ctl start
-        <? ready
-        > my-api &
-        <? listening
-    }
-    expose shell setup
-}
-```
-
-Do:
-
-```relux
-effect Db { ... expose shell db }
-
-effect Api {
-    expect API_PORT
-    start Db as Dep { DATA_DIR; PORT = 5432 }
-    expose shell Dep.db as db
-    shell svc {
-        > my-api --db-port=5432
-        <? listening
-    }
-    expose shell svc
-}
-```
-
-### Don't put non-identity ENV in `expect`
-
-Listing `LOG_LEVEL`, `DEBUG`, or `RUST_LOG` in `expect` fragments
-dedup -- two tests with different log levels each pay the full
-setup cost. The effect still reads `${LOG_LEVEL}` from inherited
-env; it just must not gate identity on it.
-
-Don't:
-
-```relux
-effect Service {
-    expect PORT, LOG_LEVEL, DEBUG
-    ...
-}
-```
-
-Do:
-
-```relux
-# transparent: LOG_LEVEL, DEBUG
-effect Service {
-    expect PORT
-    ...
-}
-```
-
-### Don't omit the header comment block
+### Document the transparent-env contract
 
 Transparent ENV is invisible at the `start` site -- the test author
-has no syntactic hint that the effect's shell reads `${RUST_LOG}`
-or `${PGUSER}`. Document the contract above the `effect` line so
-the author wiring a new `start` knows what to set.
+has no syntactic hint that the effect's shell reads `${RUST_LOG}` or
+`${PGUSER}`. Above the `effect` line, list every ENV var the body
+reads, split into expected (in `expect`; participates in identity)
+and transparent (inherited env; the author must set it but it does
+not dedup).
 
 Don't:
 
@@ -766,60 +640,3 @@ Do:
 #   PG_USER, PG_DB  -- credentials and target database
 effect Postgres { ... }
 ```
-
-### Don't use cleanup to delete artifacts
-
-The artifact-preservation rule lives in `references/cleanup.md` >
-*Don't delete files under `${__RELUX_RUN_ARTIFACTS}`*. Authoring
-framing for this skill: a fresh effect that immediately includes
-`rm -rf ${__RELUX_RUN_ARTIFACTS}/<svc>/` in cleanup is almost
-always wrong -- the rendered config, captured logs, and any
-artifact dropped under the run dir is exactly the post-mortem
-surface that makes failures debuggable. Cleanup is for state
-*outside* `${__RELUX_RUN_ARTIFACTS}`.
-
-### Don't background the service process
-
-A backgrounded service detaches from the PTY's process tree and
-survives shell termination. Relux's teardown guarantee is PTY death
-killing the process tree -- breaking that turns every test failure
-into a leak: leftover processes hold ports, sockets, and lockfiles
-that trip the next run. For containers, `-d` (detached) is the same
-mistake; `--rm` without `-d` is the right shape.
-
-Don't:
-
-```relux
-shell svc {
-    > ./run.sh &                    # detached; outlives shell
-    > docker run -d --name pg ...   # same trap
-    > nohup my-service &            # explicit detach
-}
-```
-
-Do:
-
-```relux
-shell svc {
-    > ./run.sh                      # foreground; PTY death stops it
-    > docker run --rm -i ...        # foreground container; auto-cleanup
-}
-```
-
-If the service self-daemonises (forks into the background by
-default), pass the flag that keeps it foreground (`-F`, `-D`,
-`--foreground`, depending on the service). Almost every long-lived
-daemon has one.
-
-### Don't author a wrapper without re-exposing dep shells
-
-The wrapper re-export rule lives in `references/effects-expose.md`
-> *Wrapper effects must re-expose dependency shells* (with the
-canonical Don't/Do). Authoring framing: a wrapper's first draft
-that lists `start <Dep>` but no `expose shell <Dep>.<name>` is
-not a wrapper -- it is an effect that consumes the dep
-internally. For provisioning-chain layers the omission is
-load-bearing (callers cannot reach the underlying service); for
-internal-only deps it is the right shape (the dep's surface
-should not leak through). Decide which the caller needs before
-writing the `expose` block.

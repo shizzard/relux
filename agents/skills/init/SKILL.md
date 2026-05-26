@@ -150,51 +150,19 @@ grep -qE '^relux/out/?$' .gitignore || echo 'relux/out/' >> .gitignore
 
 ### 7. Tour the CLI surface
 
-Close by briefing the user on the four subcommands they will reach
-for daily. One sentence each, an example invocation, no deeper detail
--- `references/cli-reference.md` is the source of truth when they need
-flags.
+Close by naming the four subcommands the user will reach for daily,
+in one sentence each. Flags and full shapes live in
+`references/cli-reference.md`; don't restate them.
 
 - **`relux new`** -- scaffold a new test, effect, or library module.
-
-  ```bash
-  relux new --test login          # relux/tests/login.relux
-  relux new --effect postgres     # relux/lib/postgres.relux
-  relux new --lib helpers/curl    # relux/lib/helpers/curl.relux
-  ```
-
-- **`relux check`** -- parse and resolve every `.relux` file under the
-  suite without spawning shells. The fast feedback loop while
-  authoring.
-
-  ```bash
-  relux check
-  ```
-
-- **`relux run`** -- execute tests. With no arguments, runs the whole
-  suite; `--file` narrows to specific modules or directories.
-
-  ```bash
-  relux run
-  relux run --file relux/tests/smoke.relux
-  ```
-
-  Each invocation writes `relux/out/<run-id>/` with `index.html` and
-  per-test `events.json` / `event.html`.
-
-- **`relux history`** -- aggregate analysis across past runs. The
-  entry point for flakiness, first-fail bisection, and duration
-  trends.
-
-  ```bash
-  relux history --flaky
-  relux history --first-fail
-  relux history --durations
-  ```
-
-  Reads every `run_summary.toml` under `relux/out/`. Useless on a
-  fresh suite -- mention it now so the user knows where to go later,
-  not as something to run today.
+- **`relux check`** -- parse and resolve every `.relux` file without
+  spawning shells; the fast feedback loop while authoring.
+- **`relux run`** -- execute tests, writing `relux/out/<run-id>/`
+  with `index.html` plus per-test `events.json` / `event.html`.
+- **`relux history`** -- aggregate analysis across past runs
+  (flakiness, first-fail bisection, duration trends). Mention it
+  now so the user knows where to go later; useless on a fresh
+  suite.
 
 ## Done when
 
@@ -228,28 +196,11 @@ flags.
 
 ## Pitfalls
 
-### Don't scaffold inside an existing suite
-
-`relux init` refuses to overwrite an existing `Relux.toml` in the cwd,
-but it does not walk upward. Running it inside `existing-suite/sub/`
-creates a *nested* manifest, which `references/project-layout.md`
-documents as a sub-project boundary -- discovery from the outer suite
-will silently stop at the inner manifest. The pre-flight ancestor walk
-catches this; do not skip it.
-
-Don't:
-
-```bash
-cd existing-suite/sub
-relux init                   # creates a nested Relux.toml; outer suite loses sub/
-```
-
-Do:
-
-```bash
-# Pre-flight detected Relux.toml at existing-suite/.
-# Hand off to relux:configure; do not re-init.
-```
+The nested-manifest rule (a `Relux.toml` inside another suite
+becomes a sub-project boundary that breaks outer-suite discovery)
+lives in `references/project-layout.md` with the canonical
+layout sketch. The pre-flight ancestor walk is the discipline
+that keeps `relux init` from creating one; do not skip it.
 
 ### Don't edit `Relux.toml` during init
 

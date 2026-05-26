@@ -152,6 +152,23 @@ effect Db {
 }
 ```
 
+### Editing a `let` silently edits the exposed surface
+
+A `let` value that is `expose var`-d is part of the public interface. Changing the `let` body changes what every caller reads -- the diff *looks* internal but is not. Treat any `let` rename, value change, or expression rewrite that targets an exposed name as if it were an `expose` edit (callers see the new value at the next run; rename breaks `<Alias>.<old_name>` references).
+
+Don't (assume this is local because the diff only touches `let`):
+
+```relux
+effect Server {
+    expect data_dir
+    let port = "8080"            // was: let port = "9000"
+    expose var port
+    shell run { send "./server --data ${data_dir} --port ${port}" }
+}
+```
+
+Do: when editing a `let`, check whether it is `expose var`-d. If yes, treat the change as a surface change.
+
 ### Re-export with a clean caller-facing name
 
 When a wrapper re-exposes a dep shell, choose the name the caller should read in their own test body, not the internal one.

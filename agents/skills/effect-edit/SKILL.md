@@ -130,8 +130,8 @@ that is `expose var`-d makes Dimension 4 leak through Dimension
 
 ### Dimension 1: `expect`
 
-What lives here: the `expect` block, listing the unique-resource
-vars the effect's identity is computed from.
+The `expect` block. Semantics, identity tuple, and the
+unique-resource taxonomy: `references/effects-identity.md`.
 
 **Adding a var.**
 
@@ -205,9 +205,9 @@ vars the effect's identity is computed from.
 
 ### Dimension 2: `expose`
 
-The effect's caller-visible surface. Forms, caller access syntax,
-and the non-exposed-shell termination rule live in
-`references/effects-expose.md`.
+The effect's caller-visible surface. Forms, caller access, the
+non-exposed-shell termination rule, and the wrapper re-export
+rule: `references/effects-expose.md`.
 
 **Adding an expose.**
 
@@ -252,8 +252,8 @@ and the non-exposed-shell termination rule live in
 
 ### Dimension 3: `start <Dep>` (deps)
 
-What lives here: `start <Dep>` lines (and their `as <Alias>` /
-overlay blocks). The effect's dependency graph.
+`start <Dep>` lines and their `as <Alias>` / overlay blocks.
+`start` syntax and overlay semantics: `references/statements.md`.
 
 **Adding a dep.**
 
@@ -295,18 +295,19 @@ overlay blocks). The effect's dependency graph.
 
 ### Dimension 4: `let` / shell body
 
-What lives here: `let` bindings, `shell <name> { ... }` blocks,
-the actual send/match/sleep statements.
+`let` bindings, `shell <name> { ... }` blocks, the send / match
+/ sleep statements inside them.
 
 **`let` changes.**
 
 - Values evaluated once at instantiation (pure-context: same
   rules as `relux:function`'s `pure fn`). Pure refactors are
   safe in isolation.
-- **Leak check.** If a `let` value is `expose var`-d (Dimension
-  2), the body-only edit is silently a surface change. Anything
-  reading `<Alias>.<x>` at a caller now reads the new value.
-  Surface the change to the user as if it were an expose edit.
+- **Leak check.** If a `let` is `expose var`-d, the body-only
+  edit is silently a surface change -- see
+  `references/effects-expose.md` >
+  *Editing a `let` silently edits the exposed surface*. Surface
+  the change to the user as if it were an expose edit.
 
 **Shell body changes.**
 
@@ -516,6 +517,16 @@ is necessary but never sufficient for a Modify.
 
 ## Pitfalls
 
+The recurring effect-language mistakes -- expose-var leak from
+body-only `let` edits, dropping a wrapper's re-exposed dep
+surface, setting fail patterns inside a `fn`, cleanup that
+deletes artifacts under `${__RELUX_RUN_ARTIFACTS}` -- live in
+`references/effects-expose.md`, `references/fail-patterns.md`,
+`references/functions.md`, and `references/cleanup.md` with
+canonical Don't/Do examples. The pre-flight reads load them;
+this section captures only the Modify-specific disciplines that
+have no reference home.
+
 ### Editing `expect` without simulating the dedup delta
 
 `expect` changes do not surface as `relux check` errors when the
@@ -528,12 +539,11 @@ delta is only visible at `relux run` time, in span counts.
 Don't:
 
 ```relux
-# Before: expect (data_dir, port) -- two tests run on distinct ports,
-# get distinct instances.
-# Edit lands removing port from expect.
+# Before: expect (data_dir, port) -- two tests on distinct ports,
+# distinct instances.
 # After: expect (data_dir) -- two tests' overlays differ only on
-# port, which is no longer in the tuple; they now share one instance.
-# The second test silently runs against the first test's port.
+# port; they now share one instance. The second test silently runs
+# against the first test's port.
 effect Server {
   expect data_dir
   let port = "8080"           # was: expect (data_dir, port)
@@ -547,94 +557,14 @@ Do: enumerate callers, evaluate overlays under the proposed new
 tuple, list the merges/splits to the user, get a confirmation
 before the edit lands.
 
-### Dropping a wrapper's re-exposed dep surface
-
-A wrapper effect that re-exposes its dep's shell or var is part
-of the transparency baseline (see `relux:effect-write`'s
-*Layering Transparency*). Dropping that re-export from the
-wrapper does not silence the caller's need for the dep's
-surface; it forces them to bypass the wrapper, which defeats the
-layering.
-
-Don't:
-
-```relux
-# Wrapper SeededDb wrapped Db and re-exposed Db.shell as db.
-# Edit drops the re-export "because nothing seems to use it."
-# Caller tests that used `Db.shell` (via the wrapper) now fail
-# resolve; the dep is reachable only by starting Db directly,
-# which un-layers the seeding.
-effect SeededDb {
-  expect data_dir
-  start Db                   # was: expose shell Db.shell as db
-  shell seed { ... }
-}
-```
-
-Do: if the re-export feels surplus, the question is "should this
-still be a wrapper?" If yes, keep the re-export.
-
-### Setting a fail pattern in a `fn` that the shell calls
-
-`fn` frames snapshot and restore the fail-pattern slot
-(`references/functions.md` > *`fn`* > per-frame state). A
-pattern set inside a `fn` reverts the moment the `fn` returns,
-leaving the calling shell unprotected. Set fail patterns
-directly in the shell body, not in a helper.
-
-### Body-only edits that leak through `expose var`
-
-A `let` value that is `expose var`-d is part of the surface.
-Editing the `let` is silently editing the surface; callers
-reading `<Alias>.<x>` will read the new value at the next run.
-
-Don't (assume Dimension 4 is local just because the diff only
-touches a `let`):
-
-```relux
-effect Server {
-  expect data_dir
-  let port = "8080"            # was: let port = "9000"
-  expose var port
-  shell run { send "./server --data ${data_dir} --port ${port}" }
-}
-```
-
-Do: when editing a `let`, check whether it is `expose var`-d. If
-yes, treat the edit as a Dimension 2 change and follow the
-expose-rename / expose-remove discipline.
-
-### Cleanup that deletes the run-dir artifacts
-
-A Modify on the cleanup body that introduces a `rm -rf` or
-similar under `${__RELUX_RUN_ARTIFACTS}` erases the viewer's
-post-mortem surface. See `references/cleanup.md` > *Don't delete
-files under `${__RELUX_RUN_ARTIFACTS}`* for the rule and the
-canonical example. The Modify-specific framing: this commonly
-sneaks in during a "while I'm in here, let me also tidy up" pass.
-Resist; cleanup is for state outside the run dir.
-
 ### Skipping `relux run`
 
 `relux check` catches resolve-time breakage. It catches **none**
 of the identity-dedup deltas (Dimension 1), wrapper-transparency
 drift visible only at call sites (Dimension 2), body regressions
 (Dimension 4), or cleanup-ordering errors (Dimension 5). A
-check-only verification is silently false confidence.
-
-Don't:
-
-```bash
-relux check     # green
-# call it done
-```
-
-Do:
-
-```bash
-relux check && relux run
-# scan setup-span counts in events.json for the dedup delta if
-# Dimension 1 was touched; scan failure annotations across all
-# tests that share this effect if Dimensions 2 or 5 were
-# touched.
-```
+check-only verification is silently false confidence. After a
+Modify, always `relux check && relux run`; scan setup-span counts
+in `events.json` for dedup deltas when Dimension 1 was touched,
+and scan failure annotations across every test that shares this
+effect for Dimensions 2 / 5 fallout.

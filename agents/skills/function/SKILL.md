@@ -106,30 +106,10 @@ open.
 
 - Used inside a single module: inline in that module. No import dance.
 - Used across two or more modules: a library file, imported via
-  `from "lib/<path>" import fn_name`.
-
-**Group library modules by scope.** Do not park every shared helper in
-a flat `relux/lib/helpers.relux`. Find the natural grouping the helper
-belongs to and place it there:
-
-- *Tied to a specific effect* -- inline the helper in the same module
-  as the effect (e.g., a `parse_pid` used only with the `Postgres`
-  effect lives in `relux/lib/postgres.relux`). Callers import the
-  helper from the effect's module; the effect and its helpers travel
-  together.
-- *Scoped by protocol or domain* -- group helpers under a
-  protocol-named module (e.g., HTTP helpers in
-  `relux/lib/http.relux`; SSH helpers in `relux/lib/ssh.relux`; URL /
-  shell-quoting helpers in `relux/lib/strings.relux`).
-- *Cross-cutting with no natural home* -- if no scope fits, **stop and
-  ask the user** before creating a new top-level module. A
-  premature `relux/lib/misc.relux` becomes a magnet for every
-  un-classified helper and silently degrades the library's
-  discoverability.
-
-The grouping is what `from "lib/<path>" import ...` lines read like at
-the caller; if a caller sees `from "lib/postgres" import parse_pid`,
-the reader immediately knows the helper is in the Postgres orbit.
+  `from "lib/<path>" import fn_name`. The grouping rubric
+  (effect-scoped vs protocol-scoped vs ask-before-creating-misc)
+  lives in `references/imports.md` > *Group library modules by
+  scope*; apply it before placing the file.
 
 ### Path: Add
 
@@ -421,48 +401,12 @@ After every operation, re-walk the chain.
 
 ## Pitfalls
 
-### Default to `pure fn` when the body permits
-
-If the body has no shell I/O, write `pure fn`, not `fn`. `pure fn` is
-callable from marker expressions, overlay expressions, top-level `let`
-RHS, and shell-block expressions; `fn` is callable only inside a shell
-block. Writing it `fn` parses and runs, but quietly disqualifies the
-helper from positions a future caller will need. The pure form costs
-nothing extra; the impure form locks options shut.
-
-(This pitfall is also in `references/functions.md` > *Use `pure fn`
-for value derivation*; lifted here because picking the right form is
-this skill's primary discipline on Add and Extract.)
-
-### Add a new arity instead of editing an existing one
-
-Relux identifies functions by `(name, arity)`. Adding
-`http_request(url, method)` to a module that already has
-`http_request(url)` defines a *new* function; both coexist. Editing
-the existing `http_request(url)` to `http_request(url, method)` is a
-breaking change for every caller using the one-arg form -- they now
-fail to resolve. The idiomatic Relux defaults pattern is to keep both
-arities and have the smaller delegate to the larger.
-
-Don't:
-
-```relux
-# Was: fn http_request(url) { ... }
-# Adding a parameter breaks every existing caller.
-fn http_request(url, method) { ... }
-```
-
-Do:
-
-```relux
-fn http_request(url) {
-    http_request(url, "GET")
-}
-
-fn http_request(url, method) {
-    # the real work
-}
-```
+The recurring function-language mistakes -- preferring `pure fn`
+for value derivation, default arguments via arity dispatch, leave
+the caller's shell clean, no implicit caller-state coupling --
+live in `references/functions.md` with canonical Don't/Do
+examples. The pre-flight read loads them; this section captures
+the skill-level discipline that has no reference home.
 
 ### Don't extract one-off code
 
@@ -483,14 +427,14 @@ arrived. Promote on the second caller, not before. The same logic
 applies in reverse: demote `lib/` -> inline only when the last
 cross-module caller is gone.
 
-### Group markers on each `fn` directly, not via a shared guard
+### Place a shared marker on each `fn` directly
 
-For N functions sharing the same marker condition (e.g., all requiring
-`docker`), place the marker on each `fn` directly. **Do not**
-consolidate them onto a shared guarded `pure fn` calling
-`let _ = mark_<group>()`. Functions auto-propagate markers to callers
-at resolve time with zero runtime cost; the consolidate pattern's
-guard call adds per-invocation cost on the hot path. The consolidate
-pattern is for tests and effects, not function groups -- see
-`relux:markers` > *Consolidate*, which explicitly excludes function
-groups from that path.
+For N functions sharing the same marker condition (e.g., all
+requiring `docker`), place the marker on each `fn` directly. **Do
+not** consolidate them onto a shared guarded `pure fn` calling
+`let _ = mark_<group>()`. Functions auto-propagate markers to
+callers at resolve time with zero runtime cost; the consolidate
+pattern's guard call adds per-invocation cost on the hot path.
+The consolidate pattern is for tests and effects, not function
+groups -- see `relux:markers` > *Consolidate*, which explicitly
+excludes function groups from that path.

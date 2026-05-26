@@ -29,6 +29,18 @@ effect Service {
 - The resolver validates that every `start Service { ... }` site supplies them.
 - `expect` is a contract, not a sandbox: the effect can still read any environment variable. It only restricts what the resolver enforces and what participates in identity.
 
+### What goes in `expect`
+
+`expect` names the **unique external resources** the service contends for -- the things two simultaneous instances would physically collide on. Three categories cover almost every effect:
+
+- **Filesystem resources** -- data dirs, log dirs, socket paths, lockfile paths.
+- **Network resources** -- ports, host bindings, named pipes.
+- **Logical shared state** -- database names in a shared cluster, S3 prefixes, Redis keyspace prefixes.
+
+Everything else stays out: log levels, debug flags, feature toggles, internal timeouts. Those ride inherited env transparently; the resolver does not gate on them and they do not fragment dedup.
+
+When N independent instances are needed but the service has no natural resource differentiator, add an `INSTANCE` discriminator to `expect` -- see *Force a fresh instance with a dummy overlay key* below.
+
 ## Overlay
 
 ```relux
@@ -65,6 +77,66 @@ start Service as B {
 - Failed setup propagates: dependent tests fail.
 
 ## Pitfalls and best practices
+
+### One service per effect
+
+Every effect models a **single** service -- one binary, container, daemon, or external resource. Two peer services (an API plus its database) get two effects with a dep relationship, not one effect whose setup shell spawns both. Bundling makes the dep graph implicit, breaks dedup (the bundle has one identity even when its parts contend on different resources), and collapses cleanup into a single span.
+
+Don't:
+
+```relux
+effect ApiWithDb {
+    shell setup {
+        > pg_ctl start
+        <? ready
+        > my-api &
+        <? listening
+    }
+    expose shell setup
+}
+```
+
+Do:
+
+```relux
+effect Db { ... expose shell db }
+
+effect Api {
+    expect API_PORT
+    start Db as Dep { DATA_DIR; PORT = 5432 }
+    expose shell Dep.db as db
+    shell svc {
+        > my-api --db-port=5432
+        <? listening
+    }
+    expose shell svc
+}
+```
+
+### Run the service in the foreground
+
+PTY (shell) termination kills the process tree the shell launched. A backgrounded service (`&`, `nohup`, `setsid`, `docker run -d`) detaches from that tree and survives the shell's death -- the test ends but the service keeps running, the next test trips over leftover ports, sockets, lockfiles, or data files. Always launch the service foreground; the service runs until the PTY dies, and PTY death is how Relux guarantees teardown.
+
+For containers the same rule applies: foreground mode (`-i`) plus auto-removal (`--rm`), no `-d`. If a service self-daemonises by default, pass the flag that keeps it foreground (`-F`, `-D`, `--foreground`, etc.).
+
+Don't:
+
+```relux
+shell svc {
+    > ./run.sh &
+    > docker run -d --name pg ...
+    > nohup my-service &
+}
+```
+
+Do:
+
+```relux
+shell svc {
+    > ./run.sh
+    > docker run --rm -i ...
+}
+```
 
 ### Keep `expect` to identity-relevant variables
 

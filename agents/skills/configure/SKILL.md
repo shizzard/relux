@@ -69,23 +69,18 @@ verify before stacking another change.**
 
 ### Shell command or prompt (`[shell]`)
 
-```toml
-[shell]
-command = "/bin/bash"
-prompt = "relux> "
-```
+Fields and defaults: `references/project-layout.md` > *Sections*.
 
 - Change `command` only when the SUT requires a specific shell (bash
   for here-strings, dash for POSIX-strict tests, custom binary).
-  Defaults to `/bin/sh`. **Warn the user:** only `/bin/sh` is
-  exercised by the upstream Relux test suite. Other shells (bash,
-  zsh, fish, busybox ash) may interact badly with the prompt
-  sentinel, line-editing escapes, or the way Relux drives the PTY --
-  this is not a tested configuration. Treat any non-default shell as
-  experimental; expect to debug prompt-detection and fail-pattern
-  edge cases.
+  **Warn the user:** only `/bin/sh` is exercised by the upstream
+  Relux test suite. Other shells (bash, zsh, fish, busybox ash) may
+  interact badly with the prompt sentinel, line-editing escapes,
+  or the way Relux drives the PTY -- this is not a tested
+  configuration. Treat any non-default shell as experimental;
+  expect to debug prompt-detection and fail-pattern edge cases.
 - Change `prompt` only when the default `relux> ` collides with text
-  the SUT prints. The prompt is used as a sentinel; collisions cause
+  the SUT prints. The prompt is a sentinel; collisions cause
   spurious matches. Any unique short string works.
 
 **Discipline.** A different shell changes timing characteristics and
@@ -94,60 +89,44 @@ chain other tuning until the new shell baseline is clean.
 
 ### Timeouts (`[timeout]`)
 
-```toml
-[timeout]
-match = "5s"
-test = "5m"
-suite = "10m"
-```
+Fields and defaults: `references/project-layout.md` > *Sections*.
+`~` vs `@` scope and what the multiplier touches:
+`references/timeouts.md`.
 
-**Escalation order -- any timeout-related symptom.** Walk the steps in
-order; do not skip ahead. Each step is narrower in blast radius than
-the next. Reaching for a global bump before exhausting steps 1 and 2
-penalises every match in every test on every run.
+**Escalation order -- any timeout-related symptom.** Walk the steps
+in order; do not skip ahead. Each step is narrower in blast radius
+than the next. Reaching for a global bump before exhausting steps
+1 and 2 penalises every match in every test on every run.
 
 1. **Tune the problematic operation inline.** A single slow match
-   gets `<~Ns? pattern` on its own line. The change is one-line and
-   scope-local; the rest of the suite is untouched.
+   gets `<~Ns? pattern` on its own line. One-line, scope-local.
 2. **Apply CI's `--timeout-multiplier`** for host-class slowness --
    cold caches, slower CI agents, shared-runner contention. The
    multiplier scales every tolerance (`~`) timeout for one run
    without touching the manifest.
-3. **Bump global defaults in `Relux.toml`** only when the slowness is
-   suite-wide -- most matches across most tests legitimately need
-   more time than the defaults provide.
+3. **Bump global defaults in `Relux.toml`** only when the slowness
+   is suite-wide -- most matches across most tests legitimately
+   need more time than the defaults provide.
 
-The knobs (defaults shown in the snippet above; field semantics in
-`references/project-layout.md`, scope and `~` vs `@` in
-`references/timeouts.md`):
+Knob-specific discipline:
 
-- **`match`** -- per match operation. The suite-wide step-3 knob.
-- **`test`** -- per-test wall-clock budget. Raise only when an
-  individual test legitimately takes longer than the default;
-  most slow-test problems are slow-match problems in disguise
-  (handled by `match`).
-- **`suite`** -- whole-run budget. Raise proportionally to test
-  count once the suite legitimately outgrows it. If `suite` fires
-  before any individual test times out, the answer is `jobs`
-  (parallelism), not a larger budget.
-
-All three are tolerance timeouts that scale with
-`--timeout-multiplier`; assertion timeouts (`@`) are inline-only
-and not configurable here.
+- `match` is the suite-wide step-3 knob.
+- Raise `test` only when an individual test legitimately runs
+  longer than the default; most slow-test problems are slow-match
+  problems in disguise (handled by `match`).
+- If `suite` fires before any individual test times out, the
+  answer is `jobs` (parallelism), not a larger budget.
 
 ### Parallel jobs (`[run]`)
 
-```toml
-[run]
-jobs = 4
-```
+Field and default: `references/project-layout.md` > *Sections*.
 
-- Default `1` (serial). Raise to N when the suite is genuinely
+- Raise above the default only when the suite is genuinely
   parallel-safe: no shared filesystem paths, no fixed ports, no
   shared external services, no test ordering dependencies.
-- Tests inside a suite each get their own shells and artifact dirs,
-  but external state (a real database, a real port, a shared cache
-  directory) is the user's responsibility.
+- Each test gets its own shells and artifact dir, but external
+  state (a real database, a real port, a shared cache directory)
+  is the user's responsibility.
 
 **Discipline.** Pick `jobs = 2` first and run the suite three times
 to confirm stability before raising further. Flakes that appear only
@@ -156,20 +135,15 @@ nondeterminism to mask with retries.
 
 ### Flaky retries (`[flaky]`)
 
-```toml
-[flaky]
-max_retries = 0
-timeout_multiplier = 1.5
-```
+Fields and defaults: `references/project-layout.md` > *Sections*.
+`timeout_multiplier` formula and the `~` vs `@` scope:
+`references/timeouts.md` > *Flaky multiplier*.
 
-- `max_retries` -- defaulting to `0` means `# flaky` markers are
-  recorded but have no retry effect. Set to `1` or `2` only when:
+- The default `max_retries = 0` means `# flaky` markers are
+  recorded but have no retry effect. Set to `1` or `2` only when
   (a) tests are marked `# flaky` for known, isolated reasons
-  (network jitter, kernel-scheduled delays), and (b) the user has
-  decided masking those races is the right business call.
-- `timeout_multiplier` -- scales tolerance timeouts on each retry
-  (formula and `~` vs `@` scope in `references/timeouts.md` >
-  *Flaky multiplier*). Must be `> 1.0`.
+  (network jitter, kernel-scheduled delays), and (b) the user
+  has decided masking those races is the right business call.
 
 **Discipline.** Flaky retries are a confession of unknown
 nondeterminism. They mask the symptom; they do not fix the race.
@@ -180,15 +154,11 @@ analysis.
 
 ### Suite name (root)
 
-```toml
-name = "myproj-e2e"
-```
-
-- Defaults to the directory name containing `Relux.toml`. Set
-  explicitly when the directory name is generic (`tests/`) or the
-  suite participates in a multi-suite repo and needs a distinct
-  identifier in reports.
-- Cosmetic. Does not affect discovery, identity, or execution.
+Field and default: `references/project-layout.md` > *Sections*.
+Set explicitly when the directory name is generic (`tests/`) or
+the suite participates in a multi-suite repo and needs a distinct
+identifier in reports. Cosmetic; does not affect discovery,
+identity, or execution.
 
 ## Verify
 
