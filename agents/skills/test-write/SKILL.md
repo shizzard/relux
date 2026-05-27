@@ -61,11 +61,20 @@ Agent-task signals:
   they pass, the test is done. If they fail, the user (or the future
   `run-and-fix` skill) takes over.
 
-**Direct invocation (`/relux:test-write`).** Ask the user what
-single behavior the test should assert, which shell program is the
-SUT, and whether the suite already has effects for any services the
-behavior depends on. Without those three pieces, the decomposition
-step has nothing to walk.
+**Direct invocation (`/relux:test-write`).** When invoked without
+a specific test framed in the prompt, **stop and ask before
+authoring**:
+
+1. Which **single behavior** should the test assert?
+2. Which **SUT**, and which shape (CLI / REPL / service)?
+3. Which **scope** under `relux/tests/<sut>/<scope>/`?
+4. Which **services** does the behavior depend on, and do they
+   already have effects?
+
+Do not infer any of these from suite state. A greenfield suite
+is the case where the user is *most* likely to have a specific
+first test in mind; silent defaults produce a test they have to
+throw away.
 
 ## Pre-flight checks
 
@@ -98,18 +107,28 @@ step has nothing to walk.
       authoring decision in *Before you start: decompose the test*
       is the file's placement (which `<sut>/<scope>/`); the
       inventory feeds that choice.
-- [ ] Identify the **SUT shell** -- which binary the test exercises.
-      The suite's default shell from `Relux.toml` is the usual answer;
-      a test that exercises a different binary either overrides the
-      shell at the file level or starts a dedicated effect.
+- [ ] **Classify the SUT.** The shape decides whether the SUT
+      itself needs an effect:
+      - **CLI / one-shot** -- exercised through the suite default
+        shell; no effect.
+      - **REPL / alternate shell** -- exercised via a shell
+        override at file or test level; no effect, as long as the
+        binary is stateless and tears down with the PTY.
+      - **Service / daemon** -- has a startup / ready-wait
+        lifecycle and holds state. **Requires an effect for the
+        SUT itself, even with zero external deps**, since the
+        effect owns start, ready-wait, expose, and cleanup. If no
+        effect models it, the required-effect handover below fires.
 - [ ] Identify the **single user-visible behavior** the test asserts.
-      One test, one behavior. If the user described two behaviors,
-      surface the split before authoring.
-- [ ] Identify any **services the behavior depends on** -- databases,
-      message queues, mock servers, the SUT itself when it is a
-      long-running daemon. For each, confirm an effect already
-      exists. If one does not, switch to the required-effect handover
-      below.
+      One test, one behavior. If the user described two, surface
+      the split before authoring. **If the user has not named a
+      specific behavior**, stop and ask per the *Direct invocation*
+      block in *When to use* -- do not infer behavior, SUT, or
+      scope from suite state.
+- [ ] **Inventory external services** the behavior depends on
+      (databases, queues, mock servers). Each needs an effect; a
+      missing one fires the required-effect handover, independent
+      of the SUT-trigger.
 - [ ] Identify any **environment gates** the test needs (`# skip
       unless CI`, `# run if linux`, `# skip unless which("docker")`).
       Marker placement is `relux:markers`; this skill writes the test
@@ -119,9 +138,16 @@ step has nothing to walk.
 
 ### Before you start: required-effect handover
 
-If any service the test depends on is missing an effect, **stop here
-and propose a hard-switch to `relux:effect-write`** before authoring
-anything. Do not bundle effect authoring into this session.
+Two independent triggers; either is sufficient:
+
+- **SUT-trigger.** The SUT is a service / daemon and no effect
+  models it. Independent of dep count.
+- **Dep-trigger.** An external service the behavior depends on
+  has no effect.
+
+When either fires, **stop and propose a hard-switch to
+`relux:effect-write`** before authoring anything. Do not bundle
+effect authoring into this session.
 
 Why a hard-switch and not a mid-task handoff:
 
@@ -554,6 +580,34 @@ canonical Don't/Do examples. The pre-flight reads load them;
 this section captures the skill-level disciplines that have no
 reference home.
 
+### Silent inference from suite state
+
+When invoked without a specific test in mind, the temptation is
+to scan `relux/tests/`, read a shape into the existing layout
+(or its absence), and pick the behavior / SUT / scope from it.
+Suite state carries no information about which behavior the user
+wants captured next. Ask; do not default.
+
+Don't:
+
+```
+user: /relux:test-write
+agent: [scans the suite, picks a behavior / SUT / scope from
+        what it finds, drafts the test]
+```
+
+Do:
+
+```
+user: /relux:test-write
+agent: Quick clarifications before I draft:
+       - What single behavior should the test assert?
+       - Which binary is the SUT (CLI, REPL, service)?
+       - Which scope under relux/tests/<sut>/?
+       - Any services the behavior depends on, and do they
+         have effects?
+```
+
 ### Docstring restates the name
 
 The test name is the one-line purpose. The docstring's job is
@@ -587,6 +641,35 @@ test "starts and serves health on the configured port" {
     """
     ...
 }
+```
+
+### A service SUT with no deps still needs an effect
+
+The hard-switch has two independent triggers (SUT-trigger,
+dep-trigger). The trap is to reach the handover, check only for
+missing *deps*, find zero, and conclude no handover is needed --
+silently demoting the SUT-trigger to a no-op when the SUT is
+self-contained. A service / daemon SUT needs an effect for its
+lifecycle regardless of dep count; only CLI / one-shot and
+stateless REPL SUTs are exempt.
+
+Don't:
+
+```
+user: write a test for the new metrics-server (no Metrics effect exists)
+agent: [classifies SUT as a service, scans for external deps, finds
+        none, concludes no effect needed, authors the test against
+        the default shell with an inline start and manual ready-wait]
+```
+
+Do:
+
+```
+user: write a test for the new metrics-server (no Metrics effect exists)
+agent: SUT is a service / daemon with no modelling effect. The
+       SUT-trigger of the required-effect handover fires
+       independently of the dep-trigger. Hard-switching to
+       relux:effect-write; come back here after. Stopping.
 ```
 
 ### Don't bundle effect authoring into the test session
