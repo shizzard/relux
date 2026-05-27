@@ -6,6 +6,15 @@ default:
 install-hooks:
     git config core.hooksPath .githooks
 
+# Reinstall the agents/ plugin into Claude Code's plugin cache. Needed when
+# iterating on agents/ in place: `claude plugin update` short-circuits when
+# the plugin version matches the cached copy, so pushing edits without a
+# version bump requires uninstall + install. MARKETPLACE defaults to
+# "relux-dev"; override to match a contributor's local marketplace name.
+install-agents MARKETPLACE="relux-dev":
+    -claude plugin uninstall relux@{{MARKETPLACE}}
+    claude plugin install relux@{{MARKETPLACE}}
+
 # Fix clippy warnings and format code
 fix:
     cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged -- -D warnings
