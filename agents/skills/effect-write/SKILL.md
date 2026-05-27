@@ -296,14 +296,23 @@ or redirect at the shell level
 (`> svc > ${__RELUX_RUN_ARTIFACTS}/svc/svc.log 2>&1`) when the
 path is hard-coded.
 
-**Fail patterns: ask, then set inline.** Ask the user whether the
-service has known fatal output signatures (`FATAL:`, `panic:`,
-`Segmentation fault`) that should immediately fail any test
-interacting with it. If yes, set `!?` / `!=` inline in the service
-shell before the readiness match. Slot scope and the frame-scoped
-reversion that forbids wrapping `!?` in a `fn` are covered by
-`references/fail-patterns.md` and `references/functions.md` >
-*`fn`*.
+**Fail patterns: actively hunt for one.** Almost every real
+service emits a fatal-output signature on crash / OOM / port-bind
+failure / missing dep -- assume one exists. Without a fail pattern
+a crash during the test surfaces as an opaque `match-timeout`,
+with the buffer tail as the only diagnostic; with one, the failure
+record names what actually broke.
+
+Look in this order: ask the user (they often know the service's
+vocabulary or have a recent crash dump); check service docs and
+log-framework conventions (`FATAL:`, `PANIC:`, `[FATAL]`,
+`level=fatal`, `panic`, `Segmentation fault`,
+`Error response from daemon`); fall back to a generic weak
+pattern like `(?i)\b(fatal|panic|abort)\b`. Weak beats absent.
+
+Set the chosen `!?` / `!=` inline in the service shell before the
+readiness match. Slot scope and the no-wrap-in-`fn` rule are in
+`references/fail-patterns.md`.
 
 ### Path: Plain
 
@@ -580,9 +589,11 @@ already supply.
 - Meaningful service artifacts (logs, dumps) write under
   `${__RELUX_RUN_ARTIFACTS}/<svc>/`; the user has confirmed what is
   worth preserving for post-mortem.
-- If the service has known fatal output signatures, a `!?` / `!=`
-  guard is set inline in the service shell (not in a function --
-  the slot is frame-scoped).
+- A `!?` / `!=` fail-pattern guard is set inline in the service
+  shell (not in a function -- the slot is frame-scoped). If no
+  pattern was set, the author has actively searched -- user input,
+  service docs, common log conventions -- and surfaced the gap to
+  the user, not silently accepted absence as a default.
 - The header comment block lists every ENV var the body reads,
   split into expected and transparent.
 - Non-standard external tools the body invokes are guarded by a
