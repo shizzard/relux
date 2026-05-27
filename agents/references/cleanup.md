@@ -13,7 +13,7 @@ The `cleanup` block runs in a freshly spawned implicit shell after the test (or 
 2. Test cleanup (if present).
 3. Effect cleanups, in reverse topological order (dependents before dependencies).
 
-Always runs, regardless of pass/fail/cancel. Effect cleanup fires at last-guard release of the effect instance -- once per unique identity, no matter how many `start` sites shared it. Test cleanup fires once per test.
+Always runs, regardless of pass/fail/cancel. Effect cleanup fires at last-guard release of the effect instance -- once per unique identity *within a single test's dependency graph*, no matter how many `start` sites shared it. The effect registry is per-test (see [effects-identity](effects-identity.md) > Scope), so two tests that both `start` the same effect run setup and cleanup independently -- nothing crosses the test boundary. Test cleanup fires once per test.
 
 Cleanup runs under uncancellable tokens: still executes when the test was cancelled (`TestTimeout`, `SuiteTimeout`, `FailFast`, `Sigint`). Cleanup itself has its own timeout budget but cannot be cancelled by the parent.
 

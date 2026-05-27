@@ -76,6 +76,12 @@ start Service as B {
 - Cleanup runs once per instance at last-guard release, in reverse topological order, under uncancellable tokens. See [cleanup](cleanup.md).
 - Failed setup propagates: dependent tests fail.
 
+### Scope: per-test, not per-suite
+
+The effect registry is constructed fresh for each test; identity and refcount apply only within a single test's dependency graph. Two tests that each `start Db` with identical overlays get **two independent `Db` instances** with two independent setups and two independent cleanups -- no sharing across tests, even when the overlay tuples match exactly. Sharing happens *inside* one test's DAG (a diamond like `Tasks -> Db` plus `Tasks -> Auth -> Db` reuses the same `Db` instance for both legs); it never crosses the test boundary.
+
+This is what makes parallel execution safe: tests do not implicitly share state through an effect, even when they nominally `start` the same one. If you want cross-test reuse, model the shared resource outside the effect system (e.g. an externally-provisioned database the effects connect to).
+
 ## Pitfalls and best practices
 
 ### One service per effect
