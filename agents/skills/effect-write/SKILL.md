@@ -317,15 +317,15 @@ plumbing, not a wrap).
    transparent:
 
    ```relux
-   # effect Postgres
-   #
-   # expected (overlay; participate in identity):
-   #   PG_DATA_DIR  -- pgdata path; unique per instance
-   #   PG_PORT      -- listen port
-   #
-   # transparent (inherited env; set by caller):
-   #   PG_USER, PG_DB  -- credentials and target database
-   #   PG_LOG_LEVEL    -- verbosity
+   // effect Postgres
+   //
+   // expected (overlay; participate in identity):
+   //   PG_DATA_DIR  -- pgdata path; unique per instance
+   //   PG_PORT      -- listen port
+   //
+   // transparent (inherited env; set by caller):
+   //   PG_USER, PG_DB  -- credentials and target database
+   //   PG_LOG_LEVEL    -- verbosity
    ```
 
    The test author wires the `start` site against this block; it is
@@ -671,13 +671,13 @@ effect Postgres {
 Do:
 
 ```relux
-# effect Postgres
-#
-# expected (overlay; participate in identity):
-#   PG_DATA_DIR  -- pgdata path; unique per instance
-#   PG_PORT      -- listen port
-#
-# transparent (inherited env; set by caller):
-#   PG_USER, PG_DB  -- credentials and target database
+// effect Postgres
+//
+// expected (overlay; participate in identity):
+//   PG_DATA_DIR  -- pgdata path; unique per instance
+//   PG_PORT      -- listen port
+//
+// transparent (inherited env; set by caller):
+//   PG_USER, PG_DB  -- credentials and target database
 effect Postgres { ... }
 ```
