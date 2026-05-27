@@ -105,7 +105,7 @@ open.
 
 - Used inside a single module: inline in that module. No import dance.
 - Used across two or more modules: a library file, imported via
-  `from "lib/<path>" import fn_name`. The grouping rubric
+  `import lib/<path> { fn_name }`. The grouping rubric
   (effect-scoped vs protocol-scoped vs ask-before-creating-misc)
   lives in `references/imports.md` > *Group library modules by
   scope*; apply it before placing the file.
@@ -178,7 +178,7 @@ Use when no function with this `(name, arity)` exists at the target.
    expression.
 
 5. **Apply.** Write the declaration. For library location, also add
-   `from "lib/<name>" import fn_name` to each caller module.
+   `import lib/<name> { fn_name }` to each caller module.
 
 Then run **Verify**, then **Audit**.
 
@@ -269,7 +269,7 @@ or back).
    helper; demoting `relux/lib/` -> inline follows the last cross-module
    caller leaving.
 3. **Apply.** Cut the declaration from the source module; paste into
-   the destination. Add `from "lib/<name>" import fn_name` to every
+   the destination. Add `import lib/<name> { fn_name }` to every
    caller module that does not already have it; remove the import from
    any caller module that no longer needs it.
 
@@ -393,7 +393,7 @@ After every operation, re-walk the chain.
 - `references/bifs.md` -- pure vs impure built-ins; a `pure fn` body
   may only call pure BIFs and other `pure fn`s.
 - `references/imports.md` -- import resolution from project root; how
-  `from "lib/..." import ...` interacts with the `relux/lib/`
+  `import lib/... { ... }` interacts with the `relux/lib/`
   convention.
 - `references/project-layout.md` -- the `relux/lib/` directory
   convention and discovery rules.

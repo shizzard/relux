@@ -129,11 +129,11 @@ relux/tests/
 
 Do not park every shared helper in a flat `relux/lib/helpers.relux`. Place each helper in the module that names its natural scope:
 
-- **Tied to a specific effect** -- inline the helper in the same module as the effect (a `parse_pid` used only with the `Postgres` effect lives in `relux/lib/postgres.relux`). Callers import `from "lib/postgres" import parse_pid`; the effect and its helpers travel together.
+- **Tied to a specific effect** -- inline the helper in the same module as the effect (a `parse_pid` used only with the `Postgres` effect lives in `relux/lib/postgres.relux`). Callers import `import lib/postgres { parse_pid }`; the effect and its helpers travel together.
 - **Scoped by protocol or domain** -- group under a protocol-named module (`relux/lib/http.relux`, `relux/lib/ssh.relux`, `relux/lib/strings.relux` for URL / shell-quoting helpers).
 - **Cross-cutting with no natural home** -- stop and pick a name before creating a new top-level module. A premature `relux/lib/misc.relux` becomes a magnet for unclassified helpers and silently degrades discoverability.
 
-The grouping is what import lines read like at the caller: `from "lib/postgres" import parse_pid` immediately tells the reader the helper is in the Postgres orbit.
+The grouping is what import lines read like at the caller: `import lib/postgres { parse_pid }` immediately tells the reader the helper is in the Postgres orbit.
 
 ### Prefer selective imports for shared library modules
 
