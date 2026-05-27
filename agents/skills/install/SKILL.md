@@ -220,7 +220,7 @@ relux completions --shell zsh --install --path ~/.zsh/completions
 
 ## References
 
-- `references/cli-reference.md` -- the subcommands the binary now exposes.
+- `../../references/cli-reference.md` -- the subcommands the binary now exposes.
 
 ## Pitfalls
 

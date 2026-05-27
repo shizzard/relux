@@ -61,45 +61,67 @@ Agent-task signals:
   they pass, the test is done. If they fail, the user (or the future
   `run-and-fix` skill) takes over.
 
-**Direct invocation (`/relux:test-write`).** When invoked without
-a specific test framed in the prompt, **stop and ask before
-authoring**:
+**Direct invocation (`/relux:test-write`).** If the prompt
+already names both the **SUT** and the **behavior**, skip this
+block entirely and proceed to pre-flight / workflow. Otherwise,
+the first action is to ask the user for whichever is missing,
+via `AskUserQuestion` (not free-form prose). SUT first; behavior
+is not framable until the SUT is pinned.
 
-1. Which **single behavior** should the test assert?
-2. Which **SUT**, and which shape (CLI / REPL / service)?
-3. Which **scope** under `relux/tests/<sut>/<scope>/`?
-4. Which **services** does the behavior depend on, and do they
-   already have effects?
+1. **Which SUT?** -- present candidates inferred from the working
+   directory or any visible SPEC. Always ask SUT first.
+2. **What single user-visible behavior should the test assert?**
+   -- options: "I'll describe it" (the user uses the implicit
+   *Other* slot to type free-form), "Smoke / basic-startup test
+   for this SUT" (the user explicitly opts into a smoke test),
+   and "Propose one specific behavior from the SPEC/source" (the
+   agent inspects and proposes a single concrete behavior -- not
+   a generic "smoke test" -- and the user confirms).
 
-Do not infer any of these from suite state. A greenfield suite
-is the case where the user is *most* likely to have a specific
-first test in mind; silent defaults produce a test they have to
-throw away.
+Do **not** proceed past this ask until the user has answered.
+Authoring against an inferred SUT or behavior produces a guess,
+not a test. The autonomous-mode pressure to "make the reasonable
+call and continue without stopping" does **not** override this
+-- see *Pitfalls > Silent inference from suite state*.
+
+**After the ask, transitions are mechanical, not negotiated.**
+Once SUT and behavior are pinned, downstream prerequisites
+proceed *automatically* and *announced*, not re-asked: the
+`relux:init` handoff (if the suite is uninitialised) and the
+`relux:effect-write` hard-switch (if a service SUT has no
+modelling effect) are skill-mandated, not user-decision-points.
+Do **not** invoke `AskUserQuestion` a second time to ask the
+user whether to do these handoffs; say "stopping for the
+relux:init handoff now" (or equivalent for effect-write) and
+hand off. Scope and dep services are derivable from the user's
+answers; inspect the working directory and SUT source, do not
+ask.
 
 ## Pre-flight checks
 
-- [ ] **Required:** read `references/block-structure.md`. Source of
+- [ ] **Required:** read `../../references/block-structure.md`. Source of
       truth for the test block skeleton, section ordering, the docstring
       slot, and naming rules.
-- [ ] **Required:** read `references/statements.md`. Source of truth
+- [ ] **Required:** read `../../references/statements.md`. Source of truth
       for send (`>`, `=>`), `let` / reassignment, `sleep`, comments.
-- [ ] **Required:** read `references/matching.md`. Source of truth for
+- [ ] **Required:** read `../../references/matching.md`. Source of truth for
       `<?` / `<=`, the buffer/cursor model, the
       command-match-anchor rhythm, captures, and the echo trap.
-- [ ] **Conditional:** read `references/multimatch.md` if the test
+- [ ] **Conditional:** read `../../references/multimatch.md` if the test
       needs to wait for several patterns in unspecified order.
-- [ ] **Conditional:** read `references/fail-patterns.md` if the test
+- [ ] **Conditional:** read `../../references/fail-patterns.md` if the test
       sets a background guard (`!?` / `!=`).
-- [ ] **Conditional:** read `references/interpolation.md` if the test
-      uses `${var}` / `${1}` / `${Alias.var}` (almost always).
-- [ ] **Conditional:** read `references/timeouts.md` if the test
+- [ ] **Required:** read `../../references/interpolation.md`. Source of
+      truth for what goes inside `${...}` (names only), bare-vs-braced,
+      and the let-bind-the-call rule.
+- [ ] **Conditional:** read `../../references/timeouts.md` if the test
       overrides the default match / test timeout.
-- [ ] **Conditional:** read `references/effects-identity.md` and
-      `references/effects-expose.md` if the test `start`s an effect.
-- [ ] **Conditional:** read `references/cleanup.md` if the test
+- [ ] **Conditional:** read `../../references/effects-identity.md` and
+      `../../references/effects-expose.md` if the test `start`s an effect.
+- [ ] **Conditional:** read `../../references/cleanup.md` if the test
       needs cleanup (most tests do not).
-- [ ] **Conditional:** read `references/functions.md` and
-      `references/bifs.md` if the test calls helpers or BIFs.
+- [ ] **Conditional:** read `../../references/functions.md` and
+      `../../references/bifs.md` if the test calls helpers or BIFs.
 - [ ] Locate the suite root (the directory containing `Relux.toml`).
       Tests live under `relux/tests/`. If the suite is not yet
       initialised, hand off to `relux:init` before continuing.
@@ -119,12 +141,6 @@ throw away.
         SUT itself, even with zero external deps**, since the
         effect owns start, ready-wait, expose, and cleanup. If no
         effect models it, the required-effect handover below fires.
-- [ ] Identify the **single user-visible behavior** the test asserts.
-      One test, one behavior. If the user described two, surface
-      the split before authoring. **If the user has not named a
-      specific behavior**, stop and ask per the *Direct invocation*
-      block in *When to use* -- do not infer behavior, SUT, or
-      scope from suite state.
 - [ ] **Inventory external services** the behavior depends on
       (databases, queues, mock servers). Each needs an effect; a
       missing one fires the required-effect handover, independent
@@ -191,7 +207,7 @@ configured port` pass.
 rule -- two-level nesting under `relux/tests/<sut>/<scope>/.relux`,
 the universal `smoke/` scope, the propose-don't-invent discipline
 for non-smoke scopes, the SUT subdirectory and filename
-conventions -- lives in `references/imports.md` > *Group tests by
+conventions -- lives in `../../references/imports.md` > *Group tests by
 SUT then scope*. Skill-level framing: this is the first concrete
 commitment of the decompose step. Decide the path now (the
 pre-flight inventory feeds the SUT pick; the propose-then-pick
@@ -224,9 +240,9 @@ from when the body crosses a non-obvious operator.
 
 **Command-match-anchor.** Every interaction with the SUT shell
 follows the command -> match -> anchor rhythm.
-`references/matching.md` > *The command-match-anchor loop* is the
+`../../references/matching.md` > *The command-match-anchor loop* is the
 canonical reference; read it before composing the body. The
-default anchor is `match_ok()` (see `references/bifs.md`); when
+default anchor is `match_ok()` (see `../../references/bifs.md`); when
 the SUT is not a POSIX-y prompt, the body needs a project-local
 anchor function -- hand off to `relux:function` to extract one
 (`match_pyrepl`, etc.), then call it at every anchor site.
@@ -237,15 +253,15 @@ contains regex metacharacters and the value should be matched
 verbatim. Use `<{ ... }` (multimatch) only when the SUT genuinely
 produces output in non-deterministic order -- parallel jobs,
 interleaved batches; for ordered output, chained `<?`/`<=` reads
-clearer (`references/multimatch.md` > *Use multimatch only when
+clearer (`../../references/multimatch.md` > *Use multimatch only when
 order is incidental*).
 
 **Captures.** `$1`, `$2`, ... hold the captures of the most recent
 `<?` in the current shell; the next `<?` clobbers them. Bind with
 `let` immediately if the value is read later
-(`references/statements.md` > *Bind captures with `let` before the
+(`../../references/statements.md` > *Bind captures with `let` before the
 next match overwrites them*). Multimatch does **not** populate
-captures (`references/multimatch.md` > *Captures don't bind in
+captures (`../../references/multimatch.md` > *Captures don't bind in
 multimatch*); if a value is needed from a multimatch's coverage
 set, follow with a separate `<?` to extract it.
 
@@ -255,14 +271,14 @@ signatures (`FATAL:`, `panic:`, `Segmentation fault`,
 `assertion failed`) that should fail the test immediately if seen.
 The slot is shell-scoped and frame-scoped -- never wrap `!?` in a
 `fn` (the slot reverts on return); see
-`references/fail-patterns.md` and `references/functions.md` >
+`../../references/fail-patterns.md` and `../../references/functions.md` >
 *`fn`*.
 
 **Anchoring.** Anchor every `<?` regex to the lines it should
 match (`^...$`) -- an unanchored pattern picks up the echo of the
 command that produced the output, and the test reports success
 on input it sent rather than output the program produced
-(`references/matching.md` > *Echo trap*).
+(`../../references/matching.md` > *Echo trap*).
 
 ### Authoring the test
 
@@ -274,8 +290,8 @@ on input it sent rather than output the program produced
      calls from `relux/lib/`.
 
    Import syntax and resolution rules:
-   `references/imports.md`. Effects use CamelCase identifiers;
-   functions use snake_case (`references/block-structure.md` >
+   `../../references/imports.md`. Effects use CamelCase identifiers;
+   functions use snake_case (`../../references/block-structure.md` >
    *Naming rules*).
 
    Then add any **file-level markers** -- guards that apply to
@@ -296,7 +312,7 @@ on input it sent rather than output the program produced
 
    Do **not** add a test-level timeout (`~30s` / `@30s`) on the
    declaration; the suite default covers it
-   (`references/timeouts.md` > *Don't put test-level timeouts on
+   (`../../references/timeouts.md` > *Don't put test-level timeouts on
    `.relux` fixtures*).
 
 3. **Compose the docstring.** The docstring is mandatory. It is a
@@ -332,14 +348,14 @@ on input it sent rather than output the program produced
    required service, with an `as <Alias>` binding and an overlay
    block forwarding the unique-resource vars the effect
    `expect`s. The overlay shape and identity-tuple semantics are
-   in `references/effects-identity.md`; the exposed shells and
+   in `../../references/effects-identity.md`; the exposed shells and
    vars the body can call (`Alias.shell`, `Alias.var`) are in
-   `references/effects-expose.md`.
+   `../../references/effects-expose.md`.
 
 5. **Compose test-scope `let` bindings.** Bindings the test reuses
    across shells or that cleanup needs to see live at the
    test level (not inside a `shell` block). The visibility rules
-   for cleanup are in `references/cleanup.md` > *Don't depend on
+   for cleanup are in `../../references/cleanup.md` > *Don't depend on
    test-body state inside cleanup*; if a value is needed in
    cleanup, declare its name with `let pid` at the test scope and
    reassign inside the shell body with `pid = $1`.
@@ -361,15 +377,15 @@ on input it sent rather than output the program produced
      later in the test.
    - Override timeouts inline (`<~5s? ...`) only on the matches
      that legitimately need a longer leash; the suite default
-     covers the rest (`references/timeouts.md`).
+     covers the rest (`../../references/timeouts.md`).
 
    A test may declare several `shell <name> { ... }` blocks (one
    per parallel shell) or re-enter the same shell name to run
    distinct phases against one PTY process
-   (`references/block-structure.md` > *Test block*).
+   (`../../references/block-structure.md` > *Test block*).
 
 7. **Decide cleanup.** The default answer is no. When yes,
-   `references/cleanup.md` owns both the rationale (when cleanup
+   `../../references/cleanup.md` owns both the rationale (when cleanup
    is warranted vs the run dir being self-cleaning) and the
    discipline (fresh implicit shell, idempotency, no service
    kills, no fail patterns, artifact preservation). Read it
@@ -407,7 +423,7 @@ relux check
 match will actually succeed against the live SUT.
 
 ```bash
-relux run path/to/this_test.relux
+relux run -f path/to/this_test.relux
 ```
 
 Runs the test once. The structured log lands in
@@ -440,21 +456,21 @@ After the run passes, re-walk the test once.
   for a test named "X works", expand it.
 - **No sleeps that should be matches.** `sleep` ignores
   readiness; a `<?` on the line that proves readiness is faster
-  and more reliable (`references/statements.md` > *Prefer matches
+  and more reliable (`../../references/statements.md` > *Prefer matches
   over `sleep`*). Audit every `sleep("Ns")` -- if a match would
   do, swap it.
 - **Captures bound before clobber.** Every `${1}` / `${2}` /
   ... / `$1` / `$2` / ... reference is either in the line
   immediately after the `<?` that produced it, or has been
-  bound to a `let` first (`references/statements.md` > *Bind
+  bound to a `let` first (`../../references/statements.md` > *Bind
   captures with `let` before the next match overwrites them*).
 - **Anchored patterns.** Every `<? <regex>` is line-anchored
   (`^...$`) unless the test deliberately matches mid-line
   content. Unanchored regex is an echo-trap waiting to happen
-  (`references/matching.md` > *Echo trap*).
+  (`../../references/matching.md` > *Echo trap*).
 - **Fail patterns inline if set.** Every `!?` / `!=` lives in
   the shell body that owns the slot, not inside a called `fn`
-  (`references/functions.md` > *`fn`*).
+  (`../../references/functions.md` > *`fn`*).
 - **Test isolation.** Every shared resource the test touches --
   port, path, database name, run-id -- comes from `uuid()`,
   `available_port()`, or an effect's `expect`-driven identity.
@@ -463,24 +479,24 @@ After the run passes, re-walk the test once.
   If a cleanup block exists, it stays outside
   `${__RELUX_RUN_ARTIFACTS}/`, is idempotent, sets no fail
   patterns, and does not try to stop services
-  (`references/cleanup.md`).
+  (`../../references/cleanup.md`).
 - **External-tool guard present.** If the body / its helpers /
   its effects invoke a non-standard external tool, a `# skip
   unless which("<tool>")` marker covers it on the tightest layer
   that captures the condition.
 - **No test-level timeout.** The test declaration does not carry
-  a `~Ns` / `@Ns` (`references/timeouts.md` > *Don't put
+  a `~Ns` / `@Ns` (`../../references/timeouts.md` > *Don't put
   test-level timeouts on `.relux` fixtures*).
 - **File placement matches the scoping rule.** The test lives
   under `relux/tests/<sut>/<scope>/`, with `smoke/` reserved for
   smoke tests and non-smoke scopes confirmed with the user
-  (`references/imports.md` > *Group tests by SUT then scope*).
+  (`../../references/imports.md` > *Group tests by SUT then scope*).
 
 ## Done when
 
 - The test file lives at `relux/tests/<sut>/<scope>/<name>.relux`
   with the SUT subdirectory matching the service under test, the
-  scope matching the rule in `references/imports.md` > *Group
+  scope matching the rule in `../../references/imports.md` > *Group
   tests by SUT then scope* (`smoke/` for smoke tests; otherwise a
   scope confirmed with the user), and the filename reading as
   the assertion in `snake_case`.
@@ -517,7 +533,7 @@ After the run passes, re-walk the test once.
 - `relux:configure` -- if the suite-level match / test / suite
   timeout defaults are wrong for the suite as a whole. Per-test
   timeout overrides are an audit failure
-  (`references/timeouts.md`); the right fix is the suite
+  (`../../references/timeouts.md`); the right fix is the suite
   default.
 - `relux:init` -- pre-flight handoff if the suite is not yet
   initialised (no `Relux.toml` on the ancestor chain).
@@ -533,38 +549,38 @@ After the run passes, re-walk the test once.
 
 ## References
 
-- `references/block-structure.md` -- test block skeleton, section
+- `../../references/block-structure.md` -- test block skeleton, section
   ordering, docstring slot, naming rules.
-- `references/statements.md` -- send (`>` / `=>`), `let` /
+- `../../references/statements.md` -- send (`>` / `=>`), `let` /
   reassignment, `sleep`, comments, capture-binding pitfall.
-- `references/matching.md` -- `<?` / `<=` semantics, buffer /
+- `../../references/matching.md` -- `<?` / `<=` semantics, buffer /
   cursor model, command-match-anchor rhythm, captures, echo
   trap, anchored regex discipline.
-- `references/multimatch.md` -- `<{ ... }` semantics, atomic
+- `../../references/multimatch.md` -- `<{ ... }` semantics, atomic
   cursor, captures-don't-bind pitfall, when to reach for
   multimatch.
-- `references/fail-patterns.md` -- `!?` / `!=` slot semantics,
+- `../../references/fail-patterns.md` -- `!?` / `!=` slot semantics,
   shell-scoped, inline-only for service shells.
-- `references/interpolation.md` -- `${var}`, `${1}`,
+- `../../references/interpolation.md` -- `${var}`, `${1}`,
   `${Alias.var}`, bare-vs-braced rule, regex-interpolation-is-raw
   pitfall.
-- `references/timeouts.md` -- `~` vs `@`, inline overrides, the
+- `../../references/timeouts.md` -- `~` vs `@`, inline overrides, the
   no-test-level-timeouts rule, suite defaults.
-- `references/effects-identity.md` -- effect lifecycle, the
+- `../../references/effects-identity.md` -- effect lifecycle, the
   `expect` contract, the overlay shape at `start` sites.
-- `references/effects-expose.md` -- `Alias.shell` / `Alias.var`
+- `../../references/effects-expose.md` -- `Alias.shell` / `Alias.var`
   access at the call site.
-- `references/cleanup.md` -- test cleanup placement, fresh
+- `../../references/cleanup.md` -- test cleanup placement, fresh
   shell, idempotency, artifact preservation.
-- `references/functions.md` -- `fn` vs `pure fn`, frame scope
+- `../../references/functions.md` -- `fn` vs `pure fn`, frame scope
   vs shell scope, the call-from-test-body rules.
-- `references/bifs.md` -- `match_ok` / `match_not_ok`,
+- `../../references/bifs.md` -- `match_ok` / `match_not_ok`,
   `available_port`, `uuid`, `sleep`, control characters.
-- `references/imports.md` -- import syntax and resolution from
+- `../../references/imports.md` -- import syntax and resolution from
   project root.
-- `references/project-layout.md` -- `relux/tests/` location,
+- `../../references/project-layout.md` -- `relux/tests/` location,
   built-in env vars (`__RELUX_RUN_ARTIFACTS`, `__RELUX_RUN_ID`).
-- `references/markers.md` -- marker propagation rules; the test
+- `../../references/markers.md` -- marker propagation rules; the test
   inherits markers from imported effects and functions.
 
 ## Pitfalls
@@ -573,9 +589,9 @@ The recurring test-body mistakes -- the echo trap, unanchored
 regex, lost captures, sleep-instead-of-match, regex
 interpolation as raw text, test-level timeouts on fixtures,
 service kills in cleanup, depending on shell-scope state in
-cleanup -- live in `references/matching.md`,
-`references/statements.md`, `references/interpolation.md`,
-`references/timeouts.md`, and `references/cleanup.md` with
+cleanup -- live in `../../references/matching.md`,
+`../../references/statements.md`, `../../references/interpolation.md`,
+`../../references/timeouts.md`, and `../../references/cleanup.md` with
 canonical Don't/Do examples. The pre-flight reads load them;
 this section captures the skill-level disciplines that have no
 reference home.
@@ -583,12 +599,38 @@ reference home.
 ### Silent inference from suite state
 
 When invoked without a specific test in mind, the temptation is
-to scan `relux/tests/`, read a shape into the existing layout
-(or its absence), and pick the behavior / SUT / scope from it.
-Suite state carries no information about which behavior the user
-wants captured next. Ask; do not default.
+to scan the working directory (or `relux/tests/` if a suite
+exists), read a shape into the layout or the SPEC, and pick the
+SUT / behavior / scope from what you find. Working-directory and
+suite state carry no information about which behavior the user
+wants captured next. Ask via `AskUserQuestion`; do not default.
 
-Don't:
+**Autonomous-mode pressure does NOT override this.** A session
+may carry a directive to "make the reasonable call and continue
+without stopping" -- that directive is for *clarifying nits*,
+not for *load-bearing inputs*. **SUT and behavior are
+load-bearing**: a test authored against an inferred SUT or
+behavior is a guess, not a test. The "reasonable call" when
+these are unspecified is to ask, because there is no reasonable
+call yet to make. The documented failure mode is the agent
+picking "the simplest SUT" + "smoke test" as the framing and
+proceeding without invoking `AskUserQuestion`; the resulting
+test gets thrown away because it was never grounded in the
+user's intent.
+
+Don't (autonomous-mode rationalization -- the documented bug):
+
+```
+user: /relux:test-write
+agent: [scans working dir, sees db_service.py / auth_service.py
+        / task_service.py + SPEC.md]
+agent: Per the session directive to make reasonable calls
+       without stopping, I'll pick the most natural first test:
+       a smoke test for db_service (the simplest, no deps).
+       Starting with init.
+```
+
+Don't (silent inference from layout, no autonomous-mode excuse):
 
 ```
 user: /relux:test-write
@@ -600,12 +642,11 @@ Do:
 
 ```
 user: /relux:test-write
-agent: Quick clarifications before I draft:
-       - What single behavior should the test assert?
-       - Which binary is the SUT (CLI, REPL, service)?
-       - Which scope under relux/tests/<sut>/?
-       - Any services the behavior depends on, and do they
-         have effects?
+agent: [invokes AskUserQuestion with two questions: SUT
+        (candidates from the working directory) and behavior
+        (options: free-form via Other, smoke / basic-startup,
+        or agent-proposed from SPEC/source). Stops until the
+        user answers.]
 ```
 
 ### Docstring restates the name

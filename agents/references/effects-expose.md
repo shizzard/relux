@@ -97,10 +97,10 @@ Don't:
 ```relux
 effect SeededDb {
     start Db as Dep
+    expose shell s
     shell s {
         > psql -c "INSERT INTO ..."
     }
-    expose shell s
     // Db.service unreachable to callers of SeededDb
 }
 ```

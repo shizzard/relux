@@ -58,14 +58,16 @@ the decomposition step has nothing to walk.
 
 ## Pre-flight checks
 
-- [ ] **Required:** read `references/effects-identity.md`. Source of
-      truth for body-section order, `expect` semantics, overlay
-      evaluation, identity tuple, and lifecycle.
-- [ ] **Required:** read `references/effects-expose.md`. Source of
+- [ ] **Required:** read `../../references/block-structure.md`. Source of
+      truth for the effect block skeleton and the enforced section order.
+- [ ] **Required:** read `../../references/effects-identity.md`. Source of
+      truth for `expect` semantics, overlay evaluation, identity tuple,
+      and lifecycle.
+- [ ] **Required:** read `../../references/effects-expose.md`. Source of
       truth for `expose` forms, caller access (`Alias.shell` /
       `Alias.var`), non-exposed shell termination, and the wrapper
       re-export rule.
-- [ ] **Required:** read `references/cleanup.md`. Covers cleanup
+- [ ] **Required:** read `../../references/cleanup.md`. Covers cleanup
       placement, allowed operations, shell visibility, fresh-shell
       discipline, and the don't-stop-services /
       don't-set-fail-patterns / idempotency pitfalls.
@@ -252,7 +254,7 @@ writing.
 
 **Identity (`expect` set).** The resource taxonomy (filesystem /
 network / logical-shared-state) and the dummy-discriminator
-escape hatch live in `references/effects-identity.md` >
+escape hatch live in `../../references/effects-identity.md` >
 *What goes in `expect`* and *Force a fresh instance with a
 dummy overlay key*. The skill-level framing: ask "what would two
 simultaneous instances physically collide on?" -- that has an
@@ -261,7 +263,7 @@ answer for every effect; "what matters for behaviour" does not.
 **Expose surface.** Forms, caller access, the non-exposed-shell
 termination rule, the expose-var-must-target-a-let constraint,
 the let-shim trick for overlay vars, and the `as` rename syntax
-all live in `references/effects-expose.md`. Skill-level
+all live in `../../references/effects-expose.md`. Skill-level
 discipline:
 
 - **The service-running shell must always be exposed.** It holds
@@ -271,7 +273,7 @@ discipline:
 - Other shells follow "does the caller need to operate on this
   shell?" -- expose only when yes.
 - Setup-only shells (init, migrations, seed) stay out of `expose`
-  so they free resources (`references/effects-expose.md` >
+  so they free resources (`../../references/effects-expose.md` >
   *Don't expose setup-only shells*).
 
 ### Shared: Composing the service shell
@@ -280,14 +282,14 @@ Three disciplines apply to the shell that runs the actual service,
 regardless of path.
 
 **Run the service in the foreground.** Rule and canonical
-Don't/Do: `references/effects-identity.md` > *Run the service in
+Don't/Do: `../../references/effects-identity.md` > *Run the service in
 the foreground*. Skill-level note: this is the discipline a fresh
 draft most often violates -- check the launch line(s) before
 moving on.
 
 **Map meaningful service artifacts into the run directory.**
 `${__RELUX_RUN_ARTIFACTS}` is scanned and surfaced in `event.html`
-(`references/project-layout.md` > *Built-in environment
+(`../../references/project-layout.md` > *Built-in environment
 variables*); writes outside it are invisible to the viewer.
 **Ask the user which artifacts are meaningful** (logs are the
 canonical case), then either configure the service to write
@@ -312,7 +314,7 @@ pattern like `(?i)\b(fatal|panic|abort)\b`. Weak beats absent.
 
 Set the chosen `!?` / `!=` inline in the service shell before the
 readiness match. Slot scope and the no-wrap-in-`fn` rule are in
-`references/fail-patterns.md`.
+`../../references/fail-patterns.md`.
 
 ### Path: Plain
 
@@ -404,7 +406,7 @@ both the wrapped dep's shells and (optionally) the wrapper's own.
 4. **Re-expose the dep's full surface.** Wrapper rule; without
    it, dep shells and vars are alive (held by the wrapper's guard)
    but unreachable from callers. See
-   `references/effects-expose.md` > *Wrapper effects must
+   `../../references/effects-expose.md` > *Wrapper effects must
    re-expose dependency shells*.
 
    For provisioning-chain layers, re-export under the dep's
@@ -449,7 +451,7 @@ Then run **Verify**, then **Audit**.
 Ask "do I even need cleanup?" first. The answer is usually no --
 PTY death already kills service children, and the run dir is
 post-mortem evidence (do not delete it; see
-`references/cleanup.md` > *Don't delete files under
+`../../references/cleanup.md` > *Don't delete files under
 `${__RELUX_RUN_ARTIFACTS}`*). Cleanup is for filesystem side
 effects *outside* `${__RELUX_RUN_ARTIFACTS}` -- sockets in
 `/tmp`, files in `/var`, anything the next test would trip
@@ -459,7 +461,7 @@ wants to read.
 
 Behavioural rules (fresh shell, no fail patterns, no service
 kills, idempotency, reverse topological order) all live in
-`references/cleanup.md`; read it before writing the block.
+`../../references/cleanup.md`; read it before writing the block.
 
 ### Shared: Verify
 
@@ -481,7 +483,7 @@ relux check
 For an exercising test that `start`s the effect:
 
 ```bash
-relux run path/to/test_using_effect.relux
+relux run -f path/to/test_using_effect.relux
 ```
 
 The effect appears in the structured log under a setup span; on
@@ -530,33 +532,56 @@ After authoring, re-walk the effect and its caller surface.
   touches paths under `${__RELUX_RUN_ARTIFACTS}/` is removing test
   evidence. Pull those lines.
 
-### Shared: Follow-up -- propose a smoke test
+### Shared: Follow-up -- propose a smoke test to the user
 
-After the effect lands and `relux check` is green, propose to the
-user that the next move is `relux:test-write` to author a smoke
-test that `start`s this effect and exercises its basic behaviour
-(the service comes up, the readiness match fires, the
-re-exposed dep surface is reachable from the caller). The smoke
-test is what gives `relux run` something to execute against the
-new effect -- `relux check` alone never spawns shells, so until a
-test runs it the effect's body is unverified.
+After the effect lands and `relux check` is green, **propose to
+the user** that authoring a smoke test via `relux:test-write` is
+a good next move -- a test that `start`s this effect and
+exercises its basic behaviour (the service comes up, the
+readiness match fires, the re-exposed dep surface is reachable
+from the caller). The smoke test is what gives `relux run`
+something to execute against the new effect; `relux check` alone
+never spawns shells, so until a test runs it the effect's body
+is unverified.
+
+**This is a user-facing proposal, not an auto-handoff.** Phrase
+it as a question the user can answer:
+
+> "`<Effect>` is in place and `relux check` is green. Want me
+> to author a smoke test that exercises its basic behaviour
+> (service starts, readiness match fires, re-exposed surface is
+> reachable)? Or jump to a specific test you had in mind?"
+
+Stop after the proposal; the user decides. Do **not** auto-invoke
+`relux:test-write` on the assumption that a smoke test is the
+right next thing. When the user answers, hand off plainly to
+`relux:test-write` and let *its* SUT + behavior gate run against
+the user's actual response -- so the test framing comes from the
+user, not from this skill's inference.
 
 Two cases:
 
 - **Hard-switch return.** If this effect was authored because
-  `relux:test-write` hard-switched here for a missing service, the
-  pending test is the smoke test. Hand off to `relux:test-write`
-  to resume that work.
+  `relux:test-write` hard-switched here for a missing service,
+  the *pending* test is whatever the user originally framed when
+  they came to `relux:test-write` -- **not** necessarily a smoke
+  test. Conflating "the pending test" with "a smoke test" is a
+  documented bug (silent smoke commitment on re-entry from
+  effect-write). When you hand back to `relux:test-write`, do so
+  plainly with no framing pre-baked, and let `relux:test-write`'s
+  SUT + behavior gate run against the user's original framing
+  (or, if the user has changed their mind in the interim, the
+  new one).
 - **Standalone authoring.** If the user came directly to this
-  skill (no pending test), propose a small `test "starts and ..."`
-  via `relux:test-write` that walks the effect's expected surface
-  once.
+  skill (no pending test), the smoke-test proposal above is your
+  follow-up. Same rule: stop and let the user answer; do not
+  assume smoke is the right next test.
 
 When you hand off to `relux:test-write`, surface the marker
 inheritance: every marker carried by this effect (external-tool
 guards via `# skip unless which("...")`, conditional markers,
 `# flaky`) propagates to every test that `start`s it
-(`references/markers.md` > *Skip propagates transitively*). The
+(`../../references/markers.md` > *Skip propagates transitively*). The
 smoke test must not duplicate those markers -- the propagation
 already covers it. Reach for `relux:markers` only for *additional*
 gates this specific test needs that the effect chain does not
@@ -621,7 +646,7 @@ already supply.
   *Shared: Follow-up -- propose a smoke test*). Surface marker
   inheritance when handing off: markers on this effect propagate
   to every test that `start`s it
-  (`references/markers.md` > *Skip propagates transitively*),
+  (`../../references/markers.md` > *Skip propagates transitively*),
   so the smoke test should not duplicate them.
 - `relux:effect-edit` -- for modifying an existing effect's body,
   `expect`, `expose`, deps, or cleanup. Moving an effect between
@@ -629,20 +654,20 @@ already supply.
 
 ## References
 
-- `references/effects-identity.md` -- body-section order, `expect`
+- `../../references/effects-identity.md` -- body-section order, `expect`
   semantics, overlay evaluation, identity tuple, lifecycle.
-- `references/effects-expose.md` -- expose forms, caller access,
+- `../../references/effects-expose.md` -- expose forms, caller access,
   non-exposed shell termination, wrapper re-export rule.
-- `references/cleanup.md` -- cleanup placement, fresh-shell
+- `../../references/cleanup.md` -- cleanup placement, fresh-shell
   discipline, idempotency, don't-stop-services /
   don't-set-fail-patterns pitfalls.
-- `references/block-structure.md` -- overall effect block shape and
+- `../../references/block-structure.md` -- overall effect block shape and
   section-ordering rules.
-- `references/statements.md` -- `start` syntax, overlay semantics,
+- `../../references/statements.md` -- `start` syntax, overlay semantics,
   `${Alias.var}` interpolation.
-- `references/markers.md` -- effect-level marker propagation
+- `../../references/markers.md` -- effect-level marker propagation
   (markers on effects reach every test that `start`s them).
-- `references/project-layout.md` -- the `${__RELUX_RUN_ARTIFACTS}/`
+- `../../references/project-layout.md` -- the `${__RELUX_RUN_ARTIFACTS}/`
   artifact directory layout and built-in env vars.
 
 ## Pitfalls
@@ -650,8 +675,8 @@ already supply.
 The recurring effect-authoring mistakes -- one-service-per-effect,
 non-identity ENV in `expect`, foreground vs backgrounded service,
 artifact-deleting cleanup, wrappers that don't re-export -- live
-in `references/effects-identity.md`, `references/effects-expose.md`,
-and `references/cleanup.md` with canonical Don't/Do examples. The
+in `../../references/effects-identity.md`, `../../references/effects-expose.md`,
+and `../../references/cleanup.md` with canonical Don't/Do examples. The
 pre-flight reads of those files load them; this section is
 intentionally empty to avoid drift.
 

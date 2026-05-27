@@ -74,22 +74,22 @@ one dimension, the checklist has nothing to walk.
 
 ## Pre-flight checks
 
-- [ ] **Required:** read `references/effects-identity.md`. Source
+- [ ] **Required:** read `../../references/effects-identity.md`. Source
       of truth for body-section order, `expect` semantics, overlay
       evaluation, identity tuple, and lifecycle. The dedup-delta
       analysis under *Dimension 1: `expect`* relies on the identity
       tuple definition there.
-- [ ] **Required:** read `references/effects-expose.md`. Source of
+- [ ] **Required:** read `../../references/effects-expose.md`. Source of
       truth for `expose` forms (`expose shell s [as alias]`,
       `expose var x`), caller access (`Alias.shell` / `Alias.var`),
       non-exposed shell termination, and the wrapper re-export
       rule. The surface-breakage analysis under *Dimension 2:
       `expose`* relies on it.
-- [ ] **Conditional:** read `references/cleanup.md` if the edit
+- [ ] **Conditional:** read `../../references/cleanup.md` if the edit
       touches Dimension 5. Covers fresh-shell discipline,
       don't-stop-services, don't-set-fail-patterns, idempotency,
       and the artifact-preservation rule.
-- [ ] **Conditional:** read `references/fail-patterns.md` if the
+- [ ] **Conditional:** read `../../references/fail-patterns.md` if the
       edit retunes fail patterns in a shell body. Slot scope is
       the shell; fn frames snapshot and restore. The inline-only
       rule for service shells (set in the shell body, not in a
@@ -131,7 +131,7 @@ that is `expose var`-d makes Dimension 4 leak through Dimension
 ### Dimension 1: `expect`
 
 The `expect` block. Semantics, identity tuple, and the
-unique-resource taxonomy: `references/effects-identity.md`.
+unique-resource taxonomy: `../../references/effects-identity.md`.
 
 **Adding a var.**
 
@@ -168,7 +168,7 @@ unique-resource taxonomy: `references/effects-identity.md`.
   single instance with whichever overlay won the dedup race.
   Surface this to the user before removing.
 - Callers may keep passing the var in their overlay -- legal but
-  no longer identity-relevant (`references/effects-identity.md`
+  no longer identity-relevant (`../../references/effects-identity.md`
   > *The `expect` contract* covers the "contract, not sandbox"
   rule).
 
@@ -207,7 +207,7 @@ unique-resource taxonomy: `references/effects-identity.md`.
 
 The effect's caller-visible surface. Forms, caller access, the
 non-exposed-shell termination rule, and the wrapper re-export
-rule: `references/effects-expose.md`.
+rule: `../../references/effects-expose.md`.
 
 **Adding an expose.**
 
@@ -217,7 +217,7 @@ rule: `references/effects-expose.md`.
   shell is always useful and always exposed; other shells and
   vars are exposed only when a caller has a reason to operate on
   them. The "don't expose setup-only shells" pitfall in
-  `references/effects-expose.md` still applies.
+  `../../references/effects-expose.md` still applies.
 
 **Removing an expose.**
 
@@ -253,7 +253,7 @@ rule: `references/effects-expose.md`.
 ### Dimension 3: `start <Dep>` (deps)
 
 `start <Dep>` lines and their `as <Alias>` / overlay blocks.
-`start` syntax and overlay semantics: `references/statements.md`.
+`start` syntax and overlay semantics: `../../references/statements.md`.
 
 **Adding a dep.**
 
@@ -305,7 +305,7 @@ rule: `references/effects-expose.md`.
   safe in isolation.
 - **Leak check.** If a `let` is `expose var`-d, the body-only
   edit is silently a surface change -- see
-  `references/effects-expose.md` >
+  `../../references/effects-expose.md` >
   *Editing a `let` silently edits the exposed surface*. Surface
   the change to the user as if it were an expose edit.
 
@@ -315,15 +315,15 @@ rule: `references/effects-expose.md`.
   reworded prompt assertion. No caller surface implication.
 - **Fail patterns** must be set inline in the shell body, not in
   a called `fn`. Frame scope reverts the slot on return; see
-  `references/functions.md` > *`fn`* (per-frame state) and
-  `references/fail-patterns.md`.
+  `../../references/functions.md` > *`fn`* (per-frame state) and
+  `../../references/fail-patterns.md`.
 - **Service-running shell** edits: the foreground-run discipline
   from `relux:effect-write` > *Composing the service shell*
   still applies (no `&` / `nohup` / `docker run -d`; containers
   use `docker run --rm -i`).
 - **Artifact paths** under `${__RELUX_RUN_ARTIFACTS}` are
   scanned by the runtime and surfaced in `event.html` (see
-  `references/project-layout.md` > Built-in environment
+  `../../references/project-layout.md` > Built-in environment
   variables). Writes outside that path are invisible to the
   viewer.
 
@@ -343,7 +343,7 @@ rule: `references/effects-expose.md`.
 Cleanup semantics -- fresh implicit shell, reverse topological
 order, the no-fail-patterns / no-service-kills / idempotency /
 artifact-preservation rules -- all live in
-`references/cleanup.md`. Read it before touching this dimension.
+`../../references/cleanup.md`. Read it before touching this dimension.
 The skill-level discipline below is *when and why* to edit, not
 *how* the block behaves.
 
@@ -363,12 +363,12 @@ The skill-level discipline below is *when and why* to edit, not
 
 **Editing cleanup body.**
 
-- The artifact-preservation pitfall in `references/cleanup.md`
+- The artifact-preservation pitfall in `../../references/cleanup.md`
   applies as much on edits as on initial authoring -- do not
   delete files under `${__RELUX_RUN_ARTIFACTS}`.
 - **Wrapper cleanup direction:** when this effect is a wrapper,
   its cleanup runs *before* its dep's (root-to-leaf, per
-  `references/cleanup.md` > *When it runs*). Unwind only what
+  `../../references/cleanup.md` > *When it runs*). Unwind only what
   the wrapper added; the dep handles its own teardown.
 
 ### Extract (split): recognize + delegate
@@ -503,17 +503,17 @@ is necessary but never sufficient for a Modify.
 
 ## References
 
-- `references/effects-identity.md` -- body-section order,
+- `../../references/effects-identity.md` -- body-section order,
   `expect` semantics, overlay evaluation, identity tuple,
   lifecycle. Dimension 1's dedup-delta analysis depends on it.
-- `references/effects-expose.md` -- expose forms, caller
+- `../../references/effects-expose.md` -- expose forms, caller
   access, non-exposed shell termination, wrapper re-export rule.
   Dimension 2's surface-breakage analysis depends on it.
-- `references/cleanup.md` -- fresh-shell discipline, allowed
+- `../../references/cleanup.md` -- fresh-shell discipline, allowed
   operations, idempotency, artifact preservation. Dimension 5.
-- `references/fail-patterns.md` -- slot scope, inline-only rule
+- `../../references/fail-patterns.md` -- slot scope, inline-only rule
   for service shells. Dimension 4 when retuning patterns.
-- `references/functions.md` -- frame scope, pure vs impure,
+- `../../references/functions.md` -- frame scope, pure vs impure,
   arity dispatch. Dimension 4 when the edit touches a helper.
 
 ## Pitfalls
@@ -522,8 +522,8 @@ The recurring effect-language mistakes -- expose-var leak from
 body-only `let` edits, dropping a wrapper's re-exposed dep
 surface, setting fail patterns inside a `fn`, cleanup that
 deletes artifacts under `${__RELUX_RUN_ARTIFACTS}` -- live in
-`references/effects-expose.md`, `references/fail-patterns.md`,
-`references/functions.md`, and `references/cleanup.md` with
+`../../references/effects-expose.md`, `../../references/fail-patterns.md`,
+`../../references/functions.md`, and `../../references/cleanup.md` with
 canonical Don't/Do examples. The pre-flight reads load them;
 this section captures only the Modify-specific disciplines that
 have no reference home.

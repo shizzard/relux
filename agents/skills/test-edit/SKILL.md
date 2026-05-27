@@ -44,9 +44,9 @@ Agent-task signals:
   named siblings" (split-by-extraction).
 - A match that should be anchored isn't -- the body relies on
   unanchored `<? ...` or substring `<= ...` and is susceptible
-  to the echo trap (`references/matching.md` > *Echo trap*).
+  to the echo trap (`../../references/matching.md` > *Echo trap*).
 - A `let` consumes `$1` / `$2` two or more matches later -- the
-  capture was overwritten in between (`references/statements.md`
+  capture was overwritten in between (`../../references/statements.md`
   > *Bind captures with `let` before the next match overwrites
   them*).
 - The test hardcodes a shared mutable resource -- port `8080`,
@@ -99,47 +99,47 @@ classification has nothing to walk.
 
 ## Pre-flight checks
 
-- [ ] **Required:** read `references/block-structure.md`. Source
+- [ ] **Required:** read `../../references/block-structure.md`. Source
       of truth for the test block skeleton, section ordering,
       docstring slot, naming rules.
-- [ ] **Required:** read `references/matching.md`. Source of
+- [ ] **Required:** read `../../references/matching.md`. Source of
       truth for `<?` / `<=` semantics, the buffer/cursor model,
       the command-match-anchor rhythm, captures, the echo trap.
       Most in-place body edits touch matching.
-- [ ] **Required:** read `references/imports.md` -- specifically
+- [ ] **Required:** read `../../references/imports.md` -- specifically
       *Group tests by SUT then scope*. Source of truth for the
       `relux/tests/<sut>/<scope>/` layout, the universal `smoke/`
       bucket, the propose-then-pick discipline for non-smoke
       scopes, and the snake_case filename rule. Relocate and
       split-by-extraction both rely on it; in-place edits use it
       when the file's home has drifted.
-- [ ] **Conditional:** read `references/statements.md` if the
+- [ ] **Conditional:** read `../../references/statements.md` if the
       edit touches sends, captures-to-let, `sleep`, or
       reassignment.
-- [ ] **Conditional:** read `references/interpolation.md` if the
+- [ ] **Conditional:** read `../../references/interpolation.md` if the
       edit touches `${...}` payloads -- especially the
       `${...}-only-accepts-a-name` pitfall when the edit needs
       to splice a BIF call result.
-- [ ] **Conditional:** read `references/fail-patterns.md` if the
+- [ ] **Conditional:** read `../../references/fail-patterns.md` if the
       edit adds, removes, or retunes `!?` / `!=`.
-- [ ] **Conditional:** read `references/multimatch.md` if the
+- [ ] **Conditional:** read `../../references/multimatch.md` if the
       edit swaps a chain of `<?`/`<=` for `<{ ... }` (or vice
       versa).
-- [ ] **Conditional:** read `references/timeouts.md` if the edit
+- [ ] **Conditional:** read `../../references/timeouts.md` if the edit
       adds, removes, or retunes inline `~Ns?` / `@Ns=` overrides.
       Test-level `~Ns` / `@Ns` on the declaration is a no-go
       (the audit catches it).
-- [ ] **Conditional:** read `references/markers.md` if the edit
+- [ ] **Conditional:** read `../../references/markers.md` if the edit
       adds or removes `# skip` / `# run` / `# flaky`. The
       marker-flip flag rule below relies on it.
-- [ ] **Conditional:** read `references/effects-identity.md` and
-      `references/effects-expose.md` if the edit changes a
+- [ ] **Conditional:** read `../../references/effects-identity.md` and
+      `../../references/effects-expose.md` if the edit changes a
       `start <Effect>` line -- adds one, drops one, swaps for
       another, changes the overlay.
-- [ ] **Conditional:** read `references/cleanup.md` if the edit
+- [ ] **Conditional:** read `../../references/cleanup.md` if the edit
       adds, removes, or modifies a `cleanup { ... }` block.
-- [ ] **Conditional:** read `references/functions.md` and
-      `references/bifs.md` if the edit touches a helper / BIF
+- [ ] **Conditional:** read `../../references/functions.md` and
+      `../../references/bifs.md` if the edit touches a helper / BIF
       call site.
 - [ ] Locate the test (file path + line range). Read the full
       `test { ... }` block verbatim, including its file-level
@@ -207,18 +207,18 @@ assertions that prove a different behavior, the right move is
 **split-by-extraction**, not a fatter body.
 
 **Match / send / capture / fail-pattern / sleep edits.** The
-canonical rules live in `references/matching.md` (operators,
+canonical rules live in `../../references/matching.md` (operators,
 buffer/cursor, command-match-anchor rhythm, echo trap,
-anchoring discipline), `references/statements.md` (send
+anchoring discipline), `../../references/statements.md` (send
 operators, capture-binding pitfall, prefer-match-over-sleep),
-`references/fail-patterns.md` (slot scope, inline-only on
-service shells), and `references/interpolation.md`
+`../../references/fail-patterns.md` (slot scope, inline-only on
+service shells), and `../../references/interpolation.md`
 (`${...}-only-accepts-a-name`, regex-interpolation-is-raw).
 Read whichever ones the edit touches before applying. The
 skill's job is to direct the agent at the right reference, not
 to restate it.
 
-**Inline timeout edits.** `references/timeouts.md` is the
+**Inline timeout edits.** `../../references/timeouts.md` is the
 canonical reference. The author's discipline -- *no* `~Ns` /
 `@Ns` on the test declaration itself, suite default covers
 that -- still holds on edits. If the user asks for a
@@ -227,7 +227,7 @@ default in `Relux.toml`. Inline overrides on individual
 matches are fine when the legitimate match-time exceeds the
 suite default.
 
-**Marker edits.** `references/markers.md` owns the forms,
+**Marker edits.** `../../references/markers.md` owns the forms,
 expression shapes, and evaluation timing. Marker propagation
 (`fn` -> every caller, `effect` -> every starter) is
 load-bearing on edits too: adding `# skip unless CI` to a
@@ -251,7 +251,7 @@ references. Three patterns to watch for:
   satisfied by the overlay. Run `relux check` to confirm the
   overlay shape resolves. If the new effect carries markers
   (`# skip unless ...`), they propagate to this test --
-  `references/markers.md` > *Propagation*. The added
+  `../../references/markers.md` > *Propagation*. The added
   dependency may make the test conditionally skipped where it
   was unconditional before; flag this to the user if it was
   not intended.
@@ -310,7 +310,7 @@ body change is also needed, run an in-place edit first (Shape
   named `smoke_test.relux` but the assertion is "rejects
   expired tokens", and the new home suggests a sharper name.
 
-`references/imports.md` > *Group tests by SUT then scope* owns
+`../../references/imports.md` > *Group tests by SUT then scope* owns
 the layout rules. Walk that section before deciding the new
 path; the propose-then-pick discipline for non-smoke scopes
 applies on relocates as much as on initial authoring.
@@ -377,7 +377,7 @@ several behaviors with "and" or bullets.
      matches).
    - Which SUT and scope the new sibling lives under (usually
      the same as the original's; if not, the
-     `references/imports.md` scope discipline applies).
+     `../../references/imports.md` scope discipline applies).
    - Which effects, helpers, and markers the new sibling needs
      (likely the same as the original's, but the new sibling
      is its own block and gets its own `start` / `import`
@@ -462,7 +462,7 @@ retune, whether a fail-pattern misfires on real output, or
 whether captures are correctly clobber-safe at runtime.
 
 ```bash
-relux run path/to/this_test.relux
+relux run -f path/to/this_test.relux
 ```
 
 `relux run` is the DoD anchor. It catches:
@@ -539,7 +539,7 @@ After the run passes, re-walk the edit once.
 - **File placement matches the scoping rule.** The file lives
   under `relux/tests/<sut>/<scope>/` with the SUT matching the
   service the test exercises and the scope matching the rule
-  in `references/imports.md` > *Group tests by SUT then
+  in `../../references/imports.md` > *Group tests by SUT then
   scope*. An in-place edit that pushed the test outside its
   natural scope is a hint that a relocate (or a split) is the
   next step.
@@ -609,7 +609,7 @@ After the run passes, re-walk the edit once.
 - `relux:configure` -- when an edit reveals the suite-level
   default match / test / suite timeout is wrong for the suite
   as a whole. Per-test timeout overrides are an audit failure
-  (`references/timeouts.md`); the right fix is the suite
+  (`../../references/timeouts.md`); the right fix is the suite
   default.
 - Future `test-debug` (not yet drafted) -- when `relux run`
   fails after the edit and the diagnose loop is needed. This
@@ -622,38 +622,38 @@ After the run passes, re-walk the edit once.
 
 ## References
 
-- `references/block-structure.md` -- test block skeleton,
+- `../../references/block-structure.md` -- test block skeleton,
   section ordering, docstring slot, naming rules.
-- `references/matching.md` -- `<?` / `<=` semantics, buffer /
+- `../../references/matching.md` -- `<?` / `<=` semantics, buffer /
   cursor, command-match-anchor rhythm, captures, echo trap,
   anchoring discipline.
-- `references/statements.md` -- send (`>` / `=>`), `let` /
+- `../../references/statements.md` -- send (`>` / `=>`), `let` /
   reassignment, `sleep`, capture-binding pitfall.
-- `references/multimatch.md` -- `<{ ... }`, captures-don't-
+- `../../references/multimatch.md` -- `<{ ... }`, captures-don't-
   bind, when to reach for multimatch.
-- `references/fail-patterns.md` -- `!?` / `!=` slot semantics,
+- `../../references/fail-patterns.md` -- `!?` / `!=` slot semantics,
   shell-scoped, inline-only on service shells.
-- `references/interpolation.md` -- `${var}`, `${1}`,
+- `../../references/interpolation.md` -- `${var}`, `${1}`,
   `${Alias.var}`, `${...}` only accepts a name, regex
   interpolation is raw.
-- `references/timeouts.md` -- `~` vs `@`, inline overrides,
+- `../../references/timeouts.md` -- `~` vs `@`, inline overrides,
   the no-test-level-timeouts rule, suite defaults.
-- `references/markers.md` -- marker forms, expression shapes,
+- `../../references/markers.md` -- marker forms, expression shapes,
   propagation, the layer rubric.
-- `references/effects-identity.md` -- effect lifecycle, the
+- `../../references/effects-identity.md` -- effect lifecycle, the
   `expect` contract, the overlay shape at `start` sites.
-- `references/effects-expose.md` -- `Alias.shell` /
+- `../../references/effects-expose.md` -- `Alias.shell` /
   `Alias.var` access at the call site.
-- `references/cleanup.md` -- test cleanup placement, fresh
+- `../../references/cleanup.md` -- test cleanup placement, fresh
   shell, idempotency, artifact preservation.
-- `references/imports.md` -- import syntax, resolution from
+- `../../references/imports.md` -- import syntax, resolution from
   project root, the SUT/scope test-tree layout used by
   relocate and split.
-- `references/functions.md` -- `fn` vs `pure fn`, frame scope
+- `../../references/functions.md` -- `fn` vs `pure fn`, frame scope
   vs shell scope, the call-from-test-body rules.
-- `references/bifs.md` -- `match_ok` / `match_not_ok`,
+- `../../references/bifs.md` -- `match_ok` / `match_not_ok`,
   `available_port`, `uuid`, `sleep`, control characters.
-- `references/project-layout.md` -- `relux/tests/` location,
+- `../../references/project-layout.md` -- `relux/tests/` location,
   built-in env vars (`__RELUX_RUN_ARTIFACTS`, `__RELUX_RUN_ID`).
 
 ## Pitfalls
@@ -663,9 +663,9 @@ regex, lost captures, sleep-instead-of-match, regex
 interpolation as raw text, `${...}` holding a function call,
 test-level timeouts on fixtures, service kills in cleanup,
 depending on shell-scope state in cleanup -- live in
-`references/matching.md`, `references/statements.md`,
-`references/interpolation.md`, `references/timeouts.md`, and
-`references/cleanup.md` with canonical Don't/Do examples. The
+`../../references/matching.md`, `../../references/statements.md`,
+`../../references/interpolation.md`, `../../references/timeouts.md`, and
+`../../references/cleanup.md` with canonical Don't/Do examples. The
 pre-flight reads load them; this section captures only the
 edit-specific disciplines that have no reference home.
 

@@ -34,11 +34,11 @@ Agent-task signals:
   marker has no retry effect.
 
 **Out of scope:** test-level `~Ns` / `@Ns` on `.relux` fixtures (the
-suite default covers them -- see `references/timeouts.md` >
+suite default covers them -- see `../../references/timeouts.md` >
 *Don't put test-level timeouts on `.relux` fixtures*), per-match
 inline `<~Ns?` overrides (write directly in the test file when one
 specific match needs more time), and the CI `--timeout-multiplier`
-flag (CI tuning, not manifest tuning -- see `references/ci-integration.md`).
+flag (CI tuning, not manifest tuning -- see `../../references/ci-integration.md`).
 
 **Direct invocation (`/relux:configure`).** Ask the user
 which knob and what motivated the change before editing. Possible
@@ -49,7 +49,7 @@ rule fires and the answer is "keep the default."
 
 ## Pre-flight checks
 
-- [ ] **Required:** read `references/project-layout.md` >
+- [ ] **Required:** read `../../references/project-layout.md` >
       *`Relux.toml`* -- the field table is the source of truth.
 - [ ] Locate the suite root by walking upward for `Relux.toml`. The
       file may be partially present (some sections set, others
@@ -58,7 +58,7 @@ rule fires and the answer is "keep the default."
       driving the change. "It feels slow" is not evidence; a
       `match-timeout` in `events.json` is. If there is no evidence,
       stop and recommend keeping defaults.
-- [ ] If tuning a timeout, read `references/timeouts.md` >
+- [ ] If tuning a timeout, read `../../references/timeouts.md` >
       *Two kinds* and *Configuration defaults* -- the `~` vs `@`
       distinction determines whether CI's multiplier will help.
 
@@ -69,7 +69,7 @@ verify before stacking another change.**
 
 ### Shell command or prompt (`[shell]`)
 
-Fields and defaults: `references/project-layout.md` > *Sections*.
+Fields and defaults: `../../references/project-layout.md` > *Sections*.
 
 - Change `command` only when the SUT requires a specific shell (bash
   for here-strings, dash for POSIX-strict tests, custom binary).
@@ -89,9 +89,9 @@ chain other tuning until the new shell baseline is clean.
 
 ### Timeouts (`[timeout]`)
 
-Fields and defaults: `references/project-layout.md` > *Sections*.
+Fields and defaults: `../../references/project-layout.md` > *Sections*.
 `~` vs `@` scope and what the multiplier touches:
-`references/timeouts.md`.
+`../../references/timeouts.md`.
 
 **Escalation order -- any timeout-related symptom.** Walk the steps
 in order; do not skip ahead. Each step is narrower in blast radius
@@ -119,7 +119,7 @@ Knob-specific discipline:
 
 ### Parallel jobs (`[run]`)
 
-Field and default: `references/project-layout.md` > *Sections*.
+Field and default: `../../references/project-layout.md` > *Sections*.
 
 - Raise above the default only when the suite is genuinely
   parallel-safe: no shared filesystem paths, no fixed ports, no
@@ -135,9 +135,9 @@ nondeterminism to mask with retries.
 
 ### Flaky retries (`[flaky]`)
 
-Fields and defaults: `references/project-layout.md` > *Sections*.
+Fields and defaults: `../../references/project-layout.md` > *Sections*.
 `timeout_multiplier` formula and the `~` vs `@` scope:
-`references/timeouts.md` > *Flaky multiplier*.
+`../../references/timeouts.md` > *Flaky multiplier*.
 
 - The default `max_retries = 0` means `# flaky` markers are
   recorded but have no retry effect. Set to `1` or `2` only when
@@ -154,7 +154,7 @@ analysis.
 
 ### Suite name (root)
 
-Field and default: `references/project-layout.md` > *Sections*.
+Field and default: `../../references/project-layout.md` > *Sections*.
 Set explicitly when the directory name is generic (`tests/`) or
 the suite participates in a multi-suite repo and needs a distinct
 identifier in reports. Cosmetic; does not affect discovery,
@@ -204,11 +204,11 @@ relux run
 
 ## References
 
-- `references/project-layout.md` -- the `Relux.toml` field table and
+- `../../references/project-layout.md` -- the `Relux.toml` field table and
   layout pitfalls.
-- `references/timeouts.md` -- `~` vs `@`, inline `<~Ns?` overrides,
+- `../../references/timeouts.md` -- `~` vs `@`, inline `<~Ns?` overrides,
   per-test annotations, and which knobs scale with the multiplier.
-- `references/ci-integration.md` -- `--timeout-multiplier` and
+- `../../references/ci-integration.md` -- `--timeout-multiplier` and
   `--flaky-multiplier` flags, the right place to absorb
   environment-specific slowness without rewriting the manifest.
 

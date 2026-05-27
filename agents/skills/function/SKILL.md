@@ -52,11 +52,11 @@ nothing to walk.
 
 ## Pre-flight checks
 
-- [ ] **Required:** read `references/functions.md`. The reference is the
+- [ ] **Required:** read `../../references/functions.md`. The reference is the
       source of truth for `fn` vs `pure fn` semantics, frame-scoped vs
       shell-side state, arity-based dispatch, and the call-boundary
       rules; this skill assumes that material is loaded.
-- [ ] **Required:** read `references/bifs.md`. The pure-vs-impure split
+- [ ] **Required:** read `../../references/bifs.md`. The pure-vs-impure split
       at the BIF level decides what a `pure fn` body can call -- the
       reference enumerates which built-ins are pure (usable inside
       `pure fn`) and which are impure (force the function to be `fn`).
@@ -85,8 +85,8 @@ Pick the operation path based on the classification done in pre-flight.
 
 Two axes need a pick when placing a function.
 
-**Purity.** (Pure vs impure BIF lists in `references/bifs.md`;
-callable positions for each form in `references/functions.md`.)
+**Purity.** (Pure vs impure BIF lists in `../../references/bifs.md`;
+callable positions for each form in `../../references/functions.md`.)
 
 - Body only manipulates strings, computes values, or calls other
   `pure fn`s / pure BIFs (`trim`, `uuid`, `which`, etc.) -- write
@@ -107,7 +107,7 @@ open.
 - Used across two or more modules: a library file, imported via
   `import lib/<path> { fn_name }`. The grouping rubric
   (effect-scoped vs protocol-scoped vs ask-before-creating-misc)
-  lives in `references/imports.md` > *Group library modules by
+  lives in `../../references/imports.md` > *Group library modules by
   scope*; apply it before placing the file.
 
 ### Path: Add
@@ -139,7 +139,7 @@ Use when no function with this `(name, arity)` exists at the target.
      another shorter arity from it. The result is a chain
      `name(a)` -> `name(a, b)` -> `name(a, b, c)`, each adding one
      parameter, with defaults living exactly once in the delegating
-     arity. See `references/functions.md` > *Use arity-based dispatch
+     arity. See `../../references/functions.md` > *Use arity-based dispatch
      for default arguments*.
 
 4. **Compose the body.** Return value is the last expression. For
@@ -151,7 +151,7 @@ Use when no function with this `(name, arity)` exists at the target.
    **Don't wrap the return in a redundant `let`.** When the result is
    just an interpolation or a single function call, write it as the
    last line; naming it first adds noise (see
-   `references/functions.md` > *Arguments and returns* on implicit
+   `../../references/functions.md` > *Arguments and returns* on implicit
    `""`).
 
    Don't:
@@ -203,7 +203,7 @@ path instead.
      optional decision -- not a mandatory next step. Two arities
      reading as "give me the simple form" and "give me the
      fully-parameterized form" is the defaults pattern (see
-     `references/functions.md` > *Use arity-based dispatch for default
+     `../../references/functions.md` > *Use arity-based dispatch for default
      arguments*), not a half-finished migration. Migrate only when the
      lower arity's default is itself wrong (callers are working around
      it) or when pruning the lower arity earns its keep against the
@@ -232,7 +232,7 @@ path instead.
 3. **Apply.** Edit the declaration. For arity changes, the
    delegating-arity pattern (smaller arity calls larger arity with a
    default) is the idiomatic Relux defaults story -- see
-   `references/functions.md` > *Use arity-based dispatch for default
+   `../../references/functions.md` > *Use arity-based dispatch for default
    arguments*.
 
 Then run **Verify**, then **Audit**.
@@ -322,7 +322,7 @@ For impure functions, run an exercising test to confirm the body does
 the intended work:
 
 ```bash
-relux run path/to/test_using_fn.relux
+relux run -f path/to/test_using_fn.relux
 ```
 
 The function appears in the structured log as its own span; the
@@ -352,7 +352,7 @@ After every operation, re-walk the chain.
   resolve time, so the marker on the function is what spares every
   test from re-asserting the gate. If the marker is missing, hand off
   to `relux:markers` (Add path against this `fn`) before considering
-  the operation done. See `references/functions.md` > *See also* on
+  the operation done. See `../../references/functions.md` > *See also* on
   marker-guarding tool-dependent helpers.
 - If the function carries a marker, propagation reaches every caller
   transitively. If purity changed (`fn` -> `pure fn`), the propagation
@@ -386,18 +386,18 @@ After every operation, re-walk the chain.
 
 ## References
 
-- `references/functions.md` -- definition syntax, pure vs impure
+- `../../references/functions.md` -- definition syntax, pure vs impure
   semantics, frame-scoped vs shell-side state, arity-based dispatch,
   worked-out pitfalls (leave-shell-clean, defaults-via-arity,
   no-shared-shell-state).
-- `references/bifs.md` -- pure vs impure built-ins; a `pure fn` body
+- `../../references/bifs.md` -- pure vs impure built-ins; a `pure fn` body
   may only call pure BIFs and other `pure fn`s.
-- `references/imports.md` -- import resolution from project root; how
+- `../../references/imports.md` -- import resolution from project root; how
   `import lib/... { ... }` interacts with the `relux/lib/`
   convention.
-- `references/project-layout.md` -- the `relux/lib/` directory
+- `../../references/project-layout.md` -- the `relux/lib/` directory
   convention and discovery rules.
-- `references/markers.md` -- function-level marker propagation,
+- `../../references/markers.md` -- function-level marker propagation,
   including how purity changes the propagation set.
 
 ## Pitfalls
@@ -405,7 +405,7 @@ After every operation, re-walk the chain.
 The recurring function-language mistakes -- preferring `pure fn`
 for value derivation, default arguments via arity dispatch, leave
 the caller's shell clean, no implicit caller-state coupling --
-live in `references/functions.md` with canonical Don't/Do
+live in `../../references/functions.md` with canonical Don't/Do
 examples. The pre-flight read loads them; this section captures
 the skill-level discipline that has no reference home.
 

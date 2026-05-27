@@ -49,7 +49,7 @@ have nothing to walk.
 
 ## Pre-flight checks
 
-- [ ] **Required:** read `references/markers.md`. The workflow below
+- [ ] **Required:** read `../../references/markers.md`. The workflow below
       delegates to it for forms, expression shapes, evaluation timing,
       propagation rules, and worked-out pitfalls; the skill assumes that
       material is loaded.
@@ -101,10 +101,10 @@ Use when no marker exists on the target yet.
 
 1. **Pick the layer** using the rubric above.
 2. **Pick form and polarity.** Sense (`skip` / `run` / `flaky`) and
-   polarity (`if` / `unless`) -- `references/markers.md` > *Forms* is the
+   polarity (`if` / `unless`) -- `../../references/markers.md` > *Forms* is the
    source of truth; *Pick the marker that reads like intent* gives the
    rubric. For multiple AND conditions, stack markers on separate lines.
-3. **Compose the condition** using `references/markers.md` >
+3. **Compose the condition** using `../../references/markers.md` >
    *Expression shapes*. Prefer the bare form for single-variable
    truthiness and equality checks.
 4. **Apply.** Write each marker on its own line directly above the
@@ -124,10 +124,10 @@ needs to change. If the *layer* is what should change, switch to the
 2. **Diagnose what is changing:**
    - *Form / polarity* (e.g. `# skip` -> `# skip unless ...`,
      `# run if X` -> `# skip unless X`): refer to
-     `references/markers.md` > *Forms* and *Pick the marker that reads
+     `../../references/markers.md` > *Forms* and *Pick the marker that reads
      like intent*.
    - *Condition* (rewriting the expression): refer to
-     `references/markers.md` > *Expression shapes*.
+     `../../references/markers.md` > *Expression shapes*.
    - *Layer*: this is a Move, not a Modify. Switch paths.
 3. **Apply.** Edit the existing line(s) in place. Do not stack a new
    marker on top of the old one when the intent was to change the
@@ -148,7 +148,7 @@ about confirming what removal exposes, not about composing anything.
    - *An upstream effect or function already enforces the same gate* via
      marker propagation -- safe to remove (this marker was dead-code
      duplication, see *Skip propagates transitively* in
-     `references/markers.md`).
+     `../../references/markers.md`).
    - *No upstream gate exists and the precondition still matters* --
      stop. Either keep the marker, follow the **Move** path to push it
      upstream, or follow the **Consolidate** path to extract it onto a
@@ -168,7 +168,7 @@ Mechanically: Remove at source, Add at destination.
 2. **Pick the destination layer** using the rubric.
 3. **Compose for the destination.** The condition expression may need to
    change -- a test-local gate may not map directly onto an effect's
-   vocabulary. Refer to `references/markers.md` > *Expression shapes*.
+   vocabulary. Refer to `../../references/markers.md` > *Expression shapes*.
 4. **Apply.** Delete the marker line(s) at the source declaration; write
    the new marker line(s) directly above the destination declaration.
    Verify the source declaration has no other reason to carry a marker
@@ -205,11 +205,11 @@ changed:
 
 ```bash
 # Truthy branch:
-CI=1 relux run path/to/test.relux
+CI=1 relux run -f path/to/test.relux
 
 # Falsy branch (test should be reported as Skipped):
 unset CI
-relux run path/to/test.relux
+relux run -f path/to/test.relux
 ```
 
 In each run, check the affected tests' reported outcomes:
@@ -264,18 +264,18 @@ race).
 
 ## References
 
-- `references/markers.md` -- forms, expression shapes, evaluation timing,
+- `../../references/markers.md` -- forms, expression shapes, evaluation timing,
   propagation, and worked-out pitfalls.
-- `references/functions.md` -- function-level propagation rules; how a
+- `../../references/functions.md` -- function-level propagation rules; how a
   marker on `fn` / `pure fn` reaches every caller.
-- `references/effects-identity.md` -- effect-level propagation rules; how
+- `../../references/effects-identity.md` -- effect-level propagation rules; how
   a marker on `effect` reaches every test that `start`s it.
-- `references/events-failures.md` -- `SkipRecord` shape in the structured
+- `../../references/events-failures.md` -- `SkipRecord` shape in the structured
   log; use when inspecting `events.json` to confirm which marker fired.
 
 ## Pitfalls
 
-`references/markers.md` > *Pitfalls and best practices* enumerates the
+`../../references/markers.md` > *Pitfalls and best practices* enumerates the
 recurring marker mistakes (bare vs interpolated truthiness, run-if vs
 skip-unless phrasing, transitive skip propagation, group-via-guarded-
 `pure fn`). The pre-flight read of that file is the discipline; this

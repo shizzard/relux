@@ -86,7 +86,7 @@ This creates:
   committed.
 
 The default manifest is empty on purpose -- every field has a default
-documented in `references/project-layout.md`. Do not edit `Relux.toml`
+documented in `../../references/project-layout.md`. Do not edit `Relux.toml`
 during init; tuning belongs to `relux:configure`.
 
 ### 2. Add a starter smoke test
@@ -113,7 +113,7 @@ relux check
 Confirms the manifest parses, the test file lexes/parses, and the
 resolver is happy. A failure here points at a malformed default
 template, a stale `relux` binary, or a stray `Relux.toml` in a
-subdirectory (the layout pitfall in `references/project-layout.md`).
+subdirectory (the layout pitfall in `../../references/project-layout.md`).
 
 ### 4. First run
 
@@ -152,7 +152,7 @@ grep -qE '^relux/out/?$' .gitignore || echo 'relux/out/' >> .gitignore
 
 Close by naming the four subcommands the user will reach for daily,
 in one sentence each. Flags and full shapes live in
-`references/cli-reference.md`; don't restate them.
+`../../references/cli-reference.md`; don't restate them.
 
 - **`relux new`** -- scaffold a new test, effect, or library module.
 - **`relux check`** -- parse and resolve every `.relux` file without
@@ -192,16 +192,16 @@ in one sentence each. Flags and full shapes live in
 
 ## References
 
-- `references/project-layout.md` -- Relux.toml fields, directory
+- `../../references/project-layout.md` -- Relux.toml fields, directory
   convention, file discovery rules, layout pitfalls.
-- `references/cli-reference.md` -- `relux init`, `relux new`,
+- `../../references/cli-reference.md` -- `relux init`, `relux new`,
   `relux check`, `relux run` argument shapes.
 
 ## Pitfalls
 
 The nested-manifest rule (a `Relux.toml` inside another suite
 becomes a sub-project boundary that breaks outer-suite discovery)
-lives in `references/project-layout.md` with the canonical
+lives in `../../references/project-layout.md` with the canonical
 layout sketch. The pre-flight ancestor walk is the discipline
 that keeps `relux init` from creating one; do not skip it.
 

@@ -86,26 +86,6 @@ suite-root/
     `-- lib/
 ```
 
-### Don't symlink `relux/` for sharing
-
-Symlinks blur the project boundary and confuse sub-project detection. To share fixtures across projects, vendor them or split into a separate `Relux.toml`-rooted suite.
-
-Don't:
-
-```bash
-ln -s ../shared-relux relux
-```
-
-Do:
-
-```text
-# vendor the shared lib in place, or maintain a separate project:
-shared-relux/
-|-- Relux.toml
-`-- relux/
-    `-- lib/
-```
-
 ## See also
 
 - [imports](imports.md) -- read if you need module paths and import syntax

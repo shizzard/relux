@@ -18,10 +18,10 @@ Out-of-order sections are a parse error. All sections are optional.
 ```relux
 effect Service {
     expect PORT, LOG_LEVEL
+    expose shell s
     shell s {
         > app --port=${PORT} --log=${LOG_LEVEL}
     }
-    expose shell s
 }
 ```
 
@@ -86,30 +86,30 @@ Don't:
 
 ```relux
 effect ApiWithDb {
+    expose shell setup
     shell setup {
         > pg_ctl start
         <? ready
         > my-api &
         <? listening
     }
-    expose shell setup
 }
 ```
 
 Do:
 
 ```relux
-effect Db { ... expose shell db }
+effect Db { expect DATA_DIR, PORT; expose shell db; shell db { ... } }
 
 effect Api {
     expect API_PORT
     start Db as Dep { DATA_DIR; PORT = 5432 }
     expose shell Dep.db as db
+    expose shell svc
     shell svc {
         > my-api --db-port=5432
         <? listening
     }
-    expose shell svc
 }
 ```
 
@@ -147,10 +147,10 @@ Don't:
 ```relux
 effect WebService {
     expect PORT, LOG_LEVEL
+    expose shell s
     shell s {
         > app --port=${PORT} --log=${LOG_LEVEL}
     }
-    expose shell s
 }
 ```
 
@@ -159,10 +159,10 @@ Do:
 ```relux
 effect WebService {
     expect PORT
+    expose shell s
     shell s {
         > app --port=${PORT} --log=${LOG_LEVEL}
     }
-    expose shell s
 }
 ```
 
