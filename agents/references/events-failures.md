@@ -61,10 +61,11 @@ Reasons carry context:
 ```jsonc
 {
   "kind": "skip",
-  "span": SpanId,           // marker-eval span that decided to skip
-  "event_seq": EventSeq,    // bool-check event under it
+  "span": SpanId,                       // marker-eval span that decided to skip
+  "event_seq": EventSeq,                // bool-check event under it
   "marker_kind": "skip" | "run" | "flaky",
-  "evaluation": MarkerEvalDetail
+  "evaluation": MarkerEvalDetail,
+  "location": SourceLocation | null     // marker source { file, line, start, end }
 }
 ```
 
@@ -74,6 +75,37 @@ Reasons carry context:
 - `bare` `{ value, met }`
 - `eq` `{ lhs, rhs, met }`
 - `regex` `{ value, pattern, met }`
+
+**Truthiness** (used by `bare` `met`, and by `eq`/`regex` which apply `met` after the comparison): only the empty string is falsy; any non-empty string is truthy. See [markers](markers.md) > *Expression shapes* for the full rule including how `=` and `?` produce their result strings.
+
+### Reading the marker-eval span
+
+The `outcome.span` points at the `marker-eval` span that drove the skip. Open that span for the marker's `decision` and source `location`:
+
+- `decision: "pass"` -- the marker's action did **not** apply.
+- `decision: "mark"` -- the marker's action **did** apply.
+
+What "the action" means depends on `marker_kind`:
+
+| `marker_kind` | `decision: "pass"` | `decision: "mark"` |
+|---|---|---|
+| `skip` | skip did not apply -> test ran (no skip recorded) | skip applied -> test skipped |
+| `run` | run did not apply -> test skipped | run applied -> test ran |
+| `flaky` | flaky did not apply -> ordinary test | flaky applied -> test treated as flaky |
+
+The asymmetry is why a SkipRecord can carry `marker_kind: "run"` with `decision: "pass"`: a `# run if X` whose `X` is falsy means *run* did not get to apply, so the test was skipped. The `met: false` on `evaluation` tells you the condition went falsy; the `marker_kind` x `decision` table above tells you the action that the falsy condition caused.
+
+Don't confuse `marker-eval.decision: "pass"` with `outcome.kind: "pass"`. The first is a verdict on a marker (action did not apply); the second is a verdict on a test (the test passed). They are unrelated and can disagree -- a skipped test routinely has both `outcome.kind: "skip"` *and* `marker-eval.decision: "pass"` on its marker-eval span.
+
+### Reading the marker source
+
+The SkipRecord names the marker only by `marker_kind`; the actual condition (`# run if SMOKE`, etc.) lives on the record's `location` (`file`, `line`, `start`, `end`). Slice `sources[file][start:end]` to get the verbatim marker line:
+
+```bash
+jq -r '.outcome.location as $loc | .sources[$loc.file][$loc.start:$loc.end]' events.json
+```
+
+(`location` is `Option<SourceLocation>` -- expect non-null for any marker with a real source span; synthetic markers carry `null`.)
 
 The marker that fired the skip lives under the synthetic `markers` root span.
 

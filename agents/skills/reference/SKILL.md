@@ -176,14 +176,32 @@ Reference files live alongside this skill in the plugin. Read them via
 - `events-failures.md` -- the `outcome` enum for
   non-passing tests (Pass / Fail / Cancelled / Skipped / Invalid) and
   the records they carry.
-- `events-recipes.md` -- `jq` recipes for reconstructing
-  context from `events.json` (buffer state at a seq, variable scope,
-  call stack, dedup audit). Verify field names against
-  `events-schema.md` before scripting.
+- `events-recipes.md` -- catalog of operational queries against
+  `events.json` (buffer state at a seq, variable scope, call stack,
+  dedup audit, per-shell timeline, regression diff). Routes the
+  non-trivial ones through the bundled `tools/events.py` CLI; the
+  trivial ones stay as inline `jq` one-liners. Verify field names
+  against `events-schema.md` before scripting anything new.
 - `viewer.md` -- `event.html` is a self-contained Svelte
   SPA. **Human surface only** -- the agent does not read it. Hand the
   user a link when visual triage helps; use `events-recipes.md`
   against `events.json` for any programmatic reconstruction.
+
+## Bundled tools
+
+The plugin ships small executables alongside the references. They live
+under `../../tools/` relative to this skill file and are referenced from
+the recipes that use them.
+
+- `tools/events.py` -- `python3 <plugin>/tools/events.py [--events PATH] <cmd>`.
+  Subcommands: `vars`, `stack`, `buffer`, `timeline`, `dedup`,
+  `pure-trace`, `diff`. Replaces the inline Python and the more awkward
+  jq trees in `events-recipes.md`. Reach for it whenever a question
+  about a past run requires walking spans, projecting variable scope,
+  reconstructing a shell's buffer at a point in time, or comparing two
+  runs. The recipes reference is its manual; see *Locating the tool*
+  there for the absolute-path rule (the tool lives at
+  `../../tools/events.py` relative to this skill file).
 
 ## Cross-skill handoffs
 

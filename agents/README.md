@@ -17,10 +17,20 @@ Skills surface as `/relux:<skill-name>` slash commands and as auto-triggered beh
 - `.claude-plugin/plugin.json` -- Claude Code manifest (name, description, author, version).
 - `skills/<name>/SKILL.md` -- one directory per skill. Portable Markdown; no Claude-specific syntax aside from tool-name references (Read, Edit, Bash) and cross-skill handoff sentences.
 - `references/*.md` -- shared content loaded on demand by skills. Not skills themselves; they have no `description:` and never auto-trigger.
+- `tools/*` -- small executables that skills can shell out to. Python 3 (stdlib only) and POSIX shell only -- see *Tools policy* below.
 - `AGENTS.md` -- cross-agent guidance (placeholder; v1 targets Claude Code only).
 - `LICENSE` -- MIT, matching the repo.
 
 Validation runs via `just build-agents` from the repo root; it is folded into `just build` and the pre-commit hook.
+
+## Tools policy
+
+Bundled tools under `tools/` exist so skills can shell out to a tested implementation instead of restating algorithms inline (an inline 100-line script in a reference drifts; a CLI does not).
+
+- **Permitted languages:** Python 3 (stdlib only) and POSIX shell. The plugin validator only resolves `tools/<file>.{py,sh}` links and only those extensions are recognised.
+- **No JavaScript / TypeScript / Node.** Node's package ecosystem is the supply-chain attack surface this plugin will not adopt. A skill that shells out to a script the user installed via `claude plugin install` must not be able to drag a transitive `npm` dependency tree onto their machine. Python stdlib is enough for the queries skills need; if it ever stops being enough, the bar to add a language is "stdlib of a runtime users already have, no third-party packages."
+- **No third-party Python packages.** Same reason: the tool must run on a stock interpreter. If you reach for `requests` or `jsonschema`, refactor.
+- **Single-file by default.** A tool is one file; if it grows submodules, that's a signal to question whether the logic belongs in a skill / reference instead.
 
 ## Authoring rule: domain knowledge in references, skills are about logic
 

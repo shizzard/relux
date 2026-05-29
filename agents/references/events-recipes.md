@@ -2,6 +2,8 @@
 
 Operational queries against `events.json`. Verify field names against [events-schema](events-schema.md) before scripting -- the schema evolves.
 
+The non-trivial queries (variable scope reconstruction, span subtree walks, multi-pass merges) are implemented once in `tools/events.py`. Skills point at the subcommand; the script owns the algorithm. Trivial one-line `jq` filters remain inline where they are clearer than a shelled subcommand.
+
 ## Cross-cutting tips
 
 - Events are append-only; `seq` is the canonical order.
@@ -10,167 +12,100 @@ Operational queries against `events.json`. Verify field names against [events-sc
 - `outcome` is a single tagged enum at top level -- there is no `report` field.
 - Pre-formatted durations live on TimeoutValue (`duration`, `total_duration`) -- no arithmetic needed.
 
+## Using the CLI
+
+```
+python3 <plugin>/tools/events.py [--events PATH] <subcommand> [...]
+```
+
+`--events` defaults to `events.json` in the current directory; `cd` into the per-test log directory or pass `--events` explicitly.
+
+### Locating the tool
+
+`<plugin>` is the directory containing this `references/` folder and the sibling `tools/` folder; the tool's absolute path is `<plugin>/tools/events.py`. Resolve `<plugin>` from the absolute path of any plugin file you have on hand (this reference, a SKILL.md) by stripping back to that root, and use the absolute form in every command -- bare `python3 tools/events.py` only works when the cwd is the plugin root.
+
+Use `python3`, not `python` -- stock macOS has no `python` shim.
+
+Subcommands:
+
+| Command | Answers |
+|---|---|
+| `vars [--at-seq N] [--span ID] [--shell MARKER] [--with-env]` | Which user variables are visible at the failure point (default), or at any other vantage. |
+| `stack [--at-seq N \| --span ID]` | Call stack leaf-to-root from a span (or the failure event's span by default). |
+| `buffer SHELL [--at-seq N]` | Cumulative buffer for a shell up to a seq (default: end of run). `SHELL` accepts either the `shell_marker` (stable across renames) or the display `shell` name. |
+| `timeline SHELL` | Per-shell chronological merge of events and buffer events. Same `SHELL` resolution as `buffer`. |
+| `dedup` | Effect-setup spans grouped by identity hash (`marker`); `is_reuse: false` is the bootstrap acquire. |
+| `pure-trace SPAN_ID` | Value events under a span subtree (interpolation / var-let / var-read / var-assign / pure-match / string-eval). |
+| `diff OTHER_EVENTS_JSON` | First event index where two runs disagree on `(kind, shell_marker, source)`. Ignores `seq` and `buffer_events` (PTY chunking noise). |
+
+Output is JSON on stdout for structured subcommands; raw text for `buffer`. Compose with `jq` when narrowing further.
+
 ## Reconstructing context around an event
 
-### 1. Buffer state for shell S at event seq N
+### 0. Enumerate the shells in this log
 
-Concatenate `grew` payloads from `buffer_events` for shell `S` up to seq `N`.
+`buffer` and `timeline` both take a `SHELL` argument; this recipe is how you find one to pass.
 
 ```bash
-jq --arg s "$S" --argjson n "$N" '
-  [.buffer_events[]
-   | select(.shell == $s and .seq <= $n and .kind == "grew")
-   | .data] | join("")' events.json
+jq '.shells | to_entries | map({marker: .key, name: .value.name, spawn_ts: .value.spawn_ts, terminate_ts: .value.terminate_ts})' events.json
 ```
 
-Output: the cumulative bytes in shell S's buffer at that point.
+There is no "main shell" in Relux -- a test can declare any number of `shell <name>` blocks, plus an implicit `__cleanup` shell whenever it has a `cleanup` block, plus shells inherited via `expose shell` from effects. Pick by `name`:
 
-### 2. Variable scope at event seq N
+- `name: "__cleanup"` -- the implicit shell for cleanup blocks. Skip this unless you are specifically diagnosing cleanup.
+- `name: "<word>"` (e.g. `"smoke"`, `"db"`) -- a `shell <name>` block declared in the test or in an effect's body.
+- `name: "Alias.shell"` -- a shell re-exposed by an effect under an alias, visible only inside the effect's setup span.
 
-Mirror the runtime's three-map model: one map per ambient scope (`test` / `effect-setup`), one per shell, one per fn-call frame. `fn-call` is a hard barrier (only that frame's vars are visible); `effect-cleanup` hops to its `setup_span` to inherit the effect's lets and overlay.
+If the test has only one user-declared shell, that's almost certainly the one you want.
 
-```python
-# Pure BIFs and these three impure BIFs don't create a scope barrier --
-# the agent sees through them to the caller's scope.
-TRANSPARENT_IMPURE_BIFS = {"annotate", "log", "sleep"}
+Pass either the marker (stable; recommended) or the display name to `buffer` / `timeline`:
 
-
-def is_transparent_bif(span):
-    if span["kind"] != "fn-call" or span.get("callee_kind") != "bif":
-        return False
-    return span.get("is_pure") or span.get("name") in TRANSPARENT_IMPURE_BIFS
-
-
-def vars_visible(data, event_seq, viewer_span_id, viewer_shell_marker):
-    """
-    Reconstruct variables visible at the given (event_seq, span, shell_marker)
-    vantage. Returns dict name -> value.
-
-    `viewer_shell_marker` is the stable shell identity (`shell_marker` on
-    events), not the display `shell` -- the display name can be re-bound
-    when an effect's shell is exported into a caller's scope.
-    """
-    spans = data["spans"]  # dict keyed by span id as string
-
-    def span_by_id(sid):
-        return spans.get(str(sid))
-
-    def scope_context(span_id):
-        """Walk ancestors. Returns (ambient_scope_id, innermost_fn_id_or_None)."""
-        innermost_fn = None
-        cur = span_by_id(span_id)
-        while cur:
-            kind = cur["kind"]
-            if kind in ("test", "effect-setup"):
-                return cur["id"], innermost_fn
-            if kind == "effect-cleanup":
-                # Cleanup runs with the effect's scope, even though parented under the test.
-                return cur["setup_span"], innermost_fn
-            if kind == "fn-call" and not is_transparent_bif(cur) and innermost_fn is None:
-                innermost_fn = cur["id"]
-            parent = cur.get("parent")
-            if parent is None:
-                break
-            cur = span_by_id(parent)
-        return None, innermost_fn
-
-    scope_vars, shell_vars, frame_vars = {}, {}, {}
-
-    # Pre-seed each opaque fn-call frame with its declared args.
-    for span in spans.values():
-        if span and span["kind"] == "fn-call" and not is_transparent_bif(span):
-            frame_vars[span["id"]] = dict(span.get("args", []))
-
-    for ev in data["events"]:
-        if ev["seq"] > event_seq:
-            break
-        ambient, inner_fn = scope_context(ev["span"])
-        ev_shell = ev.get("shell_marker")  # stable across rename
-
-        if ev["kind"] == "var-let":
-            name, value = ev["name"], ev["value"]
-            if inner_fn is not None:
-                frame_vars.setdefault(inner_fn, {})[name] = value
-            elif ev_shell is not None:
-                shell_vars.setdefault(ev_shell, {})[name] = value
-            elif ambient is not None:
-                scope_vars.setdefault(ambient, {})[name] = value
-
-        elif ev["kind"] == "var-assign":
-            # Mutate the existing binding wherever it lives (frame -> shell -> ambient).
-            name, value = ev["name"], ev["value"]
-            for m in (
-                frame_vars.get(inner_fn) if inner_fn is not None else None,
-                shell_vars.get(ev_shell) if ev_shell else None,
-                scope_vars.get(ambient) if ambient is not None else None,
-            ):
-                if m and name in m:
-                    m[name] = value
-                    break
-
-        elif ev["kind"] == "effect-expose-var":
-            # Injected into the *parent's* ambient scope as `Alias.var`.
-            emitter = span_by_id(ev["span"])
-            if not emitter or emitter["kind"] != "effect-setup":
-                continue
-            alias = emitter.get("alias")
-            parent = emitter.get("parent")
-            if alias is None or parent is None:
-                continue
-            parent_ambient, _ = scope_context(parent)
-            if parent_ambient is None:
-                continue
-            scope_vars.setdefault(parent_ambient, {})[f"{alias}.{ev['name']}"] = ev["value"]
-
-    # Project through the viewer's vantage.
-    view_ambient, view_fn = scope_context(viewer_span_id)
-    if view_fn is not None:
-        # Hard barrier: only the frame's vars are visible.
-        return dict(frame_vars.get(view_fn, {}))
-
-    # Shell context: ambient scope + shell-local lets (shell shadows ambient).
-    out = dict(scope_vars.get(view_ambient, {})) if view_ambient is not None else {}
-    if viewer_shell_marker is not None:
-        out.update(shell_vars.get(viewer_shell_marker, {}))
-    return out
+```bash
+python3 <plugin>/tools/events.py buffer crumbly-drone-6747   # marker
+python3 <plugin>/tools/events.py buffer smoke                # display name
 ```
 
-For "what does `${name}` actually resolve to" rather than "what was let-bound", layer `data["env"]["bootstrap"]` underneath the returned dict -- the viewer surfaces env in a separate modal, but at runtime env is always visible at the bottom of the chain.
+### 1. Buffer state for shell `S` at event seq `N`
 
-**Shortcut:** if the vantage you want is exactly the failure event, `outcome.vars_in_scope` already carries the projection the runtime captured with this same rule -- no replay needed.
+```bash
+python3 <plugin>/tools/events.py buffer "$S" --at-seq "$N"
+```
+
+### 2. Variable scope at the failure point (or another vantage)
+
+For the failure vantage (the most common question -- "what was visible when this broke?"), the runtime already captured the projection. Read it directly:
 
 ```bash
 jq '.outcome | select(.kind == "fail") | .vars_in_scope' events.json
 ```
 
-Use the replay above only for vantages other than the failure point (an earlier event, a different span, a passing test).
+`outcome.vars_in_scope` is `[name, value][]` and is computed by the runtime with the same rule the tool would replay, so the answer is identical -- with zero hops.
 
-### 3. Call stack at event seq N
-
-Follow `spans[E.span].parent` to root; emit `(kind, name)` per span (leaf to root).
+**For any other vantage** (an earlier event, a different span, a passing test, a cleanup span), use the CLI to replay scope from a chosen `(seq, span, shell)`:
 
 ```bash
-jq --argjson n $N '
-  . as $log
-  | ($log.events[] | select(.seq == $n) | .span) as $sid
-  | def walk(id):
-      if id == null then []
-      else ($log.spans[id|tostring]) as $sp
-           | [$sp.kind, ($sp.name // null)] + walk($sp.parent)
-      end;
-    walk($sid)' events.json
+python3 <plugin>/tools/events.py vars
 ```
+
+Defaults to the failure vantage when `outcome.kind` is `fail` or `cancelled`; override `--at-seq`, `--span`, `--shell` to project from a different point. Pass `--with-env` to layer `env.bootstrap` underneath the user vars (the viewer surfaces env in a separate modal, but at runtime env is always visible at the bottom of the chain).
+
+The algorithm mirrors the runtime's three-map model: ambient scope (`test` / `effect-setup`) at the bottom, shell-local lets on top of that, fn-call frames as a hard barrier. Cleanup spans inherit the effect's scope via `setup_span`. Transparent BIFs (pure BIFs and `annotate` / `log` / `sleep`) are not barriers. See `tools/events.py` for the implementation.
+
+### 3. Call stack at event seq `N`
+
+```bash
+python3 <plugin>/tools/events.py stack --at-seq "$N"
+```
+
+Returns `[{id, kind, name?, effect?, alias?, shell?}, ...]` leaf-to-root.
 
 ### 4. Per-shell chronological timeline
 
-Merge `events` and `buffer_events` for shell S, sort by `seq`.
-
 ```bash
-jq --arg s "$S" '
-  [.events[]        | select(.shell == $s) | {seq, kind, src: "event"}]
-+ [.buffer_events[] | select(.shell == $s) | {seq, kind, src: "buffer"}]
-| sort_by(.seq)' events.json
+python3 <plugin>/tools/events.py timeline "$S"
 ```
+
+Returns `[{seq, kind, src: "event" | "buffer"}, ...]` sorted by `seq`.
 
 ## Failure triage
 
@@ -181,8 +116,6 @@ jq '.outcome | select(.kind == "fail") | {type, span, event_seq, shell, buffer_t
 ```
 
 ### 6. Cleanup spans for a failed test
-
-Find spans where `kind == "effect-cleanup"` or `kind == "cleanup-block"`; their parent chain leads back to the test span.
 
 ```bash
 jq '[.spans | to_entries[] | select(.value.kind == "effect-cleanup" or .value.kind == "cleanup-block") | .value]' events.json
@@ -198,41 +131,25 @@ jq '.outcome | select(.kind == "skip") | {marker_kind, evaluation}' events.json
 
 ## Effect and dedup investigation
 
-### 8. Was this effect fresh or reused
-
-Effect setup spans have `is_reuse`. The bootstrap setup has `false`; dedup'd acquires have `true`.
+### 8. Was this effect fresh or reused / which identity tuple did `start` resolve to
 
 ```bash
-jq '[.spans | to_entries[]
-     | select(.value.kind == "effect-setup")
-     | {effect: .value.effect, alias: .value.alias, marker: .value.marker, is_reuse: .value.is_reuse}]' events.json
+python3 <plugin>/tools/events.py dedup
 ```
 
-### 9. Which identity tuple did this start resolve to
-
-Each `effect-setup` span carries `effect`, `overlay`, and `marker` (the identity hash). Same `marker` across spans means same instance.
-
-```bash
-jq '[.spans | to_entries[]
-     | select(.value.kind == "effect-setup")
-     | {effect: .value.effect, overlay: .value.overlay, marker: .value.marker}]' events.json
-```
+Returns one group per identity hash (`marker`) with all acquires under it. The acquire with `is_reuse: false` is the bootstrap setup; the rest are dedup'd zero-duration acquires. The `overlay` field on each shows the evaluated overlay tuple.
 
 ## Pure-eval tracing
 
-### 10. What did `let x = trim(y)` compute
-
-Under the `var-let` event's span, look for `interpolation` and `fn-call` spans (the `pure-match` / `var-read` events live inside).
+### 9. What did `let x = trim(y)` compute / trace pure evaluation under a span
 
 ```bash
-jq '[.events[] | select(.kind == "interpolation" or .kind == "var-let" or .kind == "var-read")]' events.json
+python3 <plugin>/tools/events.py pure-trace "$SPAN_ID"
 ```
 
-For a deep trace, walk by `span` (Python script -- jq is awkward for tree walks).
+Collects every value event (`interpolation`, `var-let`, `var-read`, `var-assign`, `pure-match`, `string-eval`) under the span subtree. Use the `stack` output to pick the span you care about.
 
-### 11. Capture values from a match
-
-`match-done` events carry `captures: { "0": ..., "1": ..., ... }` (HashMap, optional).
+### 10. Capture values from a match
 
 ```bash
 jq '[.events[] | select(.kind == "match-done" and .captures != null) | {seq, shell, captures}]' events.json
@@ -240,20 +157,40 @@ jq '[.events[] | select(.kind == "match-done" and .captures != null) | {seq, she
 
 ## Cross-run analysis
 
-### 12. Artifacts a test produced
+### 11. Artifacts a test produced
 
 ```bash
 jq '.artifacts' events.json
 ```
 
-### 13. Diff two runs for a regression
-
-Align by `(info.path, event_seq, event_kind)`; first divergent seq pair is the regression point.
+### 12. Diff two runs for a regression
 
 ```bash
-# Hand the two artifacts to a script:
-diff <(jq -c '[.events[] | {seq, kind, shell}]' run1/events.json) \
-     <(jq -c '[.events[] | {seq, kind, shell}]' run2/events.json) | head
+python3 <plugin>/tools/events.py --events run1/events.json diff run2/events.json
+```
+
+Walks the two runs' `events` arrays in **lockstep by array index** and returns the first index where the two sides disagree on `(kind, shell_marker, source)`. `buffer_events` are *not* part of the comparison -- they are the PTY chunking layer, non-deterministic across runs; the runtime is deterministic at the `(kind, shell_marker, source)` level on `events`, so a real divergence at index N means the test code took a different path or a match resolved differently at that line. `seq` is also dropped from the key because it shifts whenever buffer-event counts differ between runs, but it is reported in the output for triage.
+
+Output shape:
+
+```jsonc
+{
+  "first_divergence_index": 256,                // index into `events`, not into a merged stream
+  "left":  { "seq": 3640, "kind": "match-done", "shell_marker": "...",
+             "source": { "file": "relux/lib/http.relux", "line": 32 } },
+  "right": { "seq": 3490, "kind": "timeout",    "shell_marker": "...",
+             "source": { "file": "relux/lib/http.relux", "line": 32 } }
+}
+```
+
+`{"identical": true, "length": N}` if every index agrees; if one side is longer, the extra-events form fires with `first_divergence_index` set to the overlap end and `left_length`/`right_length` reported.
+
+`diff` is the right tool whether the second run passed or failed -- the comparison key is behavioural, not outcome-typed. Pass-vs-fail and pass-vs-pass drift go through the same command. See also Recipe 5 if all you need is the failing run's own anchor (`outcome.event_seq`, `buffer_tail`).
+
+**Companion read for pass-vs-fail:** the failing run's `outcome` independently names the regression anchor (`event_seq`, `buffer_tail`, `vars_in_scope`). Reading it alongside `diff` is cheap and they should agree on the same `.relux` line:
+
+```bash
+jq '.outcome | {kind, type, event_seq, pattern, buffer_tail}' fail/events.json
 ```
 
 ## Pitfalls and best practices
@@ -275,13 +212,13 @@ jq 'keys' events.json
 jq '.outcome | keys' events.json
 ```
 
-### For tree traversal, write a script -- jq is the wrong hammer
+### For tree traversal, use the CLI rather than nested jq
 
-Walking `parent` chains, correlating buffer state with timing, or merging across spans needs multiple passes. A 20-line Python/Node script is clearer than nested jq.
+Walking `parent` chains, correlating buffer state with timing, or merging across spans needs multiple passes. The recipes above route those questions through `tools/events.py`. If a question is not covered by an existing subcommand, parse `events.json` in a small Python/Node script -- a single-pass `jq` expression is almost always the wrong hammer for tree work.
 
 Don't: a 60-line nested jq expression for variable-scope reconstruction.
 
-Do: parse `events.json` in Python/Node; index spans and events by id/seq; compute the answer in plain code.
+Do: `python3 <plugin>/tools/events.py vars [...]`, or for a new shape, add a subcommand to `tools/events.py` rather than reinventing the algorithm at every call site.
 
 ## See also
 

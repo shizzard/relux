@@ -11,6 +11,8 @@
 #      to an existing file.
 #   4. `relux:<name>` mentions in any .md under agents/ resolve to an
 #      existing skill directory.
+#   5. `tools/<file>` links in any .md under agents/ resolve to an
+#      existing file under agents/tools/.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -65,7 +67,7 @@ for d in "$PLUGIN_DIR"/skills/*/; do
     fi
 done
 
-# 3. and 4. Cross-reference resolution across every .md under agents/.
+# 3., 4., and 5. Cross-reference resolution across every .md under agents/.
 while IFS= read -r f; do
     while IFS= read -r ref; do
         [[ -z "$ref" ]] && continue
@@ -83,6 +85,14 @@ while IFS= read -r f; do
             status=1
         fi
     done < <(grep -oE 'relux:[a-z][a-z0-9-]*' "$f" 2>/dev/null | sort -u)
+
+    while IFS= read -r ref; do
+        [[ -z "$ref" ]] && continue
+        if [[ ! -f "$PLUGIN_DIR/$ref" ]]; then
+            err "$f links to '$ref' but $PLUGIN_DIR/$ref does not exist"
+            status=1
+        fi
+    done < <(grep -oE 'tools/[a-zA-Z0-9._/-]+\.(py|sh)' "$f" 2>/dev/null | sort -u)
 done < <(find "$PLUGIN_DIR" -name '*.md' -type f)
 
 if [[ $status -eq 0 ]]; then

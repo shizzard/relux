@@ -52,7 +52,7 @@ Kind-specific fields:
 | `cleanup-block` | -- |
 | `fn-call` | `name`, `args` (`[name, value][]`), `result` (nullable; populated on return), `callee_kind` (`"user"` for user `fn` / `pure fn`, `"bif"` for built-ins), `is_pure` (bool). |
 | `markers` | -- (synthetic per-test root grouping `marker-eval` children). |
-| `marker-eval` | `marker_kind` (`skip` / `run` / `flaky`), `modifier` (`unconditional` / `if` / `unless`), `decision` (the truthy/falsy outcome that drove skip/run/flaky). |
+| `marker-eval` | `marker_kind` (`skip` / `run` / `flaky`), `modifier` (`unconditional` / `if` / `unless`), `decision` (`pass` -- the marker's action did not apply / `mark` -- the marker's action applied; what the action means depends on `marker_kind`, see [events-failures](events-failures.md) > *SkipRecord*). |
 
 ## Event
 
