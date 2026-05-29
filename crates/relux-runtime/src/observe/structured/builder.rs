@@ -128,7 +128,7 @@ impl StructuredLogBuilder {
         self.test_start.elapsed()
     }
 
-    pub(super) fn resolve_location(&self, span: &IrSpan) -> Option<SourceLocation> {
+    pub(crate) fn resolve_location(&self, span: &IrSpan) -> Option<SourceLocation> {
         let file_id = span.file();
         let source_file = self.sources.get(file_id)?;
         let line = source_file.line_at(span.span().start());
@@ -808,6 +808,7 @@ mod tests {
             event_seq: 7u64,
             marker_kind: MarkerEvalKind::Skip,
             evaluation: MarkerEvalDetail::Unconditional,
+            location: None,
         });
         let json = serde_json::to_string(&original).unwrap();
         assert!(

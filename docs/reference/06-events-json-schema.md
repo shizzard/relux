@@ -147,9 +147,14 @@ event-stream location of the failure.
   "span": <marker-eval span-id>,
   "event_seq": <bool-check event seq>,
   "marker_kind": "skip" | "run" | "flaky",
-  "evaluation": { ... MarkerEvalDetail ... }
+  "evaluation": { ... MarkerEvalDetail ... },
+  "location": { "file", "line", "start", "end" } | null
 }
 ```
+
+`location` is the marker source (denormalised from the marker-eval
+span), so consumers can read the verbatim marker line without hopping
+through `spans`. Synthetic markers carry `null`.
 
 The viewer focuses these at open time and expands ancestors so the
 markers tree is unfolded.
