@@ -30,7 +30,7 @@ This downloads, compiles, and installs the `relux` binary into `~/.cargo/bin/`.
 
 ## Pre-built binaries
 
-Pre-built binaries for Linux (x86_64) and macOS (aarch64) are available on the [Releases](https://github.com/shizzard/relux/releases) page. No Rust toolchain required.
+Pre-built binaries for Linux (x86_64) and macOS (aarch64 and x86_64) are available on the [Releases](https://github.com/shizzard/relux/releases) page. No Rust toolchain required.
 
 ## Building from source
 

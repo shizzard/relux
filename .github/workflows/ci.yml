@@ -98,7 +98,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, macos-13]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -116,10 +116,10 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('crates/**', 'Cargo.toml') }}
+          key: ${{ matrix.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('crates/**', 'Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-
-            ${{ runner.os }}-cargo-build-dev-
+            ${{ matrix.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ matrix.os }}-cargo-build-dev-
 
       - name: Build
         run: cargo build -p relux
@@ -148,10 +148,10 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('crates/**', 'Cargo.toml') }}
+          key: ${{ matrix.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('crates/**', 'Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-
-            ${{ runner.os }}-cargo-build-dev-
+            ${{ matrix.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ matrix.os }}-cargo-build-dev-
 
       - name: E2E tests
         run: |
