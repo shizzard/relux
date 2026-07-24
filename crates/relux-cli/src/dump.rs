@@ -1,10 +1,7 @@
 use std::path::PathBuf;
 use std::process;
-use std::sync::Arc;
 
 use relux_core::config;
-use relux_core::pure::Env;
-use relux_core::pure::LayeredEnv;
 use relux_ir::Plan;
 use relux_lexer::lex;
 use relux_lexer::normalize;
@@ -66,7 +63,7 @@ pub fn cmd_dump_ir(matches: &clap::ArgMatches) {
         .collect();
 
     let loader = build_source_loader(&project_root);
-    let env = Arc::new(LayeredEnv::from(Env::capture()));
+    let env = relux_resolver::env::capture_base();
     let suite = resolve(&*loader, test_paths, env, 1.0, &project_root);
 
     let mut first = true;

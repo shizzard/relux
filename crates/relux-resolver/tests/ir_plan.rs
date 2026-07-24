@@ -48,6 +48,7 @@ fn plan_runnable_variant() {
         meta,
         test,
         warnings: vec![],
+        env: Arc::new(LayeredEnv::root(Env::new())),
     };
     assert!(matches!(plan, Plan::Runnable { .. }));
 }
@@ -64,6 +65,7 @@ fn plan_runnable_with_warnings() {
         meta,
         test,
         warnings: vec![w],
+        env: Arc::new(LayeredEnv::root(Env::new())),
     };
     if let Plan::Runnable { warnings, .. } = &plan {
         assert_eq!(warnings.len(), 1);
@@ -395,6 +397,25 @@ test "multi effects" {
 }
 
 // --- Plan building: skip paths ---------------------------
+
+#[test]
+fn runnable_plan_defaults_env_to_base() {
+    let suite = resolve_source_no_env(&[(
+        "tests/a",
+        r#"test "one" {
+  shell sh {
+    > echo hello
+  }
+}
+"#,
+    )]);
+    assert!(is_runnable(&suite.plans[0]));
+    if let Plan::Runnable { env, .. } = &suite.plans[0] {
+        assert_eq!(env.source(), &LayeredEnvSource::Base);
+    } else {
+        panic!("expected runnable");
+    }
+}
 
 #[test]
 fn plan_skip_unconditional() {

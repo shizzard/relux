@@ -44,6 +44,7 @@ use relux_core::diagnostics::CauseTable;
 use relux_core::diagnostics::WarningId;
 use relux_core::pure::Env;
 use relux_core::pure::LayeredEnv;
+use relux_core::pure::LayeredEnvSource;
 use relux_core::pure::VarScope;
 use relux_core::table::SourceTable;
 use relux_ir::IrNode;
@@ -108,8 +109,10 @@ pub struct RunContext {
 
 // --- Environment Helpers ---------------------------------
 
-fn build_env(ctx: &RunContext) -> Arc<LayeredEnv> {
-    let mut env = Env::capture();
+/// The `__RELUX_*` run-level internals, as a standalone `Env`. Layered above
+/// each test's `.env` stack (as `ReluxInternal`) so no `.env` can shadow them.
+fn build_relux_internal(ctx: &RunContext) -> Env {
+    let mut env = Env::new();
     env.insert("__RELUX_RUN_ID".into(), ctx.run_id.clone());
     env.insert(
         "__RELUX_RUN_ARTIFACTS".into(),
@@ -123,23 +126,24 @@ fn build_env(ctx: &RunContext) -> Arc<LayeredEnv> {
     if let Ok(exe) = std::env::current_exe() {
         env.insert("__RELUX".into(), exe.display().to_string());
     }
-    Arc::new(env.into())
+    env
 }
 
-fn make_test_env(
-    base: &Arc<LayeredEnv>,
-    test_file: &Path,
-    artifacts_dir: &Path,
+/// Compose a test's runtime env from its pre-resolved `.env` stack:
+/// `dotenv_stack` (Base -> DotEnv...) with `ReluxInternal` layered on top, then
+/// the per-test `Test` overlay. Precedence high->low: Test -> ReluxInternal ->
+/// DotEnv -> Base.
+fn assemble_test_env(
+    dotenv_stack: Arc<LayeredEnv>,
+    internal: Env,
+    test_vars: Env,
 ) -> Arc<LayeredEnv> {
-    let mut test_vars = Env::new();
-    if let Some(dir) = test_file.parent() {
-        test_vars.insert("__RELUX_TEST_ROOT".into(), dir.display().to_string());
-    }
-    test_vars.insert(
-        "__RELUX_TEST_ARTIFACTS".into(),
-        artifacts_dir.display().to_string(),
-    );
-    Arc::new(LayeredEnv::child(base.clone(), test_vars))
+    let with_internal = Arc::new(LayeredEnv::child_with_source(
+        dotenv_stack,
+        internal,
+        LayeredEnvSource::ReluxInternal,
+    ));
+    Arc::new(LayeredEnv::child(with_internal, test_vars))
 }
 
 // --- Log / Display Helpers -------------------------------
@@ -249,7 +253,7 @@ pub struct ExecuteResult {
 
 pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> ExecuteResult {
     let wall_start = Instant::now();
-    let base_env = build_env(run_ctx);
+    let relux_internal = build_relux_internal(run_ctx);
     let jobs = run_ctx.jobs;
 
     if jobs > 1 {
@@ -311,7 +315,7 @@ pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> ExecuteResult {
             cancel: cancel.clone(),
             suite,
             run_ctx,
-            base_env: base_env.clone(),
+            relux_internal: relux_internal.clone(),
             tui_tx: tui_tx.clone(),
         };
         worker_futs.push(run_worker(ctx, slot));
@@ -343,7 +347,7 @@ struct WorkerContext<'a> {
     cancel: CancelToken,
     suite: &'a Suite,
     run_ctx: &'a RunContext,
-    base_env: Arc<LayeredEnv>,
+    relux_internal: Env,
     tui_tx: observe::tui::TuiTx,
 }
 
@@ -374,6 +378,7 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                 meta,
                 test,
                 warnings: plan_warnings,
+                env: dotenv_stack,
             } => {
                 let tags = format_cause_tags(&[], plan_warnings, &ctx.suite.causes);
                 let display_id = test_display_id(&test_path, meta.name());
@@ -388,7 +393,8 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                     meta,
                     test,
                     ctx.run_ctx,
-                    ctx.base_env.clone(),
+                    dotenv_stack.clone(),
+                    &ctx.relux_internal,
                     &test_path,
                     &tags,
                     &ctx.cancel,
@@ -419,7 +425,8 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                             meta,
                             test,
                             ctx.run_ctx,
-                            ctx.base_env.clone(),
+                            dotenv_stack.clone(),
+                            &ctx.relux_internal,
                             &retry_test_path,
                             &tags,
                             &ctx.cancel,
@@ -472,12 +479,19 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                 let _ = ctx
                     .tui_tx
                     .send(observe::tui::TuiEvent::Skipped { result_line });
+                // Skipped tests never resolved a `.env` stack (only runnable
+                // plans do); the bootstrap snapshot is Base + ReluxInternal.
+                let bootstrap_env = Arc::new(LayeredEnv::child_with_source(
+                    ctx.suite.env.clone(),
+                    ctx.relux_internal.clone(),
+                    LayeredEnvSource::ReluxInternal,
+                ));
                 log_skipped_test(
                     meta,
                     causes,
                     &ctx.suite.causes,
                     ctx.run_ctx,
-                    ctx.base_env.clone(),
+                    bootstrap_env,
                     &test_path,
                     &ctx.suite.tables,
                 )
@@ -593,7 +607,8 @@ async fn run_test_cancellable(
     meta: &relux_ir::TestMeta,
     test: &IrTest,
     run_ctx: &RunContext,
-    base_env: Arc<LayeredEnv>,
+    dotenv_stack: Arc<LayeredEnv>,
+    relux_internal: &Env,
     test_path: &str,
     cause_tags: &str,
     cancel: &CancelToken,
@@ -630,7 +645,8 @@ async fn run_test_cancellable(
         meta,
         test,
         run_ctx,
-        base_env,
+        dotenv_stack,
+        relux_internal,
         test_path,
         cause_tags,
         &test_cancel,
@@ -677,7 +693,8 @@ async fn run_test(
     meta: &relux_ir::TestMeta,
     test: &IrTest,
     run_ctx: &RunContext,
-    base_env: Arc<LayeredEnv>,
+    dotenv_stack: Arc<LayeredEnv>,
+    relux_internal: &Env,
     test_path: &str,
     _cause_tags: &str,
     cancel: &CancelToken,
@@ -701,7 +718,24 @@ async fn run_test(
         .unwrap_or_else(|| file_id.path().clone());
     let artifacts_dir = log_dir.join("artifacts");
     let _ = std::fs::create_dir_all(&artifacts_dir);
-    let test_env = make_test_env(&base_env, &source_file, &artifacts_dir);
+
+    // Bootstrap snapshot: Base -> DotEnv... -> ReluxInternal, before the
+    // per-test `Test` overlay is applied.
+    let bootstrap_env = LayeredEnv::child_with_source(
+        dotenv_stack.clone(),
+        relux_internal.clone(),
+        LayeredEnvSource::ReluxInternal,
+    );
+
+    let mut test_vars = Env::new();
+    if let Some(dir) = source_file.parent() {
+        test_vars.insert("__RELUX_TEST_ROOT".into(), dir.display().to_string());
+    }
+    test_vars.insert(
+        "__RELUX_TEST_ARTIFACTS".into(),
+        artifacts_dir.display().to_string(),
+    );
+    let test_env = assemble_test_env(dotenv_stack, relux_internal.clone(), test_vars);
     let mut warnings = Vec::new();
 
     let shell_config = ShellConfig {
@@ -784,9 +818,10 @@ async fn run_test(
 
     test_span.close();
 
-    // Snapshot the bootstrap env (root layer of `base_env`) for the artifact.
-    // Sorted for deterministic JSON output across runs.
-    let mut bootstrap: Vec<(String, String)> = base_env
+    // Snapshot the bootstrap env (Base -> DotEnv... -> ReluxInternal, before
+    // the `Test` overlay) for the artifact. Sorted for deterministic JSON
+    // output across runs.
+    let mut bootstrap: Vec<(String, String)> = bootstrap_env
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
@@ -1215,7 +1250,7 @@ async fn log_skipped_test(
     causes: &[relux_core::diagnostics::CauseId],
     suite_causes: &relux_core::diagnostics::CauseTable,
     run_ctx: &RunContext,
-    base_env: Arc<LayeredEnv>,
+    bootstrap_env: Arc<LayeredEnv>,
     test_path: &str,
     tables: &relux_ir::Tables,
 ) -> TestResult {
@@ -1277,7 +1312,7 @@ async fn log_skipped_test(
     });
 
     // Bootstrap env snapshot (sorted for deterministic JSON).
-    let mut bootstrap: Vec<(String, String)> = base_env
+    let mut bootstrap: Vec<(String, String)> = bootstrap_env
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
@@ -1409,6 +1444,42 @@ mod tests {
             test_display_id("basic/test.relux", "my test"),
             "basic/test.relux/my-test"
         );
+    }
+
+    #[test]
+    fn assemble_test_env_precedence_and_provenance() {
+        use relux_core::pure::Env;
+        use relux_core::pure::LayeredEnv;
+        use relux_core::pure::LayeredEnvSource;
+
+        let mut base_env = Env::new();
+        base_env.insert("PATH_LIKE".into(), "base".into());
+        base_env.insert("SHARED".into(), "from-base".into());
+        let base = std::sync::Arc::new(LayeredEnv::root(base_env));
+
+        let mut dotenv = Env::new();
+        dotenv.insert("SHARED".into(), "from-dotenv".into());
+        dotenv.insert("DB".into(), "postgres".into());
+        let dotenv_stack = std::sync::Arc::new(LayeredEnv::child_with_source(
+            base,
+            dotenv,
+            LayeredEnvSource::DotEnv("/p/.env".into()),
+        ));
+
+        let mut internal = Env::new();
+        internal.insert("__RELUX_RUN_ID".into(), "run123".into());
+        internal.insert("SHARED".into(), "from-internal".into()); // outranks .env
+        let mut test_vars = Env::new();
+        test_vars.insert("__RELUX_TEST_ROOT".into(), "/p/relux/tests".into());
+
+        let env = assemble_test_env(dotenv_stack, internal, test_vars);
+
+        assert_eq!(env.get("__RELUX_TEST_ROOT"), Some("/p/relux/tests"));
+        assert_eq!(env.get("SHARED"), Some("from-internal")); // internal > dotenv
+        assert_eq!(env.get("__RELUX_RUN_ID"), Some("run123"));
+        assert_eq!(env.get("DB"), Some("postgres")); // .env value present
+        assert_eq!(env.get("PATH_LIKE"), Some("base")); // base reachable
+        assert_eq!(env.source(), &LayeredEnvSource::Test); // top overlay
     }
 
     #[tokio::test]

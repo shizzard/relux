@@ -1,12 +1,9 @@
 use std::fs;
 use std::process;
-use std::sync::Arc;
 
 use crate::history::LatestRun;
 use relux_core::config;
 use relux_core::diagnostics::ModulePath;
-use relux_core::pure::Env;
-use relux_core::pure::LayeredEnv;
 use relux_ir::IrTimeout;
 use relux_resolver::resolve;
 use relux_runtime::RunContext;
@@ -72,7 +69,7 @@ pub async fn cmd_run(matches: &clap::ArgMatches) {
     }
 
     let loader = build_source_loader(&project_root);
-    let env = Arc::new(LayeredEnv::from(Env::capture()));
+    let env = relux_resolver::env::capture_base();
 
     let mut suite = resolve(&*loader, test_paths, env, multiplier, &project_root);
 
@@ -80,6 +77,13 @@ pub async fn cmd_run(matches: &clap::ArgMatches) {
         suite
             .plans
             .retain(|plan| names.iter().any(|n| n == plan.meta().name()));
+    }
+
+    if let Err(errs) = relux_resolver::env::attach_dotenv(&mut suite, &project_root) {
+        for e in errs {
+            eprintln!("error: {e}");
+        }
+        process::exit(1);
     }
 
     let strategy = match matches.get_one::<String>("strategy").map(|s| s.as_str()) {

@@ -5,9 +5,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use relux_core::config::DOTENV_FILE;
+use relux_core::pure::Env;
 use relux_core::pure::LayeredEnv;
 use relux_core::pure::LayeredEnvBuilder;
 use relux_core::pure::LayeredEnvSource;
+use relux_ir::IrNode;
+use relux_ir::Plan;
+use relux_ir::Suite;
 use thiserror::Error;
 
 use crate::dotenv::DotenvParseError;
@@ -116,6 +120,58 @@ pub fn resolve_dotenv_stack(
         }
     }
     layer_stack(base, files)
+}
+
+/// Capture the process environment as the immutable `Base` layer. The single
+/// place the process env is snapshotted, so `check`/`run`/`dump` agree on it.
+/// Warns on `__RELUX_`-prefixed keys in the process env (relux owns that
+/// namespace; such values are shadowed by the `ReluxInternal` layer).
+pub fn capture_base() -> Arc<LayeredEnv> {
+    let base = Env::capture();
+    for (k, _) in base.iter() {
+        if k.starts_with("__RELUX_") {
+            eprintln!("warning: reserved key {k} in the process environment is ignored");
+        }
+    }
+    Arc::new(LayeredEnv::root_with_source(base, LayeredEnvSource::Base))
+}
+
+/// Resolve and attach each runnable test's `.env` stack (`Base -> DotEnv...`)
+/// onto its plan, using `suite.env` as the base and the plan's source file path
+/// for discovery. Reserved-key warnings are printed. Returns the malformed-`.env`
+/// errors (if any) so the caller can report them and abort; on success every
+/// runnable plan's `env` is the folded stack.
+pub fn attach_dotenv(suite: &mut Suite, project_root: &Path) -> Result<(), Vec<DotenvError>> {
+    let base = suite.env.clone();
+    let sources = &suite.tables.sources;
+    let mut errors = Vec::new();
+    for plan in suite.plans.iter_mut() {
+        if let Plan::Runnable { meta, env, .. } = plan {
+            let file_id = meta.span().file();
+            let path = sources
+                .get(file_id)
+                .map(|sf| sf.path.clone())
+                .unwrap_or_else(|| file_id.path().clone());
+            match resolve_dotenv_stack(base.clone(), project_root, &path) {
+                Ok(stack) => {
+                    for w in &stack.warnings {
+                        eprintln!(
+                            "warning: {}: reserved key {} in .env is ignored",
+                            w.path.display(),
+                            w.key
+                        );
+                    }
+                    *env = stack.env;
+                }
+                Err(e) => errors.push(e),
+            }
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
 }
 
 #[cfg(test)]

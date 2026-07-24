@@ -87,6 +87,11 @@ pub enum Plan {
         meta: TestMeta,
         test: IrTest,
         warnings: Vec<WarningId>,
+        /// This test's resolved `Base -> DotEnv...` env stack. Set to the base
+        /// env during lowering (env-independent) and replaced by the resolver's
+        /// `attach_dotenv` pass with the `.env`-folded stack. The runtime layers
+        /// `ReluxInternal` + `Test` over this.
+        env: Arc<LayeredEnv>,
     },
     Skipped {
         meta: TestMeta,
@@ -217,6 +222,7 @@ pub(crate) fn build_plan(
             meta,
             test: ir_test,
             warnings: vec![],
+            env: ctx.env().clone(),
         },
         Err(LoweringBail::Skip(skip)) => {
             let cause_id = skip.cause_id();
