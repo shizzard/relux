@@ -228,6 +228,24 @@ impl LayeredEnv {
         }
         entries.into_iter()
     }
+
+    /// Iterate all entries across all layers, tagging each with the source of
+    /// the layer that owns the winning value. Closest layer wins on duplicates,
+    /// so the tag is the winning value's provenance. Walk order matches `iter()`.
+    pub fn iter_with_source(&self) -> impl Iterator<Item = (&str, &str, &LayeredEnvSource)> {
+        let mut seen = HashSet::new();
+        let mut entries = Vec::new();
+        let mut current = Some(self);
+        while let Some(layer) = current {
+            for (k, v) in layer.own.iter() {
+                if seen.insert(k) {
+                    entries.push((k, v, &layer.source));
+                }
+            }
+            current = layer.parent.as_deref();
+        }
+        entries.into_iter()
+    }
 }
 
 impl From<Env> for LayeredEnv {
@@ -598,6 +616,36 @@ mod tests {
         let entries: HashMap<&str, &str> = top.iter().collect();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries["X"], "top");
+    }
+
+    #[test]
+    fn iter_with_source_tags_winning_layer() {
+        let mut base = Env::new();
+        base.insert("HOME".into(), "/h".into());
+        base.insert("SHARED".into(), "base".into());
+        let root = Arc::new(LayeredEnv::root(base)); // source Base
+
+        let mut ov = Env::new();
+        ov.insert("PORT".into(), "5432".into());
+        ov.insert("SHARED".into(), "dot".into());
+        let child =
+            LayeredEnv::child_with_source(root, ov, LayeredEnvSource::DotEnv("/p/.env".into()));
+
+        let got: HashMap<&str, (&str, LayeredEnvSource)> = child
+            .iter_with_source()
+            .map(|(k, v, s)| (k, (v, s.clone())))
+            .collect();
+
+        assert_eq!(got["HOME"], ("/h", LayeredEnvSource::Base));
+        assert_eq!(
+            got["PORT"],
+            ("5432", LayeredEnvSource::DotEnv("/p/.env".into()))
+        );
+        // Closest layer wins: SHARED resolves to the DotEnv layer's value + source.
+        assert_eq!(
+            got["SHARED"],
+            ("dot", LayeredEnvSource::DotEnv("/p/.env".into()))
+        );
     }
 
     // --- LayeredEnvSource + stack hash -----------------------

@@ -75,7 +75,7 @@ impl std::fmt::Display for SourceLocation {
 /// `events.json` schema version. Bump on any backwards-incompatible
 /// change to the on-disk shape. External consumers should verify this
 /// matches the version they expect.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Top-level structured log for a single test run. Produced by
 /// `StructuredLogBuilder::build`.
@@ -135,13 +135,61 @@ pub enum TestOutcome {
     Skip(SkipRecord),
 }
 
+/// Serializable mirror of `relux_core::pure::LayeredEnvSource` for the
+/// structured log. The core type carries a `PathBuf` and derives neither
+/// `serde` nor `ts-rs`, so the schema keeps its own tagged mirror; a
+/// `DotEnv` path is lossily stringified.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum EnvSourceRecord {
+    Base,
+    DotEnv { path: String },
+    ReluxInternal,
+    EffectOverlay { mnemonic: String },
+    Test,
+}
+
+impl From<&relux_core::pure::LayeredEnvSource> for EnvSourceRecord {
+    fn from(s: &relux_core::pure::LayeredEnvSource) -> Self {
+        use relux_core::pure::LayeredEnvSource as S;
+        match s {
+            S::Base => Self::Base,
+            S::DotEnv(p) => Self::DotEnv {
+                path: p.to_string_lossy().into_owned(),
+            },
+            S::ReluxInternal => Self::ReluxInternal,
+            S::EffectOverlay(m) => Self::EffectOverlay {
+                mnemonic: m.clone(),
+            },
+            S::Test => Self::Test,
+        }
+    }
+}
+
+/// One resolved environment entry in the bootstrap dump, tagged with the
+/// provenance of the layer that supplied the winning value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../viewer/src/types/")
+)]
+pub struct EnvValue {
+    pub key: String,
+    pub value: String,
+    pub source: EnvSourceRecord,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
 #[cfg_attr(
     feature = "ts-export",
     ts(export, export_to = "../../../viewer/src/types/")
 )]
 pub struct EnvInfo {
-    pub bootstrap: Vec<(String, String)>,
+    pub bootstrap: Vec<EnvValue>,
 }
 
 /// Serde helper that encodes `Duration` as fractional milliseconds (`f64`).
@@ -181,5 +229,81 @@ pub(crate) mod ts_duration_ms_opt {
     pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Duration>, D::Error> {
         let opt = Option::<f64>::deserialize(d)?;
         Ok(opt.map(|ms| Duration::from_secs_f64(ms / 1000.0)))
+    }
+}
+
+#[cfg(test)]
+mod env_provenance_tests {
+    use super::*;
+
+    #[test]
+    fn env_source_record_serialises_dot_env() {
+        let r = EnvSourceRecord::DotEnv {
+            path: "/p/.env".into(),
+        };
+        let v = serde_json::to_value(&r).unwrap();
+        assert_eq!(v, serde_json::json!({"kind": "dot-env", "path": "/p/.env"}));
+    }
+
+    #[test]
+    fn env_source_record_variants_serialise() {
+        assert_eq!(
+            serde_json::to_value(EnvSourceRecord::Base).unwrap(),
+            serde_json::json!({"kind": "base"})
+        );
+        assert_eq!(
+            serde_json::to_value(EnvSourceRecord::ReluxInternal).unwrap(),
+            serde_json::json!({"kind": "relux-internal"})
+        );
+        assert_eq!(
+            serde_json::to_value(EnvSourceRecord::Test).unwrap(),
+            serde_json::json!({"kind": "test"})
+        );
+        assert_eq!(
+            serde_json::to_value(EnvSourceRecord::EffectOverlay {
+                mnemonic: "brave-yak-0001".into()
+            })
+            .unwrap(),
+            serde_json::json!({"kind": "effect-overlay", "mnemonic": "brave-yak-0001"})
+        );
+    }
+
+    #[test]
+    fn env_source_record_from_core() {
+        use relux_core::pure::LayeredEnvSource;
+        let r: EnvSourceRecord = (&LayeredEnvSource::ReluxInternal).into();
+        assert_eq!(r, EnvSourceRecord::ReluxInternal);
+        let r: EnvSourceRecord = (&LayeredEnvSource::DotEnv("/a/.env".into())).into();
+        assert_eq!(
+            r,
+            EnvSourceRecord::DotEnv {
+                path: "/a/.env".into()
+            }
+        );
+        let r: EnvSourceRecord = (&LayeredEnvSource::EffectOverlay("m".into())).into();
+        assert_eq!(
+            r,
+            EnvSourceRecord::EffectOverlay {
+                mnemonic: "m".into()
+            }
+        );
+    }
+
+    #[test]
+    fn env_value_serialises() {
+        let ev = EnvValue {
+            key: "PORT".into(),
+            value: "5432".into(),
+            source: EnvSourceRecord::Base,
+        };
+        let v = serde_json::to_value(&ev).unwrap();
+        assert_eq!(v["key"], "PORT");
+        assert_eq!(v["value"], "5432");
+        assert_eq!(v["source"]["kind"], "base");
+    }
+
+    #[test]
+    fn schema_version_is_two() {
+        assert_eq!(SCHEMA_VERSION, 2);
     }
 }

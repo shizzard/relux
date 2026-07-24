@@ -33,6 +33,7 @@ use crate::vm::context::ShellState;
 use relux_core::diagnostics::IrSpan;
 use relux_core::pure::Env;
 use relux_core::pure::LayeredEnv;
+use relux_core::pure::LayeredEnvSource;
 use relux_core::pure::VarScope;
 use relux_ir::IrCleanupBlock;
 use relux_ir::IrEffectItem;
@@ -387,7 +388,11 @@ impl EffectManager {
         let setup_span_id = setup_span.id();
 
         // 1. Create layered env from pre-evaluated overlay (inherits caller's env)
-        let effect_env = Arc::new(LayeredEnv::child(caller_env.clone(), evaluated_overlay));
+        let effect_env = Arc::new(LayeredEnv::child_with_source(
+            caller_env.clone(),
+            evaluated_overlay,
+            LayeredEnvSource::EffectOverlay(marker.clone()),
+        ));
 
         // 2. Create effect scope
         let scope = Scope::Effect {

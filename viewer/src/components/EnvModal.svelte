@@ -55,11 +55,11 @@
   const kbdLabel = isMac ? '\u2318S' : 'Ctrl+S';
 
   function buildRows(): EnvRow[] {
-    return state.data.env.bootstrap.map(([k, v]) => ({
-      key: k,
-      value: v,
-      size: byteLength(v),
-      group: groupOf(k, byteLength(v)),
+    return state.data.env.bootstrap.map(({ key, value }) => ({
+      key,
+      value,
+      size: byteLength(value),
+      group: groupOf(key, byteLength(value)),
     }));
   }
 

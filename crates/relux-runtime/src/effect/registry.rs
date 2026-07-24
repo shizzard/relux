@@ -592,6 +592,25 @@ mod tests {
     }
 
     #[test]
+    fn effect_overlay_source_uses_instance_marker() {
+        use std::sync::Arc;
+
+        use relux_core::pure::Env;
+        use relux_core::pure::LayeredEnv;
+        use relux_core::pure::LayeredEnvSource;
+        // The runtime tags an effect's overlay layer with EffectOverlay(marker).
+        // This pins that the marker string is what lands in the source tag.
+        let marker = "brave-yak-0001".to_string();
+        let parent = Arc::new(LayeredEnv::root(Env::new()));
+        let env = LayeredEnv::child_with_source(
+            parent,
+            Env::new(),
+            LayeredEnvSource::EffectOverlay(marker.clone()),
+        );
+        assert_eq!(env.source(), &LayeredEnvSource::EffectOverlay(marker));
+    }
+
+    #[test]
     fn marker_matches_mnemonic_format() {
         let k = test_key("FX");
         let m = k.marker();

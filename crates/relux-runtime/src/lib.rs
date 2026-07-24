@@ -18,6 +18,7 @@ use crate::effect::Warning;
 use crate::effect::registry::EffectRegistry;
 use crate::effect::registry::ShellInstanceKey;
 use crate::observe::structured::EnvInfo;
+use crate::observe::structured::EnvValue;
 use crate::observe::structured::MarkerEvalDecision;
 use crate::observe::structured::MarkerEvalDetail;
 use crate::observe::structured::MarkerEvalKind;
@@ -837,11 +838,15 @@ async fn run_test(
     // Snapshot the bootstrap env (Base -> DotEnv... -> ReluxInternal, before
     // the `Test` overlay) for the artifact. Sorted for deterministic JSON
     // output across runs.
-    let mut bootstrap: Vec<(String, String)> = bootstrap_env
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
+    let mut bootstrap: Vec<EnvValue> = bootstrap_env
+        .iter_with_source()
+        .map(|(k, v, src)| EnvValue {
+            key: k.to_string(),
+            value: v.to_string(),
+            source: src.into(),
+        })
         .collect();
-    bootstrap.sort_by(|a, b| a.0.cmp(&b.0));
+    bootstrap.sort_by(|a, b| a.key.cmp(&b.key));
 
     // Build the structured log. The verdict is a tagged enum:
     // Pass / Fail(FailureRecord) / Cancelled(CancellationRecord) / Skip.
@@ -1330,11 +1335,15 @@ async fn log_skipped_test(
     });
 
     // Bootstrap env snapshot (sorted for deterministic JSON).
-    let mut bootstrap: Vec<(String, String)> = bootstrap_env
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
+    let mut bootstrap: Vec<EnvValue> = bootstrap_env
+        .iter_with_source()
+        .map(|(k, v, src)| EnvValue {
+            key: k.to_string(),
+            value: v.to_string(),
+            source: src.into(),
+        })
         .collect();
-    bootstrap.sort_by(|a, b| a.0.cmp(&b.0));
+    bootstrap.sort_by(|a, b| a.key.cmp(&b.key));
 
     let structured = log.build(
         TestInfo {
