@@ -9,6 +9,7 @@ use relux_parser::parse;
 use relux_resolver::resolve;
 
 use super::build_source_loader;
+use super::exit_on_dotenv_errors;
 use super::read_file;
 
 pub fn cmd_dump_tokens(matches: &clap::ArgMatches) {
@@ -64,7 +65,8 @@ pub fn cmd_dump_ir(matches: &clap::ArgMatches) {
 
     let loader = build_source_loader(&project_root);
     let env = relux_resolver::env::capture_base();
-    let suite = resolve(&*loader, test_paths, env, 1.0, &project_root);
+    let (suite, dotenv_errors) = resolve(&*loader, test_paths, env, 1.0, &project_root);
+    exit_on_dotenv_errors(&dotenv_errors);
 
     let mut first = true;
     for plan in &suite.plans {

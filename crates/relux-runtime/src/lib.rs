@@ -389,12 +389,6 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                     generation,
                 });
 
-                // The stack the marker decision table was keyed against at
-                // resolve time. Still single-env (4b): this is the suite's
-                // base resolution env, not the per-test `.env`-folded stack
-                // in `dotenv_stack` (4c switches to the latter).
-                let stack = relux_ir::StackHash(ctx.suite.env.stack_hash());
-
                 let mut result = run_test_cancellable(
                     meta,
                     test,
@@ -410,7 +404,6 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                     slot,
                     &ctx.tui_tx,
                     generation,
-                    stack,
                 )
                 .await;
 
@@ -443,7 +436,6 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                             slot,
                             &ctx.tui_tx,
                             generation,
-                            stack,
                         )
                         .await;
                         if !result.outcome.is_retryable() {
@@ -477,6 +469,7 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                 meta,
                 causes,
                 warnings,
+                env: dotenv_stack,
             } => {
                 let tags = format_cause_tags(causes, warnings, &ctx.suite.causes);
                 let display_id = test_display_id(&test_path, meta.name());
@@ -487,14 +480,16 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                 let _ = ctx
                     .tui_tx
                     .send(observe::tui::TuiEvent::Skipped { result_line });
-                // Skipped tests never resolved a `.env` stack (only runnable
-                // plans do); the bootstrap snapshot is Base + ReluxInternal.
+                // The plan's own `.env` stack was already resolved before the
+                // decision pass marked it Skipped - use it for the bootstrap
+                // snapshot (Base -> DotEnv... -> ReluxInternal) instead of the
+                // suite's base env.
                 let bootstrap_env = Arc::new(LayeredEnv::child_with_source(
-                    ctx.suite.env.clone(),
+                    dotenv_stack.clone(),
                     ctx.relux_internal.clone(),
                     LayeredEnvSource::ReluxInternal,
                 ));
-                let stack = relux_ir::StackHash(ctx.suite.env.stack_hash());
+                let stack = relux_ir::StackHash(dotenv_stack.stack_hash());
                 log_skipped_test(
                     meta,
                     causes,
@@ -628,7 +623,6 @@ async fn run_test_cancellable(
     slot: usize,
     tui_tx: &observe::tui::TuiTx,
     generation: u64,
-    stack: relux_ir::StackHash,
 ) -> TestResult {
     // Create a child token for test-level timeout
     let test_cancel = cancel.child();
@@ -666,7 +660,6 @@ async fn run_test_cancellable(
         slot,
         tui_tx,
         generation,
-        stack,
     )
     .await;
 
@@ -715,7 +708,6 @@ async fn run_test(
     slot: usize,
     tui_tx: &observe::tui::TuiTx,
     generation: u64,
-    stack: relux_ir::StackHash,
 ) -> TestResult {
     let test_start = Instant::now();
     let source_table = &tables.sources;
@@ -748,7 +740,7 @@ async fn run_test(
         "__RELUX_TEST_ARTIFACTS".into(),
         artifacts_dir.display().to_string(),
     );
-    let test_env = assemble_test_env(dotenv_stack, relux_internal.clone(), test_vars);
+    let test_env = assemble_test_env(dotenv_stack.clone(), relux_internal.clone(), test_vars);
     let mut warnings = Vec::new();
 
     let shell_config = ShellConfig {
@@ -773,7 +765,18 @@ async fn run_test(
     // All recordings become flat `marker-eval` children of the markers
     // root - no nesting under fn-call or effect-setup, since markers
     // run before any test execution.
-    let agg = crate::marker_walk::collect_test_decision(test, meta, tables, stack);
+    //
+    // This re-walks against the test's own `dotenv_stack`, the exact env the
+    // resolver's decision pass already decided every reachable def against,
+    // so every lookup is a cache hit against `tables.marker_decisions` - the
+    // `Err` arm (a decision-time failure) is unreachable in practice for a
+    // `Runnable` plan, but is handled gracefully rather than panicking.
+    let agg = crate::marker_walk::collect_test_decision(test, meta, tables, &dotenv_stack)
+        .unwrap_or_else(|_| relux_ir::reachability::AggregatedDecision {
+            skip: None,
+            flaky: false,
+            recordings: Vec::new(),
+        });
     let _ = replay_markers(&log, &agg.recordings);
 
     // Open the root span for this test. Every emission inside the test body

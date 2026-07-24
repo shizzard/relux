@@ -61,17 +61,22 @@ pub struct StackHash(pub u64);
 pub type MarkerDecisionTable =
     SharedTable<(DefinitionRef, StackHash), crate::marker::MarkerDecision>;
 
+/// A definition's markers, lowered to env-independent IR (cached once per
+/// definition regardless of how many test-stacks later decide against it).
+pub type LoweredMarkersTable = SharedTable<DefinitionRef, Vec<crate::marker::IrMarker>>;
+
 // --- Tables ----------------------------------------------
 
 /// Shared (global) resolution tables - sources, functions, pure functions,
-/// effects, plus marker decisions keyed by the definition and env stack that
-/// produced them.
+/// effects, plus lowered markers (env-independent) and marker decisions
+/// keyed by the definition and env stack that produced them.
 #[derive(Debug, Clone)]
 pub struct Tables {
     pub sources: SourceTable,
     pub fns: FnTable,
     pub pure_fns: PureFnTable,
     pub effects: EffectTable,
+    pub lowered_markers: LoweredMarkersTable,
     pub marker_decisions: MarkerDecisionTable,
 }
 
@@ -82,6 +87,7 @@ impl Tables {
             fns: SharedTable::new(),
             pure_fns: SharedTable::new(),
             effects: SharedTable::new(),
+            lowered_markers: SharedTable::new(),
             marker_decisions: SharedTable::new(),
         }
     }

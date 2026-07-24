@@ -657,6 +657,30 @@ impl SkipReport {
             DefinitionRef::Test { name, module } => CauseId::generate(&module.0, name, 0, "skip"),
         }
     }
+
+    /// Like `cause_id`, but also folds in the env stack hash the skip was
+    /// decided against - so the same definition skipped under two different
+    /// `.env` stacks yields distinct, reproducible cause ids. `stack` is a
+    /// `LayeredEnv::stack_hash()` value (kept as a raw `u64` here: the typed
+    /// `StackHash` newtype lives in `relux-ir`, which depends on this crate,
+    /// not the other way around).
+    pub fn cause_id_at(&self, stack: u64) -> CauseId {
+        match &self.definition {
+            DefinitionRef::Fn(fn_id) => CauseId::generate_with_stack(
+                &fn_id.module.0,
+                &fn_id.name,
+                fn_id.arity,
+                "skip",
+                stack,
+            ),
+            DefinitionRef::Effect(eff_id) => {
+                CauseId::generate_with_stack(&eff_id.module.0, &eff_id.name.0, 0, "skip", stack)
+            }
+            DefinitionRef::Test { name, module } => {
+                CauseId::generate_with_stack(&module.0, name, 0, "skip", stack)
+            }
+        }
+    }
 }
 
 impl std::error::Error for SkipReport {}
@@ -794,6 +818,27 @@ impl CauseId {
         name.hash(&mut hasher);
         arity.hash(&mut hasher);
         error_kind.hash(&mut hasher);
+        Self {
+            id: format_mnemonic(hasher.finish()),
+        }
+    }
+
+    /// Like `generate`, but also folds in an env stack hash - so the same
+    /// definition skipped under two different `.env` stacks yields distinct,
+    /// reproducible mnemonics rather than colliding on one cause id.
+    pub fn generate_with_stack(
+        module: &str,
+        name: &str,
+        arity: usize,
+        error_kind: &str,
+        stack: u64,
+    ) -> Self {
+        let mut hasher = DefaultHasher::new();
+        module.hash(&mut hasher);
+        name.hash(&mut hasher);
+        arity.hash(&mut hasher);
+        error_kind.hash(&mut hasher);
+        stack.hash(&mut hasher);
         Self {
             id: format_mnemonic(hasher.finish()),
         }

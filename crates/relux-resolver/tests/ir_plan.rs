@@ -80,6 +80,7 @@ fn plan_skipped_variant() {
         meta,
         causes: vec![cause],
         warnings: vec![],
+        env: Arc::new(LayeredEnv::root(Env::new())),
     };
     assert!(matches!(plan, Plan::Skipped { .. }));
 }
@@ -93,6 +94,7 @@ fn plan_skipped_multiple_causes() {
         meta,
         causes: vec![c1, c2],
         warnings: vec![],
+        env: Arc::new(LayeredEnv::root(Env::new())),
     };
     if let Plan::Skipped { causes, .. } = &plan {
         assert_eq!(causes.len(), 2);
@@ -607,7 +609,15 @@ test "t" {
 // --- Plan building: precedence ---------------------------
 
 #[test]
-fn plan_own_skip_skips_body_lowering() {
+fn plan_own_skip_no_longer_shields_body_lowering_errors() {
+    // Deciding a test's own markers happens strictly per-test at resolve
+    // time, after both the markers AND the body have been lowered (the
+    // reachability walk in `collect_test_decision` needs the lowered `IrTest`
+    // to find reachable fn/effect defs). `build_plan` therefore does not
+    // fast-exit to `Skipped` before lowering the body on an unconditional
+    // `# skip` - a genuine body-lowering error (here an undefined function
+    // call) always surfaces as `Plan::Invalid`, even under an unconditional
+    // skip.
     let suite = resolve_source_no_env(&[(
         "tests/a",
         r#"# skip
@@ -618,7 +628,7 @@ test "t" {
 }
 "#,
     )]);
-    assert!(is_skipped(&suite.plans[0]));
+    assert!(is_invalid(&suite.plans[0]));
 }
 
 // --- Suite assembly --------------------------------------

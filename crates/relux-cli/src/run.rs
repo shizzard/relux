@@ -10,6 +10,7 @@ use relux_runtime::RunContext;
 use relux_runtime::RunStrategy;
 
 use super::build_source_loader;
+use super::exit_on_dotenv_errors;
 use super::resolve_project;
 use super::resolve_test_paths;
 
@@ -71,19 +72,13 @@ pub async fn cmd_run(matches: &clap::ArgMatches) {
     let loader = build_source_loader(&project_root);
     let env = relux_resolver::env::capture_base();
 
-    let mut suite = resolve(&*loader, test_paths, env, multiplier, &project_root);
+    let (mut suite, dotenv_errors) = resolve(&*loader, test_paths, env, multiplier, &project_root);
+    exit_on_dotenv_errors(&dotenv_errors);
 
     if let Some(ref names) = test_names {
         suite
             .plans
             .retain(|plan| names.iter().any(|n| n == plan.meta().name()));
-    }
-
-    if let Err(errs) = relux_resolver::env::attach_dotenv(&mut suite, &project_root) {
-        for e in errs {
-            eprintln!("error: {e}");
-        }
-        process::exit(1);
     }
 
     let strategy = match matches.get_one::<String>("strategy").map(|s| s.as_str()) {

@@ -97,6 +97,11 @@ pub enum Plan {
         meta: TestMeta,
         causes: Vec<CauseId>,
         warnings: Vec<WarningId>,
+        /// This test's resolved `.env` stack at the moment it was decided
+        /// Skipped (same meaning as `Runnable::env`). The runtime looks up
+        /// the originating definition's marker recordings by this stack's
+        /// hash for replay.
+        env: Arc<LayeredEnv>,
     },
     Invalid {
         meta: TestMeta,
@@ -178,16 +183,12 @@ pub(crate) fn build_plan(
         tables,
     });
 
-    // Lower and decide the test's own markers, storing the decision in the
-    // decision table keyed by (definition, stack) like any other definition.
-    // Unlike a shared fn/effect (Task 3), a test's own definition is never
-    // reused elsewhere, so short-circuiting on its own skip here doesn't
-    // reintroduce the shared-cache poisoning problem the decision table
-    // solves - and it preserves the old guarantee that a skipped test's body
-    // is never lowered (so an unrelated error in a stubbed-out skipped test's
-    // body can't turn it into `Invalid`). Propagated skips from a reachable
-    // fn/effect still can't be known until the body is lowered, so those are
-    // folded in afterwards by the decision pass in `build_all_plans`.
+    // Lower (but do not decide) the test's own markers, caching the
+    // env-independent IR like any other definition. Deciding - including
+    // whether the test's own markers (or any reachable fn/effect's) skip it -
+    // happens per-test at resolve time against the test's own `.env` stack
+    // (see `relux_ir::reachability::collect_test_decision`), after this plan
+    // is built. Until then every plan without a lowering error is `Runnable`.
     let lowered = match super::marker::lower_markers(&def.markers, file_id, ctx) {
         Ok(l) => l,
         Err(bail) => {
@@ -201,36 +202,7 @@ pub(crate) fn build_plan(
             };
         }
     };
-    let fns = ctx.pure_functions().clone();
-    let stack = crate::tables::StackHash(ctx.env().stack_hash());
-    let decision =
-        match super::marker::decide_markers(&lowered, definition.clone(), ctx.env(), &fns) {
-            Ok(decision) => decision,
-            Err(bail) => {
-                let cause_id = bail.cause_id();
-                ctx.register_cause(cause_id.clone(), Cause::from_bail(&bail));
-                ctx.pop_scope();
-                return Plan::Invalid {
-                    meta,
-                    causes: vec![cause_id],
-                    warnings: vec![],
-                };
-            }
-        };
-    let own_skip = decision.skip.clone();
-    ctx.tables()
-        .marker_decisions
-        .insert((definition.clone(), stack), decision);
-    if let Some(skip) = own_skip {
-        let cause_id = skip.cause_id();
-        ctx.register_cause(cause_id.clone(), Cause::skip(skip));
-        ctx.pop_scope();
-        return Plan::Skipped {
-            meta,
-            causes: vec![cause_id],
-            warnings: vec![],
-        };
-    }
+    ctx.tables().lowered_markers.insert(definition, lowered);
 
     // Set up shallow env for expect satisfiability checking
     let shallow = std::sync::Arc::new(crate::shallow_env::ShallowLayeredEnv::root(ctx.env()));
@@ -257,8 +229,9 @@ pub(crate) fn build_plan(
             }
         }
         Err(bail @ LoweringBail::Skip(_)) => {
-            // Should be unreachable post-4b: resolve_fn/resolve_pure_fn/
-            // resolve_effect no longer bail Skip, so `IrTest::lower` cannot
+            // Unreachable in practice: resolve_fn/resolve_pure_fn/
+            // resolve_effect never bail Skip (skips are decided per-test at
+            // resolve time, not during lowering), so `IrTest::lower` cannot
             // propagate one. Treat a future regression as an internal error
             // (one failed test) rather than crashing the whole run.
             let cause_id = bail.cause_id();
@@ -298,49 +271,7 @@ pub fn build_all_plans(ctx: &mut LoweringContext) -> Vec<Plan> {
         }
     }
 
-    decide_plans(ctx, plans)
-}
-
-/// Turn each `Runnable` plan's aggregated reachable-def decision (the test's
-/// own markers plus every fn/effect transitively reachable from its body)
-/// into a final Skipped/flaky/Runnable verdict. Still single-env (4b): `stack`
-/// is the one env used throughout resolution, so this reproduces exactly what
-/// the old short-circuit produced. 4c switches to a per-test stack.
-fn decide_plans(ctx: &LoweringContext, plans: Vec<Plan>) -> Vec<Plan> {
-    let stack = crate::tables::StackHash(ctx.env().stack_hash());
     plans
-        .into_iter()
-        .map(|plan| match plan {
-            Plan::Runnable {
-                meta,
-                test,
-                warnings,
-                env,
-            } => {
-                let agg =
-                    crate::reachability::collect_test_decision(&test, &meta, ctx.tables(), stack);
-                if let Some(skip) = agg.skip {
-                    let cause_id = skip.cause_id();
-                    ctx.register_cause(cause_id.clone(), Cause::skip(skip));
-                    Plan::Skipped {
-                        meta,
-                        causes: vec![cause_id],
-                        warnings,
-                    }
-                } else {
-                    let mut meta = meta;
-                    meta.set_flaky(agg.flaky);
-                    Plan::Runnable {
-                        meta,
-                        test,
-                        warnings,
-                        env,
-                    }
-                }
-            }
-            other => other,
-        })
-        .collect()
 }
 
 // --- Tests -----------------------------------------------

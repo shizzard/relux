@@ -1,0 +1,7 @@
+# skip unless FEATURE
+test "gated" {
+    shell s {
+        > echo sentinel
+        <? ^sentinel$
+    }
+}
