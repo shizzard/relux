@@ -4,6 +4,8 @@ Expect-style integration testing for interactive shell programs.
 
 [![CI](https://github.com/shizzard/relux/actions/workflows/ci.yml/badge.svg)](https://github.com/shizzard/relux/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
+[![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/spawnlink-eu.relux?label=VS%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=spawnlink-eu.relux)
+[![Open VSX](https://img.shields.io/open-vsx/v/spawnlink-eu/relux?label=Open%20VSX)](https://open-vsx.org/extension/spawnlink-eu/relux)
 
 ```relux
 test "service healthcheck" {
@@ -61,3 +63,11 @@ relux run                        # run all tests
 - [DSL Tutorial](https://shizzard.github.io/relux/latest/dsl-tutorial/) - learn the Relux language from scratch
 - [Suite Tutorial](https://shizzard.github.io/relux/latest/suite-tutorial/) - build a real-world test suite with shared infrastructure
 - [Reference](https://shizzard.github.io/relux/latest/reference/) - semantic model, configuration, syntax, built-in functions, CI integration
+
+## Editor support
+
+- **VS Code / Cursor**: [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=spawnlink-eu.relux)
+- **VSCodium / code-server**: [Open VSX](https://open-vsx.org/extension/spawnlink-eu/relux)
+- **IntelliJ family**: [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/relux)
+
+See the [editor support reference](https://shizzard.github.io/relux/latest/reference/07-editor-support.html) for details.

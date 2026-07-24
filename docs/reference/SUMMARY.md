@@ -7,3 +7,4 @@
 - [CI Integration](04-ci-integration.md)
 - [Test Log Viewer](05-test-log-viewer.md)
 - [`events.json` Schema](06-events-json-schema.md)
+- [Editor Support](07-editor-support.md)

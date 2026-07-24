@@ -1,42 +1,35 @@
-# Relux for VS Code / Cursor
+# Relux for VS Code
 
-Syntax highlighting for the [Relux](https://github.com/spawnlink/relux) DSL (`.relux` files).
+Syntax highlighting and language support for the [Relux](https://github.com/shizzard/relux)
+DSL - Expect-style integration tests for interactive shell programs.
 
 ## Features
 
 - Keyword highlighting (`test`, `effect`, `fn`, `shell`, `let`, `need`, `import`, `cleanup`)
 - Shell operators (`>`, `=>`, `<?`, `<=`, `!?`, `!=`)
-- String and doc-string highlighting with interpolation support (`${var}`, `$1`)
+- String and doc-string highlighting with interpolation (`${var}`, `$1`)
 - Regex pattern highlighting for match/fail operators
 - Timeout duration highlighting (`~5s`, `~2h 30m`)
 - Comment highlighting (`// ...`)
-- Bracket matching, auto-closing, and folding
+- Bracket matching, auto-closing, folding
 
-## Local installation
+## Install
 
-Symlink this directory into your editor's extensions folder:
+Search **Relux** in the Extensions sidebar, or from the command line:
 
-```bash
-# Cursor
-ln -s "$(pwd)" ~/.cursor/extensions/relux
-
-# VS Code
-ln -s "$(pwd)" ~/.vscode/extensions/relux
+```sh
+code --install-extension spawnlink-eu.relux
 ```
 
-Then reload the editor window (Cmd+Shift+P -> "Developer: Reload Window").
+Also available on [Open VSX](https://open-vsx.org/extension/spawnlink-eu/relux) for VSCodium, Cursor, code-server, and other VS Code derivatives.
 
-## Versioning
+## Learn more
 
-Bump `version` in `package.json` when the plugin changes. The release workflow
-packages the extension as a `.vsix` and attaches it to the GitHub Release.
-Unchanged versions are fine - it just means no new `.vsix` worth installing.
+- [Project home](https://github.com/shizzard/relux)
+- [DSL tutorial](https://shizzard.github.io/relux/latest/dsl-tutorial/)
+- [Suite tutorial](https://shizzard.github.io/relux/latest/suite-tutorial/)
+- [Reference](https://shizzard.github.io/relux/latest/reference/)
 
-## Packaging
+## License
 
-To build a `.vsix` for distribution:
-
-```bash
-npm install -g @vscode/vsce
-vsce package
-```
+MIT - see [LICENSE](LICENSE).

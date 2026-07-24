@@ -56,6 +56,12 @@ jobs:
       - name: Verify vendored bundle is in sync
         run: git diff --exit-code -- vendor/relux-viewer.js.gz
 
+      - name: Check VS Code extension packages cleanly
+        run: |
+          mkdir -p editors/vscode/build
+          docker run --rm -v "$PWD/editors/vscode":/src -w /src node:lts-slim \
+              sh -c 'npx --yes @vscode/vsce package --out /src/build/relux-check.vsix 2>&1 | tee /tmp/vsce.log && ! grep -E "WARNING|ERROR" /tmp/vsce.log'
+
   test:
     name: Unit Tests
     runs-on: ubuntu-latest

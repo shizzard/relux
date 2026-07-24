@@ -1,20 +1,35 @@
 {
   "name": "relux",
   "displayName": "Relux",
-  "description": "Syntax highlighting for the Relux DSL",
+  "description": "Syntax highlighting and language support for the Relux DSL - Expect-style integration tests for interactive shell programs.",
   "version": "0.1.0",
-  "publisher": "spawnlink",
+  "publisher": "spawnlink-eu",
   "license": "MIT",
+  "icon": "icon.png",
+  "homepage": "https://shizzard.github.io/relux/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/spawnlink/relux"
+    "url": "https://github.com/shizzard/relux"
   },
-  "engines": {
-    "vscode": "^1.70.0"
+  "bugs": {
+    "url": "https://github.com/shizzard/relux/issues"
   },
-  "categories": [
-    "Programming Languages"
+  "keywords": [
+    "relux",
+    "expect",
+    "pty",
+    "integration-testing",
+    "dsl",
+    "shell",
+    "testing"
   ],
+  "categories": [
+    "Programming Languages",
+    "Testing"
+  ],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
   "contributes": {
     "languages": [
       {

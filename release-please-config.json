@@ -47,6 +47,15 @@
           "path": "Cargo.toml",
           "jsonpath": "$.workspace.dependencies.relux-runtime.version"
         },
+        {
+          "type": "json",
+          "path": "editors/vscode/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "generic",
+          "path": "editors/intellij/gradle.properties"
+        },
         "Cargo.lock"
       ]
     }

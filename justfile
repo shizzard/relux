@@ -47,6 +47,12 @@ build-vscode:
     docker run --rm -v {{justfile_directory()}}/editors/vscode:/src -w /src node:lts-slim \
         sh -c 'npx --yes @vscode/vsce package --out /src/build/relux.vsix'
 
+# Verify the VS Code extension packages cleanly (no warnings).
+check-vscode:
+    mkdir -p editors/vscode/build
+    docker run --rm -v {{justfile_directory()}}/editors/vscode:/src -w /src node:lts-slim \
+        sh -c 'npx --yes @vscode/vsce package --out /src/build/relux-check.vsix 2>&1 | tee /tmp/vsce.log && ! grep -E "WARNING|ERROR" /tmp/vsce.log'
+
 # Build tutorial books
 build-books: 
     ./.scripts/build-books-sync-book-targets.sh
@@ -60,8 +66,8 @@ build-release: build-viewer
 
 ## Check targets
 
-# Run all checks: cargo check + clippy + fmt + viewer + ASCII
-check: check-ascii check-clippy check-fmt check-viewer
+# Run all checks: cargo check + clippy + fmt + viewer + ASCII + vscode
+check: check-ascii check-clippy check-fmt check-viewer check-vscode
 
 # Fail if any tracked source file contains non-ASCII bytes
 check-ascii:
