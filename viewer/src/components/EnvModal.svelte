@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { ViewerState } from '../lib/state.svelte';
+  import type { EnvValue } from '../types/EnvValue';
+  import { buildEnvSections, findSuiteRoot } from '../lib/env';
   import { copy } from '../lib/clipboard';
   import Modal from './Modal.svelte';
   import NameCell from './NameCell.svelte';
@@ -7,68 +9,18 @@
 
   let { state }: { state: ViewerState } = $props();
 
-  type EnvRow = { key: string; value: string; size: number; group: GroupKey };
-  type GroupKey = 'relux' | 'cargo' | 'nix' | 'shell' | 'large-blobs' | 'other';
-
-  const GROUP_ORDER: GroupKey[] = ['relux', 'cargo', 'nix', 'shell', 'large-blobs', 'other'];
-  const GROUP_LABEL: Record<GroupKey, string> = {
-    relux: 'relux internals',
-    cargo: 'cargo',
-    nix: 'nix / toolchain',
-    shell: 'shell & terminal',
-    'large-blobs': 'large blobs',
-    other: 'other',
-  };
-  // Threshold used purely for grouping in the modal; rendering itself is
-  // uniform across all sizes thanks to ValueCell's CSS-driven truncation.
-  const LARGE_BLOB = 1024;
-
-  function groupOf(key: string, byteLen: number): GroupKey {
-    if (byteLen > LARGE_BLOB) return 'large-blobs';
-    if (key.startsWith('__RELUX')) return 'relux';
-    if (key.startsWith('CARGO')) return 'cargo';
-    if (
-      key.startsWith('NIX') ||
-      key === 'IN_NIX_SHELL' ||
-      key === 'NIX_STORE'
-    )
-      return 'nix';
-    if (
-      key === 'SHELL' ||
-      key === 'TERM' ||
-      key === 'PAGER' ||
-      key === 'EDITOR' ||
-      key === 'PS1' ||
-      key === 'PROMPT_COMMAND'
-    )
-      return 'shell';
-    return 'other';
-  }
-
-  const rows = $derived<EnvRow[]>(buildRows());
-  const filtered = $derived(applyFilter(rows));
-  const grouped = $derived(groupRows(filtered));
-  const total = $derived(rows.length);
+  const filtered = $derived(applyFilter(state.data.env.bootstrap));
+  // Suite root comes from the full dump, not `filtered`, so `.env` labels stay
+  // stable while filtering (the filter can hide `__RELUX_SUITE_ROOT`).
+  const suiteRoot = $derived(findSuiteRoot(state.data.env.bootstrap));
+  const sections = $derived(buildEnvSections(filtered, suiteRoot));
+  const total = $derived(state.data.env.bootstrap.length);
   const filteredCount = $derived(filtered.length);
 
   const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
   const kbdLabel = isMac ? '\u2318S' : 'Ctrl+S';
 
-  function buildRows(): EnvRow[] {
-    return state.data.env.bootstrap.map(({ key, value }) => ({
-      key,
-      value,
-      size: byteLength(value),
-      group: groupOf(key, byteLength(value)),
-    }));
-  }
-
-  function byteLength(s: string): number {
-    // approximate: utf-16 length is close enough for grouping
-    return s.length;
-  }
-
-  function applyFilter(rs: EnvRow[]): EnvRow[] {
+  function applyFilter(rs: EnvValue[]): EnvValue[] {
     const q = state.envFilter.trim();
     if (q.length === 0) return rs;
     const lc = q.toLowerCase();
@@ -86,22 +38,6 @@
     });
   }
 
-  function groupRows(rs: EnvRow[]): Array<{ group: GroupKey; rows: EnvRow[] }> {
-    const buckets = new Map<GroupKey, EnvRow[]>();
-    for (const r of rs) {
-      let bucket = buckets.get(r.group);
-      if (!bucket) {
-        bucket = [];
-        buckets.set(r.group, bucket);
-      }
-      bucket.push(r);
-    }
-    return GROUP_ORDER.filter((g) => buckets.has(g)).map((g) => ({
-      group: g,
-      rows: buckets.get(g)!,
-    }));
-  }
-
 </script>
 
 {#if state.openModal === 'env'}
@@ -112,7 +48,7 @@
     onClose={() => state.closeEnv()}
   >
     {#snippet actions()}
-      <button class="chip" onclick={() => copy(rows.map((r) => `${r.key}=${r.value}`).join('\n'))}>copy all</button>
+      <button class="chip" onclick={() => copy(state.data.env.bootstrap.map((r) => `${r.key}=${r.value}`).join('\n'))}>copy all</button>
     {/snippet}
 
     <div class="modal-body">
@@ -140,13 +76,15 @@
         {#if filtered.length === 0}
           <p class="empty">no matches.</p>
         {/if}
-        {#each grouped as group (group.group)}
-          <div class="group-header">&mdash; {GROUP_LABEL[group.group]} ({group.rows.length})</div>
-          {#each group.rows as row (row.key)}
+        {#each sections as section (section.id)}
+          <div class="group-header" class:path={section.tier === 'dotenv'} title={section.path}>
+            &mdash; {section.label} ({section.rows.length})
+          </div>
+          {#each section.rows as row (section.id + ':' + row.key)}
             <div class="env-row">
               <span class="k"><NameCell name={row.key} /></span>
               <span class="v">
-                <ValueCell value={row.value} {state} expandKey={`env:${row.key}`} />
+                <ValueCell value={row.value} {state} expandKey={`env:${section.id}:${row.key}`} />
               </span>
             </div>
           {/each}
@@ -249,6 +187,11 @@
     padding: var(--gap-sm) var(--gap-xs) 2px;
     text-transform: lowercase;
     letter-spacing: 0.04em;
+  }
+  /* .env headers carry a real file path; keep the grey header style but skip
+     the case-folding so path casing is preserved. */
+  .group-header.path {
+    text-transform: none;
   }
   .env-row {
     width: 100%;

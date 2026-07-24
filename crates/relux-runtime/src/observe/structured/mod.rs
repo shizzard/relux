@@ -150,7 +150,6 @@ pub enum EnvSourceRecord {
     DotEnv { path: String },
     ReluxInternal,
     EffectOverlay { mnemonic: String },
-    Test,
 }
 
 impl From<&relux_core::pure::LayeredEnvSource> for EnvSourceRecord {
@@ -165,7 +164,6 @@ impl From<&relux_core::pure::LayeredEnvSource> for EnvSourceRecord {
             S::EffectOverlay(m) => Self::EffectOverlay {
                 mnemonic: m.clone(),
             },
-            S::Test => Self::Test,
         }
     }
 }
@@ -254,10 +252,6 @@ mod env_provenance_tests {
         assert_eq!(
             serde_json::to_value(EnvSourceRecord::ReluxInternal).unwrap(),
             serde_json::json!({"kind": "relux-internal"})
-        );
-        assert_eq!(
-            serde_json::to_value(EnvSourceRecord::Test).unwrap(),
-            serde_json::json!({"kind": "test"})
         );
         assert_eq!(
             serde_json::to_value(EnvSourceRecord::EffectOverlay {

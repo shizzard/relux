@@ -151,7 +151,13 @@ The query is matched against the rendered (escape-expanded) buffer text using su
 
 Snapshot of the environment seeded when the test started — the host process environment, any `.env` file values layered over it, and Relux's own run internals.
 
-The body lists every variable, grouped by origin (`relux internals`, `cargo`, `nix / toolchain`, `shell & terminal`, `large blobs`, `other`). A filter row at the top accepts a query and a scope toggle: filter by **name**, **value**, or **name · matches** (either side). The counter shows `<filtered> / <total>`.
+The body lists every variable, grouped by its true origin, in precedence order top to bottom:
+
+1. **relux internals** — values Relux injects for the run, including the per-test `__RELUX_TEST_ROOT` / `__RELUX_TEST_ARTIFACTS`. Relux sets the whole reserved `__RELUX*` namespace on this layer, so any copy inherited from the host environment is shadowed and this group shows Relux's own values.
+2. **`.env` files** — one section per source file, headed by the file's path relative to the suite root, written as `.../<relative path>`. Sections are ordered deepest-first, so the higher-precedence file (the one nearer the test) sits nearer the top. Hover a header to see the absolute path.
+3. **host environment** — values inherited from the process that launched `relux`.
+
+A section only appears when it has at least one variable, so a run with no `.env` files shows just the relux and host groups. A filter row at the top accepts a query and a scope toggle: filter by **name**, **value**, or **name · matches** (either side). The counter shows `<filtered> / <total>`.
 
 The header carries a `copy all` action that copies the full environment as `KEY=VALUE` lines, one per row.
 

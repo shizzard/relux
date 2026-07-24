@@ -58,17 +58,16 @@ Field notes:
   path of the test file; `duration_ms` is the total wall-clock from
   test start to outcome.
 - `env.bootstrap` — list of env entries captured at test startup (the seed
-  for the test's environment chain, before the per-test `Test` overlay).
-  Each entry is `{ key, value, source }`, where `source` is a tagged
+  for the test's environment chain, including this test's own `__RELUX_TEST_*`
+  internals). Each entry is `{ key, value, source }`, where `source` is a tagged
   `EnvSourceRecord`: `{ "kind": "base" }` (process env),
   `{ "kind": "dot-env", "path": "<file>" }` (a `.env` layer),
-  `{ "kind": "relux-internal" }` (`__RELUX_*` run internals),
-  `{ "kind": "effect-overlay", "mnemonic": "<id>" }`, or `{ "kind": "test" }`.
+  `{ "kind": "relux-internal" }` (`__RELUX_*` run internals), or
+  `{ "kind": "effect-overlay", "mnemonic": "<id>" }`.
   The tag is the provenance of the layer that supplied the winning value.
-  Because the snapshot is taken before the `Test` overlay and effect envs
-  are not dumped here, bootstrap entries in practice carry only `base`,
-  `dot-env`, or `relux-internal`; the other two kinds exist on the shared
-  `EnvSourceRecord` type but do not appear in this list.
+  Because effect envs are not dumped here, bootstrap entries in practice carry
+  only `base`, `dot-env`, or `relux-internal`; `effect-overlay` exists on the
+  shared `EnvSourceRecord` type but does not appear in this list.
 - `shells` — every PTY spawned during the test, keyed by stable
   identity marker (see [`ShellRecord`](#shells)).
 - `spans` — every span opened during the test, keyed by `SpanId` (see

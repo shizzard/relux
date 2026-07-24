@@ -130,21 +130,35 @@ fn build_relux_internal(ctx: &RunContext) -> Env {
     env
 }
 
-/// Compose a test's runtime env from its pre-resolved `.env` stack:
-/// `dotenv_stack` (Base -> DotEnv...) with `ReluxInternal` layered on top, then
-/// the per-test `Test` overlay. Precedence high->low: Test -> ReluxInternal ->
-/// DotEnv -> Base.
+/// Compose a test's runtime env from its pre-resolved `.env` stack. The
+/// run-level `run_internal` is augmented with this test's own `__RELUX_TEST_*`
+/// values, then layered over `dotenv_stack` (Base -> DotEnv...) as a single
+/// `ReluxInternal` overlay. Precedence high->low: ReluxInternal -> DotEnv ->
+/// Base.
+///
+/// There is no separate `Test` env layer: the `__RELUX_TEST_*` values are Relux
+/// internals that merely happen to be per-test, so they share the internals'
+/// provenance and appear in the bootstrap snapshot (which any host-inherited
+/// copy of the same reserved key is shadowed by).
 fn assemble_test_env(
     dotenv_stack: Arc<LayeredEnv>,
-    internal: Env,
-    test_vars: Env,
+    run_internal: &Env,
+    test_root: Option<PathBuf>,
+    artifacts_dir: &Path,
 ) -> Arc<LayeredEnv> {
-    let with_internal = Arc::new(LayeredEnv::child_with_source(
+    let mut internal = run_internal.clone();
+    if let Some(dir) = test_root {
+        internal.insert("__RELUX_TEST_ROOT".into(), dir.display().to_string());
+    }
+    internal.insert(
+        "__RELUX_TEST_ARTIFACTS".into(),
+        artifacts_dir.display().to_string(),
+    );
+    Arc::new(LayeredEnv::child_with_source(
         dotenv_stack,
         internal,
         LayeredEnvSource::ReluxInternal,
-    ));
-    Arc::new(LayeredEnv::child(with_internal, test_vars))
+    ))
 }
 
 // --- Log / Display Helpers -------------------------------
@@ -725,23 +739,16 @@ async fn run_test(
     let artifacts_dir = log_dir.join("artifacts");
     let _ = std::fs::create_dir_all(&artifacts_dir);
 
-    // Bootstrap snapshot: Base -> DotEnv... -> ReluxInternal, before the
-    // per-test `Test` overlay is applied.
-    let bootstrap_env = LayeredEnv::child_with_source(
+    // The test's env: Base -> DotEnv... -> ReluxInternal (the run internals plus
+    // this test's own `__RELUX_TEST_*` values). No separate `Test` layer, so
+    // this doubles as the bootstrap snapshot dumped for the artifact below.
+    let test_root = source_file.parent().map(Path::to_path_buf);
+    let test_env = assemble_test_env(
         dotenv_stack.clone(),
-        relux_internal.clone(),
-        LayeredEnvSource::ReluxInternal,
+        relux_internal,
+        test_root,
+        &artifacts_dir,
     );
-
-    let mut test_vars = Env::new();
-    if let Some(dir) = source_file.parent() {
-        test_vars.insert("__RELUX_TEST_ROOT".into(), dir.display().to_string());
-    }
-    test_vars.insert(
-        "__RELUX_TEST_ARTIFACTS".into(),
-        artifacts_dir.display().to_string(),
-    );
-    let test_env = assemble_test_env(dotenv_stack.clone(), relux_internal.clone(), test_vars);
     let mut warnings = Vec::new();
 
     let shell_config = ShellConfig {
@@ -835,10 +842,10 @@ async fn run_test(
 
     test_span.close();
 
-    // Snapshot the bootstrap env (Base -> DotEnv... -> ReluxInternal, before
-    // the `Test` overlay) for the artifact. Sorted for deterministic JSON
-    // output across runs.
-    let mut bootstrap: Vec<EnvValue> = bootstrap_env
+    // Snapshot the test's env (Base -> DotEnv... -> ReluxInternal, the latter
+    // carrying this test's `__RELUX_TEST_*` internals) for the artifact. Sorted
+    // for deterministic JSON output across runs.
+    let mut bootstrap: Vec<EnvValue> = test_env
         .iter_with_source()
         .map(|(k, v, src)| EnvValue {
             key: k.to_string(),
@@ -1496,17 +1503,23 @@ mod tests {
         let mut internal = Env::new();
         internal.insert("__RELUX_RUN_ID".into(), "run123".into());
         internal.insert("SHARED".into(), "from-internal".into()); // outranks .env
-        let mut test_vars = Env::new();
-        test_vars.insert("__RELUX_TEST_ROOT".into(), "/p/relux/tests".into());
 
-        let env = assemble_test_env(dotenv_stack, internal, test_vars);
+        let env = assemble_test_env(
+            dotenv_stack,
+            &internal,
+            Some(std::path::PathBuf::from("/p/relux/tests")),
+            std::path::Path::new("/p/out/artifacts"),
+        );
 
+        // The per-test `__RELUX_TEST_*` values live in the ReluxInternal layer
+        // alongside the run internals, not a separate `Test` overlay.
         assert_eq!(env.get("__RELUX_TEST_ROOT"), Some("/p/relux/tests"));
+        assert_eq!(env.get("__RELUX_TEST_ARTIFACTS"), Some("/p/out/artifacts"));
         assert_eq!(env.get("SHARED"), Some("from-internal")); // internal > dotenv
         assert_eq!(env.get("__RELUX_RUN_ID"), Some("run123"));
         assert_eq!(env.get("DB"), Some("postgres")); // .env value present
         assert_eq!(env.get("PATH_LIKE"), Some("base")); // base reachable
-        assert_eq!(env.source(), &LayeredEnvSource::Test); // top overlay
+        assert_eq!(env.source(), &LayeredEnvSource::ReluxInternal); // top overlay
     }
 
     #[tokio::test]

@@ -114,8 +114,6 @@ pub enum LayeredEnvSource {
     ReluxInternal,
     /// Effect-contributed overlay, tagged with the effect instance mnemonic.
     EffectOverlay(String),
-    /// Test-contributed overlay: `let` bindings and `__RELUX_TEST_*`.
-    Test,
 }
 
 // --- LayeredEnv ------------------------------------------
@@ -170,10 +168,12 @@ impl LayeredEnv {
         }
     }
 
-    /// Create a child overlay on top of this env (source `Test` by default,
-    /// the common case; effect overlays use `child_with_source`).
+    /// Create a child overlay on top of this env, tagged `ReluxInternal`. A
+    /// convenience for tests and callers that do not need a distinct source;
+    /// production layers (effect overlays, `.env` files) use `child_with_source`
+    /// with the appropriate tag.
     pub fn child(parent: Arc<LayeredEnv>, overlay: Env) -> Self {
-        Self::child_with_source(parent, overlay, LayeredEnvSource::Test)
+        Self::child_with_source(parent, overlay, LayeredEnvSource::ReluxInternal)
     }
 
     /// Create a child overlay with an explicit source.
@@ -657,10 +657,10 @@ mod tests {
     }
 
     #[test]
-    fn layered_child_source_defaults_to_test() {
+    fn layered_child_source_defaults_to_relux_internal() {
         let parent = Arc::new(LayeredEnv::root(Env::new()));
         let child = LayeredEnv::child(parent, Env::new());
-        assert_eq!(child.source(), &LayeredEnvSource::Test);
+        assert_eq!(child.source(), &LayeredEnvSource::ReluxInternal);
     }
 
     #[test]
@@ -698,8 +698,8 @@ mod tests {
         let mut b = Env::new();
         b.insert("X".into(), "1".into());
         let base = LayeredEnv::root_with_source(a, LayeredEnvSource::Base);
-        let test = LayeredEnv::root_with_source(b, LayeredEnvSource::Test);
-        assert_ne!(base.stack_hash(), test.stack_hash());
+        let internal = LayeredEnv::root_with_source(b, LayeredEnvSource::ReluxInternal);
+        assert_ne!(base.stack_hash(), internal.stack_hash());
     }
 
     #[test]
@@ -709,13 +709,14 @@ mod tests {
         o1.insert("A".into(), "x".into());
         let mut o2 = Env::new();
         o2.insert("A".into(), "x".into());
-        let as_test = LayeredEnv::child_with_source(parent.clone(), o1, LayeredEnvSource::Test);
+        let as_internal =
+            LayeredEnv::child_with_source(parent.clone(), o1, LayeredEnvSource::ReluxInternal);
         let as_effect = LayeredEnv::child_with_source(
             parent.clone(),
             o2,
             LayeredEnvSource::EffectOverlay("db".into()),
         );
-        assert_ne!(as_test.stack_hash(), as_effect.stack_hash());
+        assert_ne!(as_internal.stack_hash(), as_effect.stack_hash());
     }
 
     #[test]
