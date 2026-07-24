@@ -4,7 +4,7 @@ Expect-style integration testing for interactive shell programs.
 
 [![CI](https://github.com/shizzard/relux/actions/workflows/ci.yml/badge.svg)](https://github.com/shizzard/relux/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
-[![VS Marketplace](https://vsmarketplacebadges.dev/version-short/spawnlink-eu.relux.svg)](https://marketplace.visualstudio.com/items?itemName=spawnlink-eu.relux)
+[![VS Marketplace](https://badgen.net/vs-marketplace/v/spawnlink-eu.relux)](https://marketplace.visualstudio.com/items?itemName=spawnlink-eu.relux)
 [![Open VSX](https://img.shields.io/open-vsx/v/spawnlink-eu/relux?label=Open%20VSX)](https://open-vsx.org/extension/spawnlink-eu/relux)
 
 ```relux

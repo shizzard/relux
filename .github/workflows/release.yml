@@ -99,7 +99,11 @@ jobs:
       - name: Publish to VS Code Marketplace
         run: |
           npm install -g @vscode/vsce
-          output=$(vsce publish --packagePath relux-vscode-${{ github.ref_name }}.vsix 2>&1) && exit 0
+          if output=$(vsce publish --packagePath relux-vscode-${{ github.ref_name }}.vsix 2>&1); then
+            echo "$output"
+            echo "Published relux ${{ github.ref_name }} to the VS Code Marketplace."
+            exit 0
+          fi
           if echo "$output" | grep -qE "already exists|already published"; then
             echo "Version already published to VS Marketplace, skipping."
           else
@@ -112,7 +116,11 @@ jobs:
       - name: Publish to Open VSX
         run: |
           npm install -g ovsx
-          output=$(ovsx publish relux-vscode-${{ github.ref_name }}.vsix 2>&1) && exit 0
+          if output=$(ovsx publish relux-vscode-${{ github.ref_name }}.vsix 2>&1); then
+            echo "$output"
+            echo "Published relux ${{ github.ref_name }} to Open VSX."
+            exit 0
+          fi
           if echo "$output" | grep -qE "already exists|already published"; then
             echo "Version already published to Open VSX, skipping."
           else
@@ -150,7 +158,10 @@ jobs:
             local crate=$1
             for attempt in 1 2 3; do
               echo "Publishing $crate (attempt $attempt)..."
-              output=$(cargo publish -p "$crate" --no-verify 2>&1) && return 0
+              if output=$(cargo publish -p "$crate" --no-verify 2>&1); then
+                echo "Published $crate to crates.io."
+                return 0
+              fi
               if echo "$output" | grep -q -e "already uploaded" -e "already exists"; then
                 echo "$crate already published, skipping."
                 return 0
@@ -203,7 +214,11 @@ jobs:
       - name: Publish to JetBrains Marketplace
         working-directory: editors/intellij
         run: |
-          output=$(gradle publishPlugin 2>&1) && exit 0
+          if output=$(gradle publishPlugin 2>&1); then
+            echo "$output"
+            echo "Published the relux plugin ${{ github.ref_name }} to the JetBrains Marketplace."
+            exit 0
+          fi
           if echo "$output" | grep -q "already contains version"; then
             echo "Plugin version already published, skipping."
           else
