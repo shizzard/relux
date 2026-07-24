@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/shizzard/relux/compare/v0.7.0...v0.7.1) (2026-07-24)
+
+
+### Miscellaneous Chores
+
+* fix vscode marketplace icon, badge, and publish logging ([051478b](https://github.com/shizzard/relux/commit/051478b87a09d00695667027c5232a205248f0b3))
+
 ## [0.7.0](https://github.com/shizzard/relux/compare/v0.6.0...v0.7.0) (2026-07-24)
 
 
