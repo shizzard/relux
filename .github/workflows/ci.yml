@@ -93,12 +93,16 @@ jobs:
         run: cargo test --workspace
 
   build:
-    name: Build (${{ matrix.os }})
+    name: Build (${{ matrix.target || matrix.os }})
     needs: [lint, test]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, macos-13]
+        include:
+          - os: ubuntu-latest
+          - os: macos-latest
+          - os: macos-latest
+            target: x86_64-apple-darwin
     steps:
       - uses: actions/checkout@v6
         with:
@@ -116,13 +120,19 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ matrix.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('crates/**', 'Cargo.toml') }}
+          key: ${{ matrix.target || matrix.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('crates/**', 'Cargo.toml') }}
           restore-keys: |
-            ${{ matrix.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-
-            ${{ matrix.os }}-cargo-build-dev-
+            ${{ matrix.target || matrix.os }}-cargo-build-dev-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ matrix.target || matrix.os }}-cargo-build-dev-
 
       - name: Build
-        run: cargo build -p relux
+        run: |
+          if [ -n "${{ matrix.target }}" ]; then
+            rustup target add "${{ matrix.target }}"
+            cargo build -p relux --target "${{ matrix.target }}"
+          else
+            cargo build -p relux
+          fi
 
   e2e:
     name: E2E (${{ matrix.os }})
