@@ -21,7 +21,7 @@ import type { Span } from '../types/Span';
 // replayBufferRegionsAtMarker, so every other field is stubbed.
 function makeLog(buffer_events: BufferEvent[]): StructuredLog {
   return {
-    schema_version: 1,
+    schema_version: 2,
     info: { name: 't', path: 'p', duration_ms: 0n },
     outcome: { kind: 'pass' },
     env: { bootstrap: [] },
@@ -681,7 +681,7 @@ describe('liveShellsAtSpan', () => {
     events: Event[],
   ): StructuredLog {
     return {
-      schema_version: 1,
+      schema_version: 2,
       info: { name: 't', path: 'p', duration_ms: 0n },
       outcome: { kind: 'pass' },
       env: { bootstrap: [] },
@@ -795,7 +795,7 @@ function makeLogWithMultiMatch(
   spans: Record<string, Span>,
 ): StructuredLog {
   return {
-    schema_version: 1,
+    schema_version: 2,
     info: { name: 't', path: 'p', duration_ms: 0n },
     outcome: { kind: 'pass' },
     env: { bootstrap: [] },

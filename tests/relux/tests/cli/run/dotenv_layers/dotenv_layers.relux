@@ -1,0 +1,14 @@
+test "run: hierarchical .env is visible per directory level" ~60s {
+    """
+    Drives `relux run` against a child suite with a project-root .env and a
+    deeper relux/tests/deep/.env. Proves the runtime folds .env files along the
+    root-to-test path into the shell env: the root-level test sees only the root
+    .env, and the deep-level test sees both with the deeper file winning the
+    shared key. Both inner tests pass iff layering and SUT export are correct.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <= 2 passed
+        match_ok()
+    }
+}

@@ -1,0 +1,25 @@
+test "run: markers resolve against each test's .env stack" ~60s {
+    """
+    A `# skip unless FEATURE` test runs under a directory whose .env sets
+    FEATURE=on, and the same marker skips in a directory with no .env. Proves
+    marker decisions are per-test-stack (.env-aware), not suite-global.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 passed
+        <? 1 skipped
+        match_ok()
+    }
+}
+
+test "check: reports the .env-driven skip" ~60s {
+    """
+    Verify `relux check` on the same fixture reports the skipped test -
+    proving check now sees .env-driven skips too, not just run.
+    """
+    shell c {
+        > ${__RELUX} check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? skipped
+        match_ok()
+    }
+}

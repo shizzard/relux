@@ -356,6 +356,18 @@ pub fn read_file(path: &PathBuf) -> String {
     })
 }
 
+/// Print any malformed-`.env` errors from `resolve()` to stderr and exit(1).
+/// No-op when the slice is empty. Shared by `run`/`check`/`dump` so they treat
+/// `.env` failures identically.
+pub fn exit_on_dotenv_errors(errors: &[relux_resolver::env::DotenvError]) {
+    if !errors.is_empty() {
+        for e in errors {
+            eprintln!("error: {e}");
+        }
+        process::exit(1);
+    }
+}
+
 pub fn resolve_test_paths(
     matches: &clap::ArgMatches,
     project_root: &std::path::Path,

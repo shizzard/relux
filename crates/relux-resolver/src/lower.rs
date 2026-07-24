@@ -169,7 +169,9 @@ pub mod test_helpers {
         );
         ctx.register_bifs();
         let plans = build_all_plans(&mut ctx);
-        ctx.into_suite(plans)
+        let mut suite = ctx.into_suite(plans);
+        crate::decide_suite(&mut suite);
+        suite
     }
 
     pub fn resolve_source_with_multiplier(sources: &[(&str, &str)], multiplier: f64) -> Suite {
@@ -195,7 +197,9 @@ pub mod test_helpers {
         );
         ctx.register_bifs();
         let plans = build_all_plans(&mut ctx);
-        ctx.into_suite(plans)
+        let mut suite = ctx.into_suite(plans);
+        crate::decide_suite(&mut suite);
+        suite
     }
 
     pub fn resolve_source_no_env(sources: &[(&str, &str)]) -> Suite {

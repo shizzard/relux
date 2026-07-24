@@ -85,7 +85,7 @@ fn format_rich_error(e: &Rich<'_, Token<'_>>) -> String {
                 .collect();
 
             let found_str = match found {
-                Some(tok) => format!("found '{}'", &**tok),
+                Some(tok) => format!("found '{}'", **tok),
                 None => "found end of input".to_string(),
             };
 

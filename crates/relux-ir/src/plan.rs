@@ -87,11 +87,21 @@ pub enum Plan {
         meta: TestMeta,
         test: IrTest,
         warnings: Vec<WarningId>,
+        /// This test's resolved `Base -> DotEnv...` env stack. Set to the base
+        /// env during lowering (env-independent) and replaced by the resolver's
+        /// `attach_dotenv` pass with the `.env`-folded stack. The runtime layers
+        /// `ReluxInternal` + `Test` over this.
+        env: Arc<LayeredEnv>,
     },
     Skipped {
         meta: TestMeta,
         causes: Vec<CauseId>,
         warnings: Vec<WarningId>,
+        /// This test's resolved `.env` stack at the moment it was decided
+        /// Skipped (same meaning as `Runnable::env`). The runtime looks up
+        /// the originating definition's marker recordings by this stack's
+        /// hash for replay.
+        env: Arc<LayeredEnv>,
     },
     Invalid {
         meta: TestMeta,
@@ -145,7 +155,7 @@ pub(crate) fn build_plan(
         name: def.name.node.clone(),
         module: module_path.clone(),
     };
-    let mut meta = TestMeta::new(
+    let meta = TestMeta::new(
         def.name.node.clone(),
         docstring,
         timeout,
@@ -173,25 +183,14 @@ pub(crate) fn build_plan(
         tables,
     });
 
-    // Evaluate markers
-    let env = ctx.env().clone();
-    match super::marker::eval_marker(&def.markers, definition.clone(), &env, file_id, ctx) {
-        Ok(result) => {
-            ctx.tables()
-                .marker_recordings
-                .insert(definition.clone(), result.recordings);
-            if let Some(skip) = result.skip {
-                let cause_id = skip.cause_id();
-                ctx.register_cause(cause_id.clone(), Cause::skip(skip));
-                ctx.pop_scope();
-                return Plan::Skipped {
-                    meta,
-                    causes: vec![cause_id],
-                    warnings: vec![],
-                };
-            }
-            meta.set_flaky(result.flaky);
-        }
+    // Lower (but do not decide) the test's own markers, caching the
+    // env-independent IR like any other definition. Deciding - including
+    // whether the test's own markers (or any reachable fn/effect's) skip it -
+    // happens per-test at resolve time against the test's own `.env` stack
+    // (see `relux_ir::reachability::collect_test_decision`), after this plan
+    // is built. Until then every plan without a lowering error is `Runnable`.
+    let lowered = match super::marker::lower_markers(&def.markers, file_id, ctx) {
+        Ok(l) => l,
         Err(bail) => {
             let cause_id = bail.cause_id();
             ctx.register_cause(cause_id.clone(), Cause::from_bail(&bail));
@@ -202,7 +201,8 @@ pub(crate) fn build_plan(
                 warnings: vec![],
             };
         }
-    }
+    };
+    ctx.tables().lowered_markers.insert(definition, lowered);
 
     // Set up shallow env for expect satisfiability checking
     let shallow = std::sync::Arc::new(crate::shallow_env::ShallowLayeredEnv::root(ctx.env()));
@@ -217,19 +217,25 @@ pub(crate) fn build_plan(
             meta,
             test: ir_test,
             warnings: vec![],
+            env: ctx.env().clone(),
         },
-        Err(LoweringBail::Skip(skip)) => {
-            let cause_id = skip.cause_id();
-            ctx.register_cause(cause_id.clone(), Cause::Skip(skip));
-            Plan::Skipped {
+        Err(LoweringBail::Invalid(invalid)) => {
+            let cause_id = invalid.cause_id();
+            ctx.register_cause(cause_id.clone(), Cause::Invalid(invalid));
+            Plan::Invalid {
                 meta,
                 causes: vec![cause_id],
                 warnings: vec![],
             }
         }
-        Err(LoweringBail::Invalid(invalid)) => {
-            let cause_id = invalid.cause_id();
-            ctx.register_cause(cause_id.clone(), Cause::Invalid(invalid));
+        Err(bail @ LoweringBail::Skip(_)) => {
+            // Unreachable in practice: resolve_fn/resolve_pure_fn/
+            // resolve_effect never bail Skip (skips are decided per-test at
+            // resolve time, not during lowering), so `IrTest::lower` cannot
+            // propagate one. Treat a future regression as an internal error
+            // (one failed test) rather than crashing the whole run.
+            let cause_id = bail.cause_id();
+            ctx.register_cause(cause_id.clone(), Cause::from_bail(&bail));
             Plan::Invalid {
                 meta,
                 causes: vec![cause_id],

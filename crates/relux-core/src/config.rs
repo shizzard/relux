@@ -14,6 +14,8 @@ pub const TESTS_DIR: &str = "tests";
 pub const LIB_DIR: &str = "lib";
 pub const OUT_DIR: &str = "out";
 pub const CONFIG_FILE: &str = "Relux.toml";
+/// The dotenv filename discovered along the project-root-to-test path.
+pub const DOTENV_FILE: &str = ".env";
 
 fn deserialize_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
 where

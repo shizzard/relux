@@ -47,6 +47,7 @@ mod lowering_trait;
 pub mod marker;
 mod plan;
 pub mod pure_sink;
+pub mod reachability;
 pub mod regex_validate;
 pub mod shallow_env;
 mod stmt;

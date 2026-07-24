@@ -18,6 +18,7 @@ use crate::effect::Warning;
 use crate::effect::registry::EffectRegistry;
 use crate::effect::registry::ShellInstanceKey;
 use crate::observe::structured::EnvInfo;
+use crate::observe::structured::EnvValue;
 use crate::observe::structured::MarkerEvalDecision;
 use crate::observe::structured::MarkerEvalDetail;
 use crate::observe::structured::MarkerEvalKind;
@@ -44,6 +45,7 @@ use relux_core::diagnostics::CauseTable;
 use relux_core::diagnostics::WarningId;
 use relux_core::pure::Env;
 use relux_core::pure::LayeredEnv;
+use relux_core::pure::LayeredEnvSource;
 use relux_core::pure::VarScope;
 use relux_core::table::SourceTable;
 use relux_ir::IrNode;
@@ -108,8 +110,10 @@ pub struct RunContext {
 
 // --- Environment Helpers ---------------------------------
 
-fn build_env(ctx: &RunContext) -> Arc<LayeredEnv> {
-    let mut env = Env::capture();
+/// The `__RELUX_*` run-level internals, as a standalone `Env`. Layered above
+/// each test's `.env` stack (as `ReluxInternal`) so no `.env` can shadow them.
+fn build_relux_internal(ctx: &RunContext) -> Env {
+    let mut env = Env::new();
     env.insert("__RELUX_RUN_ID".into(), ctx.run_id.clone());
     env.insert(
         "__RELUX_RUN_ARTIFACTS".into(),
@@ -123,23 +127,38 @@ fn build_env(ctx: &RunContext) -> Arc<LayeredEnv> {
     if let Ok(exe) = std::env::current_exe() {
         env.insert("__RELUX".into(), exe.display().to_string());
     }
-    Arc::new(env.into())
+    env
 }
 
-fn make_test_env(
-    base: &Arc<LayeredEnv>,
-    test_file: &Path,
+/// Compose a test's runtime env from its pre-resolved `.env` stack. The
+/// run-level `run_internal` is augmented with this test's own `__RELUX_TEST_*`
+/// values, then layered over `dotenv_stack` (Base -> DotEnv...) as a single
+/// `ReluxInternal` overlay. Precedence high->low: ReluxInternal -> DotEnv ->
+/// Base.
+///
+/// There is no separate `Test` env layer: the `__RELUX_TEST_*` values are Relux
+/// internals that merely happen to be per-test, so they share the internals'
+/// provenance and appear in the bootstrap snapshot (which any host-inherited
+/// copy of the same reserved key is shadowed by).
+fn assemble_test_env(
+    dotenv_stack: Arc<LayeredEnv>,
+    run_internal: &Env,
+    test_root: Option<PathBuf>,
     artifacts_dir: &Path,
 ) -> Arc<LayeredEnv> {
-    let mut test_vars = Env::new();
-    if let Some(dir) = test_file.parent() {
-        test_vars.insert("__RELUX_TEST_ROOT".into(), dir.display().to_string());
+    let mut internal = run_internal.clone();
+    if let Some(dir) = test_root {
+        internal.insert("__RELUX_TEST_ROOT".into(), dir.display().to_string());
     }
-    test_vars.insert(
+    internal.insert(
         "__RELUX_TEST_ARTIFACTS".into(),
         artifacts_dir.display().to_string(),
     );
-    Arc::new(LayeredEnv::child(base.clone(), test_vars))
+    Arc::new(LayeredEnv::child_with_source(
+        dotenv_stack,
+        internal,
+        LayeredEnvSource::ReluxInternal,
+    ))
 }
 
 // --- Log / Display Helpers -------------------------------
@@ -249,7 +268,7 @@ pub struct ExecuteResult {
 
 pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> ExecuteResult {
     let wall_start = Instant::now();
-    let base_env = build_env(run_ctx);
+    let relux_internal = build_relux_internal(run_ctx);
     let jobs = run_ctx.jobs;
 
     if jobs > 1 {
@@ -311,7 +330,7 @@ pub async fn execute(suite: &Suite, run_ctx: &RunContext) -> ExecuteResult {
             cancel: cancel.clone(),
             suite,
             run_ctx,
-            base_env: base_env.clone(),
+            relux_internal: relux_internal.clone(),
             tui_tx: tui_tx.clone(),
         };
         worker_futs.push(run_worker(ctx, slot));
@@ -343,7 +362,7 @@ struct WorkerContext<'a> {
     cancel: CancelToken,
     suite: &'a Suite,
     run_ctx: &'a RunContext,
-    base_env: Arc<LayeredEnv>,
+    relux_internal: Env,
     tui_tx: observe::tui::TuiTx,
 }
 
@@ -374,6 +393,7 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                 meta,
                 test,
                 warnings: plan_warnings,
+                env: dotenv_stack,
             } => {
                 let tags = format_cause_tags(&[], plan_warnings, &ctx.suite.causes);
                 let display_id = test_display_id(&test_path, meta.name());
@@ -388,7 +408,8 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                     meta,
                     test,
                     ctx.run_ctx,
-                    ctx.base_env.clone(),
+                    dotenv_stack.clone(),
+                    &ctx.relux_internal,
                     &test_path,
                     &tags,
                     &ctx.cancel,
@@ -419,7 +440,8 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                             meta,
                             test,
                             ctx.run_ctx,
-                            ctx.base_env.clone(),
+                            dotenv_stack.clone(),
+                            &ctx.relux_internal,
                             &retry_test_path,
                             &tags,
                             &ctx.cancel,
@@ -462,6 +484,7 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                 meta,
                 causes,
                 warnings,
+                env: dotenv_stack,
             } => {
                 let tags = format_cause_tags(causes, warnings, &ctx.suite.causes);
                 let display_id = test_display_id(&test_path, meta.name());
@@ -472,14 +495,25 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                 let _ = ctx
                     .tui_tx
                     .send(observe::tui::TuiEvent::Skipped { result_line });
+                // The plan's own `.env` stack was already resolved before the
+                // decision pass marked it Skipped - use it for the bootstrap
+                // snapshot (Base -> DotEnv... -> ReluxInternal) instead of the
+                // suite's base env.
+                let bootstrap_env = Arc::new(LayeredEnv::child_with_source(
+                    dotenv_stack.clone(),
+                    ctx.relux_internal.clone(),
+                    LayeredEnvSource::ReluxInternal,
+                ));
+                let stack = relux_ir::StackHash(dotenv_stack.stack_hash());
                 log_skipped_test(
                     meta,
                     causes,
                     &ctx.suite.causes,
                     ctx.run_ctx,
-                    ctx.base_env.clone(),
+                    bootstrap_env,
                     &test_path,
                     &ctx.suite.tables,
+                    stack,
                 )
                 .await
             }
@@ -593,7 +627,8 @@ async fn run_test_cancellable(
     meta: &relux_ir::TestMeta,
     test: &IrTest,
     run_ctx: &RunContext,
-    base_env: Arc<LayeredEnv>,
+    dotenv_stack: Arc<LayeredEnv>,
+    relux_internal: &Env,
     test_path: &str,
     cause_tags: &str,
     cancel: &CancelToken,
@@ -630,7 +665,8 @@ async fn run_test_cancellable(
         meta,
         test,
         run_ctx,
-        base_env,
+        dotenv_stack,
+        relux_internal,
         test_path,
         cause_tags,
         &test_cancel,
@@ -677,7 +713,8 @@ async fn run_test(
     meta: &relux_ir::TestMeta,
     test: &IrTest,
     run_ctx: &RunContext,
-    base_env: Arc<LayeredEnv>,
+    dotenv_stack: Arc<LayeredEnv>,
+    relux_internal: &Env,
     test_path: &str,
     _cause_tags: &str,
     cancel: &CancelToken,
@@ -701,7 +738,17 @@ async fn run_test(
         .unwrap_or_else(|| file_id.path().clone());
     let artifacts_dir = log_dir.join("artifacts");
     let _ = std::fs::create_dir_all(&artifacts_dir);
-    let test_env = make_test_env(&base_env, &source_file, &artifacts_dir);
+
+    // The test's env: Base -> DotEnv... -> ReluxInternal (the run internals plus
+    // this test's own `__RELUX_TEST_*` values). No separate `Test` layer, so
+    // this doubles as the bootstrap snapshot dumped for the artifact below.
+    let test_root = source_file.parent().map(Path::to_path_buf);
+    let test_env = assemble_test_env(
+        dotenv_stack.clone(),
+        relux_internal,
+        test_root,
+        &artifacts_dir,
+    );
     let mut warnings = Vec::new();
 
     let shell_config = ShellConfig {
@@ -726,8 +773,19 @@ async fn run_test(
     // All recordings become flat `marker-eval` children of the markers
     // root - no nesting under fn-call or effect-setup, since markers
     // run before any test execution.
-    let recordings = crate::marker_walk::collect_test_marker_recordings(test, meta, tables);
-    let _ = replay_markers(&log, &recordings);
+    //
+    // This re-walks against the test's own `dotenv_stack`, the exact env the
+    // resolver's decision pass already decided every reachable def against,
+    // so every lookup is a cache hit against `tables.marker_decisions` - the
+    // `Err` arm (a decision-time failure) is unreachable in practice for a
+    // `Runnable` plan, but is handled gracefully rather than panicking.
+    let agg = crate::marker_walk::collect_test_decision(test, meta, tables, &dotenv_stack)
+        .unwrap_or_else(|_| relux_ir::reachability::AggregatedDecision {
+            skip: None,
+            flaky: false,
+            recordings: Vec::new(),
+        });
+    let _ = replay_markers(&log, &agg.recordings);
 
     // Open the root span for this test. Every emission inside the test body
     // (effect setup, shell block, fn call, cleanup block) is parented on this.
@@ -784,13 +842,18 @@ async fn run_test(
 
     test_span.close();
 
-    // Snapshot the bootstrap env (root layer of `base_env`) for the artifact.
-    // Sorted for deterministic JSON output across runs.
-    let mut bootstrap: Vec<(String, String)> = base_env
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
+    // Snapshot the test's env (Base -> DotEnv... -> ReluxInternal, the latter
+    // carrying this test's `__RELUX_TEST_*` internals) for the artifact. Sorted
+    // for deterministic JSON output across runs.
+    let mut bootstrap: Vec<EnvValue> = test_env
+        .iter_with_source()
+        .map(|(k, v, src)| EnvValue {
+            key: k.to_string(),
+            value: v.to_string(),
+            source: src.into(),
+        })
         .collect();
-    bootstrap.sort_by(|a, b| a.0.cmp(&b.0));
+    bootstrap.sort_by(|a, b| a.key.cmp(&b.key));
 
     // Build the structured log. The verdict is a tagged enum:
     // Pass / Fail(FailureRecord) / Cancelled(CancellationRecord) / Skip.
@@ -1210,14 +1273,16 @@ pub(crate) fn marker_detail_from_evaluation(
 /// log contains only the synthetic `markers` root and its `marker-eval`
 /// children. The triggering marker (`(Skip, Mark)` or `(Run, Pass)`) is
 /// pointed to by `TestOutcome::Skip(SkipRecord { ... })`.
+#[allow(clippy::too_many_arguments)]
 async fn log_skipped_test(
     meta: &relux_ir::TestMeta,
     causes: &[relux_core::diagnostics::CauseId],
     suite_causes: &relux_core::diagnostics::CauseTable,
     run_ctx: &RunContext,
-    base_env: Arc<LayeredEnv>,
+    bootstrap_env: Arc<LayeredEnv>,
     test_path: &str,
     tables: &relux_ir::Tables,
+    stack: relux_ir::StackHash,
 ) -> TestResult {
     let test_start = Instant::now();
     let source_table = &tables.sources;
@@ -1232,10 +1297,10 @@ async fn log_skipped_test(
         Arc::from(run_ctx.project_root.as_path()),
     );
 
-    // Look up the originating definition's recordings via the cause's
-    // SkipReport.definition. Works uniformly for test-level skips (key:
-    // DefinitionRef::Test{..}) and for skips propagated from fn/effect
-    // (key: DefinitionRef::Fn(..) / DefinitionRef::Effect(..)).
+    // Look up the originating definition's decision via the cause's
+    // SkipReport.definition, keyed by the resolution stack. Works uniformly
+    // for test-level skips (key: DefinitionRef::Test{..}) and for skips
+    // propagated from fn/effect (key: DefinitionRef::Fn(..) / DefinitionRef::Effect(..)).
     let report = causes
         .iter()
         .find_map(|id| match suite_causes.get(id) {
@@ -1244,9 +1309,9 @@ async fn log_skipped_test(
         })
         .expect("Plan::Skipped must carry a Cause::Skip");
     let recordings_owned: Vec<relux_ir::marker::MarkerRecording> = tables
-        .marker_recordings
-        .get(&report.definition)
-        .map(|v| (*v).clone())
+        .marker_decisions
+        .get(&(report.definition.clone(), stack))
+        .map(|d| d.recordings.clone())
         .unwrap_or_default();
     let recordings: &[relux_ir::marker::MarkerRecording] = &recordings_owned;
     let handles = replay_markers(&log, recordings);
@@ -1265,7 +1330,7 @@ async fn log_skipped_test(
                     | (MarkerEvalKind::Run, MarkerEvalDecision::Pass)
             )
         })
-        .expect("marker_recordings entry for skipped definition must contain a triggering marker");
+        .expect("decision entry for skipped definition must contain a triggering marker");
     let handle = &handles[trigger_idx];
     let rec = &recordings[trigger_idx];
 
@@ -1277,11 +1342,15 @@ async fn log_skipped_test(
     });
 
     // Bootstrap env snapshot (sorted for deterministic JSON).
-    let mut bootstrap: Vec<(String, String)> = base_env
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
+    let mut bootstrap: Vec<EnvValue> = bootstrap_env
+        .iter_with_source()
+        .map(|(k, v, src)| EnvValue {
+            key: k.to_string(),
+            value: v.to_string(),
+            source: src.into(),
+        })
         .collect();
-    bootstrap.sort_by(|a, b| a.0.cmp(&b.0));
+    bootstrap.sort_by(|a, b| a.key.cmp(&b.key));
 
     let structured = log.build(
         TestInfo {
@@ -1411,6 +1480,48 @@ mod tests {
         );
     }
 
+    #[test]
+    fn assemble_test_env_precedence_and_provenance() {
+        use relux_core::pure::Env;
+        use relux_core::pure::LayeredEnv;
+        use relux_core::pure::LayeredEnvSource;
+
+        let mut base_env = Env::new();
+        base_env.insert("PATH_LIKE".into(), "base".into());
+        base_env.insert("SHARED".into(), "from-base".into());
+        let base = std::sync::Arc::new(LayeredEnv::root(base_env));
+
+        let mut dotenv = Env::new();
+        dotenv.insert("SHARED".into(), "from-dotenv".into());
+        dotenv.insert("DB".into(), "postgres".into());
+        let dotenv_stack = std::sync::Arc::new(LayeredEnv::child_with_source(
+            base,
+            dotenv,
+            LayeredEnvSource::DotEnv("/p/.env".into()),
+        ));
+
+        let mut internal = Env::new();
+        internal.insert("__RELUX_RUN_ID".into(), "run123".into());
+        internal.insert("SHARED".into(), "from-internal".into()); // outranks .env
+
+        let env = assemble_test_env(
+            dotenv_stack,
+            &internal,
+            Some(std::path::PathBuf::from("/p/relux/tests")),
+            std::path::Path::new("/p/out/artifacts"),
+        );
+
+        // The per-test `__RELUX_TEST_*` values live in the ReluxInternal layer
+        // alongside the run internals, not a separate `Test` overlay.
+        assert_eq!(env.get("__RELUX_TEST_ROOT"), Some("/p/relux/tests"));
+        assert_eq!(env.get("__RELUX_TEST_ARTIFACTS"), Some("/p/out/artifacts"));
+        assert_eq!(env.get("SHARED"), Some("from-internal")); // internal > dotenv
+        assert_eq!(env.get("__RELUX_RUN_ID"), Some("run123"));
+        assert_eq!(env.get("DB"), Some("postgres")); // .env value present
+        assert_eq!(env.get("PATH_LIKE"), Some("base")); // base reachable
+        assert_eq!(env.source(), &LayeredEnvSource::ReluxInternal); // top overlay
+    }
+
     #[tokio::test]
     async fn log_skipped_test_writes_skip_record_artifact() {
         use crate::observe::structured::StructuredLog;
@@ -1465,10 +1576,22 @@ mod tests {
             },
         ];
 
+        let base_env = std::sync::Arc::new(LayeredEnv::root(Env::new()));
+        let stack = relux_ir::StackHash(base_env.stack_hash());
+
         let tables = relux_ir::Tables::new();
-        tables
-            .marker_recordings
-            .insert(definition.clone(), recordings);
+        tables.marker_decisions.insert(
+            (definition.clone(), stack),
+            relux_ir::marker::MarkerDecision {
+                skip: Some(SkipReport {
+                    definition: definition.clone(),
+                    marker_span: IrSpan::synthetic(),
+                    evaluation: SkipEvaluation::Unconditional,
+                }),
+                flaky: true,
+                recordings,
+            },
+        );
 
         // Register a Cause::Skip whose definition points at the meta. The
         // production register_cause path uses `skip.cause_id()` as the key,
@@ -1507,7 +1630,6 @@ mod tests {
             jobs: 1,
             progress: ProgressMode::Plain,
         };
-        let base_env = std::sync::Arc::new(LayeredEnv::root(Env::new()));
 
         let result = log_skipped_test(
             &meta,
@@ -1517,6 +1639,7 @@ mod tests {
             base_env,
             "tests/synthetic.relux",
             &tables,
+            stack,
         )
         .await;
 
@@ -1627,10 +1750,25 @@ mod tests {
             decision: MarkerEvalDecision::Mark,
             ops: Vec::new(),
         }];
+        let base_env = std::sync::Arc::new(LayeredEnv::root(Env::new()));
+        let stack = relux_ir::StackHash(base_env.stack_hash());
+
         let tables = relux_ir::Tables::new();
-        tables
-            .marker_recordings
-            .insert(effect_def.clone(), recordings);
+        tables.marker_decisions.insert(
+            (effect_def.clone(), stack),
+            relux_ir::marker::MarkerDecision {
+                skip: Some(SkipReport {
+                    definition: effect_def.clone(),
+                    marker_span: IrSpan::synthetic(),
+                    evaluation: SkipEvaluation::Bare {
+                        value: "yes".into(),
+                        met: true,
+                    },
+                }),
+                flaky: false,
+                recordings,
+            },
+        );
 
         let report = SkipReport {
             definition: effect_def,
@@ -1669,7 +1807,6 @@ mod tests {
             jobs: 1,
             progress: ProgressMode::Plain,
         };
-        let base_env = std::sync::Arc::new(LayeredEnv::root(Env::new()));
 
         let result = log_skipped_test(
             &meta,
@@ -1679,6 +1816,7 @@ mod tests {
             base_env,
             "tests/synthetic.relux",
             &tables,
+            stack,
         )
         .await;
 

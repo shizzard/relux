@@ -1,0 +1,12 @@
+test "root level sees root .env only" {
+    """
+    A test directly under relux/tests/ resolves only the project-root .env:
+    ROOT_ONLY and SHARED come from it; DEEP_ONLY (from a sibling deep dir's
+    .env) is not on this test's path and must be empty.
+    """
+    shell s {
+        > echo "ROOT_ONLY=[$ROOT_ONLY] SHARED=[$SHARED] DEEP_ONLY=[$DEEP_ONLY]"
+        <? ^ROOT_ONLY=\[root-value\] SHARED=\[from-root\] DEEP_ONLY=\[\]$
+        match_ok()
+    }
+}

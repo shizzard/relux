@@ -83,7 +83,8 @@ impl LoweringContext {
                 fns: relux_core::table::SharedTable::new(),
                 pure_fns: relux_core::table::SharedTable::new(),
                 effects: relux_core::table::SharedTable::new(),
-                marker_recordings: relux_core::table::SharedTable::new(),
+                lowered_markers: relux_core::table::SharedTable::new(),
+                marker_decisions: relux_core::table::SharedTable::new(),
             },
             causes,
             warnings,
@@ -599,23 +600,6 @@ impl LoweringContext {
 
     // --- Finalization ------------------------------------
 
-    /// Print all diagnostics (causes and warnings) to stderr.
-    ///
-    /// Each cause is printed once with its mnemonic ID. At runtime, tests
-    /// reference causes by ID rather than repeating the full diagnostic.
-    pub fn print_diagnostics(&self, project_root: Option<&std::path::Path>) {
-        use relux_core::diagnostics::Diagnostic;
-
-        for (warning_id, warning) in self.warnings.as_vec() {
-            let diagnostic = Diagnostic::from(warning);
-            diagnostic.eprint_with_id(&warning_id, &self.tables.sources, project_root);
-        }
-        for (cause_id, cause) in self.causes.as_vec() {
-            let diagnostic = Diagnostic::from(cause);
-            diagnostic.eprint_with_id(&cause_id, &self.tables.sources, project_root);
-        }
-    }
-
     /// Consume the context and produce a Suite.
     pub fn into_suite(self, plans: Vec<Plan>) -> Suite {
         Suite {
@@ -696,25 +680,14 @@ impl LoweringContext {
             tables,
         });
 
-        // Evaluate markers
-        let env = self.env.clone();
+        // Lower (but do not decide) markers: only caches the env-independent
+        // IR. Deciding against an env happens per-test at resolve time (see
+        // `relux_ir::reachability::collect_test_decision`), so the same
+        // shared fn can be decided differently under different test `.env`
+        // stacks without re-lowering.
         let definition = DefinitionRef::Fn(fn_id.clone());
-        match crate::marker::eval_marker(&def.markers, definition.clone(), &env, &file_id, self) {
-            Ok(result) => {
-                self.tables
-                    .marker_recordings
-                    .insert(definition.clone(), result.recordings);
-                if let Some(skip) = result.skip {
-                    let bail = LoweringBail::skip(skip);
-                    let cause_id = bail.cause_id();
-                    self.register_cause(cause_id, Cause::from_bail(&bail));
-                    self.pop_scope();
-                    self.pop_fn();
-                    self.tables.fns.insert(fn_id.clone(), Err(bail.clone()));
-                    return Err(bail);
-                }
-                // Flaky on fns is ignored (only meaningful on tests)
-            }
+        let lowered = match crate::marker::lower_markers(&def.markers, &file_id, self) {
+            Ok(l) => l,
             Err(bail) => {
                 let cause_id = bail.cause_id();
                 self.register_cause(cause_id, Cause::from_bail(&bail));
@@ -724,9 +697,11 @@ impl LoweringContext {
                 return Err(bail);
             }
         };
+        self.tables.lowered_markers.insert(definition, lowered);
 
-        // Lower body. Marker recordings are stored in the side table
-        // keyed by DefinitionRef; the runtime looks them up there.
+        // Lower body. Marker decisions are made per-test at resolve time and
+        // stored in the side table keyed by (DefinitionRef, StackHash); the
+        // runtime looks them up there.
         let result = IrFn::lower(def, &file_id, self);
 
         // Pop scope and in-progress
@@ -795,26 +770,12 @@ impl LoweringContext {
             tables,
         });
 
-        // Evaluate markers
-        let env = self.env.clone();
+        // Lower (but do not decide) markers: only caches the env-independent
+        // IR. Deciding against an env happens per-test at resolve time (see
+        // `relux_ir::reachability::collect_test_decision`).
         let definition = DefinitionRef::Fn(fn_id.clone());
-        match crate::marker::eval_marker(&def.markers, definition.clone(), &env, &file_id, self) {
-            Ok(result) => {
-                self.tables
-                    .marker_recordings
-                    .insert(definition.clone(), result.recordings);
-                if let Some(skip) = result.skip {
-                    let bail = LoweringBail::skip(skip);
-                    let cause_id = bail.cause_id();
-                    self.register_cause(cause_id, Cause::from_bail(&bail));
-                    self.pop_scope();
-                    self.pop_fn();
-                    self.tables
-                        .pure_fns
-                        .insert(fn_id.clone(), Err(bail.clone()));
-                    return Err(bail);
-                }
-            }
+        let lowered = match crate::marker::lower_markers(&def.markers, &file_id, self) {
+            Ok(l) => l,
             Err(bail) => {
                 let cause_id = bail.cause_id();
                 self.register_cause(cause_id, Cause::from_bail(&bail));
@@ -826,9 +787,11 @@ impl LoweringContext {
                 return Err(bail);
             }
         };
+        self.tables.lowered_markers.insert(definition, lowered);
 
-        // Lower body. Marker recordings live in the side table keyed by
-        // DefinitionRef; the runtime looks them up there.
+        // Lower body. Marker decisions are made per-test at resolve time and
+        // live in the side table keyed by (DefinitionRef, StackHash); the
+        // runtime looks them up there.
         let result = IrPureFn::lower(def, &file_id, self);
 
         // Pop scope and in-progress
@@ -893,26 +856,12 @@ impl LoweringContext {
             tables,
         });
 
-        // Evaluate markers
-        let env = self.env.clone();
+        // Lower (but do not decide) markers: only caches the env-independent
+        // IR. Deciding against an env happens per-test at resolve time (see
+        // `relux_ir::reachability::collect_test_decision`).
         let definition = DefinitionRef::Effect(effect_id.clone());
-        match crate::marker::eval_marker(&def.markers, definition.clone(), &env, &file_id, self) {
-            Ok(result) => {
-                self.tables
-                    .marker_recordings
-                    .insert(definition.clone(), result.recordings);
-                if let Some(skip) = result.skip {
-                    let bail = LoweringBail::skip(skip);
-                    let cause_id = bail.cause_id();
-                    self.register_cause(cause_id, Cause::from_bail(&bail));
-                    self.pop_scope();
-                    self.pop_effect();
-                    self.tables
-                        .effects
-                        .insert(effect_id.clone(), Err(bail.clone()));
-                    return Err(bail);
-                }
-            }
+        let lowered = match crate::marker::lower_markers(&def.markers, &file_id, self) {
+            Ok(l) => l,
             Err(bail) => {
                 let cause_id = bail.cause_id();
                 self.register_cause(cause_id, Cause::from_bail(&bail));
@@ -924,9 +873,11 @@ impl LoweringContext {
                 return Err(bail);
             }
         };
+        self.tables.lowered_markers.insert(definition, lowered);
 
-        // Lower body. Marker recordings live in the side table keyed by
-        // DefinitionRef; the runtime looks them up there.
+        // Lower body. Marker decisions are made per-test at resolve time and
+        // live in the side table keyed by (DefinitionRef, StackHash); the
+        // runtime looks them up there.
         let result = IrEffect::lower(def, &file_id, self);
 
         // Pop scope and in-progress

@@ -5,4 +5,4 @@
  * Bump in lockstep with the Rust-side constant on any backwards-incompatible
  * change to the on-disk shape.
  */
-export const EXPECTED_SCHEMA_VERSION = 1;
+export const EXPECTED_SCHEMA_VERSION = 2;

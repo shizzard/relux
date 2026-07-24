@@ -1,0 +1,12 @@
+test "deep level layers deep over root .env" {
+    """
+    A test under relux/tests/deep/ resolves both the root .env and the deep
+    .env: ROOT_ONLY is inherited from root, DEEP_ONLY comes from deep, and
+    SHARED (in both) resolves to the deeper file's value.
+    """
+    shell s {
+        > echo "ROOT_ONLY=[$ROOT_ONLY] DEEP_ONLY=[$DEEP_ONLY] SHARED=[$SHARED]"
+        <? ^ROOT_ONLY=\[root-value\] DEEP_ONLY=\[deep-value\] SHARED=\[from-deep\]$
+        match_ok()
+    }
+}

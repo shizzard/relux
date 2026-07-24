@@ -35,10 +35,10 @@ machine-readable equivalent of what this page describes in prose.
 
 ```jsonc
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "info":   { ... TestInfo ... },
   "outcome": { "kind": "pass" | "fail" | "cancelled" | "skip", ... },
-  "env":    { "bootstrap": [["KEY", "value"], ...] },
+  "env":    { "bootstrap": [{ "key": "KEY", "value": "value", "source": { "kind": "base" } }, ...] },
   "shells": { "<shell-marker>": { ... ShellRecord ... }, ... },
   "spans":  { "<span-id>":     { ... Span ... },         ... },
   "events":        [ { ... Event ... },        ... ],
@@ -50,15 +50,24 @@ machine-readable equivalent of what this page describes in prose.
 
 Field notes:
 
-- `schema_version` (`u32`) — current version is `1`. Bumped on any
+- `schema_version` (`u32`) — current version is `2`. Bumped on any
   backwards-incompatible change. Consumers should verify this matches
   the version they expect and fail loudly otherwise. The viewer
   rejects mismatched artifacts with a banner.
 - `info` — `{ name, path, duration_ms }`. `path` is the source-relative
   path of the test file; `duration_ms` is the total wall-clock from
   test start to outcome.
-- `env.bootstrap` — list of `(name, value)` env entries captured at
-  test startup (the seed for the test's environment chain).
+- `env.bootstrap` — list of env entries captured at test startup (the seed
+  for the test's environment chain, including this test's own `__RELUX_TEST_*`
+  internals). Each entry is `{ key, value, source }`, where `source` is a tagged
+  `EnvSourceRecord`: `{ "kind": "base" }` (process env),
+  `{ "kind": "dot-env", "path": "<file>" }` (a `.env` layer),
+  `{ "kind": "relux-internal" }` (`__RELUX_*` run internals), or
+  `{ "kind": "effect-overlay", "mnemonic": "<id>" }`.
+  The tag is the provenance of the layer that supplied the winning value.
+  Because effect envs are not dumped here, bootstrap entries in practice carry
+  only `base`, `dot-env`, or `relux-internal`; `effect-overlay` exists on the
+  shared `EnvSourceRecord` type but does not appear in this list.
 - `shells` — every PTY spawned during the test, keyed by stable
   identity marker (see [`ShellRecord`](#shells)).
 - `spans` — every span opened during the test, keyed by `SpanId` (see
@@ -412,7 +421,9 @@ via `mime_guess`; the browser does its own sniffing on click.
 
 ## Versioning
 
-`schema_version` is currently `1`. A future change that adds new
+`schema_version` is currently `2`. Version 2 changed `env.bootstrap`
+from `[name, value]` tuples to `{ key, value, source }` objects. A
+future change that adds new
 optional fields or new tagged-enum variants is *not* a breaking
 change and does not bump the version; consumers should ignore unknown
 variants gracefully. Any change that removes or renames fields, or

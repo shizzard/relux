@@ -1,18 +1,16 @@
 use std::fs;
 use std::process;
-use std::sync::Arc;
 
 use crate::history::LatestRun;
 use relux_core::config;
 use relux_core::diagnostics::ModulePath;
-use relux_core::pure::Env;
-use relux_core::pure::LayeredEnv;
 use relux_ir::IrTimeout;
 use relux_resolver::resolve;
 use relux_runtime::RunContext;
 use relux_runtime::RunStrategy;
 
 use super::build_source_loader;
+use super::exit_on_dotenv_errors;
 use super::resolve_project;
 use super::resolve_test_paths;
 
@@ -72,9 +70,10 @@ pub async fn cmd_run(matches: &clap::ArgMatches) {
     }
 
     let loader = build_source_loader(&project_root);
-    let env = Arc::new(LayeredEnv::from(Env::capture()));
+    let env = relux_resolver::env::capture_base();
 
-    let mut suite = resolve(&*loader, test_paths, env, multiplier, &project_root);
+    let (mut suite, dotenv_errors) = resolve(&*loader, test_paths, env, multiplier, &project_root);
+    exit_on_dotenv_errors(&dotenv_errors);
 
     if let Some(ref names) = test_names {
         suite

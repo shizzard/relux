@@ -53,33 +53,133 @@ pub struct MarkerRecording {
     pub ops: Vec<crate::pure_sink::SinkOp>,
 }
 
-/// Result of evaluating condition markers on a definition.
-pub struct MarkerResult {
+/// A marker's condition lowered to env-independent IR. Regex patterns are held
+/// as their lowered interpolation (an `IrPureExpr::String`); the regex is only
+/// compiled at decision time, because the resolved pattern string - and thus
+/// the regex's validity - can depend on the env.
+#[derive(Debug, Clone)]
+pub enum IrMarkerCond {
+    /// `# skip` / `# flaky` / `# run` with no condition.
+    Unconditional,
+    /// `<expr>` - truthy if the evaluated value is non-empty.
+    Bare { expr: IrPureExpr },
+    /// `<lhs> == <rhs>`.
+    Eq { lhs: IrPureExpr, rhs: IrPureExpr },
+    /// `<expr> =~ /<pattern>/`. `pattern` is the interpolation lowered into an
+    /// `IrPureExpr::String`; `pattern_span` locates the `/.../` for diagnostics.
+    Regex {
+        expr: IrPureExpr,
+        pattern: IrPureExpr,
+        pattern_span: IrSpan,
+    },
+}
+
+/// One marker, lowered but not yet decided. `decide_markers` evaluates the
+/// `cond` against an env to produce a `MarkerRecording` and skip/flaky verdict.
+#[derive(Debug, Clone)]
+pub struct IrMarker {
+    pub marker_span: IrSpan,
+    pub kind: MarkerEvalKind,
+    pub modifier: MarkerEvalModifier,
+    pub cond: IrMarkerCond,
+}
+
+/// The env-dependent outcome of deciding a definition's markers against one env.
+/// (Same shape as `MarkerResult`; named distinctly to mark the split.)
+#[derive(Debug, Clone)]
+pub struct MarkerDecision {
     pub skip: Option<SkipReport>,
     pub flaky: bool,
     pub recordings: Vec<MarkerRecording>,
 }
 
-/// Evaluate condition markers on a definition.
-///
-/// Requires: scope already pushed on `ctx` (for resolving pure fn calls).
-/// Returns `Ok(MarkerResult)` with skip/flaky status. `skip` is `Some` if a
-/// marker triggers skip. `flaky` is true if a flaky marker's condition is met.
-/// Returns `Err(LoweringBail)` if marker lowering fails (e.g., invalid regex, undefined fn).
-pub fn eval_marker(
+/// Lower a definition's markers to env-independent IR. Bails `Invalid` only on
+/// env-independent failures (undefined fn, cycle) surfaced by `IrPureExpr::lower`
+/// / `IrInterpolation::lower`. Does not evaluate or compile regexes.
+pub fn lower_markers(
     markers: &[relux_core::Spanned<AstMarkerDecl>],
-    definition: DefinitionRef,
-    env: &Arc<LayeredEnv>,
     file_id: &FileId,
     ctx: &mut LoweringContext,
-) -> Result<MarkerResult, LoweringBail> {
-    let fns = ctx.pure_functions().clone();
-    let mut flaky = false;
-    let mut recordings: Vec<MarkerRecording> = Vec::new();
-
+) -> Result<Vec<IrMarker>, LoweringBail> {
+    let mut lowered = Vec::new();
     for marker in markers {
         let decl = &marker.node;
         let marker_span = IrSpan::new(file_id.clone(), decl.span);
+
+        let kind = match &decl.kind {
+            AstMarkerKind::Skip { .. } => MarkerEvalKind::Skip,
+            AstMarkerKind::Run { .. } => MarkerEvalKind::Run,
+            AstMarkerKind::Flaky { .. } => MarkerEvalKind::Flaky,
+        };
+
+        let Some(condition) = &decl.condition else {
+            lowered.push(IrMarker {
+                marker_span,
+                kind,
+                modifier: MarkerEvalModifier::If,
+                cond: IrMarkerCond::Unconditional,
+            });
+            continue;
+        };
+
+        let modifier = if matches!(&condition.modifier, AstCondModifier::Unless { .. }) {
+            MarkerEvalModifier::Unless
+        } else {
+            MarkerEvalModifier::If
+        };
+
+        let cond = match &condition.body {
+            AstMarkerCondBody::Bare { expr, .. } => IrMarkerCond::Bare {
+                expr: IrPureExpr::lower(expr, file_id, ctx)?,
+            },
+            AstMarkerCondBody::Eq { lhs, rhs, .. } => IrMarkerCond::Eq {
+                lhs: IrPureExpr::lower(lhs, file_id, ctx)?,
+                rhs: IrPureExpr::lower(rhs, file_id, ctx)?,
+            },
+            AstMarkerCondBody::Regex {
+                expr,
+                pattern,
+                span,
+            } => {
+                let expr = IrPureExpr::lower(expr, file_id, ctx)?;
+                let ir_interp = IrInterpolation::lower(pattern, file_id, ctx)?;
+                let pattern = IrPureExpr::String {
+                    value: ir_interp,
+                    span: IrSpan::new(file_id.clone(), pattern.span),
+                };
+                IrMarkerCond::Regex {
+                    expr,
+                    pattern,
+                    pattern_span: IrSpan::new(file_id.clone(), *span),
+                }
+            }
+        };
+
+        lowered.push(IrMarker {
+            marker_span,
+            kind,
+            modifier,
+            cond,
+        });
+    }
+    Ok(lowered)
+}
+
+/// Decide a definition's lowered markers against `env`. Produces the recordings
+/// and skip/flaky verdict; compiles marker regexes from the resolved pattern
+/// (an invalid pattern is a `LoweringBail::Invalid`, matching current behavior).
+pub fn decide_markers(
+    lowered: &[IrMarker],
+    definition: DefinitionRef,
+    env: &Arc<LayeredEnv>,
+    fns: &crate::PureFnTable,
+) -> Result<MarkerDecision, LoweringBail> {
+    let mut flaky = false;
+    let mut recordings: Vec<MarkerRecording> = Vec::new();
+
+    for marker in lowered {
+        let marker_span = marker.marker_span.clone();
+        let kind = marker.kind;
 
         // Determine marker kind: skip, run, or flaky
         enum MarkerAction {
@@ -87,217 +187,193 @@ pub fn eval_marker(
             Run,
             Flaky,
         }
-        let action = match &decl.kind {
-            AstMarkerKind::Skip { .. } => MarkerAction::Skip,
-            AstMarkerKind::Run { .. } => MarkerAction::Run,
-            AstMarkerKind::Flaky { .. } => MarkerAction::Flaky,
-        };
-        let kind = match action {
-            MarkerAction::Skip => MarkerEvalKind::Skip,
-            MarkerAction::Run => MarkerEvalKind::Run,
-            MarkerAction::Flaky => MarkerEvalKind::Flaky,
+        let action = match kind {
+            MarkerEvalKind::Skip => MarkerAction::Skip,
+            MarkerEvalKind::Run => MarkerAction::Run,
+            MarkerEvalKind::Flaky => MarkerAction::Flaky,
         };
 
-        let Some(condition) = &decl.condition else {
-            // No condition - unconditional marker. `# skip` and
-            // `# flaky` always apply; `# run` (no condition) is a
-            // no-op per the docs.
-            let decision = match action {
-                MarkerAction::Skip => MarkerEvalDecision::Mark,
-                MarkerAction::Run => MarkerEvalDecision::Pass,
-                MarkerAction::Flaky => MarkerEvalDecision::Mark,
+        let IrMarkerCond::Unconditional = &marker.cond else {
+            let negate = matches!(marker.modifier, MarkerEvalModifier::Unless);
+
+            let mut recording = crate::pure_sink::RecordingSink::default();
+            let (mut met, evaluation) = match &marker.cond {
+                IrMarkerCond::Unconditional => unreachable!(),
+                IrMarkerCond::Bare { expr } => {
+                    let value = crate::evaluator::eval_pure_expr(
+                        expr,
+                        &relux_core::pure::VarScope::new(),
+                        env,
+                        fns,
+                        &mut recording,
+                    );
+                    let met = !value.is_empty();
+                    (met, SkipEvaluation::Bare { value, met })
+                }
+                IrMarkerCond::Eq { lhs, rhs } => {
+                    let vars = relux_core::pure::VarScope::new();
+                    let lhs_val =
+                        crate::evaluator::eval_pure_expr(lhs, &vars, env, fns, &mut recording);
+                    let rhs_val =
+                        crate::evaluator::eval_pure_expr(rhs, &vars, env, fns, &mut recording);
+                    let met = lhs_val == rhs_val;
+                    (
+                        met,
+                        SkipEvaluation::Eq {
+                            lhs: lhs_val,
+                            rhs: rhs_val,
+                            met,
+                        },
+                    )
+                }
+                IrMarkerCond::Regex {
+                    expr,
+                    pattern,
+                    pattern_span,
+                } => {
+                    let vars = relux_core::pure::VarScope::new();
+                    let value =
+                        crate::evaluator::eval_pure_expr(expr, &vars, env, fns, &mut recording);
+                    let pattern_str =
+                        crate::evaluator::eval_pure_expr(pattern, &vars, env, fns, &mut recording);
+
+                    let regex = regex::Regex::new(&pattern_str).map_err(|e| {
+                        LoweringBail::invalid(InvalidReport::invalid_regex(
+                            pattern_str.clone(),
+                            e.to_string(),
+                            pattern_span.clone(),
+                        ))
+                    })?;
+
+                    let (met, result_str, captures): (
+                        bool,
+                        String,
+                        std::collections::HashMap<String, String>,
+                    ) = if let Some(cap) = regex.captures(&value) {
+                        let mut caps = std::collections::HashMap::new();
+                        for i in 0..cap.len() {
+                            if let Some(m) = cap.get(i) {
+                                caps.insert(i.to_string(), m.as_str().to_string());
+                            }
+                        }
+                        (
+                            true,
+                            cap.get(0)
+                                .map(|m| m.as_str().to_string())
+                                .unwrap_or_default(),
+                            caps,
+                        )
+                    } else {
+                        (false, String::new(), std::collections::HashMap::new())
+                    };
+
+                    use crate::pure_sink::PureEvalSink;
+                    recording.record_match(
+                        crate::pure_sink::MatchKind::Regex,
+                        &value,
+                        &pattern_str,
+                        &result_str,
+                        &captures,
+                        pattern_span,
+                    );
+                    (
+                        met,
+                        SkipEvaluation::Regex {
+                            value,
+                            pattern: pattern_str,
+                            met,
+                        },
+                    )
+                }
+            };
+
+            if negate {
+                met = !met;
+            }
+
+            // `met` here is the truthy outcome of the condition after the
+            // modifier (`if` keeps it as-is; `unless` was already inverted
+            // above). For every kind the rule is the same: if met, the
+            // marker's action applies; otherwise it doesn't.
+            let decision = if met {
+                MarkerEvalDecision::Mark
+            } else {
+                MarkerEvalDecision::Pass
             };
             recordings.push(MarkerRecording {
                 marker_span: marker_span.clone(),
                 kind,
-                modifier: MarkerEvalModifier::If,
-                evaluation: SkipEvaluation::Unconditional,
+                modifier: marker.modifier,
+                evaluation: evaluation.clone(),
                 decision,
-                ops: Vec::new(),
+                ops: std::mem::take(&mut recording.ops),
             });
+
             match action {
-                MarkerAction::Skip => {
-                    return Ok(MarkerResult {
-                        skip: Some(SkipReport {
-                            definition,
-                            marker_span,
-                            evaluation: SkipEvaluation::Unconditional,
-                        }),
-                        flaky,
-                        recordings,
-                    });
-                }
-                MarkerAction::Run => continue, // @run with no condition = always run
-                MarkerAction::Flaky => {
-                    flaky = true;
-                    continue;
-                }
-            }
-        };
-
-        let negate = matches!(&condition.modifier, AstCondModifier::Unless { .. });
-        let modifier = if negate {
-            MarkerEvalModifier::Unless
-        } else {
-            MarkerEvalModifier::If
-        };
-
-        let mut recording = crate::pure_sink::RecordingSink::default();
-        let (mut met, evaluation) = match &condition.body {
-            AstMarkerCondBody::Bare { expr, .. } => {
-                let ir_expr = IrPureExpr::lower(expr, file_id, ctx)?;
-                let value = crate::evaluator::eval_pure_expr(
-                    &ir_expr,
-                    &relux_core::pure::VarScope::new(),
-                    env,
-                    &fns,
-                    &mut recording,
-                );
-                let met = !value.is_empty();
-                (met, SkipEvaluation::Bare { value, met })
-            }
-            AstMarkerCondBody::Eq { lhs, rhs, .. } => {
-                let ir_lhs = IrPureExpr::lower(lhs, file_id, ctx)?;
-                let ir_rhs = IrPureExpr::lower(rhs, file_id, ctx)?;
-                let vars = relux_core::pure::VarScope::new();
-                let lhs_val =
-                    crate::evaluator::eval_pure_expr(&ir_lhs, &vars, env, &fns, &mut recording);
-                let rhs_val =
-                    crate::evaluator::eval_pure_expr(&ir_rhs, &vars, env, &fns, &mut recording);
-                let met = lhs_val == rhs_val;
-                (
-                    met,
-                    SkipEvaluation::Eq {
-                        lhs: lhs_val,
-                        rhs: rhs_val,
-                        met,
-                    },
-                )
-            }
-            AstMarkerCondBody::Regex {
-                expr,
-                pattern,
-                span,
-            } => {
-                let ir_expr = IrPureExpr::lower(expr, file_id, ctx)?;
-                let vars = relux_core::pure::VarScope::new();
-                let value =
-                    crate::evaluator::eval_pure_expr(&ir_expr, &vars, env, &fns, &mut recording);
-
-                // Lower pattern as interpolation, wrap in IrPureExpr to evaluate
-                let ir_interp = IrInterpolation::lower(pattern, file_id, ctx)?;
-                let pattern_expr = IrPureExpr::String {
-                    value: ir_interp,
-                    span: IrSpan::new(file_id.clone(), pattern.span),
-                };
-                let pattern_str = crate::evaluator::eval_pure_expr(
-                    &pattern_expr,
-                    &vars,
-                    env,
-                    &fns,
-                    &mut recording,
-                );
-
-                let regex = regex::Regex::new(&pattern_str).map_err(|e| {
-                    LoweringBail::invalid(InvalidReport::invalid_regex(
-                        pattern_str.clone(),
-                        e.to_string(),
-                        IrSpan::new(file_id.clone(), *span),
-                    ))
-                })?;
-
-                let (met, result_str, captures): (
-                    bool,
-                    String,
-                    std::collections::HashMap<String, String>,
-                ) = if let Some(cap) = regex.captures(&value) {
-                    let mut caps = std::collections::HashMap::new();
-                    for i in 0..cap.len() {
-                        if let Some(m) = cap.get(i) {
-                            caps.insert(i.to_string(), m.as_str().to_string());
-                        }
+                MarkerAction::Skip | MarkerAction::Run => {
+                    let should_skip = match action {
+                        MarkerAction::Skip => met,
+                        MarkerAction::Run => !met,
+                        MarkerAction::Flaky => unreachable!(),
+                    };
+                    if should_skip {
+                        return Ok(MarkerDecision {
+                            skip: Some(SkipReport {
+                                definition,
+                                marker_span,
+                                evaluation,
+                            }),
+                            flaky,
+                            recordings,
+                        });
                     }
-                    (
-                        true,
-                        cap.get(0)
-                            .map(|m| m.as_str().to_string())
-                            .unwrap_or_default(),
-                        caps,
-                    )
-                } else {
-                    (false, String::new(), std::collections::HashMap::new())
-                };
-
-                use crate::pure_sink::PureEvalSink;
-                recording.record_match(
-                    crate::pure_sink::MatchKind::Regex,
-                    &value,
-                    &pattern_str,
-                    &result_str,
-                    &captures,
-                    &IrSpan::new(file_id.clone(), *span),
-                );
-                (
-                    met,
-                    SkipEvaluation::Regex {
-                        value,
-                        pattern: pattern_str,
-                        met,
-                    },
-                )
+                }
+                MarkerAction::Flaky => {
+                    if met {
+                        flaky = true;
+                    }
+                }
             }
+            continue;
         };
 
-        if negate {
-            met = !met;
-        }
-
-        // `met` here is the truthy outcome of the condition after the
-        // modifier (`if` keeps it as-is; `unless` was already inverted
-        // above). For every kind the rule is the same: if met, the
-        // marker's action applies; otherwise it doesn't.
-        let decision = if met {
-            MarkerEvalDecision::Mark
-        } else {
-            MarkerEvalDecision::Pass
+        // No condition - unconditional marker. `# skip` and
+        // `# flaky` always apply; `# run` (no condition) is a
+        // no-op per the docs.
+        let decision = match action {
+            MarkerAction::Skip => MarkerEvalDecision::Mark,
+            MarkerAction::Run => MarkerEvalDecision::Pass,
+            MarkerAction::Flaky => MarkerEvalDecision::Mark,
         };
         recordings.push(MarkerRecording {
             marker_span: marker_span.clone(),
             kind,
-            modifier,
-            evaluation: evaluation.clone(),
+            modifier: MarkerEvalModifier::If,
+            evaluation: SkipEvaluation::Unconditional,
             decision,
-            ops: std::mem::take(&mut recording.ops),
+            ops: Vec::new(),
         });
-
         match action {
-            MarkerAction::Skip | MarkerAction::Run => {
-                let should_skip = match action {
-                    MarkerAction::Skip => met,
-                    MarkerAction::Run => !met,
-                    _ => unreachable!(),
-                };
-                if should_skip {
-                    return Ok(MarkerResult {
-                        skip: Some(SkipReport {
-                            definition,
-                            marker_span,
-                            evaluation,
-                        }),
-                        flaky,
-                        recordings,
-                    });
-                }
+            MarkerAction::Skip => {
+                return Ok(MarkerDecision {
+                    skip: Some(SkipReport {
+                        definition,
+                        marker_span,
+                        evaluation: SkipEvaluation::Unconditional,
+                    }),
+                    flaky,
+                    recordings,
+                });
             }
+            MarkerAction::Run => continue, // @run with no condition = always run
             MarkerAction::Flaky => {
-                if met {
-                    flaky = true;
-                }
+                flaky = true;
+                continue;
             }
         }
     }
 
-    Ok(MarkerResult {
+    Ok(MarkerDecision {
         skip: None,
         flaky,
         recordings,
