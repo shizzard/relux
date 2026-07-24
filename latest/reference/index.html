@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-0392ca55.css">
-        <link rel="stylesheet" href="css/chrome-fc474251.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -28,7 +28,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="relux-7a3db124.css">
+        <link rel="stylesheet" href="relux-1a28bb9c.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "relux";
             const default_dark_theme = "relux";
-            window.path_to_searchindex_js = "searchindex-fa6ab283.js";
+            window.path_to_searchindex_js = "searchindex-c66d4e5c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-9798380f.js"></script>
+        <script src="toc-18d25ac9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -202,6 +202,7 @@
 <li>Inner blocks can shadow outer variables with a new <code>let</code> declaration</li>
 <li>Reassignment (<code>x = expr</code>) mutates an existing variable from an outer scope</li>
 <li>Environment variables from the host process are available as pre-set variables in all scopes (read-only — <code>let</code> creates a shadow, not a modification of the process environment)</li>
+<li>Hierarchical <code>.env</code> files, when present, layer over the host process environment and take precedence over it; their values feed interpolation, marker evaluation, and the shell under test</li>
 <li>Regex capture groups (<code>$1</code>, <code>$2</code>, …) are set after a <code>&lt;?</code> match and remain in scope until overwritten by the next <code>&lt;?</code></li>
 </ul>
 <h2 id="functions"><a class="header" href="#functions">Functions</a></h2>
@@ -257,6 +258,19 @@
 <li>A match operator with no payload (<code>&lt;?</code> or <code>&lt;=</code> with nothing after it) resets the output buffer cursor, consuming all current output</li>
 <li>Each shell has one active timeout value, initially set to a framework default</li>
 <li>Multiple <code>shell &lt;name&gt;</code> blocks with the same name in a test/effect refer to the same shell (switching the active shell, like lux’s <code>[shell name]</code>)</li>
+<li>A multi-pattern match block (<code>&lt;{ &lt;line&gt;+ }</code>) waits for several patterns at once:
+<ul>
+<li>Each inner line is <code>? &lt;pattern&gt;</code> (regex) or <code>= &lt;pattern&gt;</code> (literal); patterns are mixed freely</li>
+<li>The block is atomic with respect to the cursor: every byte that arrives is offered to every still-unmatched pattern, the cursor sits still until block exit</li>
+<li>A pattern transitions to matched the first time it succeeds against the slice <code>[block_entry, current_buffer_end]</code>; once matched, it no longer participates in subsequent scans</li>
+<li>The block completes when every pattern has matched at least once</li>
+<li>At block exit the cursor advances once, to the maximum of the per-pattern match-end offsets (overlapping matches are permitted; duplicate inner patterns are independent slots that may land on the same bytes)</li>
+<li>Capture groups in inner regex patterns do not bind - <code>$n</code> is not written by a multimatch block</li>
+<li>If the block timeout fires before all patterns have matched, the test fails; the failure record lists every pattern with its matched/unmatched status</li>
+<li>Fail patterns remain active during the block; a fail-pattern hit aborts the block exactly as it would abort a single <code>&lt;?</code> / <code>&lt;=</code></li>
+<li>The inline-timeout prefix shape <code>&lt;~Ns{ ... }</code> / <code>&lt;@Ns{ ... }</code> carries the standard tolerance/assertion semantics, applied to the whole block</li>
+</ul>
+</li>
 </ul>
 <h2 id="effects"><a class="header" href="#effects">Effects</a></h2>
 <ul>
@@ -321,7 +335,7 @@
 </ul>
 </li>
 <li>Bare variable identifiers (e.g. <code>CI</code>) are valid in markers</li>
-<li>Expression evaluation uses ENV-only lookup (<code>Arc&lt;Env&gt;</code>) — no frame variables or test-scope variables exist at evaluation time</li>
+<li>Expression evaluation uses ENV-only lookup (<code>Arc&lt;LayeredEnv&gt;</code> — the layered host-plus-<code>.env</code> environment) — no frame variables or test-scope variables exist at evaluation time</li>
 <li>Truthiness: empty string or unset variable is false, any non-empty string is true</li>
 <li><code>=</code> operator: evaluates both sides, returns the LHS value if LHS equals RHS, empty string otherwise</li>
 <li><code>?</code> operator: evaluates LHS, compiles the regex pattern (with <code>${var}</code> interpolation), returns the match if found, empty string otherwise</li>
@@ -341,6 +355,7 @@
 <li>Multiple markers stack with AND semantics: all conditions must pass or the test is skipped</li>
 <li>When an effect is skipped, all tests depending on it are also skipped</li>
 <li>When a function is skipped, all tests that call it are also skipped</li>
+<li><code># flaky</code> propagates the same way skip does: a test is marked flaky if it, or any function or effect it reaches, has a <code># flaky</code> marker whose condition applies</li>
 </ul>
 <h2 id="tests"><a class="header" href="#tests">Tests</a></h2>
 <ul>
@@ -431,10 +446,10 @@
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-c4a399dd.js"></script>
-        <script src="book-c22b7243.js"></script>
+        <script src="book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
-        <script src="highlight-relux-20a2d16c.js"></script>
+        <script src="highlight-relux-93dc7aed.js"></script>
 
 
 

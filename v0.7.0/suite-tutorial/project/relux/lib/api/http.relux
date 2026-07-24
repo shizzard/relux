@@ -1,0 +1,66 @@
+// curl functions
+
+fn curl(url) {
+    curl(url, "GET")
+}
+
+fn curl(url, method) {
+    curl(url, method, "")
+}
+
+fn curl(url, method, req_body) {
+    curl(url, method, req_body, "")
+}
+
+# skip unless which("curl")
+fn curl(url, method, req_body, extra_headers) {
+    let outdir = "${__RELUX_TEST_ARTIFACTS}/http"
+    > mkdir -p ${outdir}
+    match_ok()
+
+    let file_rand = rand(10)
+    let filename = "${outdir}/${file_rand}.http_response.txt"
+
+    > curl -v -X ${method} ${extra_headers} -d '${req_body}' -o ${filename} ${url}
+    <? ^> $
+
+    filename
+}
+
+// http functions
+
+fn http_match_code(code) {
+    <? ^< HTTP/(\d\.\d) ${code} (.*)$
+}
+
+fn http_request(expected_code, url) {
+    http_request(expected_code, url, "GET")
+}
+
+fn http_request(expected_code, url, method) {
+    http_request(expected_code, url, method, "")
+}
+
+fn http_request(expected_code, url, method, req_body) {
+    let response_filename = curl(url, method, req_body)
+    http_match_code(expected_code)
+    match_ok()
+    response_filename
+}
+
+// authorized http functions
+
+fn http_request_authorized(expected_code, url, token) {
+    http_request_authorized(expected_code, url, "GET", token, "")
+}
+
+fn http_request_authorized(expected_code, url, method, token) {
+    http_request_authorized(expected_code, url, method, token, "")
+}
+
+fn http_request_authorized(expected_code, url, method, token, req_body) {
+    let response_filename = curl(url, method, req_body, "-H 'Authorization: Bearer ${token}'")
+    http_match_code(expected_code)
+    match_ok()
+    response_filename
+}

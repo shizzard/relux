@@ -29,7 +29,7 @@ test "key-value CRUD" {
         let response_filename = http_request(200, db_url(db_port, "/db/mydb/greeting"), "DELETE")
         jq_match_query(response_filename, ".deleted", "^greeting$")
 
-        log("read again — should be gone")
+        log("read again - should be gone")
         let response_filename = http_request(404, db_url(db_port, "/db/mydb/greeting"))
         jq_match_query(response_filename, ".error", "^.*not found.*$")
     }

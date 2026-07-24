@@ -1,4 +1,4 @@
-/* Relux book theme — mirrors the viewer palette so the three mdBooks,
+/* Relux book theme - mirrors the viewer palette so the three mdBooks,
    the runtime's HTML report, and the docs landing page look like one
    product. Hex values live in `:root` as `--relux-*` tokens so any
    standalone page (like docs/landing.html) can `<link>` this file and
@@ -8,7 +8,7 @@
    half-styled built-in palette. */
 
 :root {
-  /* Canonical palette — sourced from viewer/src/styles/tokens.css. */
+  /* Canonical palette - sourced from viewer/src/styles/tokens.css. */
   --relux-bg: #0f1620;        /* deepest: sidebar / landing body */
   --relux-paper: #18212e;     /* content surface: book body, cards */
   --relux-paper-2: #1d2735;   /* raised: code chip, table header, hover */
@@ -101,7 +101,7 @@
   --mono-font: var(--relux-font-mono);
 }
 
-/* `general.css` hardcodes Open Sans on `html` — override via cascade
+/* `general.css` hardcodes Open Sans on `html` - override via cascade
    instead of redefining a variable. */
 html,
 body,
@@ -121,7 +121,7 @@ input {
 /* mdBook's `book.js#set_theme` only swaps the dark highlight CSS for
    `coal`/`navy`/`ayu`; any other theme name (including `relux`) falls
    into the `else` branch and gets `highlight-493f70e1.css`, the LIGHT
-   atelier-dune stylesheet — which sets `.hljs { background: #f6f7f6 }`
+   atelier-dune stylesheet - which sets `.hljs { background: #f6f7f6 }`
    and a `#d70025` red on `.hljs-variable`. All rules below are scoped
    under `.relux` so they out-specify those built-ins regardless of
    load order.

@@ -83,6 +83,19 @@ hljs.registerLanguage("relux", function (hljs) {
   // / duration / close char) without giving the duration segment the
   // outer `keyword` boldness.
 
+  // Multimatch open: <{ or <~Ns{ or <@Ns{ - highlights the opener as a
+  // keyword. The block body and closer fall back to inline match-operator
+  // and brace rules respectively.
+  const OP_MULTIMATCH_OPEN = {
+    match: /<\{/,
+    className: "keyword"
+  };
+
+  const OP_TIMED_MULTIMATCH_OPEN = {
+    match: [/</, /[~@][0-9][0-9a-zA-Z]*/, /\{/],
+    scope: { 1: "keyword", 2: "keyword.duration", 3: "keyword" }
+  };
+
   const OP_TIMED_MATCH_REGEX = {
     begin: [/</, /[~@][0-9][0-9a-zA-Z]*/, /\?/],
     beginScope: { 1: "keyword", 2: "keyword.duration", 3: "keyword" },
@@ -165,7 +178,7 @@ hljs.registerLanguage("relux", function (hljs) {
     scope: { 1: "keyword", 3: "variable" }
   };
 
-  // `expose shell <name>` — `shell` is a keyword here, not the bound name.
+  // `expose shell <name>` - `shell` is a keyword here, not the bound name.
   // The longer form `expose shell <Type>.<member> as <alias>` falls through:
   // `expose` and `shell` get the keyword map, the dotted access is caught
   // by USE_DOTTED_TYPE, `as` gets the keyword map.
@@ -210,7 +223,7 @@ hljs.registerLanguage("relux", function (hljs) {
   // The `{ ... }` block that follows `import <path>`. Inside this block,
   // identifiers are either effects (CamelCase / short-uppercase aliases
   // like `E1`) or functions (lowercase). The lookbehind on `begin`
-  // restricts activation to the import context — every other `{`/`}`
+  // restricts activation to the import context - every other `{`/`}`
   // (effect bodies, test bodies, fn bodies, start blocks) is left alone.
   // The relaxed CamelCase regex (no required `[a-z]` second char) is
   // needed because import aliases are often short: `Foo as F`, `Bar as B`.
@@ -231,7 +244,7 @@ hljs.registerLanguage("relux", function (hljs) {
     ]
   };
 
-  // Generic `as <name>` — catches the trailing rename in:
+  // Generic `as <name>` - catches the trailing rename in:
   //   expose var Db.port as db_port
   //   expose var id as script_id
   //   import service/db { url as db_url, StartDb }
@@ -247,7 +260,7 @@ hljs.registerLanguage("relux", function (hljs) {
     scope: { 1: "keyword", 3: "variable" }
   };
 
-  // Assignment / reassignment LHS — catches bare `hostname = "x"` and the
+  // Assignment / reassignment LHS - catches bare `hostname = "x"` and the
   // env bindings inside `start X { K = V }`. The negative lookahead on
   // `=(?!>)` keeps `=>` (raw send) out of this rule.
   const ASSIGN_LHS = {
@@ -256,7 +269,7 @@ hljs.registerLanguage("relux", function (hljs) {
   };
 
   // Parenthesised argument / parameter lists. Activated by any `(...)`
-  // — covers fn declaration params `fn foo(p1, p2)` AND call-site args
+  // - covers fn declaration params `fn foo(p1, p2)` AND call-site args
   // `trim(input)` / `${match_exit_code(0)}`.
   const FN_CALL_ARGS = {
     begin: /\(/,
@@ -292,7 +305,7 @@ hljs.registerLanguage("relux", function (hljs) {
   // Bare CamelCase use site (effect type or alias).
   const USE_TYPE = { scope: "type", begin: /\b[A-Z][a-z][a-zA-Z0-9_]*\b/ };
 
-  // SCREAMING_SNAKE env-var style names — `STORAGE_REGION`, `PORT`,
+  // SCREAMING_SNAKE env-var style names - `STORAGE_REGION`, `PORT`,
   // `_PRIVATE`. Catches the trailing items in `expect A, B, C` and the
   // env-named arguments passed to function calls. Order-wise this lives
   // after USE_TYPE, which is fine because USE_TYPE requires `[A-Z][a-z]`
@@ -303,7 +316,7 @@ hljs.registerLanguage("relux", function (hljs) {
   // Function call: a lowercase identifier immediately followed by `(`.
   const USE_FN_CALL = { scope: "title.function", begin: /\b[a-z_][a-zA-Z0-9_]*(?=\()/ };
 
-  // Bare variable use site — a lowercase identifier that isn't a keyword,
+  // Bare variable use site - a lowercase identifier that isn't a keyword,
   // a function call (followed by `(`), a dotted prefix (followed by `.`),
   // an assignment LHS (followed by `=`), or a block opener (followed by
   // `{`). Catches return values like `filename` on its own line, and
@@ -357,6 +370,10 @@ hljs.registerLanguage("relux", function (hljs) {
       FN_CALL_ARGS,
 
       // Shell operator + payload pairs (longest first).
+      // Multimatch openers must come before single-match timed/untimed rules
+      // because `<{` shares a `<` prefix with `<?`, `<=`, and `<~Ns?` / `<~Ns=`.
+      OP_TIMED_MULTIMATCH_OPEN,
+      OP_MULTIMATCH_OPEN,
       OP_TIMED_MATCH_REGEX,
       OP_TIMED_MATCH_LITERAL,
       OP_MATCH_REGEX,
@@ -382,7 +399,7 @@ hljs.registerLanguage("relux", function (hljs) {
 
       STRING,
 
-      // Top-level capture var (`$1`..`$9`) — must come before the bare
+      // Top-level capture var (`$1`..`$9`) - must come before the bare
       // number rule so the `$` doesn't get stranded and the `1` doesn't
       // get matched as a number.
       CAPTURE_VAR,
@@ -396,7 +413,7 @@ hljs.registerLanguage("relux", function (hljs) {
 // Re-highlight `code.language-relux` blocks. mdBook's `book.js` calls
 // `hljs.highlightBlock` on every `<code>` element BEFORE this script
 // runs (additional-js loads after book.js), so Relux blocks get
-// processed as plain text — hljs marks them with the `hljs` class and
+// processed as plain text - hljs marks them with the `hljs` class and
 // `data-highlighted` and refuses to retry. Strip both markers and
 // re-run with the now-registered grammar.
 //
@@ -407,7 +424,7 @@ hljs.registerLanguage("relux", function (hljs) {
   // mdBook's `book.js` calls `hljs.highlightBlock` on every `<code>`
   // element BEFORE this script runs (additional-js loads after
   // book.js), so `language-relux` blocks get processed as plain text
-  // — hljs marks them with the `hljs` class and `data-highlighted`
+  // - hljs marks them with the `hljs` class and `data-highlighted`
   // and refuses to retry. Strip both markers and re-highlight with
   // the now-registered grammar. `highlightBlock` is deprecated in
   // v11.11.1 but still functional.
