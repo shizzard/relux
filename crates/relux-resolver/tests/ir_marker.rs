@@ -546,6 +546,27 @@ test "t" {
     assert!(is_invalid(&suite.plans[0]));
 }
 
+#[test]
+fn later_marker_lowering_error_is_invalid_despite_earlier_skip() {
+    // Marker lowering validity is env-INDEPENDENT: every marker is lowered to IR
+    // before any is decided, so a later marker's lowering error (here an
+    // undefined pure fn) surfaces as `Plan::Invalid` even though the earlier
+    // unconditional `# skip` would otherwise short-circuit the decision. This
+    // pins the behavior introduced by the lower/decide split.
+    let suite = resolve_source_no_env(&[(
+        "tests/a",
+        r#"# skip
+# skip if nonexistent()
+test "t" {
+  shell sh {
+    > echo hello
+  }
+}
+"#,
+    )]);
+    assert!(is_invalid(&suite.plans[0]));
+}
+
 // --- eval_marker: multiple markers -----------------------
 
 #[test]
