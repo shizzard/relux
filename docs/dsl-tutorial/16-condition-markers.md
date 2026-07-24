@@ -335,11 +335,27 @@ test "depends on conditionally skipped effect" {
 
 There is one important rule: **when an effect is skipped, all tests that depend on it are also skipped.** This cascades through the dependency graph. If effect `A` is skipped and test `X` needs `A`, test `X` is skipped too — even if test `X` has no markers of its own. The reasoning is straightforward: if the effect could not set up the infrastructure the test requires, running the test would be meaningless.
 
+## Flaky markers propagate too
+
+Skip is not the only marker that cascades. A `# flaky` marker on a function or
+effect marks every test that reaches it as flaky — the same propagation skip
+uses. This lets a shared helper declare "anything that uses me should be
+retried" once, instead of repeating `# flaky` on every calling test. As with
+skip, the retry only has effect when `[flaky].max_retries` is set above `0` in
+`Relux.toml`; otherwise the marker is documentary.
+
 ## Evaluation timing and scope
 
 Markers evaluate **before** any shells are spawned. For test-level markers, this happens before the test's effects are even set up. For effect-level markers, it happens before the effect's own shells are created.
 
-Because of this early evaluation, marker expressions can only see **environment variables** — the base environment that Relux inherits from the system plus any variables set in `Relux.toml`. Variables declared with `let` inside tests or effects do not exist yet at marker evaluation time. This is why marker syntax uses `"${VAR}"` to reference the environment, the same [interpolation syntax](06-variables.md#string-interpolation) you already know.
+Because of this early evaluation, marker expressions can only see **environment variables** — the base environment that Relux inherits from the system, any values contributed by hierarchical `.env` files (covered in a later chapter), plus any variables set in `Relux.toml`. Variables declared with `let` inside tests or effects do not exist yet at marker evaluation time. This is why marker syntax uses `"${VAR}"` to reference the environment, the same [interpolation syntax](06-variables.md#string-interpolation) you already know.
+
+One caveat about errors versus skips: a marker that calls a function which does
+not exist — or forms an import cycle — is a hard error. The test is reported
+**invalid**, not skipped, even when another marker on the same test would have
+skipped it. The same holds for an undefined function called in the test body: a
+`# skip` does not hide a broken test. A marker only skips a test that is
+otherwise well-formed.
 
 When a test is skipped, the test log viewer surfaces this with a synthetic **MARKERS root** at the top of the test's span tree — it stands in for the test body that never ran. Open the MARKERS span and you find the marker-eval and bool-check rows describing exactly which marker triggered the skip and what condition it tested. The view is the same one-click answer to "why was this skipped" for an unconditional `# skip`, a `# skip unless "${CI}"`, or a complex regex check on a pure function's result.
 

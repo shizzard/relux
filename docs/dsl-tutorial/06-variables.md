@@ -270,7 +270,7 @@ test "access host environment variable" {
 }
 ```
 
-`${HOME}` is not a Relux variable — no `let` declared it. Relux checks its own variables first (shell scope, then test scope), and when it finds nothing, it falls through to the host process environment. This works for any environment variable set in the process that runs `relux`.
+`${HOME}` is not a Relux variable — no `let` declared it. Relux checks its own variables first (shell scope, then test scope), and when it finds nothing, it falls through to the environment. That environment is layered: values from hierarchical `.env` files (covered in a later chapter) take precedence, and beneath them sits the host process environment — any variable set in the process that runs `relux`.
 
 Environment variables are **global** — they are visible in every test, every shell block, every scope. And they are **immutable** — you cannot reassign them from within the Relux DSL.
 
@@ -288,7 +288,7 @@ Relux injects several variables into every test run. These are real environment 
 - `${__RELUX_SUITE_ROOT}` — the absolute path to the project root (where `Relux.toml` lives)
 - `${__RELUX_TEST_ROOT}` — the absolute path to the directory containing the current test file
 
-The test log viewer surfaces all of this in a dedicated **environment** modal, opened with the `E` key (or by clicking the small `env` chip at the bottom of the variables-in-scope pane). It lists every env var captured at the moment the test started — host vars and Relux-injected ones together — and groups them so the noise stays out of the way. A search box at the top filters by name or value when you need to find one quickly.
+The test log viewer surfaces all of this in a dedicated **environment** modal, opened with the `E` key (or by clicking the small `env` chip at the bottom of the variables-in-scope pane). It lists every env var captured at the moment the test started — host vars, any `.env` file values, and Relux-injected ones together — and groups them so the noise stays out of the way. A search box at the top filters by name or value when you need to find one quickly.
 
 ## Try it yourself
 

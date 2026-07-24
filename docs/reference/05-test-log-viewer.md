@@ -149,7 +149,7 @@ The query is matched against the rendered (escape-expanded) buffer text using su
 
 ## Env modal
 
-Snapshot of the process environment captured when the test started.
+Snapshot of the environment seeded when the test started — the host process environment, any `.env` file values layered over it, and Relux's own run internals.
 
 The body lists every variable, grouped by origin (`relux internals`, `cargo`, `nix / toolchain`, `shell & terminal`, `large blobs`, `other`). A filter row at the top accepts a query and a scope toggle: filter by **name**, **value**, or **name · matches** (either side). The counter shows `<filtered> / <total>`.
 

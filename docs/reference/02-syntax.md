@@ -139,6 +139,7 @@ Examples:
 - Multiple markers stack with AND semantics (all must pass or test is skipped)
 - Placed immediately before `test`, `effect`, `fn`, or `pure fn` declarations (not inside the body)
 - When a function is skipped, all tests that call it are also skipped
+- A `# flaky` marker on a function or effect propagates too: the test is marked flaky when a function or effect it reaches is flaky
 - Comments between markers and the declaration are allowed
 
 | Marker    | Modifier | Condition | Meaning |
@@ -189,7 +190,7 @@ let <name> = <expression>   # declare from expression
 - Bare variable reference: `name`, `$1`, `$2`
 - Escape `$` with `$$`
 - Scoped to enclosing block; inner blocks can shadow outer variables
-- Environment variables are readable (base env available everywhere)
+- Environment variables are readable (the layered base environment — host process plus any `.env` files — is available everywhere)
 
 ## Operators
 

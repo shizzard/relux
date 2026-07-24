@@ -26,6 +26,7 @@
 - Inner blocks can shadow outer variables with a new `let` declaration
 - Reassignment (`x = expr`) mutates an existing variable from an outer scope
 - Environment variables from the host process are available as pre-set variables in all scopes (read-only — `let` creates a shadow, not a modification of the process environment)
+- Hierarchical `.env` files, when present, layer over the host process environment and take precedence over it; their values feed interpolation, marker evaluation, and the shell under test (covered in a later chapter)
 - Regex capture groups (`$1`, `$2`, ...) are set after a `<?` match and remain in scope until overwritten by the next `<?`
 
 ## Functions
@@ -128,7 +129,7 @@
   - `"${HOST}:${PORT}"` — compound interpolation
   - `42` — bare number (compared as string)
 - Bare variable identifiers (e.g. `CI`) are valid in markers
-- Expression evaluation uses ENV-only lookup (`Arc<Env>`) — no frame variables or test-scope variables exist at evaluation time
+- Expression evaluation uses ENV-only lookup (`Arc<LayeredEnv>` — the layered host-plus-`.env` environment) — no frame variables or test-scope variables exist at evaluation time
 - Truthiness: empty string or unset variable is false, any non-empty string is true
 - `=` operator: evaluates both sides, returns the LHS value if LHS equals RHS, empty string otherwise
 - `?` operator: evaluates LHS, compiles the regex pattern (with `${var}` interpolation), returns the match if found, empty string otherwise
@@ -142,6 +143,7 @@
 - Multiple markers stack with AND semantics: all conditions must pass or the test is skipped
 - When an effect is skipped, all tests depending on it are also skipped
 - When a function is skipped, all tests that call it are also skipped
+- `# flaky` propagates the same way skip does: a test is marked flaky if it, or any function or effect it reaches, has a `# flaky` marker whose condition applies
 
 ## Tests
 
