@@ -1,5 +1,9 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 pub mod bifs;
@@ -95,6 +99,25 @@ impl Env {
     }
 }
 
+// --- LayeredEnvSource ------------------------------------
+
+/// Provenance of a single `LayeredEnv` layer: where its values came from.
+/// One tag per layer; because a lookup returns the first hit walking the
+/// chain, the winning value's source is always recoverable.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum LayeredEnvSource {
+    /// Process environment captured at startup (lowest precedence).
+    Base,
+    /// Values resolved from one `.env` file.
+    DotEnv(PathBuf),
+    /// `__RELUX_*` run-level internals.
+    ReluxInternal,
+    /// Effect-contributed overlay, tagged with the effect instance mnemonic.
+    EffectOverlay(String),
+    /// Test-contributed overlay: `let` bindings and `__RELUX_TEST_*`.
+    Test,
+}
+
 // --- LayeredEnv ------------------------------------------
 
 /// Layered environment with recursive parent chain.
@@ -107,24 +130,80 @@ impl Env {
 #[derive(Debug, Clone)]
 pub struct LayeredEnv {
     own: Env,
+    source: LayeredEnvSource,
     parent: Option<Arc<LayeredEnv>>,
+    /// Cached cumulative hash of this layer folded with the parent chain.
+    /// Computed once at construction (layers are immutable), so the top
+    /// layer's value is the whole-stack identity, O(1) to read.
+    cumulative_hash: u64,
 }
 
 impl LayeredEnv {
-    /// Create the root layer from the base process environment.
+    /// Hash one layer: its source tag plus its `(key, value)` pairs folded
+    /// in sorted-key order (a `HashMap`'s iteration order is nondeterministic,
+    /// so sorting is required for a reproducible hash).
+    fn layer_hash(source: &LayeredEnvSource, own: &Env) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        source.hash(&mut hasher);
+        let mut pairs: Vec<(&str, &str)> = own.iter().collect();
+        pairs.sort_unstable_by_key(|(k, _)| *k);
+        for (k, v) in pairs {
+            k.hash(&mut hasher);
+            v.hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+
+    /// Create the root layer from the base process environment (source `Base`).
     pub fn root(base: Env) -> Self {
+        Self::root_with_source(base, LayeredEnvSource::Base)
+    }
+
+    /// Create the root layer with an explicit source.
+    pub fn root_with_source(base: Env, source: LayeredEnvSource) -> Self {
+        let cumulative_hash = Self::layer_hash(&source, &base);
         Self {
             own: base,
+            source,
             parent: None,
+            cumulative_hash,
         }
     }
 
-    /// Create a child layer with the given overlay on top of this env.
+    /// Create a child overlay on top of this env (source `Test` by default,
+    /// the common case; effect overlays use `child_with_source`).
     pub fn child(parent: Arc<LayeredEnv>, overlay: Env) -> Self {
+        Self::child_with_source(parent, overlay, LayeredEnvSource::Test)
+    }
+
+    /// Create a child overlay with an explicit source.
+    pub fn child_with_source(
+        parent: Arc<LayeredEnv>,
+        overlay: Env,
+        source: LayeredEnvSource,
+    ) -> Self {
+        let own_hash = Self::layer_hash(&source, &overlay);
+        let mut hasher = DefaultHasher::new();
+        own_hash.hash(&mut hasher);
+        parent.cumulative_hash.hash(&mut hasher);
+        let cumulative_hash = hasher.finish();
         Self {
             own: overlay,
+            source,
             parent: Some(parent),
+            cumulative_hash,
         }
+    }
+
+    /// This layer's provenance.
+    pub fn source(&self) -> &LayeredEnvSource {
+        &self.source
+    }
+
+    /// The whole-stack identity hash: deterministic, insertion-order
+    /// independent, sensitive to every layer's source and values.
+    pub fn stack_hash(&self) -> u64 {
+        self.cumulative_hash
     }
 
     /// Look up a variable, walking the chain until found.
@@ -477,5 +556,117 @@ mod tests {
         let entries: HashMap<&str, &str> = top.iter().collect();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries["X"], "top");
+    }
+
+    // --- LayeredEnvSource + stack hash -----------------------
+
+    #[test]
+    fn layered_root_source_defaults_to_base() {
+        let env = LayeredEnv::root(Env::new());
+        assert_eq!(env.source(), &LayeredEnvSource::Base);
+    }
+
+    #[test]
+    fn layered_child_source_defaults_to_test() {
+        let parent = Arc::new(LayeredEnv::root(Env::new()));
+        let child = LayeredEnv::child(parent, Env::new());
+        assert_eq!(child.source(), &LayeredEnvSource::Test);
+    }
+
+    #[test]
+    fn child_with_source_records_effect_overlay() {
+        let parent = Arc::new(LayeredEnv::root(Env::new()));
+        let child = LayeredEnv::child_with_source(
+            parent,
+            Env::new(),
+            LayeredEnvSource::EffectOverlay("brave-yak-0001".into()),
+        );
+        assert_eq!(
+            child.source(),
+            &LayeredEnvSource::EffectOverlay("brave-yak-0001".into())
+        );
+    }
+
+    #[test]
+    fn stack_hash_independent_of_insertion_order() {
+        let mut a = Env::new();
+        a.insert("X".into(), "1".into());
+        a.insert("Y".into(), "2".into());
+        let mut b = Env::new();
+        b.insert("Y".into(), "2".into());
+        b.insert("X".into(), "1".into());
+        assert_eq!(
+            LayeredEnv::root(a).stack_hash(),
+            LayeredEnv::root(b).stack_hash()
+        );
+    }
+
+    #[test]
+    fn stack_hash_distinguishes_source() {
+        let mut a = Env::new();
+        a.insert("X".into(), "1".into());
+        let mut b = Env::new();
+        b.insert("X".into(), "1".into());
+        let base = LayeredEnv::root_with_source(a, LayeredEnvSource::Base);
+        let test = LayeredEnv::root_with_source(b, LayeredEnvSource::Test);
+        assert_ne!(base.stack_hash(), test.stack_hash());
+    }
+
+    #[test]
+    fn stack_hash_distinguishes_child_source() {
+        let parent = Arc::new(LayeredEnv::root(Env::new()));
+        let mut o1 = Env::new();
+        o1.insert("A".into(), "x".into());
+        let mut o2 = Env::new();
+        o2.insert("A".into(), "x".into());
+        let as_test = LayeredEnv::child_with_source(parent.clone(), o1, LayeredEnvSource::Test);
+        let as_effect = LayeredEnv::child_with_source(
+            parent.clone(),
+            o2,
+            LayeredEnvSource::EffectOverlay("db".into()),
+        );
+        assert_ne!(as_test.stack_hash(), as_effect.stack_hash());
+    }
+
+    #[test]
+    fn sibling_children_over_same_parent_share_stack_hash() {
+        let parent = Arc::new(LayeredEnv::root(Env::new()));
+        let mut o1 = Env::new();
+        o1.insert("A".into(), "x".into());
+        let mut o2 = Env::new();
+        o2.insert("A".into(), "x".into());
+        let c1 = LayeredEnv::child(parent.clone(), o1);
+        let c2 = LayeredEnv::child(parent.clone(), o2);
+        assert_eq!(c1.stack_hash(), c2.stack_hash());
+        assert_ne!(c1.stack_hash(), parent.stack_hash());
+    }
+
+    #[test]
+    fn child_hash_reflects_parent() {
+        let ov = || {
+            let mut e = Env::new();
+            e.insert("K".into(), "v".into());
+            e
+        };
+        let mut p1 = Env::new();
+        p1.insert("P".into(), "1".into());
+        let mut p2 = Env::new();
+        p2.insert("P".into(), "2".into());
+        let c1 = LayeredEnv::child(Arc::new(LayeredEnv::root(p1)), ov());
+        let c2 = LayeredEnv::child(Arc::new(LayeredEnv::root(p2)), ov());
+        assert_ne!(c1.stack_hash(), c2.stack_hash());
+    }
+
+    #[test]
+    fn stack_hash_stable_across_reconstruction() {
+        let build = || {
+            let mut base = Env::new();
+            base.insert("HOME".into(), "/h".into());
+            let root = Arc::new(LayeredEnv::root(base));
+            let mut ov = Env::new();
+            ov.insert("K".into(), "v".into());
+            LayeredEnv::child(root, ov).stack_hash()
+        };
+        assert_eq!(build(), build());
     }
 }
