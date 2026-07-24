@@ -53,13 +53,6 @@ pub struct MarkerRecording {
     pub ops: Vec<crate::pure_sink::SinkOp>,
 }
 
-/// Result of evaluating condition markers on a definition.
-pub struct MarkerResult {
-    pub skip: Option<SkipReport>,
-    pub flaky: bool,
-    pub recordings: Vec<MarkerRecording>,
-}
-
 /// A marker's condition lowered to env-independent IR. Regex patterns are held
 /// as their lowered interpolation (an `IrPureExpr::String`); the regex is only
 /// compiled at decision time, because the resolved pattern string - and thus
@@ -93,20 +86,11 @@ pub struct IrMarker {
 
 /// The env-dependent outcome of deciding a definition's markers against one env.
 /// (Same shape as `MarkerResult`; named distinctly to mark the split.)
+#[derive(Debug, Clone)]
 pub struct MarkerDecision {
     pub skip: Option<SkipReport>,
     pub flaky: bool,
     pub recordings: Vec<MarkerRecording>,
-}
-
-impl From<MarkerDecision> for MarkerResult {
-    fn from(decision: MarkerDecision) -> Self {
-        MarkerResult {
-            skip: decision.skip,
-            flaky: decision.flaky,
-            recordings: decision.recordings,
-        }
-    }
 }
 
 /// Lower a definition's markers to env-independent IR. Bails `Invalid` only on
@@ -394,22 +378,4 @@ pub fn decide_markers(
         flaky,
         recordings,
     })
-}
-
-/// Evaluate condition markers on a definition.
-///
-/// Requires: scope already pushed on `ctx` (for resolving pure fn calls).
-/// Returns `Ok(MarkerResult)` with skip/flaky status. `skip` is `Some` if a
-/// marker triggers skip. `flaky` is true if a flaky marker's condition is met.
-/// Returns `Err(LoweringBail)` if marker lowering fails (e.g., invalid regex, undefined fn).
-pub fn eval_marker(
-    markers: &[relux_core::Spanned<AstMarkerDecl>],
-    definition: DefinitionRef,
-    env: &Arc<LayeredEnv>,
-    file_id: &FileId,
-    ctx: &mut LoweringContext,
-) -> Result<MarkerResult, LoweringBail> {
-    let fns = ctx.pure_functions().clone();
-    let lowered = lower_markers(markers, file_id, ctx)?;
-    Ok(decide_markers(&lowered, definition, env, &fns)?.into())
 }

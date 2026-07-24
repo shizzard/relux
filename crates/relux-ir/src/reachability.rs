@@ -1,0 +1,294 @@
+//! Transitive marker-decision collection for a test.
+//!
+//! Relux is deterministic - no branching, no recursion. Every fn-call
+//! and effect-start written in a test's body (or in any function or
+//! effect transitively reachable from it) will execute. Marker
+//! conditions on those functions and effects therefore apply to the
+//! test in the same way they would if the test itself were marked.
+//!
+//! At resolve time, we walk the test's IR, collect every reachable
+//! `FnId` and `EffectId`, deduplicate, and fold each definition's
+//! `MarkerDecision` (looked up in the decision table by `(definition,
+//! stack)`) into a single aggregate: the first (pre-order) skip wins,
+//! flaky is the OR across every reachable definition, and recordings
+//! concatenate in pre-order (test first) for replay.
+//!
+//! Test-level recordings come first; effect-level and fn-level
+//! recordings follow in pre-order traversal order. The set of
+//! collected recordings is fully determined by the test's IR plus the
+//! resolved fn/effect tables and the stack, so two runs of the same
+//! suite produce identical marker traces.
+
+use relux_core::diagnostics::DefinitionRef;
+use relux_core::diagnostics::EffectId;
+use relux_core::diagnostics::FnId;
+use relux_core::diagnostics::SkipReport;
+use std::collections::HashSet;
+
+use crate::IrEffect;
+use crate::IrEffectItem;
+use crate::IrEffectStart;
+use crate::IrExpr;
+use crate::IrFn;
+use crate::IrPureExpr;
+use crate::IrPureFn;
+use crate::IrPureStmt;
+use crate::IrShellStmt;
+use crate::IrTest;
+use crate::IrTestItem;
+use crate::Tables;
+use crate::TestMeta;
+use crate::marker::MarkerRecording;
+use crate::tables::StackHash;
+
+/// Walk a test's reachable defs and aggregate their marker decisions at `stack`.
+/// A skip on the test or any reachable def skips the test; flaky is the OR;
+/// recordings concatenate in pre-order (test first). Defs with no decision entry
+/// for `stack` contribute nothing (they had no markers).
+pub fn collect_test_decision(
+    test: &IrTest,
+    test_meta: &TestMeta,
+    tables: &Tables,
+    stack: StackHash,
+) -> AggregatedDecision {
+    let mut v = Visitor::new(tables, stack);
+    v.take(test_meta.definition());
+    for start in test.starts() {
+        v.visit_effect_start(start);
+    }
+    for item in test.body() {
+        v.visit_test_item(item);
+    }
+    v.finish()
+}
+
+/// Aggregated marker outcome for a test, folded from every reachable
+/// definition's decision at a single env stack.
+pub struct AggregatedDecision {
+    pub skip: Option<SkipReport>,
+    pub flaky: bool,
+    pub recordings: Vec<MarkerRecording>,
+}
+
+struct Visitor<'a> {
+    tables: &'a Tables,
+    stack: StackHash,
+    seen_effects: HashSet<EffectId>,
+    seen_fns: HashSet<FnId>,
+    seen_pure_fns: HashSet<FnId>,
+    skip: Option<SkipReport>,
+    flaky: bool,
+    recordings: Vec<MarkerRecording>,
+}
+
+impl<'a> Visitor<'a> {
+    fn new(tables: &'a Tables, stack: StackHash) -> Self {
+        Self {
+            tables,
+            stack,
+            seen_effects: HashSet::new(),
+            seen_fns: HashSet::new(),
+            seen_pure_fns: HashSet::new(),
+            skip: None,
+            flaky: false,
+            recordings: Vec::new(),
+        }
+    }
+
+    fn finish(self) -> AggregatedDecision {
+        AggregatedDecision {
+            skip: self.skip,
+            flaky: self.flaky,
+            recordings: self.recordings,
+        }
+    }
+
+    /// Fold `def`'s decision at `self.stack` into the aggregate, if one was
+    /// recorded (defs with no markers have no decision entry). The first
+    /// (pre-order) skip wins; flaky is OR'd; recordings concatenate.
+    fn take(&mut self, def: &DefinitionRef) {
+        let Some(decision) = self.tables.marker_decisions.get(&(def.clone(), self.stack)) else {
+            return;
+        };
+        if self.skip.is_none() {
+            self.skip = decision.skip.clone();
+        }
+        self.flaky = self.flaky || decision.flaky;
+        self.recordings.extend(decision.recordings.iter().cloned());
+    }
+
+    fn visit_effect_start(&mut self, start: &IrEffectStart) {
+        for entry in start.overlay() {
+            self.visit_pure_expr(entry.value());
+        }
+        let effect_id = start.effect().clone();
+        if !self.seen_effects.insert(effect_id.clone()) {
+            return;
+        }
+        let Some(result) = self.tables.effects.get(&effect_id) else {
+            return;
+        };
+        let Ok(effect) = result.as_ref() else {
+            return;
+        };
+        let effect = effect.clone();
+        self.take(&DefinitionRef::Effect(effect_id));
+        self.visit_effect(&effect);
+    }
+
+    fn visit_effect(&mut self, effect: &IrEffect) {
+        for start in effect.starts() {
+            self.visit_effect_start(start);
+        }
+        for item in effect.body() {
+            self.visit_effect_item(item);
+        }
+    }
+
+    fn visit_test_item(&mut self, item: &IrTestItem) {
+        match item {
+            IrTestItem::Comment { .. } | IrTestItem::DocString { .. } => {}
+            IrTestItem::Start { start, .. } => self.visit_effect_start(start),
+            IrTestItem::Let { stmt, .. } => {
+                if let Some(expr) = stmt.value() {
+                    self.visit_pure_expr(expr);
+                }
+            }
+            IrTestItem::Shell { block, .. } => {
+                for stmt in block.body() {
+                    self.visit_shell_stmt(stmt);
+                }
+            }
+            IrTestItem::Cleanup { block, .. } => {
+                for stmt in block.body() {
+                    self.visit_shell_stmt(stmt);
+                }
+            }
+        }
+    }
+
+    fn visit_effect_item(&mut self, item: &IrEffectItem) {
+        match item {
+            IrEffectItem::Comment { .. }
+            | IrEffectItem::Expect { .. }
+            | IrEffectItem::Expose { .. } => {}
+            IrEffectItem::Start { start, .. } => self.visit_effect_start(start),
+            IrEffectItem::Let { stmt, .. } => {
+                if let Some(expr) = stmt.value() {
+                    self.visit_pure_expr(expr);
+                }
+            }
+            IrEffectItem::Shell { block, .. } => {
+                for stmt in block.body() {
+                    self.visit_shell_stmt(stmt);
+                }
+            }
+            IrEffectItem::Cleanup { block, .. } => {
+                for stmt in block.body() {
+                    self.visit_shell_stmt(stmt);
+                }
+            }
+        }
+    }
+
+    fn visit_shell_stmt(&mut self, stmt: &IrShellStmt) {
+        match stmt {
+            IrShellStmt::Comment { .. }
+            | IrShellStmt::Send { .. }
+            | IrShellStmt::SendRaw { .. }
+            | IrShellStmt::MatchRegex { .. }
+            | IrShellStmt::MatchLiteral { .. }
+            | IrShellStmt::TimedMatchRegex { .. }
+            | IrShellStmt::TimedMatchLiteral { .. }
+            | IrShellStmt::Timeout { .. }
+            | IrShellStmt::FailRegex { .. }
+            | IrShellStmt::FailLiteral { .. }
+            | IrShellStmt::ClearFailPattern { .. }
+            | IrShellStmt::MultiMatch { .. }
+            | IrShellStmt::BufferReset { .. } => {}
+            IrShellStmt::Let { stmt, .. } => {
+                if let Some(expr) = stmt.value() {
+                    self.visit_expr(expr);
+                }
+            }
+            IrShellStmt::Assign { stmt, .. } => self.visit_expr(stmt.value()),
+            IrShellStmt::Expr { expr, .. } => self.visit_expr(expr),
+        }
+    }
+
+    fn visit_pure_stmt(&mut self, stmt: &IrPureStmt) {
+        match stmt {
+            IrPureStmt::Comment { .. } => {}
+            IrPureStmt::Let { stmt, .. } => {
+                if let Some(expr) = stmt.value() {
+                    self.visit_pure_expr(expr);
+                }
+            }
+            IrPureStmt::Assign { stmt, .. } => self.visit_pure_expr(stmt.value()),
+            IrPureStmt::Expr { expr, .. } => self.visit_pure_expr(expr),
+        }
+    }
+
+    fn visit_expr(&mut self, expr: &IrExpr) {
+        match expr {
+            IrExpr::String { .. }
+            | IrExpr::Var { .. }
+            | IrExpr::QualifiedVar { .. }
+            | IrExpr::CaptureRef { .. } => {}
+            IrExpr::Call { call, .. } => {
+                for arg in call.args() {
+                    self.visit_expr(arg);
+                }
+                self.visit_fn(call.resolved());
+            }
+        }
+    }
+
+    fn visit_pure_expr(&mut self, expr: &IrPureExpr) {
+        match expr {
+            IrPureExpr::String { .. } | IrPureExpr::Var { .. } => {}
+            IrPureExpr::Call { call, .. } => {
+                for arg in call.args() {
+                    self.visit_pure_expr(arg);
+                }
+                self.visit_pure_fn(call.resolved());
+            }
+        }
+    }
+
+    fn visit_fn(&mut self, fn_id: &FnId) {
+        if !self.seen_fns.insert(fn_id.clone()) {
+            return;
+        }
+        let Some(result) = self.tables.fns.get(fn_id) else {
+            return;
+        };
+        let Ok(ir_fn) = result.as_ref() else {
+            return;
+        };
+        if let IrFn::UserDefined { body, .. } = ir_fn.clone() {
+            self.take(&DefinitionRef::Fn(fn_id.clone()));
+            for stmt in body {
+                self.visit_shell_stmt(&stmt);
+            }
+        }
+    }
+
+    fn visit_pure_fn(&mut self, fn_id: &FnId) {
+        if !self.seen_pure_fns.insert(fn_id.clone()) {
+            return;
+        }
+        let Some(result) = self.tables.pure_fns.get(fn_id) else {
+            return;
+        };
+        let Ok(ir_fn) = result.as_ref() else {
+            return;
+        };
+        if let IrPureFn::UserDefined { body, .. } = ir_fn.clone() {
+            self.take(&DefinitionRef::Fn(fn_id.clone()));
+            for stmt in body {
+                self.visit_pure_stmt(&stmt);
+            }
+        }
+    }
+}

@@ -389,6 +389,12 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                     generation,
                 });
 
+                // The stack the marker decision table was keyed against at
+                // resolve time. Still single-env (4b): this is the suite's
+                // base resolution env, not the per-test `.env`-folded stack
+                // in `dotenv_stack` (4c switches to the latter).
+                let stack = relux_ir::StackHash(ctx.suite.env.stack_hash());
+
                 let mut result = run_test_cancellable(
                     meta,
                     test,
@@ -404,6 +410,7 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                     slot,
                     &ctx.tui_tx,
                     generation,
+                    stack,
                 )
                 .await;
 
@@ -436,6 +443,7 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                             slot,
                             &ctx.tui_tx,
                             generation,
+                            stack,
                         )
                         .await;
                         if !result.outcome.is_retryable() {
@@ -486,6 +494,7 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                     ctx.relux_internal.clone(),
                     LayeredEnvSource::ReluxInternal,
                 ));
+                let stack = relux_ir::StackHash(ctx.suite.env.stack_hash());
                 log_skipped_test(
                     meta,
                     causes,
@@ -494,6 +503,7 @@ async fn run_worker(ctx: WorkerContext<'_>, slot: usize) -> Vec<(usize, TestResu
                     bootstrap_env,
                     &test_path,
                     &ctx.suite.tables,
+                    stack,
                 )
                 .await
             }
@@ -618,6 +628,7 @@ async fn run_test_cancellable(
     slot: usize,
     tui_tx: &observe::tui::TuiTx,
     generation: u64,
+    stack: relux_ir::StackHash,
 ) -> TestResult {
     // Create a child token for test-level timeout
     let test_cancel = cancel.child();
@@ -655,6 +666,7 @@ async fn run_test_cancellable(
         slot,
         tui_tx,
         generation,
+        stack,
     )
     .await;
 
@@ -703,6 +715,7 @@ async fn run_test(
     slot: usize,
     tui_tx: &observe::tui::TuiTx,
     generation: u64,
+    stack: relux_ir::StackHash,
 ) -> TestResult {
     let test_start = Instant::now();
     let source_table = &tables.sources;
@@ -760,8 +773,8 @@ async fn run_test(
     // All recordings become flat `marker-eval` children of the markers
     // root - no nesting under fn-call or effect-setup, since markers
     // run before any test execution.
-    let recordings = crate::marker_walk::collect_test_marker_recordings(test, meta, tables);
-    let _ = replay_markers(&log, &recordings);
+    let agg = crate::marker_walk::collect_test_decision(test, meta, tables, stack);
+    let _ = replay_markers(&log, &agg.recordings);
 
     // Open the root span for this test. Every emission inside the test body
     // (effect setup, shell block, fn call, cleanup block) is parented on this.
@@ -1245,6 +1258,7 @@ pub(crate) fn marker_detail_from_evaluation(
 /// log contains only the synthetic `markers` root and its `marker-eval`
 /// children. The triggering marker (`(Skip, Mark)` or `(Run, Pass)`) is
 /// pointed to by `TestOutcome::Skip(SkipRecord { ... })`.
+#[allow(clippy::too_many_arguments)]
 async fn log_skipped_test(
     meta: &relux_ir::TestMeta,
     causes: &[relux_core::diagnostics::CauseId],
@@ -1253,6 +1267,7 @@ async fn log_skipped_test(
     bootstrap_env: Arc<LayeredEnv>,
     test_path: &str,
     tables: &relux_ir::Tables,
+    stack: relux_ir::StackHash,
 ) -> TestResult {
     let test_start = Instant::now();
     let source_table = &tables.sources;
@@ -1267,10 +1282,10 @@ async fn log_skipped_test(
         Arc::from(run_ctx.project_root.as_path()),
     );
 
-    // Look up the originating definition's recordings via the cause's
-    // SkipReport.definition. Works uniformly for test-level skips (key:
-    // DefinitionRef::Test{..}) and for skips propagated from fn/effect
-    // (key: DefinitionRef::Fn(..) / DefinitionRef::Effect(..)).
+    // Look up the originating definition's decision via the cause's
+    // SkipReport.definition, keyed by the resolution stack. Works uniformly
+    // for test-level skips (key: DefinitionRef::Test{..}) and for skips
+    // propagated from fn/effect (key: DefinitionRef::Fn(..) / DefinitionRef::Effect(..)).
     let report = causes
         .iter()
         .find_map(|id| match suite_causes.get(id) {
@@ -1279,9 +1294,9 @@ async fn log_skipped_test(
         })
         .expect("Plan::Skipped must carry a Cause::Skip");
     let recordings_owned: Vec<relux_ir::marker::MarkerRecording> = tables
-        .marker_recordings
-        .get(&report.definition)
-        .map(|v| (*v).clone())
+        .marker_decisions
+        .get(&(report.definition.clone(), stack))
+        .map(|d| d.recordings.clone())
         .unwrap_or_default();
     let recordings: &[relux_ir::marker::MarkerRecording] = &recordings_owned;
     let handles = replay_markers(&log, recordings);
@@ -1300,7 +1315,7 @@ async fn log_skipped_test(
                     | (MarkerEvalKind::Run, MarkerEvalDecision::Pass)
             )
         })
-        .expect("marker_recordings entry for skipped definition must contain a triggering marker");
+        .expect("decision entry for skipped definition must contain a triggering marker");
     let handle = &handles[trigger_idx];
     let rec = &recordings[trigger_idx];
 
@@ -1536,10 +1551,22 @@ mod tests {
             },
         ];
 
+        let base_env = std::sync::Arc::new(LayeredEnv::root(Env::new()));
+        let stack = relux_ir::StackHash(base_env.stack_hash());
+
         let tables = relux_ir::Tables::new();
-        tables
-            .marker_recordings
-            .insert(definition.clone(), recordings);
+        tables.marker_decisions.insert(
+            (definition.clone(), stack),
+            relux_ir::marker::MarkerDecision {
+                skip: Some(SkipReport {
+                    definition: definition.clone(),
+                    marker_span: IrSpan::synthetic(),
+                    evaluation: SkipEvaluation::Unconditional,
+                }),
+                flaky: true,
+                recordings,
+            },
+        );
 
         // Register a Cause::Skip whose definition points at the meta. The
         // production register_cause path uses `skip.cause_id()` as the key,
@@ -1578,7 +1605,6 @@ mod tests {
             jobs: 1,
             progress: ProgressMode::Plain,
         };
-        let base_env = std::sync::Arc::new(LayeredEnv::root(Env::new()));
 
         let result = log_skipped_test(
             &meta,
@@ -1588,6 +1614,7 @@ mod tests {
             base_env,
             "tests/synthetic.relux",
             &tables,
+            stack,
         )
         .await;
 
@@ -1698,10 +1725,25 @@ mod tests {
             decision: MarkerEvalDecision::Mark,
             ops: Vec::new(),
         }];
+        let base_env = std::sync::Arc::new(LayeredEnv::root(Env::new()));
+        let stack = relux_ir::StackHash(base_env.stack_hash());
+
         let tables = relux_ir::Tables::new();
-        tables
-            .marker_recordings
-            .insert(effect_def.clone(), recordings);
+        tables.marker_decisions.insert(
+            (effect_def.clone(), stack),
+            relux_ir::marker::MarkerDecision {
+                skip: Some(SkipReport {
+                    definition: effect_def.clone(),
+                    marker_span: IrSpan::synthetic(),
+                    evaluation: SkipEvaluation::Bare {
+                        value: "yes".into(),
+                        met: true,
+                    },
+                }),
+                flaky: false,
+                recordings,
+            },
+        );
 
         let report = SkipReport {
             definition: effect_def,
@@ -1740,7 +1782,6 @@ mod tests {
             jobs: 1,
             progress: ProgressMode::Plain,
         };
-        let base_env = std::sync::Arc::new(LayeredEnv::root(Env::new()));
 
         let result = log_skipped_test(
             &meta,
@@ -1750,6 +1791,7 @@ mod tests {
             base_env,
             "tests/synthetic.relux",
             &tables,
+            stack,
         )
         .await;
 
