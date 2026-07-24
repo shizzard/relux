@@ -270,7 +270,7 @@ test "access host environment variable" {
 }
 ```
 
-`${HOME}` is not a Relux variable — no `let` declared it. Relux checks its own variables first (shell scope, then test scope), and when it finds nothing, it falls through to the environment. That environment is layered: values from hierarchical `.env` files (covered in a later chapter) take precedence, and beneath them sits the host process environment — any variable set in the process that runs `relux`.
+`${HOME}` is not a Relux variable — no `let` declared it. Relux checks its own variables first (shell scope, then test scope), and when it finds nothing, it falls through to the environment. That environment is layered: values from hierarchical `.env` files (described below) take precedence, and beneath them sits the host process environment — any variable set in the process that runs `relux`.
 
 Environment variables are **global** — they are visible in every test, every shell block, every scope. And they are **immutable** — you cannot reassign them from within the Relux DSL.
 
@@ -289,6 +289,24 @@ Relux injects several variables into every test run. These are real environment 
 - `${__RELUX_TEST_ROOT}` — the absolute path to the directory containing the current test file
 
 The test log viewer surfaces all of this in a dedicated **environment** modal, opened with the `E` key (or by clicking the small `env` chip at the bottom of the variables-in-scope pane). It lists every env var captured at the moment the test started — host vars, any `.env` file values, and Relux-injected ones together — and groups them so the noise stays out of the way. A search box at the top filters by name or value when you need to find one quickly.
+
+## Environment files
+
+The environment your suite reads does not have to come from whatever happens to be set in the shell that launches `relux` — you can commit it. If a file named `.env` sits beside your `Relux.toml`, Relux loads it before the run and folds its values into the same environment you have been reading with `${VAR}`. Checking that file into the repository makes a suite reproducible: every developer and every CI machine sees the same values without exporting anything by hand. A `.env` file is a list of `KEY=value` lines, with `#` starting a comment:
+
+```ini
+ROOT_ONLY=root-value
+SHARED=from-root
+```
+
+Relux does not read only one file. Starting at the project root — the directory that holds `Relux.toml` — it walks down to the directory of the test being run and loads a `.env` from every directory along the way. Files nearer the test win, so a test under `relux/tests/deep/` also picks up a `relux/tests/deep/.env`:
+
+```ini
+DEEP_ONLY=deep-value
+SHARED=from-deep
+```
+
+That test sees `ROOT_ONLY` inherited from the root file, `DEEP_ONLY` from the deep file, and — because `SHARED` appears in both — the deeper value, `from-deep`. A test sitting directly under `relux/tests/` never sees the deep file; it is not on that test's path. These values layer over the host process environment and take precedence over it, so a committed `.env` gives you a predictable baseline even when a developer's shell has a stray variable set; the only values they cannot shadow are Relux's own `__RELUX_` variables, which always stay on top. Once loaded, a `.env` value behaves like any other environment variable — it resolves through `${VAR}`, it is exported into the shell under test, and, as a later article shows, a condition marker can gate a test on it too.
 
 ## Try it yourself
 

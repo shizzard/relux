@@ -348,7 +348,7 @@ skip, the retry only has effect when `[flaky].max_retries` is set above `0` in
 
 Markers evaluate **before** any shells are spawned. For test-level markers, this happens before the test's effects are even set up. For effect-level markers, it happens before the effect's own shells are created.
 
-Because of this early evaluation, marker expressions can only see **environment variables** — the base environment that Relux inherits from the system, any values contributed by hierarchical `.env` files (covered in a later chapter), plus any variables set in `Relux.toml`. Variables declared with `let` inside tests or effects do not exist yet at marker evaluation time. This is why marker syntax uses `"${VAR}"` to reference the environment, the same [interpolation syntax](06-variables.md#string-interpolation) you already know.
+Because of this early evaluation, marker expressions can only see **environment variables** — the base environment that Relux inherits from the system, any values contributed by hierarchical [`.env` files](06-variables.md#environment-files), plus any variables set in `Relux.toml`. Variables declared with `let` inside tests or effects do not exist yet at marker evaluation time. This is why marker syntax uses `"${VAR}"` to reference the environment, the same [interpolation syntax](06-variables.md#string-interpolation) you already know.
 
 One caveat about errors versus skips: a marker that calls a function which does
 not exist — or forms an import cycle — is a hard error. The test is reported
