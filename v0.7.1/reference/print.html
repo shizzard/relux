@@ -1,0 +1,2009 @@
+<!DOCTYPE HTML>
+<html lang="en" class="relux sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Relux Reference</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="relux-1a28bb9c.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "relux";
+            const default_dark_theme = "relux";
+            window.path_to_searchindex_js = "searchindex-c66d4e5c.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-18d25ac9.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('relux')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Relux Reference</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="relux-semantic-model"><a class="header" href="#relux-semantic-model">Relux Semantic Model</a></h1>
+<h2 id="modules"><a class="header" href="#modules">Modules</a></h2>
+<ul>
+<li>Every <code>.relux</code> file is a module</li>
+<li>A module can contain any combination of: imports, functions, effects, tests</li>
+<li>There is no distinction between “library” and “test” modules</li>
+<li>Module path is its filesystem path relative to the project root (e.g. <code>lib/matchers</code> resolves to <code>lib/matchers.relux</code>)</li>
+<li>The project root is defined by the location of <code>Relux.toml</code></li>
+</ul>
+<h2 id="imports"><a class="header" href="#imports">Imports</a></h2>
+<ul>
+<li>Imports resolve from the project root, never relative to the importing file</li>
+<li>Selective imports bring specific names into scope: <code>import lib/m { foo, bar, StartDb }</code></li>
+<li>Wildcard imports bring all names into scope: <code>import lib/m</code></li>
+<li><code>as</code> aliases rename an imported name locally: <code>foo as f</code>, <code>StartDb as Db</code></li>
+<li>Aliases must preserve the casing kind: lowercase names get lowercase aliases, CamelCase names get CamelCase aliases</li>
+<li>Each module is loaded once regardless of how many files import it</li>
+<li>Circular imports are a parse error</li>
+</ul>
+<h2 id="variables"><a class="header" href="#variables">Variables</a></h2>
+<ul>
+<li>All variable values are strings, no other types exist</li>
+<li>Uninitialized variables (<code>let x</code>) default to empty string <code>""</code></li>
+<li>Variables are scoped to their enclosing block (<code>test</code>, <code>shell</code>, <code>fn</code>, <code>effect</code>)</li>
+<li>Inner blocks can shadow outer variables with a new <code>let</code> declaration</li>
+<li>Reassignment (<code>x = expr</code>) mutates an existing variable from an outer scope</li>
+<li>Environment variables from the host process are available as pre-set variables in all scopes (read-only — <code>let</code> creates a shadow, not a modification of the process environment)</li>
+<li>Hierarchical <code>.env</code> files, when present, layer over the host process environment and take precedence over it; their values feed interpolation, marker evaluation, and the shell under test</li>
+<li>Regex capture groups (<code>$1</code>, <code>$2</code>, …) are set after a <code>&lt;?</code> match and remain in scope until overwritten by the next <code>&lt;?</code></li>
+</ul>
+<h2 id="functions"><a class="header" href="#functions">Functions</a></h2>
+<ul>
+<li>Function and shell names must start with a lowercase letter or underscore (<code>snake_case</code>) — this is enforced at the syntactic level</li>
+<li>Functions are reusable sequences of statements</li>
+<li>A function executes in the caller’s shell context — it has no shell of its own</li>
+<li>Functions can only be called inside <code>shell</code> blocks (since shell operators require an active shell)</li>
+<li>The return value is the last expression’s value in the body</li>
+<li>If the caller doesn’t capture the return value, it is discarded</li>
+<li>Side effects persist in the caller’s shell: a function that sets <code>~30s</code> or <code>!? error</code> changes the shell’s timeout/fail-pattern for subsequent statements</li>
+<li>Functions can call other functions</li>
+<li>Functions can use imports from their own module</li>
+</ul>
+<h2 id="pure-functions"><a class="header" href="#pure-functions">Pure Functions</a></h2>
+<ul>
+<li>Declared with <code>pure fn</code> instead of <code>fn</code></li>
+<li>Cannot contain shell operators (<code>&gt;</code>, <code>=&gt;</code>, <code>&lt;?</code>, <code>&lt;=</code>, <code>!?</code>, <code>!=</code>, timeouts)</li>
+<li>Cannot call impure built-in functions (e.g., <code>match_prompt()</code>, <code>ctrl_c()</code>)</li>
+<li>Cannot call regular <code>fn</code> functions — only other pure functions and pure built-in functions</li>
+<li>Can only contain: <code>let</code> declarations, variable reassignment, and expressions</li>
+<li>Can be called from condition markers, overlay expressions, and regular shell blocks</li>
+<li>“Pure” means shell-independent, not side-effect-free — pure BIFs like <code>sleep()</code> and <code>log()</code> are allowed</li>
+</ul>
+<h2 id="shells"><a class="header" href="#shells">Shells</a></h2>
+<ul>
+<li>A shell is a spawned PTY process (default: <code>/bin/sh</code>)</li>
+<li><code>stdout</code> and <code>stderr</code> are merged into a single output stream</li>
+<li>Send operators (<code>&gt;</code>, <code>=&gt;</code>) write to the shell’s <code>stdin</code></li>
+<li>Match operators (<code>&lt;?</code>, <code>&lt;=</code>) assert against the shell’s accumulated output</li>
+<li>Match operations block until a match is found or the timeout expires</li>
+<li>A timeout expiry is a test failure</li>
+<li>Any match operator can include an inline timeout override (<code>&lt;~dur</code> or <code>&lt;@dur</code>):
+<ul>
+<li>Applies only to that single operation (one-shot)</li>
+<li>Does not affect the shell’s scoped timeout</li>
+<li>Duration uses compact humantime format (no spaces): <code>2s</code>, <code>500ms</code>, <code>1m30s</code></li>
+</ul>
+</li>
+<li>Timeouts come in two kinds:
+<ul>
+<li><strong>Tolerance</strong> (<code>~</code>) — scaled by <code>--timeout-multiplier</code>. Used for operations that may be slower under load</li>
+<li><strong>Assertion</strong> (<code>@</code>) — never scaled. Used to assert the system responds within a hard deadline</li>
+</ul>
+</li>
+<li>Each shell has one active fail pattern slot — if shell output matches the fail pattern, the test fails immediately
+<ul>
+<li>Fail patterns are checked inline during match operations (under the same lock as consume) and at statement boundaries</li>
+<li>Setting a fail pattern immediately rescans the buffer for the pattern</li>
+<li>An empty fail pattern operator (<code>!?</code> or <code>!=</code> with no payload) clears the active fail pattern</li>
+</ul>
+</li>
+<li>A match operator with no payload (<code>&lt;?</code> or <code>&lt;=</code> with nothing after it) resets the output buffer cursor, consuming all current output</li>
+<li>Each shell has one active timeout value, initially set to a framework default</li>
+<li>Multiple <code>shell &lt;name&gt;</code> blocks with the same name in a test/effect refer to the same shell (switching the active shell, like lux’s <code>[shell name]</code>)</li>
+<li>A multi-pattern match block (<code>&lt;{ &lt;line&gt;+ }</code>) waits for several patterns at once:
+<ul>
+<li>Each inner line is <code>? &lt;pattern&gt;</code> (regex) or <code>= &lt;pattern&gt;</code> (literal); patterns are mixed freely</li>
+<li>The block is atomic with respect to the cursor: every byte that arrives is offered to every still-unmatched pattern, the cursor sits still until block exit</li>
+<li>A pattern transitions to matched the first time it succeeds against the slice <code>[block_entry, current_buffer_end]</code>; once matched, it no longer participates in subsequent scans</li>
+<li>The block completes when every pattern has matched at least once</li>
+<li>At block exit the cursor advances once, to the maximum of the per-pattern match-end offsets (overlapping matches are permitted; duplicate inner patterns are independent slots that may land on the same bytes)</li>
+<li>Capture groups in inner regex patterns do not bind - <code>$n</code> is not written by a multimatch block</li>
+<li>If the block timeout fires before all patterns have matched, the test fails; the failure record lists every pattern with its matched/unmatched status</li>
+<li>Fail patterns remain active during the block; a fail-pattern hit aborts the block exactly as it would abort a single <code>&lt;?</code> / <code>&lt;=</code></li>
+<li>The inline-timeout prefix shape <code>&lt;~Ns{ ... }</code> / <code>&lt;@Ns{ ... }</code> carries the standard tolerance/assertion semantics, applied to the whole block</li>
+</ul>
+</li>
+</ul>
+<h2 id="effects"><a class="header" href="#effects">Effects</a></h2>
+<ul>
+<li>Effect names must start with an uppercase letter (<code>CamelCase</code>) — this is enforced at the syntactic level, disambiguating effects from functions in imports</li>
+<li>An effect is a reusable setup procedure that produces running shells and computed values</li>
+<li>An effect has three explicit interface components:
+<ul>
+<li><strong><code>expect</code></strong> — declares required environment variables the effect reads; the resolver validates these are satisfiable</li>
+<li><strong><code>expose</code></strong> — declares which shells and variables the effect makes available to callers; the <code>expose</code> keyword requires a <code>shell</code> or <code>var</code> discriminator (<code>expose shell db</code>, <code>expose var port</code>); internal shells not listed in <code>expose</code> are terminated after setup</li>
+<li><strong><code>start</code></strong> — declares dependency effects with optional env remapping via overlay</li>
+</ul>
+</li>
+<li>None of these declarations are mandatory: an effect may have no <code>expect</code>, no <code>start</code>, and no <code>expose</code></li>
+<li><code>start Effect</code> runs the dependency for side effects only — its shells are not accessible</li>
+<li><code>start Effect as Alias</code> runs the dependency and makes its exposed shells/variables available via dot-access (<code>shell Alias.shell_name</code>, <code>${Alias.var_name}</code>)</li>
+<li>Effect aliases (the name after <code>as</code>) must be CamelCase, matching effect naming conventions</li>
+<li><code>start Effect as Alias { KEY = expr }</code> provides an overlay that remaps the caller’s environment into the dependency’s environment
+<ul>
+<li>The shorthand form <code>KEY</code> (without <code>= expr</code>) is equivalent to <code>KEY = KEY</code></li>
+</ul>
+</li>
+<li>Effects inherit the full parent environment — overlay entries override specific keys</li>
+<li>Effect instance identity is determined by <code>(effect-name, evaluated overlay restricted to expect-declared vars)</code>:
+<ul>
+<li>Same identity tuple = same instance (deduplicated, reused)</li>
+<li>Different identity tuple = separate instances</li>
+</ul>
+</li>
+<li>When a test or effect starts the same effect multiple times with the same evaluated overlay, only one instance is created</li>
+<li>Exposed shells are accessed via dot notation: <code>shell Alias.shell_name { ... }</code></li>
+<li>Exposed variables are accessed via dot notation in interpolation: <code>${Alias.var_name}</code></li>
+<li>Exposed variables are only accessible in shell contexts (runtime); test-level and effect-level <code>let</code> bindings cannot reference them (purity violation — <code>let</code> is evaluated at resolve time, before effects are started)</li>
+<li>Exposed variables are read-only from the caller’s perspective</li>
+<li>For composed effects, <code>expose</code> can re-export a dependency’s shell or variable: <code>expose shell Dep.shell as public_name</code>, <code>expose var Dep.port as db_port</code></li>
+<li>Effects run before the test body; the dependency graph is resolved and executed in topological order</li>
+<li>Circular effect dependencies are a parse error</li>
+<li>If an effect fails (a match times out during setup), all tests depending on it are failed</li>
+<li>Each effect has an optional <code>cleanup</code> block that runs when the effect is torn down</li>
+</ul>
+<h2 id="condition-markers"><a class="header" href="#condition-markers">Condition Markers</a></h2>
+<ul>
+<li>Condition markers are placed immediately before <code>test</code>, <code>effect</code>, <code>fn</code>, or <code>pure fn</code> declarations</li>
+<li>Condition markers evaluate <strong>before</strong> any shells are spawned
+<ul>
+<li>Test-level markers are checked before <code>execute_effects</code></li>
+<li>Effect-level markers are checked before the effect’s shells are created</li>
+<li>Function-level markers are checked during resolution; a skipped function causes all tests that call it to be skipped</li>
+</ul>
+</li>
+<li>A bare marker (kind only, no modifier) is unconditional:
+<ul>
+<li><code># skip</code> always skips, <code># flaky</code> always marks flaky, <code># run</code> is a no-op</li>
+</ul>
+</li>
+<li>A conditional marker requires a modifier (<code>if</code>/<code>unless</code>) and an expression</li>
+<li>Expressions are quoted strings with <code>${VAR}</code> interpolation or bare numbers:
+<ul>
+<li><code>"${CI}"</code> — environment variable reference</li>
+<li><code>"literal"</code> — literal string</li>
+<li><code>"${HOST}:${PORT}"</code> — compound interpolation</li>
+<li><code>42</code> — bare number (compared as string)</li>
+</ul>
+</li>
+<li>Bare variable identifiers (e.g. <code>CI</code>) are valid in markers</li>
+<li>Expression evaluation uses ENV-only lookup (<code>Arc&lt;LayeredEnv&gt;</code> — the layered host-plus-<code>.env</code> environment) — no frame variables or test-scope variables exist at evaluation time</li>
+<li>Truthiness: empty string or unset variable is false, any non-empty string is true</li>
+<li><code>=</code> operator: evaluates both sides, returns the LHS value if LHS equals RHS, empty string otherwise</li>
+<li><code>?</code> operator: evaluates LHS, compiles the regex pattern (with <code>${var}</code> interpolation), returns the match if found, empty string otherwise</li>
+<li>Modifier semantics:
+<ul>
+<li><code>if</code> acts when the result is truthy</li>
+<li><code>unless</code> acts when the result is falsy</li>
+</ul>
+</li>
+<li>Kind semantics:
+<ul>
+<li><code>skip</code>: skips the test/effect when the condition is met</li>
+<li><code>run</code>: skips the test/effect when the condition is NOT met (inverse of <code>skip</code>)</li>
+<li><code>flaky</code>: marks the test as flaky — with <code>[flaky].max_retries &gt; 0</code> in <code>Relux.toml</code>, a failing flaky test is retried from scratch with exponentially increasing tolerance timeouts (<code>base × m^(retry-1)</code>). With <code>max_retries = 0</code> (default), the marker is documentary only</li>
+</ul>
+</li>
+<li>Multiple markers stack with AND semantics: all conditions must pass or the test is skipped</li>
+<li>When an effect is skipped, all tests depending on it are also skipped</li>
+<li>When a function is skipped, all tests that call it are also skipped</li>
+<li><code># flaky</code> propagates the same way skip does: a test is marked flaky if it, or any function or effect it reaches, has a <code># flaky</code> marker whose condition applies</li>
+</ul>
+<h2 id="tests"><a class="header" href="#tests">Tests</a></h2>
+<ul>
+<li>A test is the top-level unit of execution</li>
+<li>Tests are independent — no test depends on another test’s execution or side effects</li>
+<li>Condition markers (<code># skip/run/flaky ...</code>) are placed immediately before the <code>test</code> declaration</li>
+<li>Test structure (in order):
+<ol>
+<li>Doc string (optional <code>"""..."""</code>)</li>
+<li><code>let</code> declarations (test-scoped variables)</li>
+<li><code>start</code> declarations (effect dependencies)</li>
+<li><code>shell</code> blocks (test body)</li>
+<li><code>cleanup</code> block (optional)</li>
+</ol>
+</li>
+<li>Effects are instantiated and their shells are available before the test body runs</li>
+<li>A test succeeds if all match operations in all shell blocks pass</li>
+<li>A test fails if any match operation times out or any fail pattern matches</li>
+<li>A test is cancelled (a distinct outcome from failure) when execution is stopped before the test could finish: the test’s own <code>~T</code> timeout fired, the suite-wide timeout fired, fail-fast cut sibling tests short, or the process received SIGINT. Cancelled outcomes exit nonzero in CI, exactly like failures, but they preserve the distinction that the test was not misbehaving</li>
+</ul>
+<h2 id="cleanup"><a class="header" href="#cleanup">Cleanup</a></h2>
+<ul>
+<li>Cleanup blocks exist in both effects and tests</li>
+<li>Cleanup runs in a freshly spawned implicit shell, not in any existing shell</li>
+<li>Existing shells are terminated automatically by the runtime (cleanup is not for graceful shutdown)</li>
+<li>Cleanup is for external side effects: temp files, docker containers, log collection</li>
+<li>Any statement valid in a shell block is valid in a cleanup block</li>
+<li>Cleanup always executes, regardless of whether the test/effect passed or failed</li>
+<li>Cleanup failures are logged as warnings but do not change the test result</li>
+<li>Cleanup order: test cleanup runs first, then effect cleanups</li>
+</ul>
+<h2 id="execution-model"><a class="header" href="#execution-model">Execution Model</a></h2>
+<ul>
+<li>The runtime discovers all <code>.relux</code> files, parses them, resolves imports and effect dependencies</li>
+<li>Tests are the entry points — only modules with <code>test</code> blocks are executed</li>
+<li>For each test:
+<ol>
+<li>Resolve the effect dependency graph</li>
+<li>Run effects in topological order (reusing deduplicated instances)</li>
+<li>Execute the test body (shell blocks in declaration order)</li>
+<li>Run test cleanup</li>
+<li>Tear down effect instances (cleanup + shell termination)</li>
+</ol>
+</li>
+<li>All shells within a test share the same test-scoped variables</li>
+<li>Only one shell is “active” at a time — statements execute sequentially, switching shells as blocks are entered</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
+<h2 id="reluxtoml"><a class="header" href="#reluxtoml">Relux.toml</a></h2>
+<p>Every Relux project requires a <code>Relux.toml</code> file at the project root. The <code>relux</code> binary discovers this file by searching the current directory and all parent directories.</p>
+<h3 id="scaffold-a-new-project"><a class="header" href="#scaffold-a-new-project">Scaffold a new project</a></h3>
+<pre><code class="language-text">relux init
+</code></pre>
+<p>Creates <code>Relux.toml</code> and the conventional directory structure in the current directory.</p>
+<h3 id="minimal-example"><a class="header" href="#minimal-example">Minimal example</a></h3>
+<p>An empty <code>Relux.toml</code> is valid — all fields have defaults:</p>
+<pre><code class="language-toml"># empty Relux.toml is valid — all fields have defaults
+</code></pre>
+<p>The <code>name</code> defaults to the directory containing <code>Relux.toml</code>. Override it explicitly if needed:</p>
+<pre><code class="language-toml">name = "my-test-suite"
+</code></pre>
+<h3 id="full-example"><a class="header" href="#full-example">Full example</a></h3>
+<pre><code class="language-toml">name = "my-test-suite"
+
+[shell]
+command = "/bin/sh"
+prompt = "relux&gt; "
+
+[timeout]
+match = "5s"
+test = "5m"
+suite = "10m"
+
+[run]
+jobs = 1
+
+[flaky]
+max_retries = 0
+timeout_multiplier = 1.5
+</code></pre>
+<h3 id="root-level-fields"><a class="header" href="#root-level-fields">Root-level fields</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>name</code></td><td>string</td><td>directory containing Relux.toml</td><td>Suite name</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="shell-section"><a class="header" href="#shell-section"><code>[shell]</code> section</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>command</code></td><td>string</td><td><code>/bin/sh</code></td><td>Shell executable spawned for each shell</td></tr>
+<tr><td><code>prompt</code></td><td>string</td><td><code>relux&gt; </code></td><td>PS1 prompt set on shell init</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="timeout-section"><a class="header" href="#timeout-section"><code>[timeout]</code> section</a></h3>
+<p>All durations use <code>humantime</code> format (e.g. <code>5s</code>, <code>1m30s</code>, <code>2h</code>).</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>match</code></td><td>duration</td><td><code>5s</code></td><td>Per-match timeout</td></tr>
+<tr><td><code>test</code></td><td>duration</td><td><code>5m</code></td><td>Max wall-clock time per test</td></tr>
+<tr><td><code>suite</code></td><td>duration</td><td><code>10m</code></td><td>Max wall-clock time for the entire test run</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="run-section"><a class="header" href="#run-section"><code>[run]</code> section</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>jobs</code></td><td>integer</td><td><code>1</code></td><td>Number of parallel test workers</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="flaky-section"><a class="header" href="#flaky-section"><code>[flaky]</code> section</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>max_retries</code></td><td>integer</td><td><code>0</code></td><td>Max retries for <code># flaky</code>-marked tests (0 = no retries)</td></tr>
+<tr><td><code>timeout_multiplier</code></td><td>float</td><td><code>1.5</code></td><td>Exponential timeout multiplier base for flaky retries (must be &gt; 1.0)</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="project-structure"><a class="header" href="#project-structure">Project structure</a></h2>
+<pre><code class="language-text">project-root/
+├── Relux.toml
+└── relux/
+    ├── tests/       # test files (*.relux)
+    ├── lib/         # reusable functions and effects
+    ├── out/         # run output (auto-generated)
+    │   ├── run-2025-03-05-…/
+    │   └── latest -&gt; run-2025-03-05-…
+    └── .gitignore   # ignores out/
+</code></pre>
+<ul>
+<li><strong><code>relux/tests/</code></strong> — test files are discovered recursively when <code>relux run</code> is invoked without <code>--file</code> flags.</li>
+<li><strong><code>relux/lib/</code></strong> — library files are always loaded alongside tests to make functions and effects available. May be empty or absent.</li>
+<li><strong><code>relux/out/</code></strong> — run output directory. Each run creates a timestamped subdirectory. A <code>latest</code> symlink points to the most recent run.</li>
+</ul>
+<h2 id="cli-reference"><a class="header" href="#cli-reference">CLI reference</a></h2>
+<h3 id="relux-init"><a class="header" href="#relux-init"><code>relux init</code></a></h3>
+<p>Scaffolds a new project in the current directory. Errors if <code>Relux.toml</code> already exists.</p>
+<h3 id="relux-new---test-module_path"><a class="header" href="#relux-new---test-module_path"><code>relux new --test &lt;module_path&gt;</code></a></h3>
+<p>Creates a test module file from a template. The module path uses <code>/</code> separators and each segment must be lowercase alphanumeric with underscores (<code>[a-z_][a-z0-9_]*</code>). The <code>.relux</code> extension is optional.</p>
+<pre><code class="language-text">relux new --test foo/bar/baz       # creates relux/tests/foo/bar/baz.relux
+relux new --test foo/bar/baz.relux # same
+</code></pre>
+<h3 id="relux-new---effect-module_path"><a class="header" href="#relux-new---effect-module_path"><code>relux new --effect &lt;module_path&gt;</code></a></h3>
+<p>Creates an effect module file from a template in <code>relux/lib/</code>. Same path rules as <code>--test</code>.</p>
+<pre><code class="language-text">relux new --effect network/tcp_server       # creates relux/lib/network/tcp_server.relux
+</code></pre>
+<h3 id="relux-new---lib-module_path"><a class="header" href="#relux-new---lib-module_path"><code>relux new --lib &lt;module_path&gt;</code></a></h3>
+<p>Creates a library module file (pure and impure functions) from a template in <code>relux/lib/</code>. Same path rules as <code>--test</code>.</p>
+<pre><code class="language-text">relux new --lib utils/helpers               # creates relux/lib/utils/helpers.relux
+</code></pre>
+<h3 id="relux-run-flags"><a class="header" href="#relux-run-flags"><code>relux run [flags]</code></a></h3>
+<p>Runs tests. Discovers <code>Relux.toml</code> by walking upward from the current directory.</p>
+<p>Use <code>-f</code>/<code>--file</code> to specify files or directories. Directories are searched recursively for <code>*.relux</code> files. If no <code>--file</code> flags are given, tests are discovered from <code>relux/tests/</code>.</p>
+<p>Use <code>-t</code>/<code>--test</code> to filter by test name within a single file. Requires exactly one <code>--file</code>.</p>
+<p>Library files from <code>relux/lib/</code> are always loaded regardless of which files are specified.</p>
+<p>Exits with code 1 if any test fails.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-f</code>, <code>--file &lt;path&gt;</code></td><td>Test file or directory to run (repeatable; default: <code>relux/tests/</code>)</td></tr>
+<tr><td><code>-t</code>, <code>--test &lt;name&gt;</code></td><td>Run only tests with this name (repeatable; requires exactly one <code>--file</code>)</td></tr>
+<tr><td><code>--manifest &lt;path&gt;</code></td><td>Path to <code>Relux.toml</code> (default: auto-discover by walking upward)</td></tr>
+<tr><td><code>-j</code>, <code>--jobs</code></td><td>Number of parallel test workers (default: <code>1</code>)</td></tr>
+<tr><td><code>--tap</code></td><td>Generate TAP artifact file in the run directory</td></tr>
+<tr><td><code>--junit</code></td><td>Generate JUnit XML artifact file in the run directory</td></tr>
+<tr><td><code>-m</code>, <code>--timeout-multiplier</code></td><td>Scale tolerance (<code>~</code>) timeout values (default: <code>1.0</code>). Assertion (<code>@</code>) timeouts are never scaled</td></tr>
+<tr><td><code>--progress &lt;mode&gt;</code></td><td>Display mode: <code>auto</code> (TUI if TTY), <code>plain</code> (results only), <code>tui</code> (force TUI)</td></tr>
+<tr><td><code>--strategy &lt;mode&gt;</code></td><td><code>all</code> (default) or <code>fail-fast</code></td></tr>
+<tr><td><code>--rerun</code></td><td>Re-run only non-passing tests from the latest run</td></tr>
+<tr><td><code>--flaky-retries</code></td><td>Max retries for <code># flaky</code>-marked tests</td></tr>
+<tr><td><code>--flaky-multiplier</code></td><td>Exponential timeout multiplier base for flaky retries (default: <code>1.5</code>, must be &gt; 1.0)</td></tr>
+<tr><td><code>--test-timeout</code></td><td>Override per-test timeout (humantime string)</td></tr>
+<tr><td><code>--suite-timeout</code></td><td>Override suite timeout (humantime string)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="relux-check-paths-flags"><a class="header" href="#relux-check-paths-flags"><code>relux check [paths...] [flags]</code></a></h3>
+<p>Validates test files without executing them. Runs the parser and resolver, reports diagnostics, and exits with code 1 if any diagnostics are found. Same path discovery as <code>run</code>.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--manifest &lt;path&gt;</code></td><td>Path to <code>Relux.toml</code> (default: auto-discover by walking upward)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="relux-history-flags"><a class="header" href="#relux-history-flags"><code>relux history [flags]</code></a></h3>
+<p>Analyze run history from <code>relux/out/</code>.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--manifest &lt;path&gt;</code></td><td>Path to <code>Relux.toml</code> (default: auto-discover by walking upward)</td></tr>
+<tr><td><code>--flaky</code></td><td>Show tests that have been both passing and failing</td></tr>
+<tr><td><code>--failures</code></td><td>Show tests that have failed</td></tr>
+<tr><td><code>--first-fail</code></td><td>Show the first failure for each test</td></tr>
+<tr><td><code>--durations</code></td><td>Show test duration statistics</td></tr>
+<tr><td><code>--tests &lt;path&gt;...</code></td><td>Filter to specific test files or directories</td></tr>
+<tr><td><code>--last &lt;N&gt;</code></td><td>Limit analysis to the N most recent runs</td></tr>
+<tr><td><code>--top &lt;N&gt;</code></td><td>Show only the top N results</td></tr>
+<tr><td><code>--format &lt;format&gt;</code></td><td>Output format: <code>human</code> (default) or <code>toml</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="relux-completions-flags"><a class="header" href="#relux-completions-flags"><code>relux completions [flags]</code></a></h3>
+<p>Installs shell completions for bash, zsh, or fish. Relux uses dynamic completions — the shell calls back into the <code>relux</code> binary at tab-press time, enabling context-aware completions like <code>.relux</code> file discovery and timeout presets.</p>
+<p>Without <code>--install</code>, shows a dry-run of what would be written. With <code>--install</code>, writes the completion script.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--shell &lt;shell&gt;</code></td><td>Shell to generate completions for: <code>bash</code>, <code>zsh</code>, <code>fish</code> (default: autodetect from <code>$SHELL</code>)</td></tr>
+<tr><td><code>--install</code></td><td>Write the completion script to the target location</td></tr>
+<tr><td><code>--path &lt;path&gt;</code></td><td>Override the install path (required for zsh, optional for bash/fish)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Default install paths:</p>
+<ul>
+<li><strong>bash</strong>: <code>~/.local/share/bash-completion/completions/relux</code></li>
+<li><strong>fish</strong>: <code>~/.config/fish/completions/relux.fish</code></li>
+<li><strong>zsh</strong>: no default — specify with <code>--path</code></li>
+</ul>
+<h3 id="relux-dump-tokens-file"><a class="header" href="#relux-dump-tokens-file"><code>relux dump tokens &lt;file&gt;</code></a></h3>
+<p>Dumps lexer tokens for the given file.</p>
+<h3 id="relux-dump-ast-file"><a class="header" href="#relux-dump-ast-file"><code>relux dump ast &lt;file&gt;</code></a></h3>
+<p>Dumps the parsed AST for the given file.</p>
+<h3 id="relux-dump-ir-files"><a class="header" href="#relux-dump-ir-files"><code>relux dump ir &lt;files...&gt;</code></a></h3>
+<p>Dumps the resolved IR (execution plans) for the given files.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="relux-syntax-reference"><a class="header" href="#relux-syntax-reference">Relux Syntax Reference</a></h1>
+<h2 id="general"><a class="header" href="#general">General</a></h2>
+<ul>
+<li>Line-oriented, newline-terminated statements (no <code>;</code>)</li>
+<li>Comments: <code>//</code> to end of line</li>
+<li>All values are strings</li>
+<li>Every expression produces a string value</li>
+<li>Blocks use <code>{ }</code></li>
+</ul>
+<h2 id="naming-conventions"><a class="header" href="#naming-conventions">Naming Conventions</a></h2>
+<p>Naming conventions are enforced at the syntactic level (parse error on violation):</p>
+<ul>
+<li><strong>Effect names</strong> and <strong>effect aliases</strong> must start with an uppercase letter (<code>CamelCase</code>): <code>StartDb</code>, <code>Effect1</code>, <code>start Db as MyDb</code></li>
+<li><strong>Function names</strong> and <strong>shell names</strong> must be <code>snake_case</code>: <code>start_server</code>, <code>_helper</code>, <code>my_shell</code></li>
+<li><strong>Variable names</strong> and <strong>parameters</strong> are permissive (any alphanumeric + underscore, starting with letter or <code>_</code>): <code>port</code>, <code>DB_HOST</code>, <code>_private</code></li>
+<li><strong>Import aliases</strong> must preserve the casing kind of the original name: <code>foo as bar</code> (both lowercase), <code>StartDb as Db</code> (both uppercase)</li>
+<li><strong>Overlay keys</strong> accept either casing (environment variables are conventionally <code>UPPER_SNAKE_CASE</code>)</li>
+</ul>
+<h2 id="imports-1"><a class="header" href="#imports-1">Imports</a></h2>
+<pre><code class="language-relux">import &lt;path&gt; { &lt;name&gt;, &lt;name&gt; as &lt;alias&gt;, }
+import &lt;path&gt;
+</code></pre>
+<ul>
+<li><code>&lt;path&gt;</code> resolves from project root (e.g. <code>lib/module1</code>)</li>
+<li>Selective: <code>import lib/m { foo, bar as b, StartDb as Db }</code> — trailing commas allowed</li>
+<li>Wildcard: <code>import lib/m</code> — imports all names</li>
+</ul>
+<h2 id="functions-1"><a class="header" href="#functions-1">Functions</a></h2>
+<pre><code class="language-relux">fn &lt;name&gt;(&lt;param&gt;, &lt;param&gt;) {
+    &lt;body&gt;
+}
+</code></pre>
+<ul>
+<li>Return value: last expression in body</li>
+<li>Execute in the caller’s shell context</li>
+<li>Shell operators (<code>&gt;</code>, <code>=&gt;</code>, <code>&lt;?</code>, <code>&lt;=</code>, etc.) are valid inside body</li>
+</ul>
+<h2 id="pure-functions-1"><a class="header" href="#pure-functions-1">Pure Functions</a></h2>
+<pre><code class="language-relux">pure fn &lt;name&gt;(&lt;param&gt;, &lt;param&gt;) {
+    &lt;body&gt;
+}
+</code></pre>
+<ul>
+<li>Return value: last expression in body</li>
+<li>Cannot contain shell operators (<code>&gt;</code>, <code>=&gt;</code>, <code>&lt;?</code>, <code>&lt;=</code>, <code>!?</code>, <code>!=</code>, timeouts)</li>
+<li>Cannot call impure built-in functions or regular <code>fn</code> functions</li>
+<li>Only <code>let</code>, variable reassignment, and expressions (including pure BIF calls) are allowed</li>
+<li>Can be called from condition markers, overlay expressions, and regular shell blocks</li>
+</ul>
+<h2 id="effects-1"><a class="header" href="#effects-1">Effects</a></h2>
+<pre><code class="language-relux">effect &lt;EffectName&gt; {
+    expect &lt;VAR&gt;, &lt;VAR&gt;, &lt;VAR&gt;
+    start &lt;EffectName&gt;
+    start &lt;EffectName&gt; as &lt;Alias&gt;
+    start &lt;EffectName&gt; as &lt;Alias&gt; { KEY = expr, KEY }
+    let &lt;name&gt; = &lt;expr&gt;
+    expose shell &lt;shell_name&gt;
+    expose shell &lt;Alias&gt;.&lt;shell_name&gt; as &lt;public_name&gt;
+    expose var &lt;var_name&gt;
+    expose var &lt;Alias&gt;.&lt;var_name&gt; as &lt;public_name&gt;
+    shell &lt;name&gt; { &lt;body&gt; }
+    shell &lt;Alias&gt;.&lt;shell_name&gt; { &lt;body&gt; }
+    cleanup { &lt;body&gt; }
+}
+</code></pre>
+<ul>
+<li><code>expect</code> declares required environment variables (comma-separated)</li>
+<li><code>start</code> declares dependencies (one per line)</li>
+<li><code>start Effect</code> runs the dependency for side effects only — its shells are not accessible</li>
+<li><code>start Effect as Alias</code> runs the dependency and makes its exposed shells/variables available via dot-access</li>
+<li>Effect aliases must be CamelCase</li>
+<li><code>start Effect as Alias { KEY = expr }</code> provides an overlay; shorthand <code>KEY</code> is equivalent to <code>KEY = KEY</code></li>
+<li><code>expose shell</code> declares which shells are part of the effect’s public interface</li>
+<li><code>expose var</code> declares which variables are part of the effect’s public interface; these are <code>let</code>-bound values computed during setup</li>
+<li><code>expose shell Alias.shell as name</code> re-exports a dependency’s shell under a new name</li>
+<li><code>expose var Alias.var as name</code> re-exports a dependency’s variable under a new name</li>
+<li><code>shell Alias.shell_name { ... }</code> — qualified shell block for operating on a dependency’s exposed shell</li>
+<li>Internal shells not listed in <code>expose</code> are terminated after setup</li>
+<li><code>cleanup</code> block: only <code>&gt;</code>, <code>=&gt;</code>, <code>let</code>, variable reassignment allowed (no match operators)</li>
+</ul>
+<h2 id="tests-1"><a class="header" href="#tests-1">Tests</a></h2>
+<pre><code class="language-relux">test "&lt;name&gt;" ~&lt;duration&gt; {
+test "&lt;name&gt;" @&lt;duration&gt; {
+test "&lt;name&gt;" {
+    """
+    &lt;doc string&gt;
+    """
+    let &lt;name&gt;
+    start &lt;EffectName&gt;
+    start &lt;EffectName&gt; as &lt;Alias&gt;
+    start &lt;EffectName&gt; as &lt;Alias&gt; { KEY = expr, KEY }
+    shell &lt;name&gt; { &lt;body&gt; }
+    shell &lt;Alias&gt;.&lt;shell_name&gt; { &lt;body&gt; }
+    cleanup { &lt;body&gt; }
+}
+</code></pre>
+<h2 id="condition-markers-1"><a class="header" href="#condition-markers-1">Condition Markers</a></h2>
+<pre><code class="language-relux"># kind                                  // unconditional
+# kind modifier expr                    // truthiness check
+# kind modifier expr = expr             // equality comparison
+# kind modifier expr ? regex            // regex match
+</code></pre>
+<p>Where:</p>
+<ul>
+<li><code>kind</code>: <code>skip</code> | <code>run</code> | <code>flaky</code></li>
+<li><code>modifier</code>: <code>if</code> | <code>unless</code></li>
+<li><code>expr</code>: quoted string with interpolation (<code>"${VAR}"</code>, <code>"literal"</code>, <code>"${A}:${B}"</code>) or bare number (<code>42</code>)</li>
+<li><code>regex</code>: regex pattern with <code>${var}</code> interpolation, to end of line</li>
+</ul>
+<p>Examples:</p>
+<pre><code class="language-relux"># skip
+# skip unless "${CI}"
+# run if "${OS}" = "linux"
+# run if "${COUNT}" = 0
+# skip unless "${ARCH}" ? ^(x86_64|aarch64)$
+# flaky if "${CI}" = "true"
+# run if "${HOST}:${PORT}" = "localhost:8080"
+# skip unless "${VER}" ? ^${MAJOR}\..*$
+</code></pre>
+<ul>
+<li>A bare marker (kind only, no modifier) is unconditional</li>
+<li>One marker per line</li>
+<li>Multiple markers stack with AND semantics (all must pass or test is skipped)</li>
+<li>Placed immediately before <code>test</code>, <code>effect</code>, <code>fn</code>, or <code>pure fn</code> declarations (not inside the body)</li>
+<li>When a function is skipped, all tests that call it are also skipped</li>
+<li>A <code># flaky</code> marker on a function or effect propagates too: the test is marked flaky when a function or effect it reaches is flaky</li>
+<li>Comments between markers and the declaration are allowed</li>
+</ul>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Marker</th><th>Modifier</th><th>Condition</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><code># skip</code></td><td><em>(none)</em></td><td><em>(unconditional)</em></td><td>always skip</td></tr>
+<tr><td><code># skip</code></td><td><code>if</code></td><td>truthy</td><td>skip when condition is true</td></tr>
+<tr><td><code># skip</code></td><td><code>unless</code></td><td>falsy</td><td>skip when condition is false</td></tr>
+<tr><td><code># run</code></td><td><em>(none)</em></td><td><em>(unconditional)</em></td><td>no-op (always run)</td></tr>
+<tr><td><code># run</code></td><td><code>if</code></td><td>falsy</td><td>skip when condition is false</td></tr>
+<tr><td><code># run</code></td><td><code>unless</code></td><td>truthy</td><td>skip when condition is true</td></tr>
+<tr><td><code># flaky</code></td><td><em>(none)</em></td><td><em>(unconditional)</em></td><td>always mark as flaky</td></tr>
+<tr><td><code># flaky</code></td><td><code>if</code></td><td>truthy</td><td>mark as flaky when condition is true</td></tr>
+<tr><td><code># flaky</code></td><td><code>unless</code></td><td>falsy</td><td>mark as flaky when condition is false</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="truthiness"><a class="header" href="#truthiness">Truthiness</a></h3>
+<ul>
+<li>Empty string or unset variable = false</li>
+<li>Any non-empty string = true</li>
+<li><code>=</code> returns the LHS value if LHS equals RHS, empty string otherwise</li>
+<li><code>?</code> returns the regex match if matched, empty string otherwise</li>
+</ul>
+<h2 id="shell-blocks"><a class="header" href="#shell-blocks">Shell Blocks</a></h2>
+<pre><code class="language-relux">shell &lt;name&gt; {
+    &lt;statements&gt;
+}
+shell &lt;Alias&gt;.&lt;shell_name&gt; {
+    &lt;statements&gt;
+}
+</code></pre>
+<ul>
+<li>Unqualified form (<code>shell name</code>) creates or switches to a local shell; name must be snake_case</li>
+<li>Qualified form (<code>shell Alias.shell_name</code>) operates on a dependency’s exposed shell; qualifier is a CamelCase effect alias, name is snake_case</li>
+<li>Valid inside <code>effect</code> and <code>test</code> blocks</li>
+</ul>
+<h2 id="variables-1"><a class="header" href="#variables-1">Variables</a></h2>
+<pre><code class="language-relux">let &lt;name&gt;                  # declare, defaults to ""
+let &lt;name&gt; = "&lt;value&gt;"      # declare with value
+let &lt;name&gt; = &lt;expression&gt;   # declare from expression
+&lt;name&gt; = &lt;expression&gt;       # reassign existing variable
+</code></pre>
+<ul>
+<li>Quoted values required for <code>let</code> assignments</li>
+<li>Interpolation inside strings: <code>"${name}"</code>, <code>"${1}"</code>, <code>"${2}"</code>, etc.</li>
+<li>Bare variable reference: <code>name</code>, <code>$1</code>, <code>$2</code></li>
+<li>Escape <code>$</code> with <code>$$</code></li>
+<li>Scoped to enclosing block; inner blocks can shadow outer variables</li>
+<li>Environment variables are readable (the layered base environment — host process plus any <code>.env</code> files — is available everywhere)</li>
+</ul>
+<h2 id="operators"><a class="header" href="#operators">Operators</a></h2>
+<p>All operators are followed by a space, then payload to end of line.</p>
+<h3 id="send"><a class="header" href="#send">Send</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operator</th><th>Payload</th><th>Value</th></tr>
+</thead>
+<tbody>
+<tr><td><code>&gt; </code></td><td>text to EOL</td><td>sent string</td></tr>
+<tr><td><code>=&gt; </code></td><td>text to EOL</td><td>sent string</td></tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li><code>&gt;</code> sends with trailing newline</li>
+<li><code>=&gt;</code> sends without trailing newline (raw send)</li>
+<li>Variable interpolation applies in payload</li>
+</ul>
+<h3 id="match"><a class="header" href="#match">Match</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operator</th><th>Payload</th><th>Value</th></tr>
+</thead>
+<tbody>
+<tr><td><code>&lt;? </code></td><td>regex to EOL</td><td>full match (<code>$0</code>)</td></tr>
+<tr><td><code>&lt;= </code></td><td>literal to EOL</td><td>matched text</td></tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li><code>&lt;?</code> matches regex against shell output; sets <code>$1</code>, <code>$2</code>, etc. for capture groups</li>
+<li><code>&lt;=</code> matches literal with variable substitution</li>
+<li>Both block until match or timeout</li>
+</ul>
+<h3 id="multi-pattern-match"><a class="header" href="#multi-pattern-match">Multi-Pattern Match</a></h3>
+<pre><code>&lt;{
+    ? &lt;regex&gt;
+    = &lt;literal&gt;
+}
+</code></pre>
+<ul>
+<li>Inner lines are <code>? &lt;regex&gt;</code> (regex) or <code>= &lt;literal&gt;</code> (literal), one per line</li>
+<li>The block waits for every pattern to match at least once, in any order</li>
+<li>The cursor advances once at block exit, to <code>max(end)</code> across all per-pattern matches</li>
+<li>Capture groups in inner regex patterns do not bind</li>
+<li>The empty form <code>&lt;{ }</code> is a parse error</li>
+<li>Comments are permitted between inner lines</li>
+</ul>
+<h3 id="buffer-reset"><a class="header" href="#buffer-reset">Buffer Reset</a></h3>
+<pre><code class="language-relux">&lt;?
+&lt;=
+</code></pre>
+<ul>
+<li>A match operator with no payload consumes all current output and resets the cursor</li>
+<li>Useful to skip past output you don’t care about</li>
+</ul>
+<h3 id="inline-timeout-override"><a class="header" href="#inline-timeout-override">Inline Timeout Override</a></h3>
+<p>Any match operator can be prefixed with <code>~&lt;duration&gt;</code> (tolerance) or <code>@&lt;duration&gt;</code> (assertion) to set a one-shot timeout:</p>
+<pre><code class="language-relux">&lt;~2s? regex pattern       # regex match with 2s tolerance timeout
+&lt;~500ms= literal text     # literal match with 500ms tolerance timeout
+&lt;@2s? regex pattern       # regex match with 2s assertion timeout
+&lt;@500ms= literal text     # literal match with 500ms assertion timeout
+&lt;~10s{ ? a  ? b }         # multi-pattern block with 10s tolerance timeout
+&lt;@500ms{ = a  = b }       # multi-pattern block with 500ms assertion timeout
+</code></pre>
+<ul>
+<li>Duration uses compact humantime format (no spaces): <code>2s</code>, <code>500ms</code>, <code>1m30s</code></li>
+<li>Applies only to that single operation — does not affect the scoped timeout</li>
+<li>Works with both match operators (<code>?</code>, <code>=</code>) and the multi-pattern form <code>&lt;{ ... }</code></li>
+<li>Tolerance (<code>~</code>) timeouts are scaled by <code>--timeout-multiplier</code>; assertion (<code>@</code>) timeouts are never scaled</li>
+</ul>
+<h3 id="fail-pattern"><a class="header" href="#fail-pattern">Fail Pattern</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operator</th><th>Payload</th></tr>
+</thead>
+<tbody>
+<tr><td><code>!? </code></td><td>regex to EOL</td></tr>
+<tr><td><code>!= </code></td><td>literal to EOL</td></tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li>One active fail pattern at a time (single slot)</li>
+<li>Setting a new one replaces the previous (regex or literal)</li>
+<li>An empty <code>!?</code> or <code>!=</code> (no payload) clears the active fail pattern</li>
+</ul>
+<h3 id="timeout"><a class="header" href="#timeout">Timeout</a></h3>
+<pre><code class="language-relux">~&lt;duration&gt;
+@&lt;duration&gt;
+</code></pre>
+<ul>
+<li>Compact humantime format (no spaces): <code>~10s</code>, <code>@2s</code>, <code>~500ms</code>, <code>~2m30s</code></li>
+<li><code>~</code> sets a <strong>tolerance</strong> timeout — scaled by <code>--timeout-multiplier</code></li>
+<li><code>@</code> sets an <strong>assertion</strong> timeout — never scaled (asserts the system responds within a hard deadline)</li>
+<li>Sets timeout for subsequent match operations in the current shell</li>
+<li>Overrides previous timeout</li>
+<li>Scoped to the current function call — reverts when the function returns</li>
+</ul>
+<h2 id="expressions"><a class="header" href="#expressions">Expressions</a></h2>
+<p>Every expression produces a string value:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Expression</th><th>Value</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"&lt;text&gt;"</code></td><td>string literal</td></tr>
+<tr><td><code>name</code></td><td>variable value</td></tr>
+<tr><td><code>$1</code>, <code>$2</code></td><td>regex capture group</td></tr>
+<tr><td><code>&lt;fn&gt;(&lt;args&gt;)</code></td><td>function return value</td></tr>
+<tr><td><code>&gt; &lt;text&gt;</code> / <code>=&gt; &lt;text&gt;</code></td><td>sent string</td></tr>
+<tr><td><code>&lt;? &lt;regex&gt;</code></td><td>full match (<code>$0</code>)</td></tr>
+<tr><td><code>&lt;= &lt;literal&gt;</code></td><td>matched text</td></tr>
+<tr><td><code>&lt;~dur? &lt;regex&gt;</code></td><td>full match with timeout override</td></tr>
+<tr><td><code>&lt;~dur= &lt;literal&gt;</code></td><td>matched text with timeout override</td></tr>
+<tr><td><code>let x = &lt;expr&gt;</code></td><td>assigned value</td></tr>
+</tbody>
+</table>
+</div>
+<p>Last expression in a function body is the return value.</p>
+<h2 id="effect-identity"><a class="header" href="#effect-identity">Effect Identity</a></h2>
+<p><code>(effect-name, evaluated overlay restricted to expect-declared vars)</code> determines instance identity:</p>
+<ul>
+<li>Same tuple = same instance (deduplicated)</li>
+<li>Different tuple = different instance</li>
+<li>Overlay expressions are evaluated at setup time; identity is based on evaluated values, not AST form</li>
+</ul>
+<h2 id="cleanup-blocks"><a class="header" href="#cleanup-blocks">Cleanup Blocks</a></h2>
+<pre><code class="language-relux">cleanup {
+    &lt;statements&gt;
+}
+</code></pre>
+<ul>
+<li>Runs in a fresh implicit shell</li>
+<li>Any statement valid in a shell block is valid in a cleanup block</li>
+<li>Always executes, regardless of pass/fail</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="built-in-functions"><a class="header" href="#built-in-functions">Built-in Functions</a></h1>
+<p>Relux provides built-in functions (BIFs) that are always available without imports. BIFs are divided into two categories based on their <strong>purity</strong> — whether they require a shell context to operate.</p>
+<h2 id="purity"><a class="header" href="#purity">Purity</a></h2>
+<ul>
+<li><strong>Pure</strong> BIFs do not interact with any shell. They can be called from pure functions, condition markers, overlay expressions, and regular shell blocks.</li>
+<li><strong>Impure</strong> BIFs require a shell context (they send input or match output). They can only be called inside shell blocks and regular (non-pure) functions.</li>
+</ul>
+<p>“Pure” here means shell-independent, not side-effect-free — pure BIFs may still perform I/O (e.g. <code>sleep</code>, <code>log</code>, <code>which</code>).</p>
+<h2 id="pure-bifs"><a class="header" href="#pure-bifs">Pure BIFs</a></h2>
+<h3 id="string"><a class="header" href="#string">String</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Function</th><th>Signature</th><th>Returns</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>trim</code></td><td><code>trim(s)</code></td><td>string</td><td>Remove leading and trailing whitespace from <code>s</code>.</td></tr>
+<tr><td><code>upper</code></td><td><code>upper(s)</code></td><td>string</td><td>Convert <code>s</code> to uppercase.</td></tr>
+<tr><td><code>lower</code></td><td><code>lower(s)</code></td><td>string</td><td>Convert <code>s</code> to lowercase.</td></tr>
+<tr><td><code>replace</code></td><td><code>replace(s, from, to)</code></td><td>string</td><td>Replace all occurrences of <code>from</code> with <code>to</code> in <code>s</code>.</td></tr>
+<tr><td><code>split</code></td><td><code>split(s, sep, index)</code></td><td>string</td><td>Split <code>s</code> by <code>sep</code> and return the part at <code>index</code> (0-based). Returns <code>""</code> if the index is out of bounds. Errors if <code>index</code> is not a valid integer.</td></tr>
+<tr><td><code>len</code></td><td><code>len(s)</code></td><td>string</td><td>Return the byte length of <code>s</code> as a decimal string.</td></tr>
+<tr><td><code>default</code></td><td><code>default(a, b)</code></td><td>string</td><td>Return <code>a</code> if it is non-empty, otherwise return <code>b</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="generators"><a class="header" href="#generators">Generators</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Function</th><th>Signature</th><th>Returns</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>uuid</code></td><td><code>uuid()</code></td><td>string</td><td>Generate a random UUID v4 (e.g. <code>"550e8400-e29b-41d4-a716-446655440000"</code>).</td></tr>
+<tr><td><code>rand</code></td><td><code>rand(n)</code></td><td>string</td><td>Generate a random alphanumeric string of length <code>n</code>. Errors if <code>n</code> is not a valid integer.</td></tr>
+<tr><td><code>rand</code></td><td><code>rand(n, mode)</code></td><td>string</td><td>Generate a random string of length <code>n</code> using the given charset <code>mode</code>. Modes: <code>alpha</code>, <code>num</code>, <code>alphanum</code>, <code>hex</code>, <code>oct</code>, <code>bin</code>. Errors if <code>mode</code> is unknown or <code>n</code> is not a valid integer.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="system"><a class="header" href="#system">System</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Function</th><th>Signature</th><th>Returns</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>available_port</code></td><td><code>available_port()</code></td><td>string</td><td>Bind to an ephemeral TCP port on <code>127.0.0.1</code> and return the port number. The port is released after the call, so it may be reused — call this close to where the port is needed.</td></tr>
+<tr><td><code>which</code></td><td><code>which(name)</code></td><td>string</td><td>Search <code>PATH</code> for an executable named <code>name</code>. Returns the absolute path to the first match, or <code>""</code> if not found. Checks that the file has an executable permission bit set. If <code>name</code> contains a path separator, checks that path directly instead of searching <code>PATH</code>.</td></tr>
+<tr><td><code>sleep</code></td><td><code>sleep(duration)</code></td><td><code>""</code></td><td>Pause execution for <code>duration</code>. Accepts <a href="https://docs.rs/humantime">humantime</a> format: <code>500ms</code>, <code>2s</code>, <code>1m30s</code>, etc. Errors if the duration is invalid.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="logging"><a class="header" href="#logging">Logging</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Function</th><th>Signature</th><th>Returns</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>log</code></td><td><code>log(message)</code></td><td>string</td><td>Emit <code>message</code> to the event log and HTML report. Returns <code>message</code>.</td></tr>
+<tr><td><code>annotate</code></td><td><code>annotate(text)</code></td><td>string</td><td>Emit <code>text</code> as a progress annotation. Renders inline on the live progress line (between the surrounding fn-call <code>(</code> and <code>)</code>) and is recorded as an event in the structured log. Returns <code>text</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="impure-bifs"><a class="header" href="#impure-bifs">Impure BIFs</a></h2>
+<h3 id="shell-matching"><a class="header" href="#shell-matching">Shell matching</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Function</th><th>Signature</th><th>Returns</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>match_prompt</code></td><td><code>match_prompt()</code></td><td>string</td><td>Match the shell prompt configured in <code>Relux.toml</code>. Advances the output cursor past the prompt.</td></tr>
+<tr><td><code>match_ok</code></td><td><code>match_ok()</code></td><td>string</td><td>Match the shell prompt, send <code>echo $?</code>, match <code>0</code>, and match the prompt again. Verifies the previous command exited with status 0.</td></tr>
+<tr><td><code>match_not_ok</code></td><td><code>match_not_ok()</code></td><td>string</td><td>Match the shell prompt, verify the previous command exited with a non-zero status, and match the prompt again. The inverse of <code>match_ok()</code>.</td></tr>
+<tr><td><code>match_not_ok</code></td><td><code>match_not_ok(code)</code></td><td>string</td><td>Match the shell prompt, verify the previous command exited with a specific non-zero status <code>code</code>, and match the prompt again. Like <code>match_exit_code(code)</code> but also asserts the code is non-zero.</td></tr>
+<tr><td><code>match_exit_code</code></td><td><code>match_exit_code(code)</code></td><td>string</td><td>Send <code>echo $?</code>, match <code>code</code>, and match the prompt. Verifies the previous command exited with the given status. <code>code</code> is passed as a bare literal (e.g. <code>match_exit_code(1)</code>).</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="control-characters"><a class="header" href="#control-characters">Control characters</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Function</th><th>Signature</th><th>Returns</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>ctrl_c</code></td><td><code>ctrl_c()</code></td><td><code>""</code></td><td>Send <code>ETX</code> (0x03) — interrupt the current process.</td></tr>
+<tr><td><code>ctrl_d</code></td><td><code>ctrl_d()</code></td><td><code>""</code></td><td>Send <code>EOT</code> (0x04) — signal end of input.</td></tr>
+<tr><td><code>ctrl_z</code></td><td><code>ctrl_z()</code></td><td><code>""</code></td><td>Send <code>SUB</code> (0x1A) — suspend the current process.</td></tr>
+<tr><td><code>ctrl_l</code></td><td><code>ctrl_l()</code></td><td><code>""</code></td><td>Send <code>FF</code> (0x0C) — clear the terminal screen.</td></tr>
+<tr><td><code>ctrl_backslash</code></td><td><code>ctrl_backslash()</code></td><td><code>""</code></td><td>Send <code>FS</code> (0x1C) — send SIGQUIT to the current process.</td></tr>
+</tbody>
+</table>
+</div>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="ci-integration"><a class="header" href="#ci-integration">CI Integration</a></h1>
+<p>Relux can produce TAP and JUnit output for integration with CI systems:</p>
+<pre><code class="language-text">relux run --tap --junit
+</code></pre>
+<p>This writes <code>results.tap</code> and <code>junit.xml</code> into the run directory at
+<code>relux/out/run-&lt;timestamp&gt;-&lt;id&gt;/</code>. A <code>relux/out/latest</code> symlink always
+points to the most recent run. The run directory also contains <code>index.html</code>
+(summary report), <code>logs/</code> (per-test event logs), and <code>artifacts/</code>.</p>
+<p><strong>Key point:</strong> Always archive the entire run directory, not just the XML/TAP
+files. The JUnit XML references log files via relative paths, and CI systems
+that support attachments (Jenkins, GitLab) can link directly to per-test
+<code>event.html</code> logs when the directory structure is preserved.</p>
+<p>Each per-test directory under <code>logs/</code> contains two artifacts:</p>
+<ul>
+<li><code>events.json</code> — canonical structured payload (spans, events, buffer events,
+outcome record, embedded source files), consumable by external tooling.
+See <a href="#eventsjson-schema"><code>events.json</code> Schema</a> for the on-disk
+shape, the tagged-enum variants for spans/events/buffer events/outcome,
+and the schema-versioning policy. Surfaced to machine consumers via the
+TAP <code>log_json:</code> YAML field, a second JUnit <code>[[ATTACHMENT|...]]</code> marker,
+and a <code>&lt;property name="events_json" ...&gt;</code> element on each test case.</li>
+<li><code>event.html</code> — self-contained Svelte SPA viewer. The structured log,
+highlight.js core, Relux language definition, and the viewer bundle
+are each gzipped, base64-encoded, and inlined into
+<code>&lt;script type="application/octet-stream"&gt;</code> payload tags. A small
+bootstrap script decompresses them in-browser via
+<a href="https://developer.mozilla.org/docs/Web/API/DecompressionStream"><code>DecompressionStream</code></a>,
+sets <code>window.RELUX_DATA</code>, and runs the three JS payloads in order
+(hljs core → Relux grammar → viewer). Opens directly via <code>file://</code>;
+no server required. Requires Chrome 80+ / Firefox 113+ / Safari 16.4+;
+older browsers see a one-line message and nothing else. This is the
+recommended human entry point and the link target used by the
+run-summary <code>index.html</code>, JUnit <code>[[ATTACHMENT|...]]</code> markers, and
+TAP <code>log:</code> fields.</li>
+</ul>
+<h3 id="skipped-test-logs"><a class="header" href="#skipped-test-logs">Skipped-test logs</a></h3>
+<p>Tests skipped by a marker — either <code># skip if X</code> evaluating true or
+<code># run if X</code> evaluating false, on the test itself or on any effect/function
+it depends on — produce a per-test log alongside passed and failed tests.
+The skipped-test log contains only the MARKERS section: the synthetic
+<code>markers</code> span tree with one <code>marker-eval</code> child per evaluated marker
+(including any flaky markers that ran before the skip-causing one).
+Opening <code>event.html</code> focuses the marker that triggered the skip and expands
+its ancestors so the tree is unfolded. For a skip propagated from a fn or
+effect, the focused marker is the originating one on that fn/effect, not
+on the test.</p>
+<p>Tests skipped for other reasons (e.g., “skipped because an earlier test
+caused fail-fast and this test was never started”) do not produce a log:
+there are no marker evaluations to show; the actionable information lives
+on the test that caused the cancellation.</p>
+<h3 id="cancelled-outcome"><a class="header" href="#cancelled-outcome">Cancelled outcome</a></h3>
+<p>A test that <em>was</em> started but did not run to completion produces a
+<code>Cancelled</code> outcome — distinct from <code>Fail</code>. Sources:</p>
+<ul>
+<li><strong>Test timeout (<code>~T</code> on the test)</strong>: the per-test watchdog fired.
+Carried as <code>reason: { type: "test-timeout", duration_ms }</code>.</li>
+<li><strong>Suite timeout</strong>: the suite-wide watchdog fired. Other live tests are
+cancelled with <code>reason: { type: "suite-timeout", duration_ms }</code>.</li>
+<li><strong>Fail-fast</strong>: a sibling test failed with <code>--strategy fail-fast</code>. Live
+tests are cancelled with <code>reason: { type: "fail-fast", trigger_test }</code>.</li>
+<li><strong>SIGINT</strong>: the CLI process received SIGINT. Live tests are cancelled
+with <code>reason: { type: "sigint" }</code>.</li>
+</ul>
+<p>Cancelled outcomes:</p>
+<ul>
+<li>Exit nonzero from <code>relux run</code> (same as failures).</li>
+<li>Render as <code>not ok</code> in TAP, with a diagnostic block carrying
+<code>cancellation: &lt;reason-tag&gt;</code>.</li>
+<li>Render as <code>&lt;error type="cancelled" message="cancelled: &lt;reason-tag&gt;"/&gt;</code>
+in JUnit XML (distinct from <code>&lt;failure&gt;</code> and <code>&lt;skipped&gt;</code>).</li>
+<li>Render as a <code>cancelled</code> row in the HTML run index and a <code>CANCELLED</code>
+pill in the per-test viewer.</li>
+<li>A <code>cancelled</code> event in <code>events.json</code> marks the exact point where the
+VM observed the cancel, on the span execution was inside at that
+moment.</li>
+</ul>
+<p>Flaky-retry semantics: a test marked <code># flaky</code> is retried on <code>Fail</code> <em>and</em>
+on <code>Cancelled { reason: TestTimeout }</code> (the test’s own clock running out —
+exactly what scaled-timeout retries target). Other cancellation reasons
+(suite-timeout, fail-fast, SIGINT) are <em>not</em> retried.</p>
+<h3 id="artifacts"><a class="header" href="#artifacts">Artifacts</a></h3>
+<p>Anything a test writes under <code>$__RELUX_TEST_ARTIFACTS</code> is enumerated in
+<code>events.json</code> under <code>artifacts</code> and surfaced in the viewer through an
+<code>artifacts</code> modal (AppBar chip, hotkey <code>A</code>). Each entry is a relative link
+that opens in a new browser tab; this works whether <code>event.html</code> is opened
+directly via <code>file://</code> or served over HTTP. The chip is rendered as
+disabled when the test wrote no artifacts.</p>
+<p>The viewer bundle is committed at <code>vendor/relux-viewer.js.gz</code>; regenerate it
+(and the TypeScript schema bindings) with <code>just viewer-build</code>.</p>
+<hr>
+<h2 id="gitlab-ci"><a class="header" href="#gitlab-ci">GitLab CI</a></h2>
+<p>GitLab natively consumes JUnit XML via <code>artifacts:reports:junit</code>. Archive the
+full run directory so that <code>[[ATTACHMENT|...]]</code> markers in <code>&lt;system-out&gt;</code>
+resolve to the event logs.</p>
+<pre><code class="language-yaml">test:
+  stage: test
+  script:
+    - relux run --junit
+  artifacts:
+    when: always
+    paths:
+      - relux/out/latest/
+    reports:
+      junit: relux/out/latest/junit.xml
+</code></pre>
+<p>Setting <code>when: always</code> ensures artifacts are uploaded even when tests fail.</p>
+<hr>
+<h2 id="github-actions"><a class="header" href="#github-actions">GitHub Actions</a></h2>
+<p>GitHub Actions does not have built-in JUnit support. Use
+<code>actions/upload-artifact</code> to preserve the run directory, and a third-party
+action to surface test results in the PR.</p>
+<pre><code class="language-yaml">jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run tests
+        run: relux run --junit
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: relux-results
+          path: relux/out/latest/
+
+      - name: Publish test report
+        if: always()
+        uses: mikepenz/action-junit-report@v5
+        with:
+          report_paths: relux/out/latest/junit.xml
+</code></pre>
+<p>Other JUnit report actions (e.g., <code>dorny/test-reporter</code>) work the same way –
+point them at <code>relux/out/latest/junit.xml</code>.</p>
+<hr>
+<h2 id="jenkins"><a class="header" href="#jenkins">Jenkins</a></h2>
+<p>Use the <strong>JUnit</strong> post-build step to parse results. Install the <strong>JUnit
+Attachments Plugin</strong> to make per-test event logs clickable – it reads the
+<code>[[ATTACHMENT|...]]</code> markers embedded in <code>&lt;system-out&gt;</code>.</p>
+<pre><code class="language-groovy">pipeline {
+    agent any
+    stages {
+        stage('Test') {
+            steps {
+                sh 'relux run --junit'
+            }
+            post {
+                always {
+                    junit testResults: 'relux/out/latest/junit.xml',
+                          allowEmptyResults: true
+                    archiveArtifacts artifacts: 'relux/out/latest/**',
+                                     allowEmptyArchive: true
+                }
+            }
+        }
+    }
+}
+</code></pre>
+<p>With the JUnit Attachments Plugin installed, each test case in the Jenkins UI
+will link to its <code>event.html</code> log automatically.</p>
+<hr>
+<h2 id="azure-devops"><a class="header" href="#azure-devops">Azure DevOps</a></h2>
+<p>Use the <code>PublishTestResults</code> task to ingest JUnit XML.</p>
+<pre><code class="language-yaml">steps:
+  - script: relux run --junit
+    displayName: Run tests
+
+  - task: PublishTestResults@2
+    condition: always()
+    inputs:
+      testResultsFormat: JUnit
+      testResultsFiles: relux/out/latest/junit.xml
+      mergeTestResults: true
+      testRunTitle: Relux
+
+  - task: PublishBuildArtifacts@1
+    condition: always()
+    inputs:
+      pathToPublish: relux/out/latest
+      artifactName: relux-results
+</code></pre>
+<hr>
+<h2 id="gitea-actions"><a class="header" href="#gitea-actions">Gitea Actions</a></h2>
+<p>Gitea Actions uses the same workflow syntax as GitHub Actions. Gitea does not
+render JUnit reports natively, but you can archive results and use compatible
+actions from the Gitea marketplace.</p>
+<pre><code class="language-yaml">jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run tests
+        run: relux run --junit --tap
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: relux-results
+          path: relux/out/latest/
+</code></pre>
+<p>The uploaded artifact preserves the full run directory including <code>index.html</code>,
+which serves as a self-contained test report you can browse locally.</p>
+<hr>
+<h2 id="tap-consumers"><a class="header" href="#tap-consumers">TAP Consumers</a></h2>
+<p>The <code>--tap</code> flag produces TAP version 14 output in <code>results.tap</code>. This is
+useful with any TAP consumer (e.g., <code>tap-diff</code>, <code>tap-dot</code>, Jenkins TAP
+Plugin):</p>
+<pre><code class="language-text"># Stream TAP to a formatter
+cat relux/out/latest/results.tap | tap-diff
+
+# Or use the file directly with CI plugins that accept TAP input
+</code></pre>
+<p>TAP output includes log file paths in YAML diagnostics blocks (<code>log:</code> field),
+but most CI systems do not parse TAP diagnostics for attachments. Use <code>--junit</code>
+when you need CI-native log attachment support.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="test-log-viewer"><a class="header" href="#test-log-viewer">Test Log Viewer</a></h1>
+<p>The <strong>test log viewer</strong> is the per-test HTML report that ships with every Relux run as <code>event.html</code> inside the run directory’s <code>logs/&lt;test&gt;/</code> folder. It is a single self-contained SPA: open it directly via <code>file://</code>, no server required. See <a href="#ci-integration">CI Integration</a> for how the file is packaged and shipped.</p>
+<p>This article catalogs the viewer’s surface. Each region is listed with the data it shows and the keys that act on it.</p>
+<h2 id="layout"><a class="header" href="#layout">Layout</a></h2>
+<p>The viewer has four persistent regions, top to bottom:</p>
+<ol>
+<li><strong>App bar</strong> — test identity, outcome, modal launchers, run timing.</li>
+<li><strong>Timeline bar</strong> — proportional bar of the test’s time range with click-to-jump slices.</li>
+<li><strong>Events list</strong> (left pane) — the structured event log as a foldable tree.</li>
+<li><strong>Detail panel</strong> (right pane, 2x2 grid) — source / shell / variables / call stack views of the current selection.</li>
+</ol>
+<p>Three modal overlays — <strong>env</strong>, <strong>shells</strong>, <strong>artifacts</strong> — open on top of the layout.</p>
+<p>Selection is the spine of the UI: nearly every pane reads from <code>selectedSpanId</code> or <code>selectedEventSeq</code>. Clicking a row in the events list, clicking a timeline slice, or clicking a frame in the call stack all change the selection; every other pane re-derives from there.</p>
+<h2 id="app-bar"><a class="header" href="#app-bar">App bar</a></h2>
+<p>The strip across the top of the viewer.</p>
+<p>Contents, left to right:</p>
+<ul>
+<li><strong>Breadcrumb</strong> — <code>&lt;directory&gt;/&lt;file&gt;</code> followed by the test name.</li>
+<li><strong>Outcome pill</strong> — <code>pass</code>, <code>fail</code>, <code>cancelled</code>, <code>skip</code>, or <code>invalid</code>. <code>cancelled</code> indicates the test was stopped before completion (test-timeout, suite-timeout, fail-fast, or SIGINT); the in-stream <code>cancelled</code> event tells you which one.</li>
+<li><strong>Modal launcher chips</strong> — <code>env</code>, <code>shells (N)</code>, <code>artifacts (N)</code>. The artifacts chip is disabled when the test produced no files.</li>
+<li><strong>Timing summary</strong> — total duration, event count, span count.</li>
+</ul>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>E</code></td><td>Toggle the env modal</td></tr>
+<tr><td><code>S</code></td><td>Toggle the shells modal</td></tr>
+<tr><td><code>A</code></td><td>Toggle the artifacts modal (no-op when empty)</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="timeline-bar"><a class="header" href="#timeline-bar">Timeline bar</a></h2>
+<p>A proportional time track spanning the test’s duration.</p>
+<p>The selected event or span is rendered as a pulsing accent slice over the bar. Hovering anywhere on the track reveals one or more <strong>preview cards</strong> for the spans active at that timestamp: a short stack of cards anchored to the slice on the track, each summarizing one candidate span. Clicking the track selects:</p>
+<ul>
+<li>the only span there, if there is one;</li>
+<li>otherwise, it <strong>pins</strong> the preview cards so you can click the one you want.</li>
+</ul>
+<p>Clicking outside a pinned card stack dismisses the pin. Clicking a preview card selects its span and reveals the matching row in the events list.</p>
+<p>No keyboard shortcuts; the timeline bar is mouse-driven.</p>
+<h2 id="events-list"><a class="header" href="#events-list">Events list</a></h2>
+<p>The left pane. Renders the structured event log as a foldable, indented tree.</p>
+<p>Row types:</p>
+<ul>
+<li><strong>Span entry</strong> — a span’s opening row. Indented by depth, foldable.</li>
+<li><strong>Event</strong> — a non-span event (send, match, var-let, interpolation, …). Some related events are <strong>folded</strong> into a single row (e.g. a <code>match-start</code> / <code>match-done</code> pair, a <code>sleep-start</code> / <code>sleep-done</code> pair).</li>
+<li><strong>Log bar</strong> — emitted by the <code>log</code> BIF; rendered as a horizontal bar carrying the log level and message.</li>
+<li><strong>BIF row</strong> — a transparent impure BIF call (e.g. <code>match_prompt</code>) shown as a single row instead of a foldable span.</li>
+<li><strong>Gap</strong> — a synthetic row marking a duration with no events.</li>
+<li><strong>Per-pattern match</strong> — inside a <code>&lt;{ ... }</code> block, each <code>multi-match-pattern-done</code> event renders as its own selectable row, labelled <code>match</code> in the kind column (the same label used by a folded single-match <code>match-start</code> / <code>match-done</code> pair).</li>
+</ul>
+<p>The footer below the list carries chips for filtering and bulk fold control:</p>
+<ul>
+<li><strong>Filter</strong> — opens a popup with one checkbox per event type. The chip is highlighted when any types are hidden.</li>
+<li><strong>Error path</strong> preset — hides everything except <code>error</code>, <code>fail-pattern-triggered</code>, <code>match-timeout</code>. Disabled when the test passed.</li>
+<li><strong>Send / match only</strong> preset — hides everything except <code>send</code>, <code>match</code>, <code>match-timeout</code>.</li>
+<li><strong>Collapse all</strong> / <strong>Expand all</strong> — fold or unfold every span at once.</li>
+</ul>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Up</code> / <code>Down</code></td><td>Move selection to the previous / next row</td></tr>
+<tr><td><code>Right</code></td><td>Expand the selected span</td></tr>
+<tr><td><code>Left</code></td><td>Collapse the selected span</td></tr>
+<tr><td><code>Enter</code> / <code>Space</code></td><td>If an event is selected, deselect it; if a span is selected, toggle its fold</td></tr>
+<tr><td><code>F</code></td><td>Toggle the filter popup</td></tr>
+<tr><td><code>T</code></td><td>Toggle the error-path preset (no-op when the test passed)</td></tr>
+<tr><td><code>M</code></td><td>Toggle the send / match preset</td></tr>
+<tr><td><code>C</code></td><td>Collapse all spans</td></tr>
+<tr><td><code>X</code></td><td>Expand all spans</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="detail-panel"><a class="header" href="#detail-panel">Detail panel</a></h2>
+<p>The right pane. A 2x2 grid of panes, all driven by the current selection:</p>
+<pre><code class="language-text">+---------------------+---------------------+
+|       source        |        shell        |
++---------------------+---------------------+
+| variables in scope  |     call stack      |
++---------------------+---------------------+
+</code></pre>
+<h3 id="source"><a class="header" href="#source">Source</a></h3>
+<p>Renders the <code>.relux</code> file the selection points to, with the relevant byte range outlined by a pulsing accent frame. The header hint shows <code>&lt;file&gt;:&lt;line&gt;</code>; the view auto-scrolls to vertically center the anchor line and horizontally to keep the framed range on screen. Function calls, BIF rows, and imported items resolve to the file that actually defines them, not the file that called them.</p>
+<p>When the selection has no source location, the pane shows <code>no location</code> and a placeholder.</p>
+<h3 id="shell"><a class="header" href="#shell">Shell</a></h3>
+<p>The output buffer of the shell that owns the selected event, snapshotted at the moment of selection.</p>
+<p>Renders three regions concatenated, top to bottom:</p>
+<ul>
+<li><strong>Consumed</strong> — bytes already matched and advanced past. Dimmed.</li>
+<li><strong>Matched</strong> — bytes consumed by the most recent match up to and including the selected event. Accent color, pulsing.</li>
+<li><strong>Tail</strong> — bytes still in the buffer after the cursor. Default ink.</li>
+</ul>
+<p>The header hint surfaces the shell’s state at the moment of selection: timestamp, <code>matched ✓</code> if the selected event was a successful match, the active timeout, and the count of fail patterns armed in scope.</p>
+<p>Inside a multi-match span, selecting a per-pattern match row splits the <strong>Tail</strong> region into two halves around the matched bytes: <strong>tail-before</strong> (bytes that appear before the match in the undrained buffer), the <strong>matched highlight</strong> (the pattern’s own match), and <strong>tail-after</strong> (bytes that appear after). The <strong>Consumed</strong> region remains the cursor’s position at block entry — because the multimatch block advances the cursor once, at block exit, individual per-pattern matches inside the block do not move the consumed boundary.</p>
+<p>When the selection has no shell context (e.g. a pure-function span), the pane shows <code>this event has no shell context</code>.</p>
+<p>This pane embeds the <strong>searchable buffer</strong> (see below) — type into the search field to find substrings inside the buffer.</p>
+<h3 id="variables-in-scope"><a class="header" href="#variables-in-scope">Variables in scope</a></h3>
+<p>A two-section key/value table:</p>
+<ul>
+<li><strong>Captures</strong> (<code>$name</code>) — regex captures live in this scope, rendered with the accent color.</li>
+<li><strong><code>let</code> variables</strong> — variables declared at this scope or any enclosing scope.</li>
+</ul>
+<p>The footer carries a chip that links to the env modal — environment variables are not shown in this pane; they live in the env modal because they are global to the test.</p>
+<p>When the selection has no scope context, the pane shows a placeholder.</p>
+<h3 id="call-stack"><a class="header" href="#call-stack">Call stack</a></h3>
+<p>The stack of lexical scopes that contain the selected event, deepest frame at the top. Each frame shows its kind (e.g. <code>TEST</code>, <code>FN-CALL</code>, <code>EFFECT-SETUP</code>), name, optional alias, source location, and any bound arguments.</p>
+<p>The topmost frame is fixed (it is the selection’s own frame). Clicking a lower frame “promotes” it: the viewer selects that frame’s inner neighbor, effectively walking out one level. Use this to navigate from a deeply nested BIF call back up to the test body.</p>
+<p>The pane’s footer lists <strong>also-live shells</strong> — shells that are running but are not the one owning the selected event. Useful for multi-shell tests where work is happening in parallel.</p>
+<h2 id="searchable-buffer"><a class="header" href="#searchable-buffer">Searchable buffer</a></h2>
+<p>Used in two places: the <strong>shell</strong> pane of the detail panel, and inside every card in the shells modal. A single-line search bar above a buffer view.</p>
+<p>The query is matched against the rendered (escape-expanded) buffer text using substring search with <strong>smart case</strong>: case-insensitive unless the query contains an uppercase letter. The bar shows <code>&lt;current&gt; / &lt;total&gt;</code> matches; the current hit is rendered with a stronger accent than the rest.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Enter</code></td><td>Cycle to the next hit</td></tr>
+<tr><td><code>Shift+Enter</code></td><td>Cycle to the previous hit</td></tr>
+<tr><td><code>Esc</code></td><td>Clear the query; blur the field if already empty</td></tr>
+<tr><td><code>Cmd+S</code> / <code>Ctrl+S</code></td><td>Focus / cycle search inputs (see <a href="#global-hotkeys">Global hotkeys</a>)</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="env-modal"><a class="header" href="#env-modal">Env modal</a></h2>
+<p>Snapshot of the environment seeded when the test started — the host process environment, any <code>.env</code> file values layered over it, and Relux’s own run internals.</p>
+<p>The body lists every variable, grouped by its true origin, in precedence order top to bottom:</p>
+<ol>
+<li><strong>relux internals</strong> — values Relux injects for the run, including the per-test <code>__RELUX_TEST_ROOT</code> / <code>__RELUX_TEST_ARTIFACTS</code>. Relux sets the whole reserved <code>__RELUX*</code> namespace on this layer, so any copy inherited from the host environment is shadowed and this group shows Relux’s own values.</li>
+<li><strong><code>.env</code> files</strong> — one section per source file, headed by the file’s path relative to the suite root, written as <code>.../&lt;relative path&gt;</code>. Sections are ordered deepest-first, so the higher-precedence file (the one nearer the test) sits nearer the top. Hover a header to see the absolute path.</li>
+<li><strong>host environment</strong> — values inherited from the process that launched <code>relux</code>.</li>
+</ol>
+<p>A section only appears when it has at least one variable, so a run with no <code>.env</code> files shows just the relux and host groups. A filter row at the top accepts a query and a scope toggle: filter by <strong>name</strong>, <strong>value</strong>, or <strong>name · matches</strong> (either side). The counter shows <code>&lt;filtered&gt; / &lt;total&gt;</code>.</p>
+<p>The header carries a <code>copy all</code> action that copies the full environment as <code>KEY=VALUE</code> lines, one per row.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>E</code></td><td>Toggle the modal</td></tr>
+<tr><td><code>Esc</code></td><td>Close the modal</td></tr>
+<tr><td><code>Cmd+S</code> / <code>Ctrl+S</code></td><td>Focus the filter input</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="shells-modal"><a class="header" href="#shells-modal">Shells modal</a></h2>
+<p>One card per shell spawned during the test, sorted by spawn time.</p>
+<p>Each card has:</p>
+<ul>
+<li><strong>Header</strong> — shell name, command, state dot (<code>running</code>, <code>awaiting input</code>, <code>ended</code>, <code>error</code>), and a <code>★ this event</code> badge when the card corresponds to the shell owning the currently selected event.</li>
+<li><strong>Stats line</strong> — spawn timestamp, buffer size, events seen up to the selection, and termination timestamp (when ended before the selected event).</li>
+<li><strong>Buffer column</strong> — a searchable buffer view for that shell’s output at the moment of the selected event.</li>
+</ul>
+<p>The modal subtitle reflects the current selection (<code>@ event #N · kind · t = ... · in &lt;test&gt;</code>) so you always know what timestamp the buffers are snapshotted at.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>S</code></td><td>Toggle the modal</td></tr>
+<tr><td><code>Esc</code></td><td>Close the modal</td></tr>
+<tr><td><code>Cmd+S</code> / <code>Ctrl+S</code></td><td>Cycle through the cards’ search inputs</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="artifacts-modal"><a class="header" href="#artifacts-modal">Artifacts modal</a></h2>
+<p>The list of files the test wrote under its <code>artifacts/</code> directory.</p>
+<p>Each row is <code>path · size · mime</code>. The path is a link that opens the artifact in a new tab (resolved relative to the report directory). A filter row at the top narrows the list; the header <code>copy all</code> action copies every path as a newline-separated list.</p>
+<p>The modal launcher chip in the app bar is disabled when the test produced no artifacts; the <code>A</code> hotkey is a no-op in that case.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>A</code></td><td>Toggle the modal (no-op when the test has no artifacts)</td></tr>
+<tr><td><code>Esc</code></td><td>Close the modal</td></tr>
+<tr><td><code>Cmd+S</code> / <code>Ctrl+S</code></td><td>Focus the filter input</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="global-hotkeys"><a class="header" href="#global-hotkeys">Global hotkeys</a></h2>
+<p>A consolidated reference. Keys without a modifier are ignored while a text input or contenteditable element has focus; the search-input cycle is the one exception (it deliberately runs before the input-focus guard so it can move from one input to the next).</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Scope</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>E</code></td><td>global</td><td>Toggle env modal</td></tr>
+<tr><td><code>S</code></td><td>global</td><td>Toggle shells modal</td></tr>
+<tr><td><code>A</code></td><td>global</td><td>Toggle artifacts modal</td></tr>
+<tr><td><code>T</code></td><td>global</td><td>Toggle error-path preset in the events list</td></tr>
+<tr><td><code>M</code></td><td>global</td><td>Toggle send / match preset in the events list</td></tr>
+<tr><td><code>F</code></td><td>global</td><td>Toggle the events-list filter popup</td></tr>
+<tr><td><code>C</code></td><td>global</td><td>Collapse all spans</td></tr>
+<tr><td><code>X</code></td><td>global</td><td>Expand all spans</td></tr>
+<tr><td><code>Esc</code></td><td>global</td><td>Close the open modal</td></tr>
+<tr><td><code>Cmd+S</code> / <code>Ctrl+S</code></td><td>global</td><td>Focus / cycle search inputs in the current scope (modal if one is open, otherwise the main view)</td></tr>
+<tr><td><code>Up</code> / <code>Down</code></td><td>events list</td><td>Move selection by one row</td></tr>
+<tr><td><code>Right</code> / <code>Left</code></td><td>events list</td><td>Expand / collapse the selected span</td></tr>
+<tr><td><code>Enter</code> / <code>Space</code></td><td>events list</td><td>Toggle the current row</td></tr>
+<tr><td><code>Enter</code></td><td>searchable buffer</td><td>Cycle to the next hit</td></tr>
+<tr><td><code>Shift+Enter</code></td><td>searchable buffer</td><td>Cycle to the previous hit</td></tr>
+<tr><td><code>Esc</code></td><td>searchable buffer</td><td>Clear the query; blur if already empty</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="browser-support"><a class="header" href="#browser-support">Browser support</a></h2>
+<p>The bootstrap script in <code>event.html</code> uses
+<a href="https://developer.mozilla.org/docs/Web/API/DecompressionStream"><code>DecompressionStream</code></a>
+to unpack the inlined gzip payloads. Supported floors:</p>
+<ul>
+<li><strong>Chrome / Edge</strong> 80+</li>
+<li><strong>Firefox</strong> 113+</li>
+<li><strong>Safari</strong> 16.4+</li>
+</ul>
+<p>Older browsers (Safari 15, ancient Chromium forks) cannot decode the
+payloads and see a one-line fallback message in place of the viewer.
+The underlying <code>events.json</code> is unaffected — open it directly or feed
+it to your own tooling.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="eventsjson-schema"><a class="header" href="#eventsjson-schema"><code>events.json</code> Schema</a></h1>
+<p>Every test run writes a per-test <code>events.json</code> next to its <code>event.html</code>
+under <code>relux/out/run-&lt;timestamp&gt;-&lt;id&gt;/logs/&lt;test&gt;/</code>. The file is the
+canonical structured artifact: the viewer that ships in <code>event.html</code> is
+one consumer, and downstream tooling (dashboards, CI integrations,
+custom reporters) can read the same file.</p>
+<p>This article describes the on-disk shape. The TypeScript declarations
+shipped under <code>viewer/src/types/</code> are generated from the Rust source
+via <a href="https://docs.rs/ts-rs"><code>ts-rs</code></a> and stay in sync; they are the
+machine-readable equivalent of what this page describes in prose.</p>
+<h2 id="conventions"><a class="header" href="#conventions">Conventions</a></h2>
+<ul>
+<li><strong>Tagged enums</strong> carry their discriminator either as <code>"kind"</code>
+(<code>Span</code>, <code>Event</code>, <code>BufferEvent</code>, <code>TestOutcome</code>, <code>SpanKind</code>,
+<code>EventKind</code>, <code>BufferEventKind</code>) or as <code>"type"</code>
+(<code>CancelReasonRecord</code>, <code>TimeoutValue</code>, <code>FailureRecord</code>). The
+discriminator is always a kebab-case string. The remaining
+variant-specific fields are flattened alongside it.</li>
+<li><strong>Timestamps</strong> (<code>ts</code>, <code>start_ts</code>, <code>end_ts</code>, <code>spawn_ts</code>,
+<code>terminate_ts</code>) are fractional milliseconds since test start,
+encoded as JSON numbers.</li>
+<li><strong>Durations exposed to JSON</strong> are JSON numbers in milliseconds
+(<code>elapsed</code>, <code>duration</code>) unless they live inside a <code>TimeoutValue</code>,
+where they are pre-formatted humantime strings.</li>
+<li><strong>IDs</strong> (<code>SpanId</code>, <code>EventSeq</code>) are 64-bit unsigned integers. JSON
+object keys (e.g. <code>spans</code>) are stringified per JSON rules; the
+generated TS types reflect this.</li>
+<li><strong>String values</strong> are arbitrary UTF-8. Shell output is captured
+through a UTF-8 stream sanitizer.</li>
+</ul>
+<h2 id="top-level-shape"><a class="header" href="#top-level-shape">Top-level shape</a></h2>
+<pre><code class="language-jsonc">{
+  "schema_version": 2,
+  "info":   { ... TestInfo ... },
+  "outcome": { "kind": "pass" | "fail" | "cancelled" | "skip", ... },
+  "env":    { "bootstrap": [{ "key": "KEY", "value": "value", "source": { "kind": "base" } }, ...] },
+  "shells": { "&lt;shell-marker&gt;": { ... ShellRecord ... }, ... },
+  "spans":  { "&lt;span-id&gt;":     { ... Span ... },         ... },
+  "events":        [ { ... Event ... },        ... ],
+  "buffer_events": [ { ... BufferEvent ... },  ... ],
+  "sources":   { "&lt;relative-path&gt;": "&lt;file contents&gt;", ... },
+  "artifacts": [ { "path": "...", "size": 123, "mime": "..." }, ... ]
+}
+</code></pre>
+<p>Field notes:</p>
+<ul>
+<li><code>schema_version</code> (<code>u32</code>) — current version is <code>2</code>. Bumped on any
+backwards-incompatible change. Consumers should verify this matches
+the version they expect and fail loudly otherwise. The viewer
+rejects mismatched artifacts with a banner.</li>
+<li><code>info</code> — <code>{ name, path, duration_ms }</code>. <code>path</code> is the source-relative
+path of the test file; <code>duration_ms</code> is the total wall-clock from
+test start to outcome.</li>
+<li><code>env.bootstrap</code> — list of env entries captured at test startup (the seed
+for the test’s environment chain, including this test’s own <code>__RELUX_TEST_*</code>
+internals). Each entry is <code>{ key, value, source }</code>, where <code>source</code> is a tagged
+<code>EnvSourceRecord</code>: <code>{ "kind": "base" }</code> (process env),
+<code>{ "kind": "dot-env", "path": "&lt;file&gt;" }</code> (a <code>.env</code> layer),
+<code>{ "kind": "relux-internal" }</code> (<code>__RELUX_*</code> run internals), or
+<code>{ "kind": "effect-overlay", "mnemonic": "&lt;id&gt;" }</code>.
+The tag is the provenance of the layer that supplied the winning value.
+Because effect envs are not dumped here, bootstrap entries in practice carry
+only <code>base</code>, <code>dot-env</code>, or <code>relux-internal</code>; <code>effect-overlay</code> exists on the
+shared <code>EnvSourceRecord</code> type but does not appear in this list.</li>
+<li><code>shells</code> — every PTY spawned during the test, keyed by stable
+identity marker (see <a href="#shells-1"><code>ShellRecord</code></a>).</li>
+<li><code>spans</code> — every span opened during the test, keyed by <code>SpanId</code> (see
+<a href="#spans"><code>Span</code></a>). Forms a tree via <code>parent</code>.</li>
+<li><code>events</code> — execution events in <code>seq</code> order (see <a href="#events"><code>Event</code></a>).</li>
+<li><code>buffer_events</code> — parallel timeline of PTY-buffer transitions in
+<code>seq</code> order (see <a href="#buffer-events"><code>BufferEvent</code></a>).</li>
+<li><code>sources</code> — <code>.relux</code> file contents referenced by any <code>Span.location</code>
+or <code>Event.source</code>. Keyed by relative path; only files actually
+referenced are embedded.</li>
+<li><code>artifacts</code> — files written under the test’s artifacts directory
+(see <a href="#artifacts-1"><code>ArtifactEntry</code></a>).</li>
+</ul>
+<h2 id="outcome"><a class="header" href="#outcome">Outcome</a></h2>
+<p><code>outcome</code> is a tagged enum on <code>kind</code>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"pass"</code></td><td>none</td></tr>
+<tr><td><code>"fail"</code></td><td>one of the four <a href="#failure"><code>FailureRecord</code></a> variants, flattened</td></tr>
+<tr><td><code>"cancelled"</code></td><td><a href="#cancellation"><code>CancellationRecord</code></a>, flattened</td></tr>
+<tr><td><code>"skip"</code></td><td><a href="#skip"><code>SkipRecord</code></a>, flattened</td></tr>
+</tbody>
+</table>
+</div>
+<p>The variant tag carried by <code>FailureRecord</code> lives on <code>type</code> (not
+<code>kind</code>) to avoid colliding with the outer outcome tag — so a
+<code>fail</code>-outcome payload looks like
+<code>{ "kind": "fail", "type": "match-timeout", ... }</code>.</p>
+<h3 id="failure"><a class="header" href="#failure">Failure</a></h3>
+<p><code>FailureRecord</code> is a tagged enum on <code>type</code>. All variants carry a
+pre-computed <code>call_stack</code> (the active span stack at the failure site)
+and <code>vars_in_scope</code>. Most variants also carry a <code>buffer_tail</code> (the
+last bytes of the PTY buffer when the failure landed).</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>type</code></th><th>Source of failure</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"match-timeout"</code></td><td><code>match</code> exceeded its effective timeout</td></tr>
+<tr><td><code>"fail-pattern-matched"</code></td><td>an installed <code>fail</code> pattern matched a recv line</td></tr>
+<tr><td><code>"shell-exited"</code></td><td>the PTY shell died unexpectedly (carries <code>exit_code: i32 | null</code>)</td></tr>
+<tr><td><code>"runtime"</code></td><td>any other runtime error (carries <code>message</code>; <code>span</code>/<code>event_seq</code> optional)</td></tr>
+<tr><td><code>"multi-match"</code></td><td>a <code>&lt;{ ... }</code> block timed out before all patterns matched (carries <code>patterns</code>, <code>matched</code> indices, <code>effective</code>)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Each variant also carries the <code>span</code> and <code>event_seq</code> that pinpoint the
+event-stream location of the failure.</p>
+<h3 id="cancellation"><a class="header" href="#cancellation">Cancellation</a></h3>
+<p><code>CancellationRecord</code>:</p>
+<pre><code class="language-jsonc">{
+  "reason": { ... CancelReasonRecord ... },
+  "span": &lt;span-id&gt; | null,
+  "event_seq": &lt;seq&gt; | null,
+  "shell": "&lt;name&gt;" | null,
+  "call_stack": [ { ... StackFrame ... }, ... ]
+}
+</code></pre>
+<p><code>CancelReasonRecord</code> is a tagged enum on <code>type</code>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>type</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"test-timeout"</code></td><td><code>duration_ms</code></td></tr>
+<tr><td><code>"suite-timeout"</code></td><td><code>duration_ms</code></td></tr>
+<tr><td><code>"fail-fast"</code></td><td><code>trigger_test</code></td></tr>
+<tr><td><code>"sigint"</code></td><td>none</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="skip"><a class="header" href="#skip">Skip</a></h3>
+<p><code>SkipRecord</code> is a pointer into the in-stream marker evaluations:</p>
+<pre><code class="language-jsonc">{
+  "span": &lt;marker-eval span-id&gt;,
+  "event_seq": &lt;bool-check event seq&gt;,
+  "marker_kind": "skip" | "run" | "flaky",
+  "evaluation": { ... MarkerEvalDetail ... }
+}
+</code></pre>
+<p>The viewer focuses these at open time and expands ancestors so the
+markers tree is unfolded.</p>
+<h2 id="shells-1"><a class="header" href="#shells-1">Shells</a></h2>
+<p>Keyed by stable identity marker. Each entry:</p>
+<pre><code class="language-jsonc">{
+  "marker": "&lt;same as the map key&gt;",
+  "name": "&lt;spawn-time bare name&gt;",
+  "spawn_ts": &lt;ms&gt;,
+  "terminate_ts": &lt;ms&gt; | null,
+  "command": "&lt;the spawning shell command&gt;"
+}
+</code></pre>
+<p>The display layer renders qualified forms like <code>Db.inner</code> from events
+(<code>ShellSwitch</code>, <code>EffectExposeShell</code>); the record itself holds the
+bare name observed at spawn time.</p>
+<h2 id="spans"><a class="header" href="#spans">Spans</a></h2>
+<p>A span represents one bracketed region of execution. Spans nest via
+<code>parent</code>. Each span:</p>
+<pre><code class="language-jsonc">{
+  "id": &lt;span-id&gt;,
+  "parent": &lt;span-id&gt; | null,
+  "start_ts": &lt;ms&gt;,
+  "end_ts": &lt;ms&gt; | null,
+  "location": { ... SourceLocation ... } | null,
+  "kind": "&lt;one of the kinds below&gt;",
+  ...   // kind-specific fields, flattened
+}
+</code></pre>
+<p><code>SpanKind</code> is tagged on <code>kind</code>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"test"</code></td><td>Root span for the test body. <code>name</code>.</td></tr>
+<tr><td><code>"effect-setup"</code></td><td>An effect being acquired. <code>effect</code>, <code>overlay</code>, <code>alias</code>, <code>marker</code>, <code>is_reuse</code>. The bootstrap span has <code>is_reuse: false</code>; dedup’d reuse spans have <code>is_reuse: true</code> and zero duration.</td></tr>
+<tr><td><code>"effect-cleanup"</code></td><td>An effect being released. <code>effect</code>, <code>alias</code>, <code>setup_span</code>, <code>marker</code>, <code>is_deferred</code>. Parented under the test, not the long-closed setup; <code>setup_span</code> back-references its pair.</td></tr>
+<tr><td><code>"shell-block"</code></td><td>A <code>shell &lt;name&gt;</code> block. <code>shell</code>.</td></tr>
+<tr><td><code>"cleanup-block"</code></td><td>A <code>cleanup</code> block. No payload.</td></tr>
+<tr><td><code>"fn-call"</code></td><td>A function call (user or BIF). <code>name</code>, <code>args</code>, <code>result</code>, <code>callee_kind</code> (<code>"user" | "bif"</code>), <code>is_pure</code>.</td></tr>
+<tr><td><code>"markers"</code></td><td>Synthetic root grouping per-test marker evaluations.</td></tr>
+<tr><td><code>"marker-eval"</code></td><td>One marker evaluation under <code>markers</code>. <code>marker_kind</code>, <code>modifier</code> (<code>"if" | "unless"</code>), <code>decision</code> (<code>"pass" | "mark"</code>).</td></tr>
+<tr><td><code>"multi-match"</code></td><td>A <code>&lt;{ ... }</code> block. <code>shell</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="events"><a class="header" href="#events">Events</a></h2>
+<p>An event is a point-in-time observation made by the VM. Events are
+emitted in monotonic <code>seq</code> order. Each event carries the span it
+landed on, the shell it acted on (when applicable), and a source
+location resolving against <code>sources</code>. The common envelope:</p>
+<pre><code class="language-jsonc">{
+  "seq": &lt;u64&gt;,
+  "ts": &lt;ms&gt;,
+  "span": &lt;span-id&gt;,
+  "shell": "&lt;display name&gt;" | null,
+  "shell_marker": "&lt;shell map key&gt;" | null,
+  "source": { ... SourceLocation ... } | null,
+  "kind": "&lt;one of the kinds below&gt;",
+  ...   // kind-specific fields, flattened
+}
+</code></pre>
+<p><code>shell</code> and <code>shell_marker</code> are present iff a shell was in scope at
+the emit site; <code>shell_marker</code> is the stable identity, <code>shell</code> is the
+display name at that moment.</p>
+<p><code>EventKind</code> is tagged on <code>kind</code>. The variants, grouped by concern:</p>
+<p><strong>Shell lifecycle</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"shell-spawn"</code></td><td><code>name</code>, <code>command</code></td></tr>
+<tr><td><code>"shell-ready"</code></td><td><code>name</code></td></tr>
+<tr><td><code>"shell-switch"</code></td><td><code>name</code></td></tr>
+<tr><td><code>"shell-terminate"</code></td><td><code>name</code></td></tr>
+<tr><td><code>"effect-expose-shell"</code></td><td><code>name</code>, <code>target</code>, <code>qualifier</code></td></tr>
+<tr><td><code>"effect-expose-var"</code></td><td><code>name</code>, <code>target</code>, <code>qualifier</code>, <code>value</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>I/O</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"send"</code></td><td><code>data</code></td></tr>
+<tr><td><code>"recv"</code></td><td><code>data</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Matching</strong> (<code>buffer_seq</code> cross-references a <code>buffer_events</code> entry)</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"match-start"</code></td><td><code>pattern</code>, <code>is_regex</code>, <code>effective</code> (a <a href="#timeoutvalue"><code>TimeoutValue</code></a>)</td></tr>
+<tr><td><code>"match-done"</code></td><td><code>matched</code>, <code>elapsed</code> (ms), <code>captures: { [name]: string } | null</code>, <code>buffer_seq</code></td></tr>
+<tr><td><code>"timeout"</code></td><td><code>pattern</code>, <code>buffer_seq: u64 | null</code>, <code>effective</code>. <code>buffer_seq</code> is null when no buffer event corresponds (the failure record’s <code>buffer_tail</code> is canonical in that case).</td></tr>
+</tbody>
+</table>
+</div>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"multi-match-start"</code></td><td><code>effective</code> (a <a href="#timeoutvalue"><code>TimeoutValue</code></a>), <code>patterns: MultiMatchPattern[]</code></td></tr>
+<tr><td><code>"multi-match-pattern-done"</code></td><td><code>index</code> (into <code>patterns</code>), <code>elapsed</code> (ms), <code>buffer_seq</code> (-&gt; the per-pattern <code>Matched</code> buffer event)</td></tr>
+<tr><td><code>"multi-match-done"</code></td><td><code>advance_to</code> (<code>EventSeq</code> -&gt; the per-pattern <code>Matched</code> whose match ends farthest)</td></tr>
+<tr><td><code>"multi-match-timeout"</code></td><td><code>unmatched: number[]</code> (pattern indices that did not match)</td></tr>
+</tbody>
+</table>
+</div>
+<p>The per-pattern payload type:</p>
+<pre><code class="language-jsonc">{
+  "pattern": "&lt;string&gt;",
+  "is_regex": &lt;bool&gt;
+}
+</code></pre>
+<p>Event sequences:</p>
+<ul>
+<li><strong>Success:</strong> <code>multi-match-start</code> + N x <code>multi-match-pattern-done</code> (emitted in match-completion order, not source order) + <code>multi-match-done</code>.</li>
+<li><strong>Timeout:</strong> <code>multi-match-start</code> + 0..N x <code>multi-match-pattern-done</code> + <code>multi-match-timeout</code>.</li>
+<li><strong>Fail-pattern abort:</strong> <code>multi-match-start</code> + 0..N x <code>multi-match-pattern-done</code>, then the standard <code>fail-pattern-triggered</code> propagation. No <code>multi-match-done</code> or <code>multi-match-timeout</code> follow.</li>
+</ul>
+<p>The per-pattern <code>Matched</code> buffer events have the same <code>before + matched + after</code> shape as single-match. Inside a <code>multi-match</code> span, individual <code>Matched</code> events do <strong>not</strong> advance the reconstructed cursor; the block-end cursor advance is applied once at <code>multi-match-done</code> by dropping <code>len(before) + len(matched)</code> bytes from the front of the buffer of the <code>Matched</code> event referenced by <code>advance_to</code>.</p>
+<p><strong>Fail patterns</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"fail-pattern-set"</code></td><td><code>pattern</code>, <code>is_regex</code></td></tr>
+<tr><td><code>"fail-pattern-cleared"</code></td><td>none</td></tr>
+<tr><td><code>"fail-pattern-triggered"</code></td><td><code>pattern</code>, <code>is_regex</code>, <code>matched_line</code>, <code>buffer_seq: u64 | null</code> (null because fail-pattern hits observe without advancing the cursor)</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Control flow</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"sleep-start"</code></td><td><code>duration</code> (ms)</td></tr>
+<tr><td><code>"sleep-done"</code></td><td>none</td></tr>
+<tr><td><code>"timeout-set"</code></td><td><code>timeout</code>, <code>previous</code> (both <code>TimeoutValue</code>)</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Values</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"var-let"</code></td><td><code>name</code>, <code>value</code></td></tr>
+<tr><td><code>"var-assign"</code></td><td><code>name</code>, <code>value</code>, <code>previous</code></td></tr>
+<tr><td><code>"var-read"</code></td><td><code>name</code>, <code>value</code> (<code>""</code> when undefined)</td></tr>
+<tr><td><code>"string-eval"</code></td><td><code>result</code></td></tr>
+<tr><td><code>"interpolation"</code></td><td><code>template</code>, <code>result</code>, <code>bindings: Array&lt;[name, value]&gt;</code></td></tr>
+<tr><td><code>"pure-match"</code></td><td><code>match_kind</code> (<code>"regex" | "literal"</code>), <code>value</code>, <code>pattern</code>, <code>result</code> (matched substring or <code>""</code>), <code>captures: { [name]: string }</code></td></tr>
+<tr><td><code>"bool-check"</code></td><td><code>evaluation: MarkerEvalDetail</code>. Emitted as the last event inside a <code>marker-eval</code> span.</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>MarkerEvalDetail</code> is tagged on <code>shape</code>: <code>"unconditional"</code>,
+<code>"bare" + { value, met }</code>, <code>"eq" + { lhs, rhs, met }</code>, or
+<code>"regex" + { value, pattern, met }</code>.</p>
+<p><strong>Diagnostics</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"annotate"</code></td><td><code>text</code></td></tr>
+<tr><td><code>"log"</code></td><td><code>message</code></td></tr>
+<tr><td><code>"warning"</code></td><td><code>message</code></td></tr>
+<tr><td><code>"error"</code></td><td><code>message</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Cancellation</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"cancelled"</code></td><td><code>reason: CancelReasonRecord</code>. Emitted on the span the VM was inside when it observed cancellation.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="buffer-events"><a class="header" href="#buffer-events">Buffer events</a></h2>
+<p>A parallel timeline tracking transitions of each shell’s PTY output
+buffer. Buffer events always carry a shell. The common envelope:</p>
+<pre><code class="language-jsonc">{
+  "seq": &lt;u64&gt;,
+  "ts": &lt;ms&gt;,
+  "shell": "&lt;display name&gt;",
+  "shell_marker": "&lt;shell map key&gt;",
+  "kind": "&lt;one of the kinds below&gt;",
+  ...   // kind-specific fields, flattened
+}
+</code></pre>
+<p><code>BufferEventKind</code> is tagged on <code>kind</code>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>kind</code></th><th>Extra fields</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"grew"</code></td><td><code>data</code></td><td>New bytes appended to the buffer.</td></tr>
+<tr><td><code>"matched"</code></td><td><code>before</code>, <code>matched</code>, <code>after</code></td><td>A <code>match</code> consumed the cursor up through <code>matched</code>; <code>before</code> is what preceded, <code>after</code> is what now remains.</td></tr>
+<tr><td><code>"reset"</code></td><td><code>consumed</code></td><td>The buffer was reset (e.g. cleared between shell blocks); <code>consumed</code> is what got dropped.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="stack-frames"><a class="header" href="#stack-frames">Stack frames</a></h2>
+<p><code>StackFrame</code> (used in <code>FailureRecord.call_stack</code> and
+<code>CancellationRecord.call_stack</code>):</p>
+<pre><code class="language-jsonc">{
+  "span": &lt;span-id&gt;,
+  "kind": "&lt;span kind discriminator&gt;",
+  "name": "&lt;fn or effect name&gt;" | null,
+  "args": [["name", "value"], ...],
+  "alias": "&lt;user-supplied alias&gt;" | null,
+  "location": { ... SourceLocation } | null
+}
+</code></pre>
+<p><code>kind</code> mirrors the span’s <code>SpanKind</code> discriminator (e.g.
+<code>"fn-call"</code>, <code>"shell-block"</code>). <code>alias</code> is the user-supplied
+<code>start FX as Alias</code> binding when present; only effect-setup /
+effect-cleanup frames carry one today.</p>
+<h2 id="timeoutvalue"><a class="header" href="#timeoutvalue"><code>TimeoutValue</code></a></h2>
+<pre><code class="language-jsonc">// Either:
+{ "type": "tolerance",
+  "duration": "5s",            // humantime-formatted
+  "multiplier": "1.0",
+  "total_duration": "5s",
+  "source": { ... SourceLocation } | null }
+// or:
+{ "type": "assertion",
+  "duration": "30s",
+  "source": { ... SourceLocation } | null }
+</code></pre>
+<p><code>tolerance</code> is the soft kind that scales with <code>--timeout-multiplier</code>;
+<code>assertion</code> is the hard kind that does not. All three duration fields
+are humantime strings — consumers should display them verbatim
+rather than re-parsing.</p>
+<h2 id="sourcelocation"><a class="header" href="#sourcelocation"><code>SourceLocation</code></a></h2>
+<pre><code class="language-jsonc">{
+  "file": "&lt;relative path; matches a key in `sources`&gt;",
+  "line": &lt;1-based line number&gt;,
+  "start": &lt;byte offset into the source&gt;,
+  "end":   &lt;byte offset into the source&gt;
+}
+</code></pre>
+<p><code>start</code>/<code>end</code> resolve against <code>sources[file]</code>.</p>
+<h2 id="artifacts-1"><a class="header" href="#artifacts-1">Artifacts</a></h2>
+<pre><code class="language-jsonc">{
+  "path": "&lt;forward-slash relative path&gt;",
+  "size": &lt;bytes&gt;,
+  "mime": "&lt;mime/type&gt;" | null
+}
+</code></pre>
+<p><code>path</code> never starts with <code>/</code> and never contains <code>.</code> / <code>..</code> segments.
+The list is sorted with files preceding subdirectory contents at each
+level (<code>cmp_artifact_paths</code>). <code>mime</code> is derived from the extension
+via <code>mime_guess</code>; the browser does its own sniffing on click.</p>
+<h2 id="versioning"><a class="header" href="#versioning">Versioning</a></h2>
+<p><code>schema_version</code> is currently <code>2</code>. Version 2 changed <code>env.bootstrap</code>
+from <code>[name, value]</code> tuples to <code>{ key, value, source }</code> objects. A
+future change that adds new
+optional fields or new tagged-enum variants is <em>not</em> a breaking
+change and does not bump the version; consumers should ignore unknown
+variants gracefully. Any change that removes or renames fields, or
+narrows the meaning of an existing field, bumps the version.</p>
+<p>To regenerate the TypeScript bindings after editing the Rust types,
+run <code>just viewer-build</code> — it runs the <code>ts-rs</code> export tests and then
+rebuilds the viewer bundle.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="editor-support"><a class="header" href="#editor-support">Editor Support</a></h1>
+<p>Relux ships syntax highlighting and language support plugins for VS Code (and Cursor / VSCodium / code-server) and IntelliJ-family IDEs.</p>
+<h2 id="vs-code-cursor-code-server-vscodium"><a class="header" href="#vs-code-cursor-code-server-vscodium">VS Code, Cursor, code-server, VSCodium</a></h2>
+<p>The extension is published to two registries and works wherever you install it from:</p>
+<ul>
+<li><strong><a href="https://marketplace.visualstudio.com/items?itemName=spawnlink-eu.relux">Visual Studio Marketplace</a></strong> - VS Code, Cursor.</li>
+<li><strong><a href="https://open-vsx.org/extension/spawnlink-eu/relux">Open VSX</a></strong> - VSCodium, code-server, Gitpod, air-gapped derivatives.</li>
+</ul>
+<p>Install from the command line:</p>
+<pre><code class="language-bash">code --install-extension spawnlink-eu.relux
+</code></pre>
+<p>Or search for <strong>Relux</strong> in the Extensions sidebar of your editor.</p>
+<h3 id="features"><a class="header" href="#features">Features</a></h3>
+<ul>
+<li>Syntax highlighting for keywords, operators, strings, regex patterns, timeouts, comments.</li>
+<li>Bracket matching, auto-closing, folding.</li>
+<li>String interpolation highlighting (<code>${var}</code>, <code>$1</code>).</li>
+</ul>
+<h3 id="source-1"><a class="header" href="#source-1">Source</a></h3>
+<p><code>editors/vscode/</code> in <a href="https://github.com/shizzard/relux">shizzard/relux</a>. Contributions welcome - see <code>editors/vscode/CONTRIBUTING.md</code>.</p>
+<h2 id="intellij-idea-rustrover-clion-pycharm-goland-webstorm"><a class="header" href="#intellij-idea-rustrover-clion-pycharm-goland-webstorm">IntelliJ IDEA, RustRover, CLion, PyCharm, GoLand, WebStorm</a></h2>
+<p>The IntelliJ plugin is published to the <strong><a href="https://plugins.jetbrains.com/plugin/relux">JetBrains Marketplace</a></strong>.</p>
+<p>Install via <strong>Settings -&gt; Plugins -&gt; Marketplace -&gt; search “Relux”</strong>.</p>
+<h3 id="source-1-1"><a class="header" href="#source-1-1">Source</a></h3>
+<p><code>editors/intellij/</code> in <a href="https://github.com/shizzard/relux">shizzard/relux</a>.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-c4a399dd.js"></script>
+        <script src="book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="highlight-relux-93dc7aed.js"></script>
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+
+    </div>
+    </body>
+</html>
