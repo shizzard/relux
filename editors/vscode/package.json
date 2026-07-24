@@ -2,7 +2,7 @@
   "name": "relux",
   "displayName": "Relux",
   "description": "Syntax highlighting and language support for the Relux DSL - Expect-style integration tests for interactive shell programs.",
-  "version": "0.1.0",
+  "version": "0.7.0",
   "publisher": "spawnlink-eu",
   "license": "MIT",
   "icon": "icon.png",
@@ -34,8 +34,13 @@
     "languages": [
       {
         "id": "relux",
-        "aliases": ["Relux", "relux"],
-        "extensions": [".relux"],
+        "aliases": [
+          "Relux",
+          "relux"
+        ],
+        "extensions": [
+          ".relux"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],

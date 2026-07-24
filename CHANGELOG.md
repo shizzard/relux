@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.7.0](https://github.com/shizzard/relux/compare/v0.6.0...v0.7.0) (2026-07-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* events.json SCHEMA_VERSION is bumped from 1 to 2 -- the `env.bootstrap` entries now carry per-value provenance, so older viewers reject new logs. `# flaky` markers now propagate transitively from called functions and effects to the test (previously flaky on a fn/effect was ignored). A marker such as `# skip` no longer shields a test's own body-lowering errors: a test with a broken body is reported Invalid rather than Skipped.
+* **lang:** The structured-log schema (`events.json`) gains four new `EventKind` variants (`MultiMatchStart`, `MultiMatchPatternDone`, `MultiMatchDone`, `MultiMatchTimeout`), a new `SpanKind::MultiMatch`, and a new `FailureRecord::MultiMatch` variant. External consumers that deserialize these enums exhaustively must add the new arms.
+
+### Features
+
+* hierarchical .env loading with provenance in the log and viewer ([ff9c8f6](https://github.com/shizzard/relux/commit/ff9c8f6e4e14c4bf8d4e6fec10309845ac85a88f))
+* **lang:** add multimatch statement (R014) ([e0a05ac](https://github.com/shizzard/relux/commit/e0a05ac76c298ab0b21a6569c7cb36cf2d87666c))
+
+
+### Bug Fixes
+
+* **ci:** add .nojekyll so landing-page _theme assets are served ([855a24f](https://github.com/shizzard/relux/commit/855a24f3bd32f12174842d06179e1287f62e6192))
+
 ## [0.6.0](https://github.com/shizzard/relux/compare/v0.5.0...v0.6.0) (2026-05-20)
 
 
