@@ -12,6 +12,7 @@ relux-ast    = { workspace = true }
 relux-ir     = { workspace = true }
 relux-lexer  = { workspace = true }
 relux-parser = { workspace = true }
+thiserror    = { workspace = true }
 
 [dev-dependencies]
 regex = { workspace = true }

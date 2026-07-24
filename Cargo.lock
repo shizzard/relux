@@ -1023,6 +1023,7 @@ dependencies = [
  "relux-ir",
  "relux-lexer",
  "relux-parser",
+ "thiserror",
 ]
 
 [[package]]

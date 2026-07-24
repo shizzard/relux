@@ -236,6 +236,48 @@ impl From<Env> for LayeredEnv {
     }
 }
 
+// --- LayeredEnvBuilder -----------------------------------
+
+/// Mutable staging type for building one `LayeredEnv` layer incrementally
+/// while resolving names against it. Used by `.env` parsing: `${VAR}` resolves
+/// via `get()` (this layer's `own`, then the parent chain), and each parsed
+/// line is recorded via `insert()`. `build()` seals into an immutable
+/// `LayeredEnv` with its cumulative hash computed once - so `LayeredEnv` itself
+/// never needs a post-construction mutator (which would stale the cached hash).
+#[derive(Debug, Clone)]
+pub struct LayeredEnvBuilder {
+    own: Env,
+    source: LayeredEnvSource,
+    parent: Arc<LayeredEnv>,
+}
+
+impl LayeredEnvBuilder {
+    /// Start a new layer over `parent` with the given `source`.
+    pub fn new(parent: Arc<LayeredEnv>, source: LayeredEnvSource) -> Self {
+        Self {
+            own: Env::new(),
+            source,
+            parent,
+        }
+    }
+
+    /// Resolve a name against this layer's own values first, then the parent
+    /// chain. Returns `None` if unbound anywhere.
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.own.get(key).or_else(|| self.parent.get(key))
+    }
+
+    /// Record a value into the layer under construction.
+    pub fn insert(&mut self, key: String, value: String) {
+        self.own.insert(key, value);
+    }
+
+    /// Seal into an immutable layer, computing the cumulative hash once.
+    pub fn build(self) -> LayeredEnv {
+        LayeredEnv::child_with_source(self.parent, self.own, self.source)
+    }
+}
+
 // --- Tests -----------------------------------------------
 
 #[cfg(test)]
@@ -668,5 +710,38 @@ mod tests {
             LayeredEnv::child(root, ov).stack_hash()
         };
         assert_eq!(build(), build());
+    }
+
+    // --- LayeredEnvBuilder -----------------------------------
+
+    #[test]
+    fn builder_get_prefers_own_then_parent() {
+        let mut parent_env = Env::new();
+        parent_env.insert("A".into(), "parent-a".into());
+        parent_env.insert("B".into(), "parent-b".into());
+        let parent = Arc::new(LayeredEnv::root(parent_env));
+
+        let mut b = LayeredEnvBuilder::new(parent, LayeredEnvSource::DotEnv("x/.env".into()));
+        b.insert("A".into(), "own-a".into());
+        assert_eq!(b.get("A"), Some("own-a")); // own shadows parent
+        assert_eq!(b.get("B"), Some("parent-b")); // falls through to parent
+        assert_eq!(b.get("MISSING"), None);
+    }
+
+    #[test]
+    fn builder_build_seals_layer_with_source_and_hash() {
+        let parent = Arc::new(LayeredEnv::root(Env::new()));
+        let mut b =
+            LayeredEnvBuilder::new(parent.clone(), LayeredEnvSource::DotEnv("x/.env".into()));
+        b.insert("K".into(), "v".into());
+        let layer = b.build();
+        assert_eq!(layer.source(), &LayeredEnvSource::DotEnv("x/.env".into()));
+        assert_eq!(layer.get("K"), Some("v"));
+        // Sealed layer's hash equals a directly-constructed equivalent layer.
+        let mut own = Env::new();
+        own.insert("K".into(), "v".into());
+        let direct =
+            LayeredEnv::child_with_source(parent, own, LayeredEnvSource::DotEnv("x/.env".into()));
+        assert_eq!(layer.stack_hash(), direct.stack_hash());
     }
 }

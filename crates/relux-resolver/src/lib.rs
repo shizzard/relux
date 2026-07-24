@@ -1,4 +1,6 @@
 mod discover;
+pub mod dotenv;
+pub mod env;
 pub mod loader;
 pub mod lower;
 
