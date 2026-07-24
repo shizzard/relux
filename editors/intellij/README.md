@@ -1,6 +1,6 @@
 # Relux for IntelliJ IDEA
 
-Syntax highlighting and editor support for the [Relux](https://github.com/spawnlink/relux) DSL (`.relux` files).
+Syntax highlighting and editor support for the [Relux](https://github.com/shizzard/relux) DSL (`.relux` files).
 
 ## Features
 
