@@ -68,7 +68,7 @@ When the user is navigating the viewer, the agent can suggest a hotkey instead o
 
 | Key | Action |
 |---|---|
-| `e` | Toggle the env modal (every env var captured at test start, grouped and searchable). |
+| `e` | Toggle the env modal (every env var captured at test start, grouped by provenance -- base / `.env` / relux-internal -- and searchable). |
 | `s` | Toggle the shells modal (per-shell buffer inspector). |
 | `a` | Toggle the artifacts modal (disabled when the test wrote no artifacts). |
 | `f` | Toggle the filter modal (custom hide/show by event type). |

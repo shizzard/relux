@@ -36,7 +36,7 @@ Don't wrap a bare variable as `"${VAR}"` to "use it as a value" -- bare is alrea
 | `$$` | Literal `$` (escape for shell-side `${...}` etc.). |
 | `name`, `$1`, `Alias.var` | Bare reference (used in `let` RHS, BIF args, marker conditions, overlay values). |
 
-- Lookup order: shell-scope -> test/effect-scope -> environment.
+- Lookup order: shell-scope -> test/effect-scope -> environment. The environment itself is layered -- `.env` files over the host process env; see [environment](environment.md).
 - Undefined names interpolate to the empty string -- no error, no warning.
 - Environment variables can be shadowed by lowercase `let` bindings; uppercase env names have no valid shadowing local name and are always readable.
 
@@ -145,6 +145,7 @@ Relux only recognises the braced forms (`${name}`, `${1}`, `${Alias.var}`). Anyt
 
 ## See also
 
+- [environment](environment.md) -- read for how `.env` layers form the environment at the bottom of the lookup chain
 - [statements](statements.md) -- read if you need to know where interpolation appears
 - [matching](matching.md) -- read if you need raw-splicing semantics in `<?` patterns
 - [bifs](bifs.md) -- read if you need `default`, `trim`, `replace` for safe value derivation

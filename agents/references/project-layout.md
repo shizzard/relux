@@ -7,8 +7,9 @@ The `Relux.toml` manifest, the directory convention, and how `.relux` files are 
 ```text
 suite-root/
 |-- Relux.toml
+|-- .env             # optional; committed env values (see environment.md)
 `-- relux/
-    |-- tests/       # test files (*.relux), discovered recursively
+    |-- tests/       # test files (*.relux), discovered recursively; a dir may hold its own .env
     |-- lib/         # reusable functions and effects (always loaded)
     `-- out/         # run output (auto-generated, gitignored)
 ```
@@ -43,6 +44,10 @@ Durations use humantime: `500ms`, `2s`, `1m30s`.
 - `--file <path>` (repeatable) overrides discovery; directories are walked recursively.
 - `relux/lib/` is always loaded -- functions and effects defined there are available to tests.
 - A nested `Relux.toml` is a sub-project boundary; discovery stops at it.
+
+## Environment files
+
+A `.env` beside `Relux.toml`, and a `.env` in any directory on a test's path, feed the test's environment. Deeper files win. See [environment](environment.md) for discovery, precedence, and provenance.
 
 ## Module paths
 
@@ -89,6 +94,7 @@ suite-root/
 ## See also
 
 - [imports](imports.md) -- read if you need module paths and import syntax
+- [environment](environment.md) -- read if you need `.env` discovery, precedence, or provenance
 - [cli-reference](cli-reference.md) -- read if you need `--manifest`, `--file`, or `--jobs`
 - [timeouts](timeouts.md) -- read if you need `[timeout]` defaults or the multiplier
 - [ci-integration](ci-integration.md) -- read if you need output-directory layout or artifact-upload rules

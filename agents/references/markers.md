@@ -56,14 +56,15 @@ Conditions accept bare identifiers and quoted strings (with optional interpolati
 ## Evaluation timing
 
 - Markers evaluate BEFORE any shells are spawned.
-- Only environment variables are visible at evaluation time -- no `let` bindings exist yet.
+- Only environment variables are visible at evaluation time -- no `let` bindings exist yet. That environment is the test's fully resolved, layered env, including any `.env` values on the test's path (see [environment](environment.md)).
 - Pure functions and pure BIFs (e.g. `which`, `default`) are callable in conditions.
 
 ## Propagation
 
 - Marker on a `fn` / `pure fn` -- every test that calls it (transitively) is skipped/flaky.
-- Marker on an `effect` -- every test that `start`s it (transitively) is skipped.
+- Marker on an `effect` -- every test that `start`s it (transitively) is skipped or marked flaky.
 - Marker on a `test` -- only that test.
+- `# flaky` propagates the same way `# skip` does: a `# flaky` on a `fn` or `effect` marks every reaching test flaky (retried only when `[flaky].max_retries` > 0).
 
 ## Pitfalls and best practices
 
@@ -215,8 +216,31 @@ Standard POSIX tools (`ls`, `cat`, `grep`, `awk`, `echo`) are usually safe to le
 
 When multiple functions depend on the same tool, place the marker on each `fn` directly. Do not hoist onto a shared `pure fn`.
 
+### `# skip` does not shield a broken test
+
+A marker only skips a *well-formed* target. A test whose body fails to lower -- an undefined function call, an import cycle, a bad marker expression -- is reported **Invalid**, not Skipped, even when a `# skip` sits on it. Fix the body; the marker is not a mute button.
+
+Don't (assume the skip hides the broken call):
+
+```relux
+# skip
+test "wip" {
+    shell s { let x = no_such_fn() }   // Invalid, not Skipped
+}
+```
+
+Do (remove or fix the broken reference, keep the skip if the gate is real):
+
+```relux
+# skip
+test "wip" {
+    shell s { > true; <? . }
+}
+```
+
 ## See also
 
 - [effects-identity](effects-identity.md) -- read if you need effect-level marker propagation rules
 - [functions](functions.md) -- read if you need function-level marker propagation rules
 - [events-failures](events-failures.md) -- read if you need the `SkipRecord` shape in the structured log
+- [environment](environment.md) -- read for the layered env markers evaluate against

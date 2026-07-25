@@ -184,7 +184,7 @@ def cmd_vars(args):
 
     result = vars_visible(data, seq, span, shell)
     if args.with_env:
-        env = dict(data.get("env", {}).get("bootstrap", []))
+        env = {e["key"]: e["value"] for e in data.get("env", {}).get("bootstrap", [])}
         env.update(result)
         result = env
     emit_json({

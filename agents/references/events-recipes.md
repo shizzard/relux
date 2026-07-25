@@ -87,7 +87,7 @@ jq '.outcome | select(.kind == "fail") | .vars_in_scope' events.json
 python3 <plugin>/tools/events.py vars
 ```
 
-Defaults to the failure vantage when `outcome.kind` is `fail` or `cancelled`; override `--at-seq`, `--span`, `--shell` to project from a different point. Pass `--with-env` to layer `env.bootstrap` underneath the user vars (the viewer surfaces env in a separate modal, but at runtime env is always visible at the bottom of the chain).
+Defaults to the failure vantage when `outcome.kind` is `fail` or `cancelled`; override `--at-seq`, `--span`, `--shell` to project from a different point. Pass `--with-env` to layer `env.bootstrap` underneath the user vars (the viewer surfaces env in a separate modal, but at runtime env is always visible at the bottom of the chain). The tool reports names and values only; the provenance of each value lives in `env.bootstrap[].source` (see [environment](environment.md)).
 
 The algorithm mirrors the runtime's three-map model: ambient scope (`test` / `effect-setup`) at the bottom, shell-local lets on top of that, fn-call frames as a hard barrier. Cleanup spans inherit the effect's scope via `setup_span`. Transparent BIFs (pure BIFs and `annotate` / `log` / `sleep`) are not barriers. See `tools/events.py` for the implementation.
 

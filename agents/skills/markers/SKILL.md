@@ -82,7 +82,7 @@ narrowly captures the real condition.
 
 - The condition is "this **test** needs `${VAR}`" -- mark the test.
 - The condition is "this **service** (an effect) needs `${VAR}`" -- mark
-  the effect. Every test that `start`s it inherits the skip.
+  the effect. Every test that `start`s it inherits the skip (or flaky).
 - The condition is "this **helper** (a `fn` / `pure fn`) needs `${VAR}`" --
   mark the function. Every test that calls it (transitively) inherits the
   skip / flaky.
@@ -215,6 +215,10 @@ relux run -f path/to/test.relux
 In each run, check the affected tests' reported outcomes:
 
 - Targeted tests report `Pass` or `Skipped` as expected.
+- A target reported `Invalid` (not Skipped) means the body failed to
+  lower -- a `# skip` does not shield a broken test (see
+  `../../references/markers.md` > *`# skip` does not shield a broken test*).
+  Fix the body first, then re-verify the gate.
 - For **Move** and **Consolidate**: every test that was previously
   gated by the old placement is still gated by the new one (no test
   silently lost or gained its marker).

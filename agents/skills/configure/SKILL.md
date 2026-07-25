@@ -39,6 +39,9 @@ suite default covers them -- see `../../references/timeouts.md` >
 inline `<~Ns?` overrides (write directly in the test file when one
 specific match needs more time), and the CI `--timeout-multiplier`
 flag (CI tuning, not manifest tuning -- see `../../references/ci-integration.md`).
+Environment *values* are not a `Relux.toml` knob -- they belong in a
+committed `.env` (see `../../references/environment.md`); this skill tunes
+the manifest, not the environment.
 
 **Direct invocation (`/relux:configure`).** Ask the user
 which knob and what motivated the change before editing. Possible
@@ -211,6 +214,8 @@ relux run
 - `../../references/ci-integration.md` -- `--timeout-multiplier` and
   `--flaky-multiplier` flags, the right place to absorb
   environment-specific slowness without rewriting the manifest.
+- `../../references/environment.md` -- where environment values live
+  (`.env`), as opposed to the manifest knobs this skill tunes.
 
 ## Pitfalls
 

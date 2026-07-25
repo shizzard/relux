@@ -6,10 +6,10 @@ The shape of `events.json` -- one file per test under `relux/out/<run>/logs/<tes
 
 | Field | Type | Notes |
 |---|---|---|
-| `schema_version` | number | Bump on incompatible changes. Current: 1. |
+| `schema_version` | number | Bump on incompatible changes. Current: 2. |
 | `info` | `TestInfo` | `{ name, path, duration_ms }`. |
 | `outcome` | `TestOutcome` | Tagged: `{ kind: "pass" \| "fail" \| "cancelled" \| "skip", ... }`. |
-| `env` | `EnvInfo` | `{ bootstrap: [[name, value], ...] }`. |
+| `env` | `EnvInfo` | `{ bootstrap: [{ key, value, source }, ...] }`. Each `source` is a tagged `EnvSourceRecord`: `{ kind: "base" }`, `{ kind: "dot-env", path }`, or `{ kind: "relux-internal" }`. See [environment](environment.md) for the layering the tags describe. |
 | `shells` | `Record<string, ShellRecord>` | Keyed by shell marker. |
 | `spans` | `Record<string, Span>` | Keyed by `SpanId` as string. |
 | `events` | `Event[]` | Flat list, ordered by `seq`. |
@@ -152,6 +152,7 @@ jq '.outcome | select(.kind == "fail")' events.json
 
 ## See also
 
+- [environment](environment.md) -- read for how the `.env` layers behind `env.bootstrap` are assembled
 - [events-failures](events-failures.md) -- read if you need fail/cancel/skip outcome shapes
 - [events-recipes](events-recipes.md) -- read if you need ready-made queries against `events.json`
 - [viewer](viewer.md) -- read if you need to hand the user a link to the visual surface over the same data

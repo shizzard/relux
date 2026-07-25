@@ -83,6 +83,7 @@ Install shell completions. Without `--install`, prints a dry-run.
 
 - `0` -- all tests passed (or skipped).
 - non-zero -- any test failed, cancelled, or any diagnostic on `check`.
+- non-zero -- a malformed `.env` on the resolve path (`run` / `check` / `dump`) aborts before execution.
 
 ## Pitfalls and best practices
 
@@ -137,5 +138,6 @@ relux run --strategy fail-fast
 ## See also
 
 - [project-layout](project-layout.md) -- read if you need `Relux.toml` or `relux/out/` layout
+- [environment](environment.md) -- read if a run aborts on a malformed `.env`
 - [events-recipes](events-recipes.md) -- read if you need to inspect structured output from a run
 - [ci-integration](ci-integration.md) -- read if you need `--junit`, `--tap`, or multiplier usage in CI

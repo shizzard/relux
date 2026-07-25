@@ -127,7 +127,29 @@ The first run produces `relux/out/<run-id>/` with per-test artifacts
 (`events.json`, `event.html`, `index.html`). Surface the path to
 `index.html` so the user can open the run summary.
 
-### 5. Wire `.gitignore`
+### 5. Propose a reproducible `.env`
+
+A committed suite-root `.env` is how a Relux suite becomes reproducible
+(see `../../references/environment.md`). Offer to seed one from the values
+the project already depends on -- do not write it silently.
+
+1. **Discover candidate keys from high-signal sources only** (do not grep
+   the whole codebase):
+   - an existing `.env` / `.env.example` beside the project root,
+   - `env:` blocks in `docker-compose.yml` / `compose.yaml`,
+   - `env:` blocks in CI workflow files (`.github/workflows/*.yml`),
+   - any `${VAR}` the scaffolded smoke test references.
+2. **Propose a draft** `.env` at the suite root: the discovered keys, one
+   per line, with values copied from `.env.example` where present and left
+   blank otherwise. Show it to the user.
+3. **Ask before writing.** Confirm the key set and values, then write
+   `relux/../.env` (beside `Relux.toml`) only on consent. Frame it as the
+   reproducibility mechanism: committed here, every developer and CI
+   machine sees the same environment without exporting by hand.
+4. If the project surfaces no candidate keys, say so and skip -- do not
+   invent variables.
+
+### 6. Wire `.gitignore`
 
 `relux init` writes `relux/.gitignore` to exclude `out/`. If the
 project has a root `.gitignore`, append `relux/out/` to it as well so
@@ -140,7 +162,7 @@ differently.
 grep -qE '^relux/out/?$' .gitignore || echo 'relux/out/' >> .gitignore
 ```
 
-### 6. Follow-ups
+### 7. Follow-ups
 
 - Offer the `relux:editor-plugin` skill if the user has not yet
   installed `.relux` syntax support. Do not invoke unprompted.
@@ -148,7 +170,7 @@ grep -qE '^relux/out/?$' .gitignore || echo 'relux/out/' >> .gitignore
   <https://shizzard.github.io/relux/latest/suite-tutorial/> for a
   guided next step.
 
-### 7. Tour the CLI surface
+### 8. Tour the CLI surface
 
 Close by naming the four subcommands the user will reach for daily,
 in one sentence each. Flags and full shapes live in
@@ -174,6 +196,8 @@ in one sentence each. Flags and full shapes live in
 - The user has been offered a first run (and either declined or seen
   the run summary).
 - The user has been pointed at the suite tutorial.
+- The user has been offered a suite-root `.env` seeded from the project's
+  existing env sources (and either declined or had one written).
 - The user has seen the one-sentence brief on `relux new` /
   `relux check` / `relux run` / `relux history`.
 
@@ -196,6 +220,8 @@ in one sentence each. Flags and full shapes live in
   convention, file discovery rules, layout pitfalls.
 - `../../references/cli-reference.md` -- `relux init`, `relux new`,
   `relux check`, `relux run` argument shapes.
+- `../../references/environment.md` -- `.env` discovery, layering,
+  precedence, and why a committed `.env` makes the suite reproducible.
 
 ## Pitfalls
 

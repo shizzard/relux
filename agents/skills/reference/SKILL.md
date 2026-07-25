@@ -1,6 +1,6 @@
 ---
 name: relux:reference
-description: Answer the user's question about how Relux works -- syntax, semantics, runtime behavior, lifecycle, identity, scoping, matching, BIFs, markers, project layout, the events.json schema, CI integration -- by routing to the plugin's `references/` library. Use when the user asks "how does X work in Relux", "what's the syntax for Y", "what does Z mean in Relux", "is some behaviour possible", or otherwise needs an explanation grounded in the language and runtime rather than an authoring action. Also fires when the agent is about to answer a Relux-semantics question from memory and a reference exists that owns the canonical rule -- read the reference first, do not rely on recall. Primary entry point for `/relux:reference`. Out of scope -- authoring (`relux:test-write`, `relux:effect-write`, `relux:function`, `relux:markers`), editing (`relux:test-edit`, `relux:effect-edit`), bootstrap and tuning (`relux:init`, `relux:configure`), and installation (`relux:install`, `relux:editor-plugin`); those skills own what to do, this one owns what is true.
+description: Answer the user's question about how Relux works -- syntax, semantics, runtime behavior, lifecycle, identity, scoping, matching, BIFs, markers, project layout, the environment and `.env` files, the events.json schema, CI integration -- by routing to the plugin's `references/` library. Use when the user asks "how does X work in Relux", "what's the syntax for Y", "what does Z mean in Relux", "is some behaviour possible", or otherwise needs an explanation grounded in the language and runtime rather than an authoring action. Also fires when the agent is about to answer a Relux-semantics question from memory and a reference exists that owns the canonical rule -- read the reference first, do not rely on recall. Primary entry point for `/relux:reference`. Out of scope -- authoring (`relux:test-write`, `relux:effect-write`, `relux:function`, `relux:markers`), editing (`relux:test-edit`, `relux:effect-edit`), bootstrap and tuning (`relux:init`, `relux:configure`), and installation (`relux:install`, `relux:editor-plugin`); those skills own what to do, this one owns what is true.
 ---
 
 # Answer questions about Relux from the references
@@ -48,7 +48,7 @@ editing surface.
 What category does the question fall into? Use the catalog headings
 below as the rubric:
 
-- **Project & layout** -- manifest, directory convention, imports.
+- **Project & layout** -- manifest, directory convention, imports, environment / `.env`.
 - **Block structure & syntax** -- top-level forms, statements,
   interpolation.
 - **Matching & I/O** -- `<?` / `<=`, multimatch, fail patterns,
@@ -116,6 +116,9 @@ Reference files live alongside this skill in the plugin. Read them via
 - `imports.md` -- `import <module-path>` forms (wildcard /
   selective / aliased), module path resolution from the suite root, the
   CamelCase-vs-snake_case disambiguation rule.
+- `environment.md` -- hierarchical `.env` discovery, layer precedence
+  (host env / `.env` / `__RELUX_*`), `${VAR}` resolution across layers,
+  and provenance in `env.bootstrap`.
 
 ### Block structure & statements
 
