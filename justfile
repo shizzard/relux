@@ -6,6 +6,17 @@ default:
 install-hooks:
     git config core.hooksPath .githooks
 
+# Reinstall the agents/ plugin into Claude Code's plugin cache. Needed when
+# iterating on agents/ in place: `claude plugin update` short-circuits when
+# the plugin version matches the cached copy, so pushing edits without a
+# version bump requires uninstall + install. MARKETPLACE defaults to
+# "relux" (the name in .claude-plugin/marketplace.json, as registered by
+# `claude plugin marketplace add .`); override to match a differently-named
+# local marketplace.
+install-agents MARKETPLACE="relux":
+    -claude plugin uninstall relux@{{MARKETPLACE}}
+    claude plugin install relux@{{MARKETPLACE}}
+
 # Fix clippy warnings and format code
 fix:
     cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged -- -D warnings
@@ -22,7 +33,7 @@ history *ARGS:
 ## Build targets
 
 # Build in debug mode
-build: build-cargo build-viewer build-intellij build-vscode build-books
+build: build-cargo build-viewer build-intellij build-vscode build-agents build-books
 
 build-cargo:
     cargo build
@@ -52,6 +63,10 @@ check-vscode:
     mkdir -p editors/vscode/build
     docker run --rm -v {{justfile_directory()}}/editors/vscode:/src -w /src node:lts-slim \
         sh -c 'npx --yes @vscode/vsce package --out /src/build/relux-check.vsix 2>&1 | tee /tmp/vsce.log && ! grep -E "WARNING|ERROR" /tmp/vsce.log'
+
+# Validate the agents/ plugin (manifest, skill frontmatter, link resolution).
+build-agents:
+    ./.scripts/build-agents.sh
 
 # Build tutorial books
 build-books: 

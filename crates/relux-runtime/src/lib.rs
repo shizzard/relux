@@ -1339,6 +1339,7 @@ async fn log_skipped_test(
         event_seq: handle.event_seq,
         marker_kind: marker_kind_to_runtime(rec.kind),
         evaluation: marker_detail_from_evaluation(&rec.evaluation),
+        location: log.resolve_location(&rec.marker_span),
     });
 
     // Bootstrap env snapshot (sorted for deterministic JSON).
@@ -1671,6 +1672,16 @@ mod tests {
                     ),
                     "SkipRecord.span must point to a marker-eval span, got: {:?}",
                     span.kind
+                );
+                // The recording in this fixture uses a synthetic
+                // marker_span (no file_id in the sources table), so
+                // resolve_location returns None. The integration tests
+                // exercise the populated-location path against real
+                // .relux files.
+                assert!(
+                    rec.location.is_none(),
+                    "synthetic marker_span must resolve to no location, got: {:?}",
+                    rec.location
                 );
             }
             other => panic!("expected TestOutcome::Skip, got {other:?}"),

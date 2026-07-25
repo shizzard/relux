@@ -14,6 +14,7 @@ use std::process;
 use clap::Arg;
 use clap::ArgAction;
 use clap::Command;
+use clap::crate_version;
 use clap::value_parser;
 use clap_complete::engine::ArgValueCompleter;
 
@@ -32,6 +33,7 @@ pub enum ModuleKind {
 pub fn cli() -> Command {
     Command::new("relux")
         .about("Relux test runner")
+        .version(crate_version!())
         .subcommand_required(true)
         .subcommand(
             Command::new("init").about("Initialize a new Relux project in the current directory"),

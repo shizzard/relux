@@ -174,6 +174,10 @@ The pre-commit hook (`.githooks/pre-commit`) and CI verify these files stay in s
 - **IntelliJ** (`editors/intellij/`): Syntax highlighting plugin for `.relux` files. Build with `just build-intellij`.
 - **VS Code** (`editors/vscode/`): VS Code extension for `.relux` files. Build with `just build-vscode`.
 
+### Agent Plugin (`agents/`)
+
+In-repo Claude Code plugin packaging composable skills for authoring, running, and diagnosing Relux test suites. Installable via the repo-root marketplace manifest (`.claude-plugin/marketplace.json`): `claude plugin marketplace add <repo>` then `claude plugin install relux@relux`; skills surface as `/relux:<skill-name>`. Validation runs via `just build-agents` (validates both the plugin and the marketplace manifest; folded into `just build` and the pre-commit hook). The manifest at `agents/.claude-plugin/plugin.json` is version-synced with the workspace by release-please. See `agents/README.md`.
+
 ## Key Design Decisions
 
 - **All values are strings** — no type system beyond that

@@ -52,6 +52,12 @@ editors:
   - changed-files:
       - any-glob-to-any-file: editors/**
 
+agents:
+  - changed-files:
+      - any-glob-to-any-file:
+          - agents/**
+          - .claude-plugin/**
+
 rfc:
   - changed-files:
       - any-glob-to-any-file: rfc/**

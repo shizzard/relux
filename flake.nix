@@ -28,6 +28,7 @@
               pkgs.mdbook
               pkgs.jdk17
               pkgs.gradle
+              pkgs.jq
             ];
           };
         });

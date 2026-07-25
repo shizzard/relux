@@ -20,6 +20,8 @@ relux history --flaky               # spot intermittent tests
 
 Each of these commands has options that give you precise control over what runs, how it runs, and what output you get.
 
+Two global flags work without a subcommand: `--help` (or `-h`) prints the top-level usage, and `--version` (or `-V`) prints the binary version — handy for confirming which build is on your `PATH` or for [filing an issue](https://github.com/shizzard/relux/issues).
+
 ## `relux init`
 
 The `init` subcommand initializes a new Relux project in the current directory:
