@@ -4,6 +4,9 @@
 #      YAML, plugin.json JSON syntax. This is the same validator
 #      `claude plugin install` runs at install time, so passing here
 #      means the plugin is installable.
+#   1b. claude plugin validate the marketplace manifest at the repo root
+#       (.claude-plugin/marketplace.json) so the plugin stays installable
+#       via `claude plugin install relux@relux`.
 #   2. Skill-name convention: each `skills/<dir>/SKILL.md` frontmatter
 #      must declare `name: relux:<dir>`. Our project contract; not
 #      enforced by Claude Code.
@@ -31,6 +34,13 @@ fi
 # 1. Schema validation via the official Claude Code validator.
 if ! claude plugin validate "$PLUGIN_DIR"; then
     err "claude plugin validate failed for $PLUGIN_DIR"
+    exit 1
+fi
+
+# 1b. Validate the marketplace manifest (.claude-plugin/marketplace.json) so
+#     `claude plugin install relux@relux` stays installable from this repo.
+if ! claude plugin validate .; then
+    err "claude plugin validate failed for the marketplace manifest (.claude-plugin/marketplace.json)"
     exit 1
 fi
 

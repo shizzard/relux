@@ -71,3 +71,14 @@ relux run                        # run all tests
 - **IntelliJ family**: [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/relux)
 
 See the [editor support reference](https://shizzard.github.io/relux/latest/reference/07-editor-support.html) for details.
+
+## Claude Code plugin
+
+Relux ships a [Claude Code](https://claude.com/claude-code) plugin - composable skills for authoring, running, and diagnosing Relux suites, surfaced as `/relux:<skill-name>` slash commands and auto-triggered while you work.
+
+```
+claude plugin marketplace add shizzard/relux
+claude plugin install relux@relux
+```
+
+See [`agents/README.md`](agents/README.md) for the skill catalog and how it is structured.

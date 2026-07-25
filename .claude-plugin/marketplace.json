@@ -1,0 +1,12 @@
+{
+  "name": "relux",
+  "owner": { "name": "Denis Farr", "email": "denis@spawnlink.eu" },
+  "description": "Marketplace for the Relux integration test framework Claude Code plugin.",
+  "plugins": [
+    {
+      "name": "relux",
+      "source": "./agents",
+      "description": "Skills for authoring, running, and diagnosing Relux test suites."
+    }
+  ]
+}

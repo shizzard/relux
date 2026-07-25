@@ -6,9 +6,14 @@ v1 targets Claude Code. The directory layout is positioned so manifests for Curs
 
 ## Install (Claude Code)
 
+Register this repository as a plugin marketplace, then install the plugin:
+
 ```
-claude plugin install <path-to-this-repo>/agents
+claude plugin marketplace add <path-to-this-repo>
+claude plugin install relux@relux
 ```
+
+`claude plugin marketplace add` reads `.claude-plugin/marketplace.json` at the repo root; `relux@relux` is the `relux` plugin from the `relux` marketplace.
 
 Skills surface as `/relux:<skill-name>` slash commands and as auto-triggered behaviour driven by each skill's `description:` field.
 

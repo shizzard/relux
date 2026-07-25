@@ -10,8 +10,10 @@ install-hooks:
 # iterating on agents/ in place: `claude plugin update` short-circuits when
 # the plugin version matches the cached copy, so pushing edits without a
 # version bump requires uninstall + install. MARKETPLACE defaults to
-# "relux-dev"; override to match a contributor's local marketplace name.
-install-agents MARKETPLACE="relux-dev":
+# "relux" (the name in .claude-plugin/marketplace.json, as registered by
+# `claude plugin marketplace add .`); override to match a differently-named
+# local marketplace.
+install-agents MARKETPLACE="relux":
     -claude plugin uninstall relux@{{MARKETPLACE}}
     claude plugin install relux@{{MARKETPLACE}}
 
