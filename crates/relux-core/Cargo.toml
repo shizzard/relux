@@ -19,6 +19,7 @@ rand      = { workspace = true }
 bs58      = { workspace = true }
 siphasher = { workspace = true }
 sha1      = { workspace = true }
+chrono    = { workspace = true }
 
 [dev-dependencies]
 regex = { workspace = true }
