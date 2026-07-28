@@ -104,6 +104,7 @@ pub mod config;
 pub mod diagnostics;
 pub mod discover;
 pub mod error;
+pub mod hash;
 pub mod pure;
 pub mod table;
 
