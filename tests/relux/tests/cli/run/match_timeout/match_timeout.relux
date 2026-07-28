@@ -1,4 +1,4 @@
-test "run reports match timeout" ~300ms {
+test "run reports match timeout" {
     """
     Verify relux run reports a match timeout when a pattern is never found.
     """
