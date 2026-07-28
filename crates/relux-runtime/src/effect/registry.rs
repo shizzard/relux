@@ -71,9 +71,9 @@ impl EffectInstanceKey {
     /// same marker; two acquires of the same effect-instance (one
     /// bootstrap + N dedup'd reuses) all share this string.
     pub fn marker(&self) -> String {
-        use std::collections::hash_map::DefaultHasher;
+        use relux_core::hash::StableHasher;
         use std::hash::Hasher;
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = StableHasher::new();
         std::hash::Hash::hash(self, &mut hasher);
         relux_core::diagnostics::format_mnemonic(hasher.finish())
     }
@@ -108,9 +108,9 @@ impl ShellInstanceKey {
     /// Stable mnemonic computed from the identity. Same key -> same
     /// marker across runs.
     pub fn marker(&self) -> String {
-        use std::collections::hash_map::DefaultHasher;
+        use relux_core::hash::StableHasher;
         use std::hash::Hasher;
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = StableHasher::new();
         std::hash::Hash::hash(self, &mut hasher);
         relux_core::diagnostics::format_mnemonic(hasher.finish())
     }
@@ -381,13 +381,13 @@ mod tests {
 
     #[test]
     fn key_hash_consistent() {
-        use std::collections::hash_map::DefaultHasher;
+        use relux_core::hash::StableHasher;
         use std::hash::Hash;
         use std::hash::Hasher;
         let k1 = test_key("Db");
         let k2 = test_key("Db");
-        let mut h1 = DefaultHasher::new();
-        let mut h2 = DefaultHasher::new();
+        let mut h1 = StableHasher::new();
+        let mut h2 = StableHasher::new();
         k1.hash(&mut h1);
         k2.hash(&mut h2);
         assert_eq!(h1.finish(), h2.finish());

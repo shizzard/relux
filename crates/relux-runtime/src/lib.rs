@@ -255,7 +255,7 @@ pub fn test_display_id(test_path: &str, test_name: &str) -> String {
 fn test_mnemonic_id(rel_path: &Path, test_name: &str) -> String {
     use std::hash::Hash;
     use std::hash::Hasher;
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let mut hasher = relux_core::hash::StableHasher::new();
     rel_path.hash(&mut hasher);
     test_name.hash(&mut hasher);
     relux_core::diagnostics::format_mnemonic(hasher.finish())

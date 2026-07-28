@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+use crate::hash::StableHasher;
 
 pub mod bifs;
 
@@ -141,7 +142,7 @@ impl LayeredEnv {
     /// in sorted-key order (a `HashMap`'s iteration order is nondeterministic,
     /// so sorting is required for a reproducible hash).
     fn layer_hash(source: &LayeredEnvSource, own: &Env) -> u64 {
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = StableHasher::new();
         source.hash(&mut hasher);
         let mut pairs: Vec<(&str, &str)> = own.iter().collect();
         pairs.sort_unstable_by_key(|(k, _)| *k);
@@ -183,7 +184,7 @@ impl LayeredEnv {
         source: LayeredEnvSource,
     ) -> Self {
         let own_hash = Self::layer_hash(&source, &overlay);
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = StableHasher::new();
         own_hash.hash(&mut hasher);
         parent.cumulative_hash.hash(&mut hasher);
         let cumulative_hash = hasher.finish();
