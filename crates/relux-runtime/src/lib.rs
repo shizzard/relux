@@ -145,6 +145,7 @@ fn assemble_test_env(
     run_internal: &Env,
     test_root: Option<PathBuf>,
     artifacts_dir: &Path,
+    test_id: &str,
 ) -> Arc<LayeredEnv> {
     let mut internal = run_internal.clone();
     if let Some(dir) = test_root {
@@ -154,6 +155,7 @@ fn assemble_test_env(
         "__RELUX_TEST_ARTIFACTS".into(),
         artifacts_dir.display().to_string(),
     );
+    internal.insert("__RELUX_TEST_ID".into(), test_id.to_string());
     Arc::new(LayeredEnv::child_with_source(
         dotenv_stack,
         internal,
@@ -242,6 +244,21 @@ fn format_cause_tags(
 /// Format a test identifier for display: `path/slugified-name`.
 pub fn test_display_id(test_path: &str, test_name: &str) -> String {
     format!("{}/{}", test_path, slugify(test_name))
+}
+
+/// Stable, per-test mnemonic id (e.g. `"broken-walrus-0042"`), derived from the
+/// test's suite-root-relative source path and its name. Deterministic: the same
+/// test always yields the same id -- so a `pure fn` reading `__RELUX_TEST_ID`
+/// stays stable across the multiple call sites within one test (and across
+/// reruns), while distinct tests get distinct ids, making it safe as a per-test
+/// resource key under `-j`. Reuses the diagnostics mnemonic formatter.
+fn test_mnemonic_id(rel_path: &Path, test_name: &str) -> String {
+    use std::hash::Hash;
+    use std::hash::Hasher;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    rel_path.hash(&mut hasher);
+    test_name.hash(&mut hasher);
+    relux_core::diagnostics::format_mnemonic(hasher.finish())
 }
 
 /// Convert a test name to a filesystem-safe slug.
@@ -743,11 +760,16 @@ async fn run_test(
     // this test's own `__RELUX_TEST_*` values). No separate `Test` layer, so
     // this doubles as the bootstrap snapshot dumped for the artifact below.
     let test_root = source_file.parent().map(Path::to_path_buf);
+    let rel_path = source_file
+        .strip_prefix(&run_ctx.project_root)
+        .unwrap_or(source_file.as_path());
+    let test_id = test_mnemonic_id(rel_path, meta.name());
     let test_env = assemble_test_env(
         dotenv_stack.clone(),
         relux_internal,
         test_root,
         &artifacts_dir,
+        &test_id,
     );
     let mut warnings = Vec::new();
 
@@ -1510,17 +1532,41 @@ mod tests {
             &internal,
             Some(std::path::PathBuf::from("/p/relux/tests")),
             std::path::Path::new("/p/out/artifacts"),
+            "brave-otter-0001",
         );
 
         // The per-test `__RELUX_TEST_*` values live in the ReluxInternal layer
         // alongside the run internals, not a separate `Test` overlay.
         assert_eq!(env.get("__RELUX_TEST_ROOT"), Some("/p/relux/tests"));
         assert_eq!(env.get("__RELUX_TEST_ARTIFACTS"), Some("/p/out/artifacts"));
+        assert_eq!(env.get("__RELUX_TEST_ID"), Some("brave-otter-0001"));
         assert_eq!(env.get("SHARED"), Some("from-internal")); // internal > dotenv
         assert_eq!(env.get("__RELUX_RUN_ID"), Some("run123"));
         assert_eq!(env.get("DB"), Some("postgres")); // .env value present
         assert_eq!(env.get("PATH_LIKE"), Some("base")); // base reachable
         assert_eq!(env.source(), &LayeredEnvSource::ReluxInternal); // top overlay
+    }
+
+    #[test]
+    fn test_mnemonic_id_is_stable_and_distinct() {
+        // Same (path, name) -> same id, at every call site within a test.
+        let a1 = test_mnemonic_id(Path::new("tests/smoke/login.relux"), "succeeds");
+        let a2 = test_mnemonic_id(Path::new("tests/smoke/login.relux"), "succeeds");
+        assert_eq!(a1, a2, "same (path, name) must yield the same id");
+
+        // Distinct name or path -> distinct id (safe as a per-test key under -j).
+        let diff_name = test_mnemonic_id(Path::new("tests/smoke/login.relux"), "fails");
+        assert_ne!(a1, diff_name, "different test name must differ");
+        let diff_path = test_mnemonic_id(Path::new("tests/other/login.relux"), "succeeds");
+        assert_ne!(a1, diff_path, "different path must differ");
+
+        // Shape: `<adjective>-<noun>-NNNN`, four-digit numeric suffix.
+        let suffix = a1.rsplit('-').next().unwrap();
+        assert_eq!(suffix.len(), 4, "suffix must be 4 digits: {a1}");
+        assert!(
+            suffix.chars().all(|c| c.is_ascii_digit()),
+            "suffix must be numeric: {a1}"
+        );
     }
 
     #[tokio::test]
