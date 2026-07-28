@@ -63,6 +63,8 @@ Several [built-in functions](05-built-in-functions.md) are also available in pur
 | `available_port()`          | Find a free TCP port              |
 | `which(cmd)`                | Locate a command on `PATH`        |
 | `default(a, b)`             | Return `a` if non-empty, else `b` |
+| `mnemonic(s)`               | Stable mnemonic id hashed from `s`|
+| `sha1(s)`                   | SHA-1 hex digest of `s`           |
 
 ## The `pure fn` syntax
 
