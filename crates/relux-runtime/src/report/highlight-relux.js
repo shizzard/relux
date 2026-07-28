@@ -340,7 +340,7 @@ hljs.registerLanguage("relux", function (hljs) {
       built_in:
         // Pure BIFs (crates/relux-core/src/pure/bifs.rs)
         "trim upper lower replace split len uuid rand available_port which default " +
-        "mnemonic sha1 " +
+        "mnemonic sha1 timestamp " +
         // Impure BIFs (crates/relux-runtime/src/vm/bifs.rs)
         "sleep annotate log match_prompt match_exit_code match_ok match_not_ok " +
         "ctrl_c ctrl_d ctrl_z ctrl_l ctrl_backslash"
