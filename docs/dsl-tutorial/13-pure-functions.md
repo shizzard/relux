@@ -65,6 +65,7 @@ Several [built-in functions](05-built-in-functions.md) are also available in pur
 | `default(a, b)`             | Return `a` if non-empty, else `b` |
 | `mnemonic(s)`               | Stable mnemonic id hashed from `s`|
 | `sha1(s)`                   | SHA-1 hex digest of `s`           |
+| `timestamp(fmt)`            | Current UTC time, strftime-formatted|
 
 ## The `pure fn` syntax
 

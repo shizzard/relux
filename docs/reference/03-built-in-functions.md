@@ -53,6 +53,21 @@ Relux provides built-in functions (BIFs) that are always available without impor
 | `mnemonic` | `mnemonic(s)` | string  | Derive a stable, human-readable id from `s`, formatted `adjective-noun-NNNN` (e.g. `"brave-otter-0042"`). Deterministic across runs and across relux versions. About 2^29 distinct values -- a readable label, not collision-proof and not for security. |
 | `sha1`     | `sha1(s)`     | string  | SHA-1 digest of `s` as 40-character lowercase hexadecimal.                                                                                                                                                                                          |
 
+### Time
+
+| Function    | Signature       | Returns | Description |
+|-------------|-----------------|---------|-------------|
+| `timestamp` | `timestamp(fmt)` | string  | Current UTC time formatted with a GNU `date`-style strftime string. Fractional seconds accept any width (`%<N>f`, `%.<N>f`); an unknown specifier is emitted verbatim. |
+
+`timestamp` always renders the current instant in UTC -- there is no local-timezone mode. It deviates from chrono's strftime in two ways: fractional-second specifiers accept any width, not just chrono's fixed 3/6/9 (`%1f`..`%9f`, `%.1f`..`%.9f`, and widths above 9 right-pad with zeros), and an unknown specifier is emitted verbatim instead of being blanked out. Like `uuid` and `rand`, `timestamp` is non-deterministic across calls -- it reads the system clock -- but it is still a pure BIF because it never touches a shell.
+
+```text
+timestamp("%Y-%m-%dT%H:%M:%SZ")  -> 2026-07-28T15:30:45Z
+timestamp("%Y%m%d-%H%M%S")       -> 20260728-153045
+timestamp("%s")                  -> 1753716645
+timestamp("%H%M%S-%6f")          -> 153045-123456
+```
+
 ## Impure BIFs
 
 ### Shell matching

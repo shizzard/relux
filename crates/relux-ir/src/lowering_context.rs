@@ -172,6 +172,7 @@ impl LoweringContext {
             ("default", 2),
             ("mnemonic", 1),
             ("sha1", 1),
+            ("timestamp", 1),
         ];
 
         for &(name, arity) in pure_bifs {

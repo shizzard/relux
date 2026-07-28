@@ -987,6 +987,7 @@ version = "0.7.1"
 dependencies = [
  "ariadne",
  "bs58",
+ "chrono",
  "elsa",
  "humantime",
  "rand",

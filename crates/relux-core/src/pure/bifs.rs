@@ -1,3 +1,8 @@
+use chrono::DateTime;
+use chrono::Utc;
+use std::iter::Peekable;
+use std::str::Chars;
+
 const ALPHA: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const NUM: &[u8] = b"0123456789";
 const ALPHANUM: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -20,6 +25,92 @@ fn is_executable(path: &std::path::Path) -> bool {
         .unwrap_or(false)
 }
 
+/// The current instant as a UTC `DateTime`. Degrades to the epoch if the clock
+/// is somehow before 1970 (not reachable in practice).
+fn utc_now() -> DateTime<Utc> {
+    use std::time::SystemTime;
+    use std::time::UNIX_EPOCH;
+    let dur = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    DateTime::from_timestamp(dur.as_secs() as i64, dur.subsec_nanos()).unwrap_or_default()
+}
+
+/// GNU date-style strftime, with two deliberate deviations from chrono:
+/// fractional seconds accept any width (`%1f`..`%9f`, `%.1f`..`%.9f`, not just
+/// 3/6/9), and an unknown specifier is emitted verbatim instead of blanking the
+/// output. Infallible. Pure in `dt` (no clock read) so tests can pin an instant.
+fn strftime_utc(dt: DateTime<Utc>, fmt: &str) -> String {
+    use std::fmt::Write;
+    let nanos = format!("{:09}", dt.timestamp_subsec_nanos());
+    let mut out = String::with_capacity(fmt.len());
+    let mut chars = fmt.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '%' {
+            out.push(c);
+            continue;
+        }
+        let token = take_token(&mut chars);
+        if let Some(frac) = fractional(&token, &nanos) {
+            out.push_str(&frac);
+            continue;
+        }
+        // Delegate the single token to chrono; emit it verbatim on any error
+        // (unknown specifier -> passthrough). chrono's Display returns Err
+        // rather than panicking, so write! surfaces it here.
+        let mut rendered = String::new();
+        if write!(rendered, "{}", dt.format(&token)).is_ok() {
+            out.push_str(&rendered);
+        } else {
+            out.push_str(&token);
+        }
+    }
+    out
+}
+
+/// Consume one `%` token: `%` (already seen) + a run of modifier/width chars +
+/// one terminal char. Returns the token including the leading `%`.
+fn take_token(chars: &mut Peekable<Chars>) -> String {
+    let mut token = String::from('%');
+    while let Some(&m) = chars.peek() {
+        if matches!(m, '-' | '_' | '0' | '#' | '.' | ':') || m.is_ascii_digit() {
+            token.push(m);
+            chars.next();
+        } else {
+            break;
+        }
+    }
+    if let Some(terminal) = chars.next() {
+        token.push(terminal);
+    }
+    token
+}
+
+/// Render `%<N>f` / `%.<N>f` for any explicit width `N`, taking the first `N`
+/// of the 9-digit zero-padded nanoseconds (right-padding zeros if `N > 9`).
+/// Returns `None` for non-fractional tokens and for the width-less `%f` / `%.f`,
+/// which the caller delegates to chrono. The `?`-guards make `%` (no terminal)
+/// and `%f` fall through without any out-of-range slicing.
+fn fractional(token: &str, nanos: &str) -> Option<String> {
+    let mid = token.strip_prefix('%')?.strip_suffix('f')?;
+    let (dot, digits) = match mid.strip_prefix('.') {
+        Some(rest) => (".", rest),
+        None => ("", mid),
+    };
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let n: usize = digits.parse().unwrap_or(9);
+    let mut s = String::from(dot);
+    if n <= 9 {
+        s.push_str(&nanos[..n]); // ASCII digits: byte slice is char-safe.
+    } else {
+        s.push_str(nanos);
+        s.push_str(&"0".repeat(n - 9));
+    }
+    Some(s)
+}
+
 /// Returns true if the given (name, arity) pair is a pure built-in function.
 pub fn is_pure_bif(name: &str, arity: usize) -> bool {
     matches!(
@@ -38,6 +129,7 @@ pub fn is_pure_bif(name: &str, arity: usize) -> bool {
             | ("default", 2)
             | ("mnemonic", 1)
             | ("sha1", 1)
+            | ("timestamp", 1)
     )
 }
 
@@ -118,6 +210,7 @@ pub fn dispatch(name: &str, args: Vec<String>) -> String {
             }
             out
         }
+        "timestamp" => strftime_utc(utc_now(), &args[0]),
         _ => unreachable!("unknown pure BIF: {name}"),
     }
 }
@@ -405,5 +498,73 @@ mod tests {
     fn hashing_bifs_are_pure() {
         assert!(is_pure_bif("mnemonic", 1));
         assert!(is_pure_bif("sha1", 1));
+    }
+
+    // --- timestamp -------------------------------------------
+
+    fn fixed_dt() -> chrono::DateTime<chrono::Utc> {
+        // 1970-01-01T00:00:00Z with a fixed subsecond so fractional output
+        // is deterministic (nanos = 123456789).
+        chrono::DateTime::from_timestamp(0, 123_456_789).unwrap()
+    }
+
+    #[test]
+    fn timestamp_calendar_and_unix() {
+        let dt = fixed_dt();
+        assert_eq!(
+            strftime_utc(dt, "%Y-%m-%dT%H:%M:%SZ"),
+            "1970-01-01T00:00:00Z"
+        );
+        assert_eq!(strftime_utc(dt, "%s"), "0");
+    }
+
+    #[test]
+    fn timestamp_fractional_widths() {
+        let dt = fixed_dt();
+        assert_eq!(strftime_utc(dt, "%3f"), "123");
+        assert_eq!(strftime_utc(dt, "%6f"), "123456");
+        assert_eq!(strftime_utc(dt, "%9f"), "123456789");
+        assert_eq!(strftime_utc(dt, "%4f"), "1234"); // chrono-unsupported width
+        assert_eq!(strftime_utc(dt, "%.4f"), ".1234"); // dotted, also unsupported
+        assert_eq!(strftime_utc(dt, "%12f"), "123456789000"); // right-padded
+    }
+
+    #[test]
+    fn timestamp_bare_fractional_delegates_to_chrono() {
+        let dt = fixed_dt();
+        assert_eq!(strftime_utc(dt, "%f"), "123456789");
+        // fractional() must decline the width-less forms so they reach chrono.
+        assert_eq!(fractional("%f", "123456789"), None);
+        assert_eq!(fractional("%.f", "123456789"), None);
+        assert_eq!(fractional("%4f", "123456789"), Some("1234".to_string()));
+    }
+
+    #[test]
+    fn timestamp_literal_and_percent() {
+        let dt = fixed_dt();
+        assert_eq!(strftime_utc(dt, "literal"), "literal");
+        assert_eq!(strftime_utc(dt, "%%"), "%");
+    }
+
+    #[test]
+    fn timestamp_unknown_specifier_passes_through() {
+        let dt = fixed_dt();
+        assert_eq!(strftime_utc(dt, "%Y%Q"), "1970%Q");
+        assert_eq!(strftime_utc(dt, "x%"), "x%"); // lone trailing % -> no panic
+    }
+
+    #[test]
+    fn timestamp_clock_path_smoke() {
+        let year = dispatch("timestamp", vec!["%Y".into()]);
+        assert_eq!(year.len(), 4);
+        assert!(year.chars().all(|c| c.is_ascii_digit()));
+        let secs = dispatch("timestamp", vec!["%s".into()]);
+        assert!(!secs.is_empty());
+        assert!(secs.chars().all(|c| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn timestamp_is_pure() {
+        assert!(is_pure_bif("timestamp", 1));
     }
 }
