@@ -142,7 +142,7 @@ pub type SourceTable = SharedTable<FileId, SourceFile>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::hash_map::DefaultHasher;
+    use crate::hash::StableHasher;
     use std::hash::Hasher;
 
     // --- SharedTable -------------------------------------
@@ -261,9 +261,9 @@ mod tests {
     fn file_id_hash_consistency() {
         let a = FileId::new(PathBuf::from("/a/b.relux"));
         let b = FileId::new(PathBuf::from("/a/b.relux"));
-        let mut ha = DefaultHasher::new();
+        let mut ha = StableHasher::new();
         a.hash(&mut ha);
-        let mut hb = DefaultHasher::new();
+        let mut hb = StableHasher::new();
         b.hash(&mut hb);
         assert_eq!(ha.finish(), hb.finish());
     }

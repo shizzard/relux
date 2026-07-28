@@ -1,10 +1,10 @@
-use std::collections::hash_map::DefaultHasher;
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::sync::Arc;
 
 use crate::Span;
+use crate::hash::StableHasher;
 use crate::table::FileId;
 use crate::table::SharedTable;
 
@@ -813,7 +813,7 @@ pub fn format_mnemonic(hash: u64) -> String {
 impl CauseId {
     /// Generate a deterministic mnemonic from hashed inputs.
     pub fn generate(module: &str, name: &str, arity: usize, error_kind: &str) -> Self {
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = StableHasher::new();
         module.hash(&mut hasher);
         name.hash(&mut hasher);
         arity.hash(&mut hasher);
@@ -833,7 +833,7 @@ impl CauseId {
         error_kind: &str,
         stack: u64,
     ) -> Self {
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = StableHasher::new();
         module.hash(&mut hasher);
         name.hash(&mut hasher);
         arity.hash(&mut hasher);
@@ -1371,7 +1371,7 @@ const NOUNS: [&str; 256] = [
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::hash_map::DefaultHasher;
+    use crate::hash::StableHasher;
     use std::hash::Hasher;
     use std::path::PathBuf;
 
@@ -1510,9 +1510,9 @@ mod tests {
             name: "f".into(),
             arity: 1,
         };
-        let mut ha = DefaultHasher::new();
+        let mut ha = StableHasher::new();
         a.hash(&mut ha);
-        let mut hb = DefaultHasher::new();
+        let mut hb = StableHasher::new();
         b.hash(&mut hb);
         assert_eq!(ha.finish(), hb.finish());
     }
@@ -1571,9 +1571,9 @@ mod tests {
     fn effect_id_hash_consistency() {
         let a = test_effect_id();
         let b = test_effect_id();
-        let mut ha = DefaultHasher::new();
+        let mut ha = StableHasher::new();
         a.hash(&mut ha);
-        let mut hb = DefaultHasher::new();
+        let mut hb = StableHasher::new();
         b.hash(&mut hb);
         assert_eq!(ha.finish(), hb.finish());
     }
@@ -1627,9 +1627,9 @@ mod tests {
         let a = CauseId::generate("mod", "func", 2, "undefined");
         let b = CauseId::generate("mod", "func", 2, "undefined");
         assert_eq!(a, b);
-        let mut ha = DefaultHasher::new();
+        let mut ha = StableHasher::new();
         a.hash(&mut ha);
-        let mut hb = DefaultHasher::new();
+        let mut hb = StableHasher::new();
         b.hash(&mut hb);
         assert_eq!(ha.finish(), hb.finish());
     }
@@ -2129,7 +2129,7 @@ mod tests {
     #[test]
     fn cause_id_generate_unchanged_for_known_inputs() {
         let before = CauseId::generate("mod", "name", 2, "kind");
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = StableHasher::new();
         "mod".hash(&mut hasher);
         "name".hash(&mut hasher);
         2usize.hash(&mut hasher);

@@ -36,6 +36,8 @@ pub fn is_pure_bif(name: &str, arity: usize) -> bool {
             | ("available_port", 0)
             | ("which", 1)
             | ("default", 2)
+            | ("mnemonic", 1)
+            | ("sha1", 1)
     )
 }
 
@@ -102,6 +104,19 @@ pub fn dispatch(name: &str, args: Vec<String>) -> String {
             } else {
                 first
             }
+        }
+        "mnemonic" => crate::diagnostics::format_mnemonic(crate::hash::stable_hash(&args[0])),
+        "sha1" => {
+            use sha1::Digest;
+            use sha1::Sha1;
+            use std::fmt::Write;
+            let digest = Sha1::digest(args[0].as_bytes());
+            let mut out = String::with_capacity(40);
+            for byte in digest {
+                // Lowercase, zero-padded, two ASCII hex chars per byte.
+                let _ = write!(out, "{byte:02x}");
+            }
+            out
         }
         _ => unreachable!("unknown pure BIF: {name}"),
     }
@@ -350,5 +365,45 @@ mod tests {
     fn bif_which_with_path_separator() {
         let result = dispatch("which", vec!["/nonexistent/path".into()]);
         assert_eq!(result, "");
+    }
+
+    #[test]
+    fn mnemonic_is_well_formed_and_stable() {
+        let a = dispatch("mnemonic", vec!["empay".into()]);
+        let b = dispatch("mnemonic", vec!["empay".into()]);
+        assert_eq!(a, b, "same input must yield same mnemonic");
+        // adjective-noun-NNNN, all-lowercase words, 4-digit suffix.
+        let parts: Vec<&str> = a.split('-').collect();
+        assert_eq!(parts.len(), 3, "expected adjective-noun-NNNN, got {a}");
+        assert!(parts[0].chars().all(|c| c.is_ascii_lowercase()));
+        assert!(parts[1].chars().all(|c| c.is_ascii_lowercase()));
+        assert_eq!(parts[2].len(), 4);
+        assert!(parts[2].chars().all(|c| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn mnemonic_distinguishes_inputs() {
+        assert_ne!(
+            dispatch("mnemonic", vec!["alpha".into()]),
+            dispatch("mnemonic", vec!["beta".into()])
+        );
+    }
+
+    #[test]
+    fn sha1_matches_known_vectors() {
+        assert_eq!(
+            dispatch("sha1", vec![String::new()]),
+            "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+        );
+        assert_eq!(
+            dispatch("sha1", vec!["abc".into()]),
+            "a9993e364706816aba3e25717850c26c9cd0d89d"
+        );
+    }
+
+    #[test]
+    fn hashing_bifs_are_pure() {
+        assert!(is_pure_bif("mnemonic", 1));
+        assert!(is_pure_bif("sha1", 1));
     }
 }

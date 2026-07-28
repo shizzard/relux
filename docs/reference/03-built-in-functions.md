@@ -46,6 +46,13 @@ Relux provides built-in functions (BIFs) that are always available without impor
 | `log`      | `log(message)`   | string  | Emit `message` to the event log and HTML report. Returns `message`.               |
 | `annotate` | `annotate(text)` | string  | Emit `text` as a progress annotation. Renders inline on the live progress line (between the surrounding fn-call `(` and `)`) and is recorded as an event in the structured log. Returns `text`. |
 
+### Hashing
+
+| Function   | Signature     | Returns | Description                                                                                                                                                                                                                                          |
+|------------|---------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `mnemonic` | `mnemonic(s)` | string  | Derive a stable, human-readable id from `s`, formatted `adjective-noun-NNNN` (e.g. `"brave-otter-0042"`). Deterministic across runs and across relux versions. About 2^29 distinct values -- a readable label, not collision-proof and not for security. |
+| `sha1`     | `sha1(s)`     | string  | SHA-1 digest of `s` as 40-character lowercase hexadecimal.                                                                                                                                                                                          |
+
 ## Impure BIFs
 
 ### Shell matching
