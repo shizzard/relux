@@ -44,6 +44,8 @@ async-recursion = "~1"
 chrono          = "~0.4"
 rand            = "~0.10"
 bs58            = "~0.5"
+siphasher       = "~1"
+sha1            = "~0.10"
 ariadne         = { version = "~0.6", features = ["auto-color"] }
 async-trait     = "~0.1"
 uuid            = { version = "~1", features = ["v4"] }
