@@ -14,9 +14,28 @@ use super::exit_on_dotenv_errors;
 use super::resolve_project;
 use super::resolve_test_paths;
 
+/// Consonant/vowel groups for pronounceable run ids (all 26 letters, split; `y`
+/// grouped as a consonant).
+const RUN_ID_CONSONANTS: &[u8] = b"bcdfghjklmnpqrstvwxyz";
+const RUN_ID_VOWELS: &[u8] = b"aeiou";
+
+/// Generate a pronounceable, lowercase run id: alternating consonant/vowel,
+/// starting with a consonant, length 8 (e.g. "takoperu"). ~26.9 bits of
+/// entropy -- ample because the run directory is also timestamped
+/// (`run-{timestamp}-{id}`), so a run-id collision is harmless.
 fn generate_run_id() -> String {
-    let bytes: [u8; 16] = rand::random();
-    bs58::encode(bytes).into_string().chars().take(10).collect()
+    use rand::RngExt;
+    let mut rng = rand::rng();
+    (0..8)
+        .map(|i| {
+            let group: &[u8] = if i % 2 == 0 {
+                RUN_ID_CONSONANTS
+            } else {
+                RUN_ID_VOWELS
+            };
+            group[rng.random_range(0..group.len())] as char
+        })
+        .collect()
 }
 
 pub async fn cmd_run(matches: &clap::ArgMatches) {
@@ -205,5 +224,31 @@ pub async fn cmd_run(matches: &clap::ArgMatches) {
     let has_problems = results.iter().any(|r| r.outcome.is_nonzero_outcome());
     if has_problems {
         process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn run_id_is_pronounceable_lowercase() {
+        // Generated ids alternate consonant/vowel, are length 8, and lowercase.
+        for _ in 0..200 {
+            let id = generate_run_id();
+            assert_eq!(id.len(), 8, "run id must be 8 chars: {id}");
+            for (i, c) in id.chars().enumerate() {
+                assert!(c.is_ascii_lowercase(), "run id must be lowercase: {id}");
+                let group = if i % 2 == 0 {
+                    RUN_ID_CONSONANTS
+                } else {
+                    RUN_ID_VOWELS
+                };
+                assert!(
+                    group.contains(&(c as u8)),
+                    "char {c} at position {i} is not in the expected group: {id}"
+                );
+            }
+        }
     }
 }

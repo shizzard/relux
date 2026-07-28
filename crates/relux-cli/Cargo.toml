@@ -33,5 +33,4 @@ walkdir        = { workspace = true }
 chrono         = { workspace = true }
 humantime      = { workspace = true }
 rand           = { workspace = true }
-bs58           = { workspace = true }
 tokio          = { workspace = true }

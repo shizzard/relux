@@ -153,7 +153,7 @@ Snapshot of the environment seeded when the test started — the host process en
 
 The body lists every variable, grouped by its true origin, in precedence order top to bottom:
 
-1. **relux internals** — values Relux injects for the run, including the per-test `__RELUX_TEST_ROOT` / `__RELUX_TEST_ARTIFACTS`. Relux sets the whole reserved `__RELUX*` namespace on this layer, so any copy inherited from the host environment is shadowed and this group shows Relux's own values.
+1. **relux internals** — values Relux injects for the run, including the per-test `__RELUX_TEST_ID` / `__RELUX_TEST_ROOT` / `__RELUX_TEST_ARTIFACTS`. Relux sets the whole reserved `__RELUX*` namespace on this layer, so any copy inherited from the host environment is shadowed and this group shows Relux's own values.
 2. **`.env` files** — one section per source file, headed by the file's path relative to the suite root, written as `.../<relative path>`. Sections are ordered deepest-first, so the higher-precedence file (the one nearer the test) sits nearer the top. Hover a header to see the absolute path.
 3. **host environment** — values inherited from the process that launched `relux`.
 

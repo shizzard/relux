@@ -49,6 +49,9 @@ impl fmt::Display for TestKey {
     }
 }
 
+/// Identifies a run by its on-disk directory name (`run-<timestamp>-<id>`),
+/// which the filesystem guarantees unique -- unlike the bare, lower-entropy
+/// `run_id` token it embeds.
 pub(crate) type RunId = String;
 
 pub(crate) struct TestMeta {
@@ -147,7 +150,15 @@ impl LoadedRunsCollection {
         let mut run_timestamps = HashMap::with_capacity(run_count);
 
         for run in runs {
-            let run_id = run.summary.run.run_id.clone();
+            // Key by the on-disk directory name (`run-<timestamp>-<id>`), which
+            // cannot collide, rather than the bare `run_id` token two runs in one
+            // `out/` dir could in principle share. Fall back to the bare token if
+            // the path somehow has no final component.
+            let run_id = run
+                .dir
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| run.summary.run.run_id.clone());
             run_order.push(run_id.clone());
             run_dirs.insert(run_id.clone(), run.dir);
             run_timestamps.insert(run_id.clone(), run.summary.run.timestamp.clone());
@@ -748,6 +759,44 @@ pub(crate) mod tests {
             },
             flaky_retries: 0,
         }
+    }
+
+    #[test]
+    fn runs_are_keyed_by_dir_name_not_bare_run_id() {
+        // Two runs sharing the same low-entropy `run_id` token but living in
+        // distinct on-disk directories must stay distinct history entries; the
+        // directory name (`run-<timestamp>-<id>`) is the collision-free key.
+        let mut a = make_run(
+            "run-2026-03-01-00-00-00-dupetoken",
+            "2026-03-01T00:00:00Z",
+            vec![make_test("a.relux", "pass", 100)],
+        );
+        a.summary.run.run_id = "dupetoken".to_string();
+        let mut b = make_run(
+            "run-2026-03-02-00-00-00-dupetoken",
+            "2026-03-02T00:00:00Z",
+            vec![make_test("a.relux", "fail", 100)],
+        );
+        b.summary.run.run_id = "dupetoken".to_string();
+
+        let coll = LoadedRunsCollection::new(vec![a, b]);
+
+        assert!(
+            coll.run_dirs
+                .contains_key("run-2026-03-01-00-00-00-dupetoken")
+        );
+        assert!(
+            coll.run_dirs
+                .contains_key("run-2026-03-02-00-00-00-dupetoken")
+        );
+        assert_eq!(coll.run_dirs.len(), 2, "distinct dirs must not collide");
+
+        let key = TestKey::new(&make_test("a.relux", "pass", 0));
+        assert_eq!(
+            coll.tests.get(&key).map(|runs| runs.len()),
+            Some(2),
+            "both runs of the test must be recorded, not clobbered"
+        );
     }
 
     pub(crate) fn sample_runs() -> Vec<LoadedRun> {
