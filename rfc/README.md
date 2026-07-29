@@ -30,7 +30,7 @@ Substantial changes to Relux are proposed and discussed through RFCs (Requests f
 | R006 | Multiple Marker Semantics | accepted                      |
 | R007 | Overlay Identity          | rejected (superseded by R008) |
 | R008 | Effects Rework            | implemented                   |
-| R009 | Variable Match Operator   | draft                         |
+| R009 | Variable Match Operator   | rejected (superseded by R013) |
 | R010 | TUI Debugger              | rejected (superseded by R012) |
 | R011 | Expose Variables and Naming Conventions | implemented       |
 | R012 | Interactive Debugger      | rejected (superseded by structured logging) |
