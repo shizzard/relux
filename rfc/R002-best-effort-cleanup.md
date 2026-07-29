@@ -42,28 +42,6 @@ The test result is never affected by cleanup outcome. This is already the docume
 - Existing shells are terminated automatically by the runtime
 - Cleanup always executes, regardless of whether the test/effect passed or failed
 
-## Implementation
-
-### Parser
-
-`CleanupBlock` and `CleanupStmt` are removed. Cleanup blocks parse as regular shell statement lists (reusing the existing `shell_stmt` grammar). The `cleanup` keyword introduces a block of `ShellStmt` instead of `CleanupStmt`.
-
-### Resolver
-
-The empty scope restriction in `lower_cleanup_stmt` is removed. Cleanup statements are lowered using the normal module scope, allowing function calls and all expression types.
-
-The separate `CleanupStmt` IR type is removed; cleanup blocks contain `Vec<ShellStmt>`.
-
-### Runtime
-
-The `cleanup_to_shell_stmts` conversion function becomes unnecessary — cleanup blocks already contain shell statements.
-
-The VM execution for cleanup blocks uses a best-effort mode: any failure during execution stops the block, terminates the shell, and produces a warning rather than a test failure.
-
-### Documentation
-
-Update `docs/semantics.md` and `docs/syntax.md` to reflect that cleanup blocks accept all shell operations with best-effort failure semantics.
-
 ## Example
 
 ```
