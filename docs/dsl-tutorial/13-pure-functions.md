@@ -16,7 +16,7 @@ You want to use it in a test-scope `let` to prepare a configuration value before
 
 ```relux
 test "connect to API" {
-    let url = format_url("localhost", "8080")
+    let url := format_url("localhost", "8080")
     shell s {
         > curl ${url}
         <? ^200 OK$
@@ -37,7 +37,7 @@ pure fn format_url(host, port) {
 }
 
 test "connect to API" {
-    let url = format_url("localhost", "8080")
+    let url := format_url("localhost", "8080")
     shell s {
         > curl ${url}
         <? ^200 OK$
@@ -81,8 +81,8 @@ The body can contain:
 
 - **String literals** with [variable interpolation](06-variables.md): `"${key}:${value}"`
 - **Variable references**: a bare variable name as an expression
-- **`let` declarations**: `let full = "${first} ${last}"`
-- **Variable reassignment**: `x = upper(x)`
+- **`let` declarations**: `let full := "${first} ${last}"`
+- **Variable reassignment**: `x := upper(x)`
 - **Calls to other pure functions and pure built-in functions**
 
 The return value is the last expression in the body, the same rule as regular functions. A function ending with a `let` returns the assigned value. A function ending with a string literal returns that string.
@@ -91,7 +91,7 @@ Here is a pure function that uses `let` for an intermediate value:
 
 ```relux
 pure fn build_greeting(first, last) {
-    let full = "${first} ${last}"
+    let full := "${first} ${last}"
     upper(full)
 }
 ```
@@ -163,7 +163,7 @@ pure fn greet(name) {
 
 test "call pure function in shell" {
     shell s {
-        let result = greet("world")
+        let result := greet("world")
         > echo ${result}
         <? ^hello world$
     }
@@ -178,7 +178,7 @@ pure fn tag(key, value) {
 }
 
 test "pure function in test-scope let" {
-    let label = tag("env", "test")
+    let label := tag("env", "test")
     shell s {
         > echo ${label}
         <? ^env:test$
@@ -192,7 +192,7 @@ test "pure function in test-scope let" {
 effect Config {
     expose shell service
 
-    let label = tag("env", "production")
+    let label := tag("env", "production")
     shell service {
         > echo ${label}
         <? ^env:production$
@@ -221,7 +221,7 @@ effect Labeled {
 
 test "pure function in overlay" {
     start Labeled as l {
-        LABEL = make_label("production")
+        LABEL := make_label("production")
     }
     shell l.service {
         > echo $LABEL
@@ -280,9 +280,9 @@ When string interpolation gets deeply nested, the intent can become hard to read
 
 ```relux
 test "nested interpolation" {
-    let host = "localhost"
-    let port = "5432"
-    let db = "myapp"
+    let host := "localhost"
+    let port := "5432"
+    let db := "myapp"
     shell s {
         > psql "postgres://${host}:${port}/${db}?sslmode=disable"
         <? ^connected$
@@ -299,10 +299,10 @@ pure fn pg_url(host, port, db) {
 }
 
 test "extracted into pure function" {
-    let host = "localhost"
-    let port = "5432"
+    let host := "localhost"
+    let port := "5432"
     shell s {
-        let url = pg_url(host, port, db)
+        let url := pg_url(host, port, db)
         > psql "${url}"
         <? ^connected$
         match_prompt()

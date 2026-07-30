@@ -24,7 +24,7 @@ effect Db {
     expose shell service
 
     shell service {
-        let db_root = "${__RELUX_TEST_ARTIFACTS}/database"
+        let db_root := "${__RELUX_TEST_ARTIFACTS}/database"
 
         > mkdir ${db_root}
         match_ok()
@@ -129,23 +129,23 @@ effect SeededTasks {
 
     shell seeder {
         log("login as alice")
-        let response_filename = http_request(200, url(TASKS_PORT, "/login"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
-        let token = jq_extract(response_filename, ".token")
+        let response_filename := http_request(200, url(TASKS_PORT, "/login"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
+        let token := jq_extract(response_filename, ".token")
         log("auth token: ${token}")
 
         log("create a task")
-        let response_filename = http_request_authorized(200, url(TASKS_PORT, "/tasks"), "POST", token, "{\"title\": \"buy milk\", \"status\": \"todo\"}")
-        let task_id = jq_extract(response_filename, ".id")
+        let response_filename := http_request_authorized(200, url(TASKS_PORT, "/tasks"), "POST", token, "{\"title\": \"buy milk\", \"status\": \"todo\"}")
+        let task_id := jq_extract(response_filename, ".id")
         jq_match_query(response_filename, ".title", "^buy milk$")
 
         log("login as bob")
-        let response_filename = http_request(200, url(TASKS_PORT, "/login"), "POST", "{\"login\": \"bob\", \"password\": \"bob_secret\"}")
-        let token = jq_extract(response_filename, ".token")
+        let response_filename := http_request(200, url(TASKS_PORT, "/login"), "POST", "{\"login\": \"bob\", \"password\": \"bob_secret\"}")
+        let token := jq_extract(response_filename, ".token")
         log("auth token: ${token}")
 
         log("create a task")
-        let response_filename = http_request_authorized(200, url(TASKS_PORT, "/tasks"), "POST", token, "{\"title\": \"buy milk\", \"status\": \"todo\"}")
-        let task_id = jq_extract(response_filename, ".id")
+        let response_filename := http_request_authorized(200, url(TASKS_PORT, "/tasks"), "POST", token, "{\"title\": \"buy milk\", \"status\": \"todo\"}")
+        let task_id := jq_extract(response_filename, ".id")
         jq_match_query(response_filename, ".title", "^buy milk$")
     }
 }
@@ -172,38 +172,38 @@ test "task CRUD" {
     """
     Log in, create a task, read it back, update it, and delete it.
     """
-    let db_port = available_port()
-    let auth_port = available_port()
-    let tasks_port = available_port()
+    let db_port := available_port()
+    let auth_port := available_port()
+    let tasks_port := available_port()
 
     start Tasks {
-        DB_PORT = db_port
-        AUTH_PORT = auth_port
-        TASKS_PORT = tasks_port
+        DB_PORT := db_port
+        AUTH_PORT := auth_port
+        TASKS_PORT := tasks_port
     }
 
     shell client {
         log("login as alice")
-        let response_filename = http_request(200, tasks_url(tasks_port, "/login"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
-        let token = jq_extract(response_filename, ".token")
+        let response_filename := http_request(200, tasks_url(tasks_port, "/login"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
+        let token := jq_extract(response_filename, ".token")
         log("auth token: ${token}")
 
         log("create a task")
-        let response_filename = http_request_authorized(200, tasks_url(tasks_port, "/tasks"), "POST", token, "{\"title\": \"buy milk\", \"status\": \"todo\"}")
-        let task_id = jq_extract(response_filename, ".id")
+        let response_filename := http_request_authorized(200, tasks_url(tasks_port, "/tasks"), "POST", token, "{\"title\": \"buy milk\", \"status\": \"todo\"}")
+        let task_id := jq_extract(response_filename, ".id")
         jq_match_query(response_filename, ".title", "^buy milk$")
 
         log("read it back")
-        let response_filename = http_request_authorized(200, tasks_url(tasks_port, "/tasks/${task_id}"), token)
+        let response_filename := http_request_authorized(200, tasks_url(tasks_port, "/tasks/${task_id}"), token)
         jq_match_query(response_filename, ".title", "^buy milk$")
         jq_match_query(response_filename, ".status", "^todo$")
 
         log("update the status")
-        let response_filename = http_request_authorized(200, tasks_url(tasks_port, "/tasks/${task_id}"), "PUT", token, "{\"status\": \"done\"}")
+        let response_filename := http_request_authorized(200, tasks_url(tasks_port, "/tasks/${task_id}"), "PUT", token, "{\"status\": \"done\"}")
         jq_match_query(response_filename, ".status", "^done$")
 
         log("delete it")
-        let response_filename = http_request_authorized(200, tasks_url(tasks_port, "/tasks/${task_id}"), "DELETE", token)
+        let response_filename := http_request_authorized(200, tasks_url(tasks_port, "/tasks/${task_id}"), "DELETE", token)
         jq_match_query(response_filename, ".deleted", "^${task_id}$")
     }
 }
@@ -227,14 +227,14 @@ test "unauthorized without token" {
     """
     Verify requests without a Bearer token return 401.
     """
-    let db_port = available_port()
-    let auth_port = available_port()
-    let tasks_port = available_port()
+    let db_port := available_port()
+    let auth_port := available_port()
+    let tasks_port := available_port()
 
     start Tasks {
-        DB_PORT = db_port
-        AUTH_PORT = auth_port
-        TASKS_PORT = tasks_port
+        DB_PORT := db_port
+        AUTH_PORT := auth_port
+        TASKS_PORT := tasks_port
     }
 
     shell client {
@@ -247,23 +247,23 @@ test "get nonexistent task" {
     """
     Verify reading a task that does not exist returns 404.
     """
-    let db_port = available_port()
-    let auth_port = available_port()
-    let tasks_port = available_port()
+    let db_port := available_port()
+    let auth_port := available_port()
+    let tasks_port := available_port()
 
     start SeededTasks {
-        DB_PORT = db_port
-        AUTH_PORT = auth_port
-        TASKS_PORT = tasks_port
+        DB_PORT := db_port
+        AUTH_PORT := auth_port
+        TASKS_PORT := tasks_port
     }
 
     shell client {
         log("login as alice")
-        let response_filename = http_request(200, tasks_url(tasks_port, "/login"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
-        let token = jq_extract(response_filename, ".token")
+        let response_filename := http_request(200, tasks_url(tasks_port, "/login"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
+        let token := jq_extract(response_filename, ".token")
 
         log("get a task that does not exist")
-        let response_filename = http_request_authorized(404, tasks_url(tasks_port, "/tasks/999"), token)
+        let response_filename := http_request_authorized(404, tasks_url(tasks_port, "/tasks/999"), token)
         jq_match_query(response_filename, ".error", "^task 999 not found$")
     }
 }

@@ -177,7 +177,7 @@ The prefix only changes the timeout. Everything else about the operator stays th
 test "inline timeout with variable interpolation" {
     shell s {
         ~200ms
-        let word = "interp_val"
+        let word := "interp_val"
         > sh -c 'sleep 1 && echo interp_val'
         <~3s? ^${word}$
     }

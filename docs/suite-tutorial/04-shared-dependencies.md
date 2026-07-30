@@ -75,12 +75,12 @@ Add a 4-arity `curl` and `http_request_authorized` functions to `api/http.relux`
 ```relux
 # skip unless which("curl")
 fn curl(url, method, req_body, extra_headers) {
-    let outdir = "${__RELUX_TEST_ARTIFACTS}/http"
+    let outdir := "${__RELUX_TEST_ARTIFACTS}/http"
     > mkdir -p ${outdir}
     match_ok()
 
-    let file_rand = rand(10)
-    let filename = "${outdir}/${file_rand}.http_response.txt"
+    let file_rand := rand(10)
+    let filename := "${outdir}/${file_rand}.http_response.txt"
 
     > curl -v -X ${method} ${extra_headers} -d '${req_body}' -o ${filename} ${url}
     <? ^> $
@@ -101,7 +101,7 @@ fn http_request_authorized(expected_code, url, method, token) {
 }
 
 fn http_request_authorized(expected_code, url, method, token, req_body) {
-    let response_filename = curl(url, method, req_body, "-H 'Authorization: Bearer ${token}'")
+    let response_filename := curl(url, method, req_body, "-H 'Authorization: Bearer ${token}'")
     http_match_code(expected_code)
     match_ok()
     response_filename
@@ -116,13 +116,13 @@ fn jq_extract(filename, query) {
     > jq -r '${query}' ${filename}
     <? ^jq (.*)$
     <? ^(.+)$
-    let value = $0
+    let value := $0
     match_ok()
     value
 }
 ```
 
-The first `<? ^jq (.*)$` skips past the echoed command in the output buffer. The second `<? ^(.+)$` matches the actual jq output, and `let value = $0` captures the full match into `value`. The function returns it so the caller can store the result.
+The first `<? ^jq (.*)$` skips past the echoed command in the output buffer. The second `<? ^(.+)$` matches the actual jq output, and `let value := $0` captures the full match into `value`. The function returns it so the caller can store the result.
 
 ## Writing task tests
 
@@ -147,25 +147,25 @@ test "task CRUD" {
 
     shell client {
         log("login as alice")
-        let response_filename = http_request(200, tasks_url("/login"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
-        let token = jq_extract(response_filename, ".token")
+        let response_filename := http_request(200, tasks_url("/login"), "POST", "{\"login\": \"alice\", \"password\": \"alice_secret\"}")
+        let token := jq_extract(response_filename, ".token")
 
         log("create a task")
-        let response_filename = http_request_authorized(200, tasks_url("/tasks"), "POST", token, "{\"title\": \"buy milk\", \"status\": \"todo\"}")
-        let task_id = jq_extract(response_filename, ".id")
+        let response_filename := http_request_authorized(200, tasks_url("/tasks"), "POST", token, "{\"title\": \"buy milk\", \"status\": \"todo\"}")
+        let task_id := jq_extract(response_filename, ".id")
         jq_match_query(response_filename, ".title", "^buy milk$")
 
         log("read it back")
-        let response_filename = http_request_authorized(200, tasks_url("/tasks/${task_id}"), token)
+        let response_filename := http_request_authorized(200, tasks_url("/tasks/${task_id}"), token)
         jq_match_query(response_filename, ".title", "^buy milk$")
         jq_match_query(response_filename, ".status", "^todo$")
 
         log("update the status")
-        let response_filename = http_request_authorized(200, tasks_url("/tasks/${task_id}"), "PUT", token, "{\"status\": \"done\"}")
+        let response_filename := http_request_authorized(200, tasks_url("/tasks/${task_id}"), "PUT", token, "{\"status\": \"done\"}")
         jq_match_query(response_filename, ".status", "^done$")
 
         log("delete it")
-        let response_filename = http_request_authorized(200, tasks_url("/tasks/${task_id}"), "DELETE", token)
+        let response_filename := http_request_authorized(200, tasks_url("/tasks/${task_id}"), "DELETE", token)
         jq_match_query(response_filename, ".deleted", "^${task_id}$")
     }
 }

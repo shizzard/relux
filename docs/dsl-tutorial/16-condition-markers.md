@@ -290,14 +290,14 @@ Markers work on [functions](09-functions.md) and [pure functions](13-pure-functi
 fn parse_json(input) {
     > echo '${input}' | jq -r '.name'
     <? ^.+$
-    let name = $0
+    let name := $0
     match_prompt()
     name
 }
 
 test "extract name from JSON" {
     shell s {
-        let name = parse_json('{"name": "alice"}')
+        let name := parse_json('{"name": "alice"}')
         > echo "${name}"
         <? ^alice$
         match_prompt()

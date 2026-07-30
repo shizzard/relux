@@ -24,7 +24,8 @@
 - Uninitialized variables (`let x`) default to empty string `""`
 - Variables are scoped to their enclosing block (`test`, `shell`, `fn`, `effect`)
 - Inner blocks can shadow outer variables with a new `let` declaration
-- Reassignment (`x = expr`) mutates an existing variable from an outer scope
+- Binding uses `:=`: declaration with a value (`let x := expr`), reassignment (`x := expr`), and overlay entries (`{ KEY := expr }`) all use it; bare `=` in a statement body is reserved and not currently used
+- Reassignment (`x := expr`) mutates an existing variable from an outer scope
 - Environment variables from the host process are available as pre-set variables in all scopes (read-only — `let` creates a shadow, not a modification of the process environment)
 - Hierarchical `.env` files, when present, layer over the host process environment and take precedence over it; their values feed interpolation, marker evaluation, and the shell under test
 - Regex capture groups (`$1`, `$2`, ...) are set after a `<?` match and remain in scope until overwritten by the next `<?`
@@ -96,8 +97,8 @@
 - `start Effect` runs the dependency for side effects only — its shells are not accessible
 - `start Effect as Alias` runs the dependency and makes its exposed shells/variables available via dot-access (`shell Alias.shell_name`, `${Alias.var_name}`)
 - Effect aliases (the name after `as`) must be CamelCase, matching effect naming conventions
-- `start Effect as Alias { KEY = expr }` provides an overlay that remaps the caller's environment into the dependency's environment
-  - The shorthand form `KEY` (without `= expr`) is equivalent to `KEY = KEY`
+- `start Effect as Alias { KEY := expr }` provides an overlay that remaps the caller's environment into the dependency's environment
+  - The shorthand form `KEY` (without `:= expr`) is equivalent to `KEY := KEY`
 - Effects inherit the full parent environment — overlay entries override specific keys
 - Effect instance identity is determined by `(effect-name, evaluated overlay restricted to expect-declared vars)`:
   - Same identity tuple = same instance (deduplicated, reused)

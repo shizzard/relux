@@ -13,14 +13,14 @@ Variable names must start with a lowercase letter or an underscore, followed by 
 The `let` keyword declares a variable and optionally binds it to a value:
 
 ```relux
-let name = "relux"
-let count = 3
+let name := "relux"
+let count := 3
 let empty
 ```
 
-The first form, `let name = "value"`, is the most common. It declares a variable and sets its value.
+The first form, `let name := "value"`, is the most common. It declares a variable and sets its value.
 
-The second form, `let count = 3`, shows that literal numbers can go unquoted. Since all values are strings, `3` is stored as the string `"3"` — the quotes are optional for numbers. This is why [built-in function](05-built-in-functions.md) calls like `match_exit_code(1)` work without quotes around the argument.
+The second form, `let count := 3`, shows that literal numbers can go unquoted. Since all values are strings, `3` is stored as the string `"3"` — the quotes are optional for numbers. This is why [built-in function](05-built-in-functions.md) calls like `match_exit_code(1)` work without quotes around the argument.
 
 The third form, `let empty`, declares a variable with no value. It defaults to the empty string `""`. This is useful when you want to declare a variable early and assign it later.
 
@@ -33,8 +33,8 @@ Once declared, a variable is referenced with the `${var}` syntax. Relux replaces
 ```relux
 test "interpolation basics" {
     shell s {
-        let greeting = "hello"
-        let target = "world"
+        let greeting := "hello"
+        let target := "world"
         > echo "${greeting} ${target}"
         <= hello world
         match_ok()
@@ -88,7 +88,7 @@ Since every expression returns a value, you can capture any of them with `let`:
 test "let from expressions" {
     shell s {
         > echo "status=ok"
-        let matched = <= status=ok
+        let matched := <= status=ok
         match_prompt()
         > echo "I matched: ${matched}"
         <= I matched: status=ok
@@ -97,21 +97,21 @@ test "let from expressions" {
 }
 ```
 
-The `let matched = <= status=ok` line does two things at once: it performs the [literal match](03-send-match-and-logs.md) against the output buffer and stores the matched pattern text in the variable `matched`.
+The `let matched := <= status=ok` line does two things at once: it performs the [literal match](03-send-match-and-logs.md) against the output buffer and stores the matched pattern text in the variable `matched`.
 
 ## Reassignment
 
-Once a variable is declared with `let`, you can change its value using the assignment operator `=` — without the `let` keyword:
+Once a variable is declared with `let`, you can change its value using the assignment operator `:=` — without the `let` keyword:
 
 ```relux
 test "reassignment" {
     shell s {
-        let x = "before"
+        let x := "before"
         > echo ${x}
         <= before
         match_prompt()
 
-        x = "after"
+        x := "after"
         > echo ${x}
         <= after
         match_ok()
@@ -128,7 +128,7 @@ test "assign without let fails" {
     shell s {
         # This line will cause a runtime error:
         # "assignment to undeclared variable `x`"
-        x = "oops"
+        x := "oops"
     }
 }
 ```
@@ -138,8 +138,8 @@ You can reference the variable's current value on the right-hand side of an assi
 ```relux
 test "self-referencing assignment" {
     shell s {
-        let x = "foo"
-        x = "${x}bar"
+        let x := "foo"
+        x := "${x}bar"
         > echo ${x}
         <= foobar
         match_ok()
@@ -172,7 +172,7 @@ You can mix escapes with interpolation in the same expression:
 ```relux
 test "dollar escape with variable interpolation" {
     shell s {
-        let name = "USD"
+        let name := "USD"
         > echo "currency: $$${name}"
         <= currency: $USD
         match_ok()
@@ -190,7 +190,7 @@ Variables in Relux exist at one of two levels: **test scope** and **shell scope*
 
 ```relux
 test "test-level variable shared across shells" {
-    let shared = "from-test"
+    let shared := "from-test"
 
     shell a {
         > echo "a=${shared}"
@@ -213,7 +213,7 @@ Both `a` and `b` can see `shared` because it was declared at test level.
 ```relux
 test "shell-scoped variable" {
     shell a {
-        let local = "only-in-a"
+        let local := "only-in-a"
         > echo ${local}
         <= only-in-a
         match_ok()
@@ -235,10 +235,10 @@ A shell-scoped variable with the same name as a test-scoped variable **shadows**
 
 ```relux
 test "shadowing" {
-    let x = "test-level"
+    let x := "test-level"
 
     shell a {
-        let x = "shadowed-in-a"
+        let x := "shadowed-in-a"
         > echo ${x}
         <= shadowed-in-a
         match_ok()

@@ -62,8 +62,8 @@ effect <EffectName> {
     expect <VAR>, <VAR>, <VAR>
     start <EffectName>
     start <EffectName> as <Alias>
-    start <EffectName> as <Alias> { KEY = expr, KEY }
-    let <name> = <expr>
+    start <EffectName> as <Alias> { KEY := expr, KEY }
+    let <name> := <expr>
     expose shell <shell_name>
     expose shell <Alias>.<shell_name> as <public_name>
     expose var <var_name>
@@ -79,7 +79,7 @@ effect <EffectName> {
 - `start Effect` runs the dependency for side effects only — its shells are not accessible
 - `start Effect as Alias` runs the dependency and makes its exposed shells/variables available via dot-access
 - Effect aliases must be CamelCase
-- `start Effect as Alias { KEY = expr }` provides an overlay; shorthand `KEY` is equivalent to `KEY = KEY`
+- `start Effect as Alias { KEY := expr }` provides an overlay; shorthand `KEY` is equivalent to `KEY := KEY`
 - `expose shell` declares which shells are part of the effect's public interface
 - `expose var` declares which variables are part of the effect's public interface; these are `let`-bound values computed during setup
 - `expose shell Alias.shell as name` re-exports a dependency's shell under a new name
@@ -100,7 +100,7 @@ test "<name>" {
     let <name>
     start <EffectName>
     start <EffectName> as <Alias>
-    start <EffectName> as <Alias> { KEY = expr, KEY }
+    start <EffectName> as <Alias> { KEY := expr, KEY }
     shell <name> { <body> }
     shell <Alias>.<shell_name> { <body> }
     cleanup { <body> }
@@ -179,12 +179,13 @@ shell <Alias>.<shell_name> {
 ## Variables
 
 ```relux
-let <name>                  # declare, defaults to ""
-let <name> = "<value>"      # declare with value
-let <name> = <expression>   # declare from expression
-<name> = <expression>       # reassign existing variable
+let <name>                   # declare, defaults to ""
+let <name> := "<value>"      # declare with value
+let <name> := <expression>   # declare from expression
+<name> := <expression>       # reassign existing variable
 ```
 
+- Binding uses `:=` — declaration (`let x := e`), reassignment (`x := e`), and overlay entries (`{ KEY := e }`) all use it. Bare `=` in a statement body is reserved and not currently used.
 - Quoted values required for `let` assignments
 - Interpolation inside strings: `"${name}"`, `"${1}"`, `"${2}"`, etc.
 - Bare variable reference: `name`, `$1`, `$2`
@@ -302,7 +303,7 @@ Every expression produces a string value:
 | `<= <literal>` | matched text |
 | `<~dur? <regex>` | full match with timeout override |
 | `<~dur= <literal>` | matched text with timeout override |
-| `let x = <expr>` | assigned value |
+| `let x := <expr>` | assigned value |
 
 Last expression in a function body is the return value.
 
