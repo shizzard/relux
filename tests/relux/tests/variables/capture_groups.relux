@@ -71,7 +71,7 @@ test "capture into variable" {
     shell s {
         > echo "key=alpha"
         <? ^key=(\w+)$
-        let saved = $1
+        let saved := $1
         > echo "other=beta"
         <? ^other=(\w+)$
         > echo "saved=${saved} current=${1}"

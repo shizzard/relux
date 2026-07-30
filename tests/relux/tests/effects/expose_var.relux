@@ -1,5 +1,5 @@
 effect StartDb {
-    let port = available_port()
+    let port := available_port()
     expose shell db
     expose var port
     shell db {
@@ -10,7 +10,7 @@ effect StartDb {
 }
 
 effect StartAuth {
-    let auth_port = available_port()
+    let auth_port := available_port()
     start StartDb as Db {
     }
     expose shell auth
@@ -62,11 +62,11 @@ test "exposed var in send payload" {
 test "exposed var assignable in shell block" {
     """
     Verify that an exposed variable can be assigned to a shell-level
-    variable via `let x = Alias.var_name` inside a shell block.
+    variable via `let x := Alias.var_name` inside a shell block.
     """
     start StartDb as Db
     shell client {
-        let local_port = Db.port
+        let local_port := Db.port
         > echo "port=${local_port}"
         <? ^port=\d+$
     }

@@ -5,7 +5,7 @@ fn inner(x) {
 }
 
 fn outer(x) {
-    let result = inner(x)
+    let result := inner(x)
     > echo "outer got ${result}"
     <? ^outer got inner-${x}$
     "outer-${result}"
@@ -16,18 +16,18 @@ fn make_prefix(tag) {
 }
 
 fn log_msg(tag, msg) {
-    let pfx = make_prefix(tag)
+    let pfx := make_prefix(tag)
     > echo "${pfx} ${msg}"
     <? ^\[${tag}\] ${msg}$
 }
 
 fn depth_a(x) {
-    let val = depth_b(x)
+    let val := depth_b(x)
     "${val}-a"
 }
 
 fn depth_b(x) {
-    let val = depth_c(x)
+    let val := depth_c(x)
     "${val}-b"
 }
 
@@ -41,7 +41,7 @@ test "function calls another function" {
     return value.
     """
     shell s {
-        let result = outer("hello")
+        let result := outer("hello")
         > echo "final=${result}"
         <? ^final=outer-inner-hello$
     }
@@ -53,7 +53,7 @@ test "nested function return value chains" {
     of nested function calls.
     """
     shell s {
-        let result = depth_a("root")
+        let result := depth_a("root")
         > echo "${result}"
         <? ^root-c-b-a$
     }

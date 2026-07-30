@@ -37,7 +37,7 @@ test "literal match with variable interpolation" {
     Verify variables are interpolated in literal match payloads.
     """
     shell s {
-        let expected = "hello"
+        let expected := "hello"
         > echo hello
         <= ${expected}
     }

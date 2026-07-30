@@ -3,7 +3,7 @@ pure fn format_cmd(cmd, arg) {
 }
 
 pure fn make_tag(prefix, id) {
-    let tag = "${prefix}-${id}"
+    let tag := "${prefix}-${id}"
     upper(tag)
 }
 
@@ -26,7 +26,7 @@ test "pure function called inline in impure context" {
     Verify a pure function can be called directly as an expression in a shell block.
     """
     shell s {
-        let result = format_cmd("echo", "hello")
+        let result := format_cmd("echo", "hello")
         > ${result}
         <? ^hello$
     }
@@ -37,7 +37,7 @@ test "chained pure and impure calls" {
     Verify chaining pure function results into impure function arguments.
     """
     shell s {
-        let tag = make_tag("item", "42")
+        let tag := make_tag("item", "42")
         > echo ${tag}
         <? ^ITEM-42$
     }
@@ -48,7 +48,7 @@ test "pure function with bif uuid in impure context" {
     Verify a pure function using uuid() works when called from a shell block.
     """
     shell s {
-        let id = uuid()
+        let id := uuid()
         > echo ${id}
         <? ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
     }

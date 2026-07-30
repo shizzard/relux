@@ -13,7 +13,7 @@ test "expect passes variable through overlay" {
   Verify that an effect's expect declaration receives the variable
   from the caller's overlay.
   """
-  start Greeter as G { GREETING = "hello world" }
+  start Greeter as G { GREETING := "hello world" }
   shell G.greeter {
     > echo "done"
     <? ^done$
@@ -25,7 +25,7 @@ test "expect with shorthand overlay syntax" {
   """
   Verify the shorthand overlay syntax where bare KEY desugars to KEY = KEY.
   """
-  let GREETING = "shorthand works"
+  let GREETING := "shorthand works"
   start Greeter as G {
     GREETING
   }

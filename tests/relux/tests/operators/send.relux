@@ -24,7 +24,7 @@ test "send with variable interpolation" {
     Verify Relux interpolates variables in send payloads before transmission.
     """
     shell s {
-        let msg = "world"
+        let msg := "world"
         > echo "hello ${msg}"
         <? ^hello world$
     }

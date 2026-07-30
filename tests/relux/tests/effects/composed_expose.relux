@@ -9,7 +9,7 @@ effect Inner {
 
 effect Outer {
   expect OUTER_VAL
-  start Inner as Dep { INNER_VAL = OUTER_VAL }
+  start Inner as Dep { INNER_VAL := OUTER_VAL }
   expose shell Dep.inner as wrapped
   shell local {
     > echo "outer setup"
@@ -23,7 +23,7 @@ test "composed effect exposes inner shell via qualified expose" {
   using qualified expose syntax, and the test can access it via
   dot notation through the outer alias.
   """
-  start Outer as O { OUTER_VAL = "from_test" }
+  start Outer as O { OUTER_VAL := "from_test" }
   shell O.wrapped {
     > echo $$INNER_STATE
     <? ^from_test$

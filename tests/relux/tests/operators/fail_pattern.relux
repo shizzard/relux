@@ -62,7 +62,7 @@ test "fail pattern with variable interpolation" {
     Verify variables are interpolated in fail pattern payloads.
     """
     shell s {
-        let bad = "PANIC"
+        let bad := "PANIC"
         !? ${bad}
         > echo "no panic here"
         <? ^no panic here$
