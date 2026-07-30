@@ -86,6 +86,8 @@ pub enum Token<'a> {
     Dash,
     #[token(".")]
     Dot,
+    #[token(":")]
+    Colon,
 
     // --- Whitespace --------------------------------------
     #[regex(" +")]
@@ -138,6 +140,7 @@ impl fmt::Display for Token<'_> {
             Token::Slash => write!(f, "/"),
             Token::Dash => write!(f, "-"),
             Token::Dot => write!(f, "."),
+            Token::Colon => write!(f, ":"),
             Token::Space(s) => write!(f, "{s}"),
             Token::Tab(s) => write!(f, "{s}"),
             Token::Newline => write!(f, "\\n"),
@@ -696,12 +699,17 @@ mod tests {
             assert_eq!(tokens("+"), vec![Token::Text("+")]);
             assert_eq!(tokens("*"), vec![Token::Text("*")]);
             assert_eq!(tokens("."), vec![Token::Dot]);
-            assert_eq!(tokens(":"), vec![Token::Text(":")]);
+            assert_eq!(tokens(":"), vec![Token::Colon]);
             assert_eq!(tokens("'"), vec![Token::Text("'")]);
             assert_eq!(tokens(";"), vec![Token::Text(";")]);
             assert_eq!(tokens("|"), vec![Token::Text("|")]);
             assert_eq!(tokens("&"), vec![Token::Text("&")]);
             assert_eq!(tokens("%"), vec![Token::Text("%")]);
+        }
+
+        #[test]
+        fn walrus_is_colon_then_eq() {
+            assert_eq!(tokens(":="), vec![Token::Colon, Token::Eq]);
         }
 
         #[test]
