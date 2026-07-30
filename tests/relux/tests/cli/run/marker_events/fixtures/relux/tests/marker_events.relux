@@ -8,7 +8,7 @@ test "marker events fixture" {
       - skip if Eq (with trim/1 BIF pure-call)
       - flaky if Regex (records a pure-match event)
     """
-    let greeting = trim("  hi  ")
+    let greeting := trim("  hi  ")
     shell s {
         > echo "${greeting}"
         <? ^hi$
