@@ -9,6 +9,8 @@ use super::expr::expr;
 use super::ident::ident_var;
 use super::interpolation::interp_literal;
 use super::interpolation::interp_regex;
+use super::operator::legacy_assign_err;
+use super::operator::op_bind;
 use super::operator::op_fail_literal;
 use super::operator::op_fail_regex;
 use super::operator::op_match_literal;
@@ -309,18 +311,24 @@ fn stmt_timeout<'a>()
         .then_ignore(newline())
 }
 
-/// `let name [= expr]` -> `AstStmt::Let`
+/// `let name [:= expr]` -> `AstStmt::Let`
 fn stmt_let<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+    let initializer = ws()
+        .ignore_then(choice((
+            op_bind().ignore_then(ws()).ignore_then(expr()).map(Some),
+            // Legacy `let x = e`: emit the migration hint.
+            just(Token::Eq)
+                .map_with(|_, e| e.span())
+                .try_map(|span, _| Err(legacy_assign_err(span))),
+        )))
+        .or_not()
+        .map(Option::flatten);
+
     keyword(Token::Let)
         .ignore_then(ws())
         .ignore_then(ident_var())
-        .then(
-            ws().ignore_then(just(Token::Eq))
-                .ignore_then(ws())
-                .ignore_then(expr())
-                .or_not(),
-        )
+        .then(initializer)
         .map_with(|(name, value), e| {
             let span = crate::span_from_chumsky(e.span());
             Spanned::new(
@@ -426,6 +434,19 @@ mod tests {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
         stmt().parse(input).into_result().unwrap().node
+    }
+
+    fn parse_stmt_err(source: &str) -> String {
+        let pairs = lex_to_pairs(source);
+        let input = make_input(&pairs, source.len());
+        stmt()
+            .parse(input)
+            .into_result()
+            .unwrap_err()
+            .into_iter()
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join("; ")
     }
 
     #[test]
@@ -567,6 +588,18 @@ mod tests {
             }
             _ => panic!("expected Timeout, got {s:?}"),
         }
+    }
+
+    #[test]
+    fn let_binds_with_walrus() {
+        let s = parse_stmt("let x := \"v\"\n");
+        assert!(matches!(s, AstStmt::Let { .. }));
+    }
+
+    #[test]
+    fn legacy_let_eq_reports_migration_hint() {
+        let err = parse_stmt_err("let x = \"v\"\n");
+        assert!(err.contains(":="), "expected := migration hint, got: {err}");
     }
 
     #[test]
