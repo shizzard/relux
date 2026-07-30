@@ -178,7 +178,7 @@ CONDITION_OP = [=?]
 // Other operators
 <YYINITIAL> {
     ":="                        { return ReluxTokenTypes.OP_ASSIGN; }
-    "="                         { return ReluxTokenTypes.OP_ASSIGN; }
+    "="                         { return ReluxTokenTypes.OP_MATCH_LITERAL; }
 }
 
 // Punctuation
