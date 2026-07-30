@@ -112,7 +112,8 @@
         { "include": "#op-timed-match-regex" },
         { "include": "#op-timed-match-literal" },
         { "include": "#op-match-regex" },
-        { "include": "#op-match-literal" }
+        { "include": "#op-match-literal" },
+        { "include": "#op-multimatch-literal" }
       ]
     },
 
@@ -183,6 +184,13 @@
       "patterns": [
         { "include": "#payload-interpolation" }
       ]
+    },
+
+    "op-multimatch-literal": {
+      "match": "^\\s*(=)(?=\\s|$)",
+      "captures": {
+        "1": { "name": "keyword.operator.match-literal.relux" }
+      }
     },
 
     "op-timed-match-regex": {
@@ -332,10 +340,6 @@
         {
           "match": "[()]",
           "name": "punctuation.section.parens.relux"
-        },
-        {
-          "match": "(?<![<!>])=(?!>)",
-          "name": "keyword.operator.assignment.relux"
         },
         {
           "match": ",",
