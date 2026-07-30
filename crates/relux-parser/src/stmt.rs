@@ -342,11 +342,11 @@ fn stmt_let<'a>()
         .then_ignore(newline())
 }
 
-/// `name = expr` -> `AstStmt::Assign`
+/// `name := expr` -> `AstStmt::Assign`
 fn stmt_assign<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     ident_var()
-        .then_ignore(ws().then(just(Token::Eq)).then(ws()))
+        .then_ignore(ws().then(op_bind()).then(ws()))
         .then(expr())
         .map_with(|(name, value), e| {
             let span = crate::span_from_chumsky(e.span());
@@ -359,6 +359,17 @@ fn stmt_assign<'a>()
             )
         })
         .then_ignore(newline())
+}
+
+/// Legacy `name = expr`: matches the old reassignment shape and emits the
+/// migration hint. Ordered after `stmt_assign` (which now requires `:=`) and
+/// before `stmt_expr` in the statement choice. Transitional -- the value-match
+/// slice will replace this with the real `expr = pat` production.
+fn stmt_legacy_assign<'a>()
+-> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+    ident_var()
+        .then(ws().ignore_then(just(Token::Eq)).map_with(|_, e| e.span()))
+        .try_map(|(_name, eq_span), _| Err(legacy_assign_err(eq_span)))
 }
 
 /// `expr` -> `AstStmt::Expr` (catch-all for bare function calls)
@@ -396,6 +407,7 @@ pub fn stmt<'a>()
                 stmt_timeout(),
                 stmt_let(),
                 stmt_assign(),
+                stmt_legacy_assign(),
                 stmt_expr(),
             ))
             .labelled("statement"),
@@ -635,6 +647,18 @@ mod tests {
             }
             _ => panic!("expected Assign, got {s:?}"),
         }
+    }
+
+    #[test]
+    fn reassign_uses_walrus() {
+        let stmt = parse_stmt("x := \"v\"\n");
+        assert!(matches!(stmt, AstStmt::Assign { .. }));
+    }
+
+    #[test]
+    fn legacy_reassign_eq_reports_migration_hint() {
+        let err = parse_stmt_err("x = \"v\"\n");
+        assert!(err.contains(":="), "expected := migration hint, got: {err}");
     }
 
     #[test]
