@@ -185,7 +185,7 @@ let <name> := <expression>   # declare from expression
 <name> := <expression>       # reassign existing variable
 ```
 
-- Binding uses `:=` — declaration (`let x := e`), reassignment (`x := e`), and overlay entries (`{ KEY := e }`) all use it. Bare `=` in a statement body is reserved and not currently used.
+- Binding uses `:=` — declaration (`let x := e`), reassignment (`x := e`), and overlay entries (`{ KEY := e }`) all use it. Bare `=` is no longer a binding operator; it serves as the literal-match arm inside a multimatch block (`= <literal>`, see below).
 - Quoted values required for `let` assignments
 - Interpolation inside strings: `"${name}"`, `"${1}"`, `"${2}"`, etc.
 - Bare variable reference: `name`, `$1`, `$2`

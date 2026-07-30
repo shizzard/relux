@@ -24,7 +24,7 @@
 - Uninitialized variables (`let x`) default to empty string `""`
 - Variables are scoped to their enclosing block (`test`, `shell`, `fn`, `effect`)
 - Inner blocks can shadow outer variables with a new `let` declaration
-- Binding uses `:=`: declaration with a value (`let x := expr`), reassignment (`x := expr`), and overlay entries (`{ KEY := expr }`) all use it; bare `=` in a statement body is reserved and not currently used
+- Binding uses `:=`: declaration with a value (`let x := expr`), reassignment (`x := expr`), and overlay entries (`{ KEY := expr }`) all use it; bare `=` is no longer a binding operator (it serves as the literal-match arm inside a multimatch block)
 - Reassignment (`x := expr`) mutates an existing variable from an outer scope
 - Environment variables from the host process are available as pre-set variables in all scopes (read-only — `let` creates a shadow, not a modification of the process environment)
 - Hierarchical `.env` files, when present, layer over the host process environment and take precedence over it; their values feed interpolation, marker evaluation, and the shell under test
