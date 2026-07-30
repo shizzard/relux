@@ -160,6 +160,9 @@ hljs.registerLanguage("relux", function (hljs) {
     className: "string"
   };
 
+  // Binding operator: `let x := e`, `x := e`, overlay `{ K := e }`.
+  const OP_BIND = { scope: "keyword", match: /:=/ };
+
   // Declaration-site split-scope rules. ALL use the array form of `match`
   // so the object `scope` actually attaches per-piece classes.
 
@@ -383,6 +386,7 @@ hljs.registerLanguage("relux", function (hljs) {
       OP_FAIL_LITERAL,
       OP_SEND_RAW,
       OP_SEND,
+      OP_BIND,
 
       // Standalone timeout (must come before bare-number rule).
       DURATION,

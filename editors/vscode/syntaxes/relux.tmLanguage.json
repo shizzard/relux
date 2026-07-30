@@ -13,6 +13,7 @@
     { "include": "#shell-operators" },
     { "include": "#timeout" },
     { "include": "#fail-operators" },
+    { "include": "#op-bind" },
     { "include": "#keywords" },
     { "include": "#dot-access" },
     { "include": "#string" },
@@ -141,6 +142,11 @@
       "patterns": [
         { "include": "#payload-interpolation" }
       ]
+    },
+
+    "op-bind": {
+      "match": ":=",
+      "name": "keyword.operator.assignment.relux"
     },
 
     "op-send": {
