@@ -23,7 +23,7 @@ test "expect passes variable through overlay" {
 
 test "expect with shorthand overlay syntax" {
   """
-  Verify the shorthand overlay syntax where bare KEY desugars to KEY = KEY.
+  Verify the shorthand overlay syntax where bare KEY desugars to KEY := KEY.
   """
   let GREETING := "shorthand works"
   start Greeter as G {

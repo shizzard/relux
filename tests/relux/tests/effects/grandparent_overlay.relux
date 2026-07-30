@@ -45,7 +45,7 @@ test "overlay reads variable from grandparent env layer" {
     Verify that an overlay expression can reference a variable inherited
     through the LayeredEnv chain, not just from the immediate parent's own
     overlay. Root receives PORT, Bridge does not re-overlay PORT, but Bridge
-    starts Leaf with PORT = PORT which should resolve from the chain.
+    starts Leaf with PORT := PORT which should resolve from the chain.
     """
     start Root as R { PORT := "9999", LABEL := "test" }
     shell R.out {
