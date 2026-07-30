@@ -127,7 +127,7 @@ muddies what the test author has to set. The right move is to split:
    - Renders the config file to a deterministic artifact path under
      `${__RELUX_RUN_ARTIFACTS}/<svc>/config.<ext>`.
    - Exposes the full path as a let-bound var:
-     `let config_path = "..."` then `expose var config_path`.
+     `let config_path := "..."` then `expose var config_path`.
    - **No `cleanup`** -- the rendered file is a meaningful test
      artifact for post-mortem inspection.
 

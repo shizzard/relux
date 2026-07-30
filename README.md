@@ -9,8 +9,8 @@ Expect-style integration testing for interactive shell programs.
 
 ```relux
 test "service healthcheck" {
-    let DATABASE_PORT = available_port()
-    let SERVICE_PORT = available_port()
+    let DATABASE_PORT := available_port()
+    let SERVICE_PORT := available_port()
     
     start Service as service { DATABASE_PORT, SERVICE_PORT }
     

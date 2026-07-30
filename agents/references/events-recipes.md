@@ -141,7 +141,7 @@ Returns one group per identity hash (`marker`) with all acquires under it. The a
 
 ## Pure-eval tracing
 
-### 9. What did `let x = trim(y)` compute / trace pure evaluation under a span
+### 9. What did `let x := trim(y)` compute / trace pure evaluation under a span
 
 ```bash
 python3 <plugin>/tools/events.py pure-trace "$SPAN_ID"

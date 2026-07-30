@@ -87,7 +87,7 @@ narrowly captures the real condition.
   mark the function. Every test that calls it (transitively) inherits the
   skip / flaky.
 - The condition is "these **N tests** share a gate" -- write a guarded
-  `pure fn` and have each test opt in with `let _group = mark_<group>()`
+  `pure fn` and have each test opt in with `let _group := mark_<group>()`
   (the **Consolidate** path).
 
 If the right answer is "the effect" or "the function" and the user
@@ -192,7 +192,7 @@ on each `fn` directly.
    short label string, with the shared marker placed above it. Follow
    the **Add** path against this new `pure fn` declaration.
 4. **Apply at each participant.** Insert
-   `let _<name> = mark_<group>()` as the first statement inside each
+   `let _<name> := mark_<group>()` as the first statement inside each
    target's body, then delete each per-target marker line that the
    guard now subsumes.
 
@@ -253,7 +253,7 @@ Re-walk the upstream chain once.
 - For **Remove**: the marker line is gone and no test depends on its
   absence creating an unintended run.
 - For **Consolidate**: the guarded `pure fn` exists, every participating
-  test opts in via `let _group = mark_<group>()`, and no per-test
+  test opts in via `let _group := mark_<group>()`, and no per-test
   marker remains from the old pattern.
 - Both truthy and falsy branches of any new/changed condition have been
   exercised; outcomes match the intent.

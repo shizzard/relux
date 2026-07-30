@@ -31,7 +31,7 @@ How `<?` and `<=` consume PTY output from the current cursor position.
 
 ## Match expressions
 
-`<? regex` and `<= literal` are also expressions. `let x = <? port=(\d+)` performs the match and binds the matched substring (`$0`) to `x`.
+`<? regex` and `<= literal` are also expressions. `let x := <? port=(\d+)` performs the match and binds the matched substring (`$0`) to `x`.
 
 ## The command-match-anchor loop
 
@@ -133,7 +133,7 @@ Don't (no such operator):
 ```relux
 > wc -l input.txt
 <? ^(\d+)$
-let count = $1
+let count := $1
 // count > 0 -- not expressible
 ```
 
@@ -142,7 +142,7 @@ Do (positive integer = leading non-zero digit):
 ```relux
 > wc -l input.txt
 <? ^([1-9][0-9]*)$
-let count = $1
+let count := $1
 ```
 
 Do (HTTP 2xx):

@@ -114,7 +114,7 @@ fn http_request(expected_code, url, method) {
 }
 
 fn http_request(expected_code, url, method, req_body) {
-    let response_filename = curl(url, method, req_body)
+    let response_filename := curl(url, method, req_body)
     http_match_code(expected_code)
     match_ok()
     response_filename

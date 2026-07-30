@@ -17,13 +17,13 @@ Statements that live inside `shell` blocks, `fn` bodies, and `cleanup` blocks.
 
 | Form | Meaning |
 |---|---|
-| `let name = "value"` | declare with value |
-| `let name = <expression>` | declare from expression value |
+| `let name := "value"` | declare with value |
+| `let name := <expression>` | declare from expression value |
 | `let name` | declare empty (defaults to `""`) |
-| `name = <expression>` | reassign existing variable |
+| `name := <expression>` | reassign existing variable |
 
 - All values are strings.
-- Bare numeric literals are accepted and stored as their string form -- quotes are optional for numbers. `let count = 8080` is identical to `let count = "8080"`; `match_exit_code(0)` and `INSTANCE = 1` work the same way. Use bare numerics for ports, exit codes, counts, indices -- anywhere a number is meant as a number.
+- Bare numeric literals are accepted and stored as their string form -- quotes are optional for numbers. `let count := 8080` is identical to `let count := "8080"`; `match_exit_code(0)` and `INSTANCE := 1` work the same way. Use bare numerics for ports, exit codes, counts, indices -- anywhere a number is meant as a number.
 - Re-binding the same name with `let` in the same scope shadows; reassignment without `let` mutates the existing binding.
 - Scoped to enclosing block; inner blocks (e.g. shell inside test) can shadow outer (e.g. test-level) bindings.
 - The right-hand side may be a literal, an interpolation, a function call, a capture (`$1`, `$2`), or a match expression (`<? regex` returns the matched text).
@@ -90,7 +90,7 @@ Do:
 
 ```relux
 <? port=(\d+)
-let port = $1
+let port := $1
 <? something-else
 > curl http://localhost:${port}/health
 ```

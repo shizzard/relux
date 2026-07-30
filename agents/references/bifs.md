@@ -76,17 +76,17 @@ Don't:
 
 ```relux
 // silent empty string when HOST unset
-let host = "${HOST}"
-let url  = "http://${HOST}:8080/api"
+let host := "${HOST}"
+let url  := "http://${HOST}:8080/api"
 ```
 
 Do:
 
 ```relux
 // bare in BIF arg
-let host = default(HOST, "localhost")
+let host := default(HOST, "localhost")
 // interpolation inside the string
-let url  = "http://${host}:8080/api"
+let url  := "http://${host}:8080/api"
 ```
 
 ### `match_ok` is the canonical "command succeeded" check
@@ -114,7 +114,7 @@ The port is opened, bound, then released before returning, so a fast race could 
 Don't:
 
 ```relux
-let port = available_port()
+let port := available_port()
 sleep("10s")
 > start-svc --port ${port}
 ```
@@ -122,7 +122,7 @@ sleep("10s")
 Do:
 
 ```relux
-let port = available_port()
+let port := available_port()
 > start-svc --port ${port}
 <? listening on ${port}
 ```
