@@ -21,33 +21,42 @@ use relux_ast::AstOverlayEntry;
 fn overlay_entry<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstOverlayEntry>, extra::Err<Rich<'a, Token<'a>>>> + Clone
 {
-    // Full form: `KEY := expr`
-    let full = ident_var()
-        .then_ignore(ws().then(op_bind()).then(ws()))
-        .then(expr())
-        .map_with(|(key, value), e| {
+    // Peek (zero-consume, via rewind) whether a `:=` or `=` operator follows the
+    // key. This keeps the shorthand's trailing separator space intact when no
+    // operator is present, and -- crucially -- stops the always-succeeding
+    // shorthand alternative from masking the legacy `=` error.
+    let op_ahead = ws()
+        .ignore_then(just(Token::Colon).or(just(Token::Eq)))
+        .rewind();
+
+    // The operator branch: `:= expr` binds; a bare `=` emits the R013 migration
+    // hint. `ws()` is outside the choice so `op_bind` fails at `=` with zero
+    // consumption while `just(Eq)` consumes it and surfaces the custom error.
+    let value = ws().ignore_then(choice((
+        op_bind().ignore_then(ws()).ignore_then(expr()),
+        just(Token::Eq)
+            .map_with(|_, e| e.span())
+            .try_map(|span, _| Err(legacy_assign_err(span))),
+    )));
+
+    ident_var()
+        .then(op_ahead.ignore_then(value).or_not())
+        .map_with(|(key, maybe_value), e| {
             let span = crate::span_from_chumsky(e.span());
+            // Shorthand (no operator ahead): `KEY` desugars to `KEY := KEY`.
+            let value = match maybe_value {
+                Some(v) => v,
+                None => {
+                    let var_expr = AstExpr::Var {
+                        name: key.node.name.clone(),
+                        span: key.span,
+                    };
+                    Spanned::new(var_expr, key.span)
+                }
+            };
             Spanned::new(AstOverlayEntry { key, value, span }, span)
-        });
-
-    // Legacy `KEY = expr`: emit the migration hint (ordered before shorthand so
-    // the trailing `= expr` is not mis-reported as "expected , or }").
-    let legacy = ident_var()
-        .then(ws().ignore_then(just(Token::Eq)).map_with(|_, e| e.span()))
-        .try_map(|(_key, eq_span), _| Err(legacy_assign_err(eq_span)));
-
-    // Shorthand: bare `KEY` desugars to `KEY := KEY`
-    let shorthand = ident_var().map_with(|key, e| {
-        let span = crate::span_from_chumsky(e.span());
-        let var_expr = AstExpr::Var {
-            name: key.node.name.clone(),
-            span: key.span,
-        };
-        let value = Spanned::new(var_expr, key.span);
-        Spanned::new(AstOverlayEntry { key, value, span }, span)
-    });
-
-    choice((full, legacy, shorthand)).labelled("overlay entry")
+        })
+        .labelled("overlay entry")
 }
 
 /// `{ key := val, key := val }` - overlay block with optional trailing comma.
@@ -167,7 +176,27 @@ mod tests {
             .map(|e| e.to_string())
             .collect::<Vec<_>>()
             .join("; ");
-        assert!(msg.contains(":="), "expected := migration hint, got: {msg}");
+        assert!(
+            msg.contains("write `name := value`"),
+            "expected := migration hint, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn legacy_overlay_eq_with_sibling_reports_migration_hint() {
+        let source = r#"{ HOST := "h", PORT = "5433" }"#;
+        let pairs = lex_to_pairs(source);
+        let input = make_input(&pairs, source.len());
+        let errs = overlay().parse(input).into_result().unwrap_err();
+        let msg = errs
+            .iter()
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join("; ");
+        assert!(
+            msg.contains("write `name := value`"),
+            "expected := migration hint, got: {msg}"
+        );
     }
 
     #[test]
