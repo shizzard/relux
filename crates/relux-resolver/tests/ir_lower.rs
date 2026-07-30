@@ -2465,7 +2465,7 @@ fn expect_satisfied_by_overlay() {
   }
 }
 test "t" {
-  start Db { PORT = "5432" }
+  start Db { PORT := "5432" }
   shell sh {
     > echo ok
   }
@@ -2510,7 +2510,7 @@ fn expect_satisfied_by_let_binding() {
   }
 }
 test "t" {
-  let PORT = "5432"
+  let PORT := "5432"
   start Db
   shell sh {
     > echo ok
@@ -2554,13 +2554,13 @@ fn expect_nested_effect_satisfied() {
 }
 effect Outer {
   expect FOO
-  start Inner { BAR = FOO }
+  start Inner { BAR := FOO }
   shell s {
     > outer
   }
 }
 test "t" {
-  start Outer { FOO = "x" }
+  start Outer { FOO := "x" }
   shell sh {
     > echo ok
   }
@@ -2616,8 +2616,8 @@ effect B {
   }
 }
 test "t" {
-  start A { X = "1" }
-  start B { Y = "2" }
+  start A { X := "1" }
+  start B { Y := "2" }
   shell sh {
     > echo ok
   }

@@ -228,7 +228,7 @@ fn lower_let_stmt_with_value() {
     let mut ctx = ctx_with_source("fn dummy() {}\n");
     push_test_scope(&mut ctx, "tests/a");
     let file = file_id_for(&ctx, "tests/a");
-    let stmt = extract_first_stmt("fn t() {\n  let x = \"val\"\n}\n");
+    let stmt = extract_first_stmt("fn t() {\n  let x := \"val\"\n}\n");
     if let relux_ast::AstStmt::Let { stmt: let_stmt, .. } = &stmt {
         let ir = IrLetStmt::lower(let_stmt, &file, &mut ctx).unwrap();
         assert_eq!(ir.name().name(), "x");
@@ -258,7 +258,7 @@ fn lower_let_stmt_with_call_value() {
     let mut ctx = ctx_with_source("fn dummy() {}\n");
     push_test_scope(&mut ctx, "tests/a");
     let file = file_id_for(&ctx, "tests/a");
-    let stmt = extract_first_stmt("fn t() {\n  let x = trim(\"v\")\n}\n");
+    let stmt = extract_first_stmt("fn t() {\n  let x := trim(\"v\")\n}\n");
     if let relux_ast::AstStmt::Let { stmt: let_stmt, .. } = &stmt {
         let ir = IrLetStmt::lower(let_stmt, &file, &mut ctx).unwrap();
         assert!(matches!(ir.value(), Some(IrExpr::Call { .. })));
@@ -272,7 +272,7 @@ fn lower_assign_stmt_basic() {
     let mut ctx = ctx_with_source("fn dummy() {}\n");
     push_test_scope(&mut ctx, "tests/a");
     let file = file_id_for(&ctx, "tests/a");
-    let stmt = extract_first_stmt("fn t() {\n  x = \"val\"\n}\n");
+    let stmt = extract_first_stmt("fn t() {\n  x := \"val\"\n}\n");
     if let relux_ast::AstStmt::Assign {
         stmt: assign_stmt, ..
     } = &stmt
@@ -289,7 +289,7 @@ fn lower_assign_stmt_with_call() {
     let mut ctx = ctx_with_source("fn dummy() {}\n");
     push_test_scope(&mut ctx, "tests/a");
     let file = file_id_for(&ctx, "tests/a");
-    let stmt = extract_first_stmt("fn t() {\n  x = trim(\"v\")\n}\n");
+    let stmt = extract_first_stmt("fn t() {\n  x := trim(\"v\")\n}\n");
     if let relux_ast::AstStmt::Assign {
         stmt: assign_stmt, ..
     } = &stmt
@@ -566,7 +566,7 @@ fn lower_pure_stmt_let() {
     let mut ctx = ctx_with_source("fn dummy() {}\n");
     push_test_scope(&mut ctx, "tests/a");
     let file = file_id_for(&ctx, "tests/a");
-    let stmt = extract_first_stmt("fn t() {\n  let x = \"v\"\n}\n");
+    let stmt = extract_first_stmt("fn t() {\n  let x := \"v\"\n}\n");
     let ir = IrPureStmt::lower(&stmt, &file, &mut ctx).unwrap();
     assert!(matches!(ir, IrPureStmt::Let { .. }));
 }
@@ -576,7 +576,7 @@ fn lower_pure_stmt_assign() {
     let mut ctx = ctx_with_source("fn dummy() {}\n");
     push_test_scope(&mut ctx, "tests/a");
     let file = file_id_for(&ctx, "tests/a");
-    let stmt = extract_first_stmt("fn t() {\n  x = \"v\"\n}\n");
+    let stmt = extract_first_stmt("fn t() {\n  x := \"v\"\n}\n");
     let ir = IrPureStmt::lower(&stmt, &file, &mut ctx).unwrap();
     assert!(matches!(ir, IrPureStmt::Assign { .. }));
 }

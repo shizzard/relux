@@ -628,7 +628,7 @@ mod tests {
 
     #[test]
     fn let_with_value() {
-        let s = parse_stmt("let x = my_var\n");
+        let s = parse_stmt("let x := my_var\n");
         match s {
             AstStmt::Let { stmt: l, .. } => {
                 assert_eq!(l.name.node.name, "x");
@@ -640,7 +640,7 @@ mod tests {
 
     #[test]
     fn assign_statement() {
-        let s = parse_stmt("x = my_var\n");
+        let s = parse_stmt("x := my_var\n");
         match s {
             AstStmt::Assign { stmt: a, .. } => {
                 assert_eq!(a.name.node.name, "x");
@@ -721,7 +721,7 @@ mod tests {
 
     #[test]
     fn let_with_string_value() {
-        let s = parse_stmt("let x = \"hello\"\n");
+        let s = parse_stmt("let x := \"hello\"\n");
         match s {
             AstStmt::Let { stmt: l, .. } => {
                 assert_eq!(l.name.node.name, "x");
@@ -734,7 +734,7 @@ mod tests {
 
     #[test]
     fn let_with_call_value() {
-        let s = parse_stmt("let x = foo()\n");
+        let s = parse_stmt("let x := foo()\n");
         match s {
             AstStmt::Let { stmt: l, .. } => {
                 assert_eq!(l.name.node.name, "x");
@@ -837,7 +837,7 @@ mod tests {
 
     #[test]
     fn assign_with_string_value() {
-        let s = parse_stmt("x = \"hello\"\n");
+        let s = parse_stmt("x := \"hello\"\n");
         match s {
             AstStmt::Assign { stmt: a, .. } => {
                 assert_eq!(a.name.node.name, "x");
@@ -849,7 +849,7 @@ mod tests {
 
     #[test]
     fn assign_with_call_value() {
-        let s = parse_stmt("x = foo()\n");
+        let s = parse_stmt("x := foo()\n");
         match s {
             AstStmt::Assign { stmt: a, .. } => {
                 assert_eq!(a.name.node.name, "x");
@@ -950,7 +950,7 @@ mod tests {
 
     #[test]
     fn let_underscore_variable() {
-        let s = parse_stmt("let _private = \"secret\"\n");
+        let s = parse_stmt("let _private := \"secret\"\n");
         match s {
             AstStmt::Let { stmt: l, .. } => {
                 assert_eq!(l.name.node.name, "_private");

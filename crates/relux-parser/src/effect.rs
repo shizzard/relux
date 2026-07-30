@@ -462,7 +462,7 @@ effect Db {
     fn effect_with_let() {
         let e = parse_effect(
             r#"effect Db {
-  let port = "5432"
+  let port := "5432"
   shell db {
     > echo start
   }
@@ -500,7 +500,7 @@ effect Db {
     fn effect_all_sections() {
         let e = parse_effect(
             r#"effect App {
-  let port = "8080"
+  let port := "8080"
   start Db
   shell app {
     > echo start
@@ -582,7 +582,7 @@ effect Db {
         let e = parse_effect(
             r#"effect App {
 
-  let port = "8080"
+  let port := "8080"
 
   start Db
 
@@ -645,7 +645,7 @@ effect Db {
     fn effect_with_start_overlay() {
         let e = parse_effect(
             r#"effect App {
-  start Db { PORT = "5433" }
+  start Db { PORT := "5433" }
   shell app {
     > echo start
   }
@@ -802,7 +802,7 @@ effect Db {
         let e = parse_effect(
             r#"effect Node {
   expect NODE_PORT, NODE_NAME
-  let data_dir = "${__RELUX_TEST_ARTIFACTS}/node"
+  let data_dir := "${__RELUX_TEST_ARTIFACTS}/node"
   start DependencyEffect as Dep
   expose shell node
   shell node {
@@ -920,7 +920,7 @@ effect Db {
     fn effect_expose_var_simple() {
         let e = parse_effect(
             r#"effect Db {
-  let port = "5432"
+  let port := "5432"
   expose var port
   shell db {
     > echo start
@@ -946,7 +946,7 @@ effect Db {
     fn effect_expose_var_with_alias() {
         let e = parse_effect(
             r#"effect Db {
-  let port = "5432"
+  let port := "5432"
   expose var port as DB_PORT
   shell db {
     > echo start
@@ -1042,7 +1042,7 @@ effect Db {
     fn effect_mixed_expose_shell_and_var() {
         let e = parse_effect(
             r#"effect App {
-  let port = "8080"
+  let port := "8080"
   expose shell app
   expose var port
   shell app {

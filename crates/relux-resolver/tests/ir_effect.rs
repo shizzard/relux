@@ -323,7 +323,7 @@ fn lower_effect_with_overlay() {
   }
 }
 effect App {
-  start Db { PORT = "5432" }
+  start Db { PORT := "5432" }
   shell app {
     > app
   }
@@ -342,7 +342,7 @@ effect App {
 #[test]
 fn lower_effect_with_let_vars() {
     let source = r#"effect Db {
-  let port = "5432"
+  let port := "5432"
   shell db {
     > start
   }
@@ -464,7 +464,7 @@ fn lower_effect_let_rejects_impure_fn_call() {
   > cmd
 }
 effect E {
-  let x = impure_fn()
+  let x := impure_fn()
   shell sh {
     > start
   }
@@ -482,7 +482,7 @@ effect E {
 #[test]
 fn lower_effect_let_accepts_pure_fn_call() {
     let source = r#"effect E {
-  let x = trim("hi")
+  let x := trim("hi")
   shell sh {
     > start
   }
@@ -506,7 +506,7 @@ fn lower_effect_let_accepts_pure_fn_call() {
 #[test]
 fn lower_effect_let_accepts_string_literal() {
     let source = r#"effect E {
-  let x = "hello"
+  let x := "hello"
   shell sh {
     > start
   }
@@ -524,8 +524,8 @@ fn lower_effect_let_accepts_string_literal() {
 #[test]
 fn lower_effect_let_accepts_var_ref() {
     let source = r#"effect E {
-  let x = "val"
-  let y = x
+  let x := "val"
+  let y := x
   shell sh {
     > start
   }
@@ -548,7 +548,7 @@ fn lower_overlay_accepts_pure_fn_call() {
   }
 }
 effect App {
-  start Db { PORT = available_port() }
+  start Db { PORT := available_port() }
   shell app {
     > app
   }
@@ -577,7 +577,7 @@ effect Db {
   }
 }
 effect App {
-  start Db { PORT = impure_fn() }
+  start Db { PORT := impure_fn() }
   shell app {
     > app
   }

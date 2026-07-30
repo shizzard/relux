@@ -409,7 +409,7 @@ test "my test" {
     fn test_with_let() {
         let t = parse_test(
             r#"test "my test" {
-  let x = "hello"
+  let x := "hello"
   shell main {
     > echo hello
   }
@@ -465,7 +465,7 @@ test "my test" {
             r#"# skip
 test "full test" ~10s {
   """docstring here"""
-  let port = "5432"
+  let port := "5432"
   start Db
   shell main {
     > echo hello
@@ -526,7 +526,7 @@ test "my test" {
         let t = parse_test(
             r#"test "my test" {
   // let section
-  let x = "val"
+  let x := "val"
   // need section
   start Db
   // shell section
@@ -582,7 +582,7 @@ test "my test" {
     fn test_start_with_overlay() {
         let t = parse_test(
             r#"test "my test" {
-  start Db { PORT = "5433" }
+  start Db { PORT := "5433" }
   shell main {
     > echo hello
   }
@@ -606,7 +606,7 @@ test "my test" {
         let t = parse_test(
             r#"test "my test" {
 
-  let x = "val"
+  let x := "val"
 
   start Db
 
@@ -692,8 +692,8 @@ test "full" ~5s {
     fn test_with_multiple_lets() {
         let t = parse_test(
             r#"test "my test" {
-  let x = "a"
-  let y = "b"
+  let x := "a"
+  let y := "b"
   shell main {
     > echo hello
   }

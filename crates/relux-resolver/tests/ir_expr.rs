@@ -142,7 +142,7 @@ fn lower_expr_string() {
     let mut ctx = ctx_with_source("fn dummy() {}\n");
     push_test_scope(&mut ctx, "tests/a");
     let file = file_id_for(&ctx, "tests/a");
-    let expr = extract_let_expr("fn x() {\n  let v = \"hello\"\n}\n");
+    let expr = extract_let_expr("fn x() {\n  let v := \"hello\"\n}\n");
     let result = IrExpr::lower(&expr, &file, &mut ctx);
     assert!(result.is_ok());
     assert!(matches!(result.unwrap(), IrExpr::String { .. }));
@@ -153,7 +153,7 @@ fn lower_expr_var() {
     let mut ctx = ctx_with_source("fn dummy() {}\n");
     push_test_scope(&mut ctx, "tests/a");
     let file = file_id_for(&ctx, "tests/a");
-    let expr = extract_let_expr("fn x() {\n  let v = name\n}\n");
+    let expr = extract_let_expr("fn x() {\n  let v := name\n}\n");
     let result = IrExpr::lower(&expr, &file, &mut ctx);
     assert!(result.is_ok());
     assert!(matches!(result.unwrap(), IrExpr::Var { .. }));
@@ -166,14 +166,14 @@ fn lower_expr_call_resolved() {
   > ${x}
 }
 fn bar() {
-  let v = foo("a")
+  let v := foo("a")
 }
 "#,
     );
     push_test_scope(&mut ctx, "tests/a");
     let file = file_id_for(&ctx, "tests/a");
 
-    let expr = extract_let_expr("fn t() {\n  let v = foo(\"a\")\n}\n");
+    let expr = extract_let_expr("fn t() {\n  let v := foo(\"a\")\n}\n");
     let result = IrExpr::lower(&expr, &file, &mut ctx);
     assert!(result.is_ok());
     assert!(matches!(result.unwrap(), IrExpr::Call { .. }));
@@ -191,7 +191,7 @@ fn lower_expr_call_bif() {
     push_test_scope(&mut ctx, "tests/a");
     let file = file_id_for(&ctx, "tests/a");
 
-    let expr = extract_let_expr("fn t() {\n  let v = trim(\"hello\")\n}\n");
+    let expr = extract_let_expr("fn t() {\n  let v := trim(\"hello\")\n}\n");
     let result = IrExpr::lower(&expr, &file, &mut ctx);
     assert!(result.is_ok());
     if let IrExpr::Call { call, .. } = result.unwrap() {
@@ -207,7 +207,7 @@ fn lower_expr_call_multi_arg() {
     push_test_scope(&mut ctx, "tests/a");
     let file = file_id_for(&ctx, "tests/a");
 
-    let expr = extract_let_expr("fn t() {\n  let v = replace(\"s\", \"a\", \"b\")\n}\n");
+    let expr = extract_let_expr("fn t() {\n  let v := replace(\"s\", \"a\", \"b\")\n}\n");
     let result = IrExpr::lower(&expr, &file, &mut ctx);
     assert!(result.is_ok());
     if let IrExpr::Call { call, .. } = result.unwrap() {
@@ -223,7 +223,7 @@ fn lower_expr_call_nested() {
     push_test_scope(&mut ctx, "tests/a");
     let file = file_id_for(&ctx, "tests/a");
 
-    let expr = extract_let_expr("fn t() {\n  let v = trim(upper(\"x\"))\n}\n");
+    let expr = extract_let_expr("fn t() {\n  let v := trim(upper(\"x\"))\n}\n");
     let result = IrExpr::lower(&expr, &file, &mut ctx);
     assert!(result.is_ok());
     if let IrExpr::Call { call, .. } = result.unwrap() {
@@ -302,7 +302,7 @@ fn lower_pure_expr_call() {
     push_test_scope(&mut ctx, "tests/a");
     let file = file_id_for(&ctx, "tests/a");
 
-    let expr = extract_let_expr("fn t() {\n  let v = trim(\"x\")\n}\n");
+    let expr = extract_let_expr("fn t() {\n  let v := trim(\"x\")\n}\n");
     let result = IrPureExpr::lower(&expr, &file, &mut ctx);
     assert!(result.is_ok());
     assert!(matches!(result.unwrap(), IrPureExpr::Call { .. }));
