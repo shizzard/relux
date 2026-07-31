@@ -28,17 +28,17 @@ Conditions accept bare identifiers and quoted strings (with optional interpolati
 // truthiness: bare identifier
 # skip if VAR
 
-// containment: bare LHS, string RHS
+// equality: bare LHS, string RHS
 # run if OS = "linux"
 
-// containment: bare number (compared as string)
+// equality: bare number (compared as string)
 # run if COUNT = 0
 
-// containment: compound LHS must be quoted/interpolated
+// equality: compound LHS must be quoted/interpolated
 # skip if "${A}:${B}" = "x:y"
 
-// exact match: anchor a regex instead of using =
-# run if OS ? ^linux$
+// substring / pattern check: use ? (regex)
+# skip if "${PATH}" ? bin
 
 // regex: interpolated LHS
 # skip unless "${ARCH}" ? ^(x86_64|aarch64)$
@@ -52,8 +52,8 @@ Conditions accept bare identifiers and quoted strings (with optional interpolati
 ```
 
 - Truthiness: empty string or unset variable is false; any non-empty string is true.
-- `=` returns the LHS value if it contains RHS as a substring, empty string otherwise -- the same containment relationship as the shell literal-match operators `<=`/`!=`. An empty RHS always matches, since every string contains the empty string.
-- For exact-match semantics, anchor a regex with `?` instead: `expr ? ^value$`.
+- `=` returns the LHS value if it equals RHS exactly, empty string otherwise -- unlike the shell literal-match operators `<=`/`!=`, which scan a streaming buffer for a substring; a marker compares against a complete value.
+- For a substring or pattern check, use `?` (regex) instead: `expr ? value`.
 - `?` returns the regex match if it matched, empty string otherwise.
 - The bare form (`VAR`) is the variable's value -- no extra interpolation step.
 

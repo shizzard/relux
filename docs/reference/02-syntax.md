@@ -112,7 +112,7 @@ test "<name>" {
 ```relux
 # kind                                  // unconditional
 # kind modifier expr                    // truthiness check
-# kind modifier expr = expr             // containment comparison
+# kind modifier expr = expr             // exact-equality comparison
 # kind modifier expr ? regex            // regex match (unanchored)
 ```
 
@@ -121,7 +121,7 @@ Where:
 - `modifier`: `if` | `unless`
 - `expr`: quoted string with interpolation (`"${VAR}"`, `"literal"`, `"${A}:${B}"`) or bare number (`42`)
 - `regex`: regex pattern with `${var}` interpolation, to end of line
-- `=` tests substring containment (LHS contains RHS), consistent with the shell literal-match operators `<=`/`!=`; for exact match, anchor a regex instead: `expr ? ^value$`
+- `=` tests exact equality (LHS equals RHS); for a substring or pattern check use `?` (regex). Unlike the shell literal-match operators `<=`/`!=`, which scan a streaming buffer for a substring, a marker compares against a complete value.
 
 Examples:
 ```relux
@@ -133,7 +133,7 @@ Examples:
 # flaky if "${CI}" = "true"
 # run if "${HOST}:${PORT}" = "localhost:8080"
 # skip unless "${VER}" ? ^${MAJOR}\..*$
-# skip unless OS ? ^linux$              // exact match via anchored regex
+# skip unless "${PATH}" ? bin           // substring / pattern match via regex
 ```
 
 - A bare marker (kind only, no modifier) is unconditional
@@ -160,7 +160,7 @@ Examples:
 
 - Empty string or unset variable = false
 - Any non-empty string = true
-- `=` returns the LHS value if LHS contains RHS as a substring, empty string otherwise (anchor a regex for exact match: `expr ? ^value$`)
+- `=` returns the LHS value if it equals RHS exactly, empty string otherwise (use `?` for a substring or pattern check)
 - `?` returns the regex match if matched, empty string otherwise
 
 ## Shell Blocks
