@@ -88,14 +88,14 @@
 ## Pure Matching
 
 - A **pure match** asserts that a computed value satisfies a pattern; it reads nothing from a shell (contrast the `<?` / `<=` operators, which scan the output buffer)
-- Two statement forms, valid in `shell` blocks and `fn` bodies:
+- Two statement forms, valid in `shell` blocks, `fn` bodies, and `pure fn` bodies:
   - `<expr> = <pattern>` — asserts `<expr>` equals `<pattern>` exactly (byte-for-byte literal equality; a superstring or partial overlap fails). This is the same exact-equality semantics as the marker `=` operator
   - `<expr> ? <pattern>` — asserts `<expr>` matches the regex `<pattern>` (unanchored, like `<?`)
 - `<pattern>` is an interpolated string (`${var}` resolved before comparison); `<expr>` is any pure expression
 - A pure match is an assertion: a no-match is an immediate test failure (Relux has no error handling), the same as a `<?` that never matches. There is no negated form and no timeout — the value is already in hand, so the match either succeeds or fails at once
 - A successful `?` binds the numeric capture groups `$0`, `$1`, ..., `$n` in the current shell, exactly like `<?`; they persist until the next regex match overwrites them. The `=` form binds no captures
 - A `?` pattern that fails to compile (only reachable when interpolation produces malformed regex) is a runtime failure, not a no-match
-- Pure matching is not yet available inside `pure fn` bodies (a compile error today)
+- Inside a `pure fn` body, a `?` pure match binds numeric captures into the function's own per-call capture frame (each call starts empty), so a `pure fn` can match `$1` out of a value and return it. A no-match inside a `pure fn` fails the test through the runtime site that called it (`let`, overlay, shell-block call); inside a marker condition, a pure-eval failure instead makes the condition falsy rather than failing the test
 - Statement-only: a pure match cannot be a `let` right-hand side, an overlay value, or a cleanup value. `x = e` asserts; binding still requires `x := e` (and `let x = e` remains an error)
 
 ## Effects

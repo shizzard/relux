@@ -882,6 +882,71 @@ fn eval_var_vars_shadow_env_layer() {
     );
 }
 
+// --- Pure match inside a pure-fn body --------------------
+
+// A `pure fn` whose body runs `s ? ^id=(\d+)$` then yields `$1`: the
+// capture is bound on a hit and the whole evaluation fails on a miss.
+fn extract_id_fn() -> IrPureFn {
+    IrPureFn::UserDefined {
+        name: test_ident("extract_id"),
+        params: vec![test_ident("s")],
+        body: vec![
+            IrPureStmt::PureMatch {
+                lhs: var_expr("s"),
+                pattern: IrInterpolation::new(vec![lit("^id=(\\d+)$")], test_span()),
+                is_regex: true,
+                span: test_span(),
+            },
+            IrPureStmt::Expr {
+                expr: IrPureExpr::Capture {
+                    index: 1,
+                    span: test_span(),
+                },
+                span: test_span(),
+            },
+        ],
+        span: test_span(),
+    }
+}
+
+#[test]
+fn eval_pure_fn_pure_match_binds_capture_on_hit() {
+    let func = extract_id_fn();
+    assert_eq!(
+        eval_pure_fn(
+            &func,
+            vec!["id=42".into()],
+            &test_env(),
+            &empty_fns(),
+            &mut NoOpSink
+        )
+        .unwrap(),
+        "42"
+    );
+}
+
+#[test]
+fn eval_pure_fn_pure_match_fails_on_no_match() {
+    let func = extract_id_fn();
+    let err = eval_pure_fn(
+        &func,
+        vec!["nope".into()],
+        &test_env(),
+        &empty_fns(),
+        &mut NoOpSink,
+    )
+    .unwrap_err();
+    match err {
+        PureEvalError::PureMatchFailed {
+            value, is_regex, ..
+        } => {
+            assert_eq!(value, "nope");
+            assert!(is_regex);
+        }
+        other => panic!("expected PureMatchFailed, got {other:?}"),
+    }
+}
+
 #[test]
 fn eval_var_child_layer_shadows_parent() {
     let expr = var_expr("MY_VAR");

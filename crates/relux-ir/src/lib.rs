@@ -67,6 +67,7 @@ pub use interpolation::*;
 pub use lowering_trait::*;
 pub use plan::*;
 pub use pure_eval_error::PureEvalError;
+pub use pure_eval_error::PureFrame;
 pub use pure_match::eval_pure_match;
 pub use stmt::*;
 pub use tables::*;

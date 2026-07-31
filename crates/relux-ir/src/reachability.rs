@@ -266,6 +266,7 @@ impl<'a> Visitor<'a> {
             }
             IrPureStmt::Assign { stmt, .. } => self.visit_pure_expr(stmt.value())?,
             IrPureStmt::Expr { expr, .. } => self.visit_pure_expr(expr)?,
+            IrPureStmt::PureMatch { lhs, .. } => self.visit_pure_expr(lhs)?,
         }
         Ok(())
     }

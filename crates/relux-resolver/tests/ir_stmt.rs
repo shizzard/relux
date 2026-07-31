@@ -731,21 +731,42 @@ fn lower_pure_match_regex_invalid_regex_diagnoses() {
 }
 
 #[test]
-fn lower_pure_match_rejected_in_pure_fn() {
+fn lower_pure_match_literal_in_pure_fn() {
     let mut ctx = ctx_with_source("fn dummy() {}\n");
     push_test_scope(&mut ctx, "tests/a");
     let file = file_id_for(&ctx, "tests/a");
     let stmt = extract_first_stmt("fn t() {\n  name = expected\n}\n");
-    let result = IrPureStmt::lower(&stmt, &file, &mut ctx);
-    match result {
-        Err(LoweringBail::Invalid(report)) => {
-            assert!(
-                report.to_string().contains("not yet available"),
-                "expected pure-match-in-pure-fn message, got: {report}"
-            );
+    let ir = IrPureStmt::lower(&stmt, &file, &mut ctx).unwrap();
+    assert!(matches!(
+        ir,
+        IrPureStmt::PureMatch {
+            is_regex: false,
+            ..
         }
-        other => panic!("expected Invalid report, got {other:?}"),
-    }
+    ));
+}
+
+#[test]
+fn lower_pure_match_regex_in_pure_fn() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let stmt = extract_first_stmt("fn t() {\n  name ? ^id=(\\d+)$\n}\n");
+    let ir = IrPureStmt::lower(&stmt, &file, &mut ctx).unwrap();
+    assert!(matches!(ir, IrPureStmt::PureMatch { is_regex: true, .. }));
+}
+
+#[test]
+fn lower_pure_match_regex_in_pure_fn_invalid_regex_diagnoses() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let stmt = extract_first_stmt("fn t() {\n  name ? (unclosed\n}\n");
+    let result = IrPureStmt::lower(&stmt, &file, &mut ctx);
+    assert!(
+        result.is_err(),
+        "invalid static regex in a pure-fn pure match must surface at lowering"
+    );
 }
 
 #[test]

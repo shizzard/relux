@@ -992,7 +992,14 @@ async fn run_test_body(
                     &mut sink,
                 ) {
                     Ok(v) => v,
-                    Err(e) => match e {},
+                    Err(err) => {
+                        return Err(Failure::from_pure_eval(
+                            err,
+                            String::new(),
+                            FailureContext::pre_vm_with_span(test_span),
+                        )
+                        .into());
+                    }
                 }
             } else {
                 String::new()

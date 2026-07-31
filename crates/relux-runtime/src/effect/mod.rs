@@ -406,7 +406,7 @@ impl EffectManager {
         for item in effect.body() {
             if let IrEffectItem::Let { stmt, span } = item {
                 self.eval_effect_let(stmt, span, &scope, &effect_env, setup_span_id)
-                    .await;
+                    .await?;
             }
         }
 
@@ -847,7 +847,14 @@ impl EffectManager {
                 &mut sink,
             ) {
                 Ok(v) => v,
-                Err(e) => match e {},
+                Err(err) => {
+                    return Err(Failure::from_pure_eval(
+                        err,
+                        String::new(),
+                        FailureContext::pre_vm_with_span(caller_span),
+                    )
+                    .into());
+                }
             };
             overlay.insert(entry.key().name().to_string(), value);
         }
@@ -861,7 +868,7 @@ impl EffectManager {
         scope: &Scope,
         effect_env: &Arc<LayeredEnv>,
         setup_span: SpanId,
-    ) {
+    ) -> Result<(), ExecError> {
         let mut vars = scope.vars().lock().await;
         let mut sink =
             crate::observe::structured::log_sink::LogSink::new(&self.rt_ctx.log, setup_span);
@@ -875,7 +882,14 @@ impl EffectManager {
                 &mut sink,
             ) {
                 Ok(v) => v,
-                Err(e) => match e {},
+                Err(err) => {
+                    return Err(Failure::from_pure_eval(
+                        err,
+                        String::new(),
+                        FailureContext::pre_vm_with_span(setup_span),
+                    )
+                    .into());
+                }
             }
         } else {
             String::new()
@@ -886,6 +900,7 @@ impl EffectManager {
         self.rt_ctx
             .log
             .emit_var_let(setup_span, None, None, name, &value, Some(span));
+        Ok(())
     }
 
     /// Glue: release one guard, then either run its cleanup body (when

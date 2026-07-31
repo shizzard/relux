@@ -12,7 +12,7 @@ use relux_core::pure::matching::pure_match;
 use crate::pure_sink::PureEvalSink;
 
 pub fn eval_pure_match(
-    sink: &mut impl PureEvalSink,
+    sink: &mut dyn PureEvalSink,
     value: &str,
     pattern: &str,
     is_regex: bool,

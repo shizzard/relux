@@ -331,9 +331,6 @@ pub enum InvalidReport {
     PurityViolation {
         span: IrSpan,
     },
-    PureMatchInPureFn {
-        span: IrSpan,
-    },
     UndefinedFunctionCall {
         name: String,
         arity: usize,
@@ -397,9 +394,6 @@ impl fmt::Display for InvalidReport {
         match self {
             InvalidReport::Cycle(c) => write!(f, "{c}"),
             InvalidReport::PurityViolation { .. } => write!(f, "shell operation in pure context"),
-            InvalidReport::PureMatchInPureFn { .. } => {
-                write!(f, "pure matching is not yet available in `pure fn` bodies")
-            }
             InvalidReport::UndefinedFunctionCall { name, arity, .. } => {
                 write!(f, "undefined function `{name}/{arity}`")
             }
@@ -478,10 +472,6 @@ impl InvalidReport {
 
     pub fn purity_violation(span: IrSpan) -> Self {
         Self::PurityViolation { span }
-    }
-
-    pub fn pure_match_in_pure_fn(span: IrSpan) -> Self {
-        Self::PureMatchInPureFn { span }
     }
 
     pub fn undefined_function_call(name: String, arity: usize, span: IrSpan) -> Self {
@@ -590,9 +580,6 @@ impl InvalidReport {
             },
             InvalidReport::PurityViolation { .. } => {
                 CauseId::generate("", "", 0, "purity_violation")
-            }
-            InvalidReport::PureMatchInPureFn { .. } => {
-                CauseId::generate("", "", 0, "pure_match_in_pure_fn")
             }
             InvalidReport::UndefinedFunctionCall { name, arity, .. } => {
                 CauseId::generate("", name, *arity, "undefined_fn_call")
@@ -939,11 +926,6 @@ impl From<&InvalidReport> for Diagnostic {
                 Diagnostic::new(Severity::Error, "shell operation in pure context".into())
                     .with_label(span.clone(), "not allowed in pure function")
             }
-            InvalidReport::PureMatchInPureFn { span } => Diagnostic::new(
-                Severity::Error,
-                "pure matching is not yet available in `pure fn` bodies".into(),
-            )
-            .with_label(span.clone(), "pure match not allowed here yet"),
             InvalidReport::UndefinedFunctionCall { name, arity, span } => Diagnostic::new(
                 Severity::Error,
                 format!("undefined function `{name}/{arity}`"),

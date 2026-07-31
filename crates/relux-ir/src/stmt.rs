@@ -262,13 +262,20 @@ pub enum IrPureStmt {
         expr: IrPureExpr,
         span: IrSpan,
     },
+    PureMatch {
+        lhs: IrPureExpr,
+        pattern: IrInterpolation,
+        is_regex: bool,
+        span: IrSpan,
+    },
 }
 
 impl_ir_node_enum!(IrPureStmt {
     Comment,
     Let,
     Assign,
-    Expr
+    Expr,
+    PureMatch
 });
 
 // ===============================================================
@@ -565,10 +572,27 @@ impl IrNodeLowering for IrPureStmt {
                     span: s(span),
                 })
             }
-            // Pure matching is not yet available inside `pure fn` bodies.
-            AstStmt::PureMatchLiteral { span, .. } | AstStmt::PureMatchRegex { span, .. } => Err(
-                LoweringBail::invalid(InvalidReport::pure_match_in_pure_fn(s(span))),
-            ),
+            AstStmt::PureMatchLiteral { lhs, pattern, span } => {
+                let ir_lhs = IrPureExpr::lower(&lhs.node, file, ctx)?;
+                let ir_pattern = IrInterpolation::lower(pattern, file, ctx)?;
+                Ok(IrPureStmt::PureMatch {
+                    lhs: ir_lhs,
+                    pattern: ir_pattern,
+                    is_regex: false,
+                    span: s(span),
+                })
+            }
+            AstStmt::PureMatchRegex { lhs, pattern, span } => {
+                let ir_lhs = IrPureExpr::lower(&lhs.node, file, ctx)?;
+                let ir_pattern = IrInterpolation::lower(pattern, file, ctx)?;
+                super::regex_validate::validate_static_regex(pattern, file)?;
+                Ok(IrPureStmt::PureMatch {
+                    lhs: ir_lhs,
+                    pattern: ir_pattern,
+                    is_regex: true,
+                    span: s(span),
+                })
+            }
             // All shell operators are purity violations
             AstStmt::Send { span, .. }
             | AstStmt::SendRaw { span, .. }

@@ -37,25 +37,42 @@ pub enum FailureContext {
     },
     /// Failure raised before/around any VM. `span` points at the
     /// surrounding span when one is known (effect-setup span,
-    /// shell-block span, cleanup-block span), `None` otherwise.
-    PreVm { span: Option<SpanId> },
+    /// shell-block span, cleanup-block span), `None` otherwise. The
+    /// `call_stack` carries pure-fn frames when the failure came out of
+    /// pure evaluation; empty for every other pre-VM failure.
+    PreVm {
+        span: Option<SpanId>,
+        call_stack: Vec<StackFrame>,
+    },
 }
 
 impl FailureContext {
     /// Construct a `PreVm` context with no surrounding span.
     pub fn pre_vm() -> Self {
-        Self::PreVm { span: None }
+        Self::PreVm {
+            span: None,
+            call_stack: vec![],
+        }
     }
 
     /// Construct a `PreVm` context tied to a known surrounding span.
     pub fn pre_vm_with_span(span: SpanId) -> Self {
-        Self::PreVm { span: Some(span) }
+        Self::PreVm {
+            span: Some(span),
+            call_stack: vec![],
+        }
+    }
+
+    /// Construct a `PreVm` context tied to a known surrounding span and a
+    /// resolved call stack (pure-fn frames).
+    pub fn pre_vm_with_frames(span: Option<SpanId>, call_stack: Vec<StackFrame>) -> Self {
+        Self::PreVm { span, call_stack }
     }
 
     pub fn span(&self) -> Option<SpanId> {
         match self {
             Self::Vm { span, .. } => Some(*span),
-            Self::PreVm { span } => *span,
+            Self::PreVm { span, .. } => *span,
         }
     }
 
@@ -69,7 +86,7 @@ impl FailureContext {
     pub fn call_stack(&self) -> &[StackFrame] {
         match self {
             Self::Vm { call_stack, .. } => call_stack,
-            Self::PreVm { .. } => &[],
+            Self::PreVm { call_stack, .. } => call_stack,
         }
     }
 
@@ -167,6 +184,44 @@ pub enum Failure {
 }
 
 impl Failure {
+    /// Build a `Failure` from a pure-evaluation error. A failed pure match
+    /// inside a `pure fn` body becomes `Failure::PureMatch`; a malformed
+    /// interpolated regex becomes a runtime error naming the bad pattern.
+    /// `shell` is the failing shell's name, or empty for a pre-VM context
+    /// (test-level / effect-level `let`, overlay) that has no shell.
+    pub fn from_pure_eval(
+        err: relux_ir::PureEvalError,
+        shell: String,
+        context: FailureContext,
+    ) -> Self {
+        match err {
+            relux_ir::PureEvalError::PureMatchFailed {
+                value,
+                pattern,
+                is_regex,
+                span,
+                ..
+            } => Failure::PureMatch {
+                value,
+                pattern,
+                is_regex,
+                span,
+                shell,
+                context,
+            },
+            relux_ir::PureEvalError::MalformedPattern {
+                pattern: _,
+                reason,
+                span,
+            } => Failure::Runtime {
+                message: format!("invalid regex: {reason}"),
+                span: Some(span),
+                shell: if shell.is_empty() { None } else { Some(shell) },
+                context,
+            },
+        }
+    }
+
     pub fn summary(&self) -> String {
         self.to_string()
     }

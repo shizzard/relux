@@ -91,12 +91,18 @@ Pure-match statements are valid inside:
 
 - **`shell` blocks** (in tests and effects)
 - regular **`fn` bodies**
+- **`pure fn` bodies**
 
-They are **not** yet allowed inside **`pure fn` bodies** — writing one
-there is a compile error: *pure matching is not yet available in `pure
-fn` bodies*. Returning a capture from a `pure fn` so a match can
-extract a value is planned for a later milestone; it does not work
-today.
+Inside a `pure fn`, a regex pure match binds numeric captures (`$1`,
+`$2`, …) into the function's own capture frame, so a `pure fn` can run
+`s ? ^id=(\d+)$` and then return `$1` to extract a value. Each `pure fn`
+call starts with an empty capture frame. A no-match inside a `pure fn`
+fails the test through whichever runtime site called the function — a
+test- or effect-level `let`, an overlay value, or a shell-block call; a
+malformed interpolated pattern surfaces as a runtime error. The one
+exception is a **marker condition**: a pure-eval failure there makes the
+condition falsy rather than failing the test (a marker is evaluated to
+decide skip/run/flaky, not to assert).
 
 A pure match is **statement-only**. It cannot appear as the right-hand
 side of a `let`, an overlay value, or a cleanup value. The statement's

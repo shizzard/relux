@@ -237,7 +237,7 @@ reads nothing from the PTY.
 - `<pattern>` is an interpolated string to end of line (same shape as the `<=` / `<?` payload).
 - `=` is exact equality (not a substring test); use `?` for a substring or pattern check.
 - A no-match fails the test immediately — a pure match is an assertion and cannot time out. There is no negated form.
-- Valid in `shell` blocks and `fn` bodies; not yet valid in `pure fn` bodies (compile error).
+- Valid in `shell` blocks, `fn` bodies, and `pure fn` bodies. Inside a `pure fn`, a `?` match binds captures into the function's own per-call frame, so `$1` can be returned to extract a value.
 - Statement-only: cannot be a `let` right-hand side, an overlay value, or a cleanup value.
 
 ```relux

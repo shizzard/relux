@@ -1146,7 +1146,13 @@ impl Vm {
                 &mut sink,
             ) {
                 Ok(v) => v,
-                Err(e) => match e {},
+                Err(err) => {
+                    let context = self.capture_failure_context().await;
+                    let shell = self.ctx.current_name().to_string();
+                    self.ctx.pop_span();
+                    self.log.push_fn_exit();
+                    return Err(Failure::from_pure_eval(err, shell, context).into());
+                }
             };
             self.ctx.pop_span();
             self.log.set_fn_call_result(fn_guard.id(), &return_value);

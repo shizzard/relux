@@ -65,11 +65,11 @@ pub fn eval_pure_fn(
         IrPureFn::Builtin { name, .. } => Ok(relux_core::pure::bifs::dispatch(name, args)),
         IrPureFn::UserDefined { params, body, .. } => {
             let mut scope = VarScope::new();
-            let captures: HashMap<String, String> = HashMap::new();
+            let mut captures: HashMap<String, String> = HashMap::new();
             for (param, arg) in params.iter().zip(args) {
                 scope.insert(param.name().to_string(), arg);
             }
-            eval_body(body, &mut scope, &captures, env, fns, sink)
+            eval_body(body, &mut scope, &mut captures, env, fns, sink)
         }
     }
 }
@@ -188,7 +188,7 @@ fn resolve_var(name: &str, vars: &VarScope, env: &LayeredEnv) -> String {
 fn eval_body(
     body: &[IrPureStmt],
     scope: &mut VarScope,
-    captures: &HashMap<String, String>,
+    captures: &mut HashMap<String, String>,
     env: &LayeredEnv,
     fns: &PureFnTable,
     sink: &mut dyn PureEvalSink,
@@ -200,7 +200,7 @@ fn eval_body(
             IrPureStmt::Comment { .. } => {}
             IrPureStmt::Let { stmt: let_stmt, .. } => {
                 let value = match let_stmt.value() {
-                    Some(v) => eval_pure_expr(v, scope, captures, env, fns, sink)?,
+                    Some(v) => eval_pure_expr(v, scope, &*captures, env, fns, sink)?,
                     None => String::new(),
                 };
                 scope.insert(let_stmt.name().name().to_string(), value.clone());
@@ -211,14 +211,49 @@ fn eval_body(
             IrPureStmt::Assign {
                 stmt: assign_stmt, ..
             } => {
-                let value = eval_pure_expr(assign_stmt.value(), scope, captures, env, fns, sink)?;
+                let value = eval_pure_expr(assign_stmt.value(), scope, &*captures, env, fns, sink)?;
                 scope.assign(assign_stmt.name().name(), value.clone());
                 if is_last {
                     last_value = value;
                 }
             }
             IrPureStmt::Expr { expr, .. } => {
-                let value = eval_pure_expr(expr, scope, captures, env, fns, sink)?;
+                let value = eval_pure_expr(expr, scope, &*captures, env, fns, sink)?;
+                if is_last {
+                    last_value = value;
+                }
+            }
+            IrPureStmt::PureMatch {
+                lhs,
+                pattern,
+                is_regex,
+                span,
+            } => {
+                let value = eval_pure_expr(lhs, scope, &*captures, env, fns, sink)?;
+                let pat = eval_interpolation(pattern, span, scope, &*captures, env, sink);
+                match crate::eval_pure_match(sink, &value, &pat, *is_regex, span) {
+                    Ok(Some(hit)) => {
+                        if *is_regex {
+                            *captures = hit.captures;
+                        }
+                    }
+                    Ok(None) => {
+                        return Err(PureEvalError::PureMatchFailed {
+                            value,
+                            pattern: pat,
+                            is_regex: *is_regex,
+                            span: span.clone(),
+                            call_stack: Vec::new(),
+                        });
+                    }
+                    Err(e) => {
+                        return Err(PureEvalError::MalformedPattern {
+                            pattern: e.pattern,
+                            reason: e.reason,
+                            span: span.clone(),
+                        });
+                    }
+                }
                 if is_last {
                     last_value = value;
                 }
