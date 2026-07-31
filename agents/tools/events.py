@@ -289,7 +289,16 @@ def cmd_pure_trace(args):
                 descendants.add(sp["id"])
                 changed = True
 
-    kinds = {"interpolation", "var-let", "var-read", "var-assign", "pure-match", "string-eval"}
+    kinds = {
+        "interpolation",
+        "var-let",
+        "var-read",
+        "var-assign",
+        "pure-match-start",
+        "pure-match-done",
+        "pure-match-failed",
+        "string-eval",
+    }
     out = []
     for ev in data.get("events", []):
         if ev["span"] not in descendants:

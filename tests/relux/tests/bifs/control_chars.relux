@@ -22,7 +22,7 @@ test "ctrl_d sends eof to interactive program" {
     }
 }
 
-# skip if RUNNER_OS = "Linux"
+# skip if RUNNER_OS ? ^Linux$
 test "ctrl_z suspends a process" {
     """
     Verify ctrl_z sends SIGTSTP to suspend a process, returning to prompt.
@@ -38,7 +38,7 @@ test "ctrl_z suspends a process" {
     }
 }
 
-# run if RUNNER_OS = "Linux"
+# run if RUNNER_OS ? ^Linux$
 test "ctrl_z suspends a process (linux)" {
     """
     Verify ctrl_z sends SIGTSTP to suspend a process, returning to prompt.

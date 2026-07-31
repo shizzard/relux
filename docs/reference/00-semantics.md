@@ -132,7 +132,9 @@
 - Bare variable identifiers (e.g. `CI`) are valid in markers
 - Expression evaluation uses ENV-only lookup (`Arc<LayeredEnv>` — the layered host-plus-`.env` environment) — no frame variables or test-scope variables exist at evaluation time
 - Truthiness: empty string or unset variable is false, any non-empty string is true
-- `=` operator: evaluates both sides, returns the LHS value if LHS equals RHS, empty string otherwise
+- `=` operator: evaluates both sides, returns the LHS value if LHS contains RHS as a substring, empty string otherwise (consistent with the shell literal-match operators `<=`/`!=`, which also search for a substring in accumulated output)
+  - An empty RHS always matches: every string contains the empty string
+  - For exact-match semantics, anchor a regex instead: `expr ? ^value$`
 - `?` operator: evaluates LHS, compiles the regex pattern (with `${var}` interpolation), returns the match if found, empty string otherwise
 - Modifier semantics:
   - `if` acts when the result is truthy

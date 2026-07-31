@@ -106,7 +106,7 @@ Use when no marker exists on the target yet.
    rubric. For multiple AND conditions, stack markers on separate lines.
 3. **Compose the condition** using `../../references/markers.md` >
    *Expression shapes*. Prefer the bare form for single-variable
-   truthiness and equality checks.
+   truthiness and containment checks.
 4. **Apply.** Write each marker on its own line directly above the
    declaration. Comments and blank lines between markers and the
    declaration are allowed; nothing else.

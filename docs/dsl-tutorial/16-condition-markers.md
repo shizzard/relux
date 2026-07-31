@@ -146,13 +146,13 @@ test "runs when MY_VAR is not set" {
 
 Note that `# run if "${X}"` and `# skip unless "${X}"` are logically equivalent — both skip the test when `X` is unset. The choice between them is about readability, which the best practices section below discusses.
 
-### Equality comparisons
+### Containment comparisons
 
-When truthiness is not enough, you can compare a variable against a specific value using `=`:
+When truthiness is not enough, you can check whether a variable's value contains a specific substring using `=`:
 
 ```relux
 # skip if "${MY_VAR}" = "yes"
-test "skipped when MY_VAR is exactly yes" {
+test "skipped when MY_VAR contains yes" {
     shell s {
         > echo hello
         <? ^hello$
@@ -160,7 +160,21 @@ test "skipped when MY_VAR is exactly yes" {
 }
 ```
 
-Both sides of the `=` support [variable interpolation](06-variables.md#string-interpolation). You can build compound values:
+`=` tests **containment**, not identity: the condition is truthy when the left side contains the right side as a substring anywhere within it. This mirrors the shell literal-match operators `<=` and `!=`, which also search for a substring in accumulated output rather than requiring an exact match. An empty right side always matches, since every string contains the empty string.
+
+When you need exact-match semantics, anchor a regex with `?` instead:
+
+```relux
+# skip if OS ? ^linux$
+test "skipped when OS is exactly linux" {
+    shell s {
+        > echo hello
+        <? ^hello$
+    }
+}
+```
+
+Both sides of the `=` support [variable interpolation](06-variables.md#string-interpolation). You can build compound values — remember that containment applies to the whole compound string, so a partial overlap on either side of the `:` can also match:
 
 ```relux
 # run if "${HOST}:${PORT}" = "localhost:8080"
@@ -211,7 +225,7 @@ test "only on 64-bit architectures" {
 }
 ```
 
-Each marker on a test produces a **marker-eval span** in the [test log viewer](03-send-match-and-logs.md) — the detail panel shows the marker kind (`@skip`, `@run`, or `@flaky`), the modifier (`if` or `unless`), and the decision (`pass` to let the test run or `mark` to mark it skipped or flaky). Inside that span is a **bool-check event** carrying the actual condition that was tested. The event's content varies by shape: a truthiness check (`# skip if "${X}"`) shows the value and a `met: true/false` flag; an equality check shows `lhs`, `rhs`, and `met`; a regex check shows `value`, `pattern`, and `met`. One row tells you the marker's verdict; the next tells you exactly what was compared to reach it.
+Each marker on a test produces a **marker-eval span** in the [test log viewer](03-send-match-and-logs.md) — the detail panel shows the marker kind (`@skip`, `@run`, or `@flaky`), the modifier (`if` or `unless`), and the decision (`pass` to let the test run or `mark` to mark it skipped or flaky). Inside that span is a **bool-check event** carrying the actual condition that was tested. The event's content varies by shape: a truthiness check (`# skip if "${X}"`) shows the value and a `met: true/false` flag; a containment or regex check (`=` or `?`) shares one shape, showing `value`, `pattern`, `is_regex` (`false` for `=`, `true` for `?`), and `met`. One row tells you the marker's verdict; the next tells you exactly what was compared to reach it.
 
 ## Pure function calls in markers
 

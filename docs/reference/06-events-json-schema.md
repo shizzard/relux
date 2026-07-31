@@ -309,12 +309,16 @@ The per-pattern `Matched` buffer events have the same `before + matched + after`
 | `"var-read"`      | `name`, `value` (`""` when undefined)                                        |
 | `"string-eval"`   | `result`                                                                     |
 | `"interpolation"` | `template`, `result`, `bindings: Array<[name, value]>`                       |
-| `"pure-match"`    | `match_kind` (`"regex" \| "literal"`), `value`, `pattern`, `result` (matched substring or `""`), `captures: { [name]: string }` |
+| `"pure-match-start"`  | `value`, `pattern`, `is_regex`. Emitted before a pure string-match attempt runs.  |
+| `"pure-match-done"`   | `matched` (whole-match substring), `captures: { [name]: string }`.               |
+| `"pure-match-failed"` | none. No match; the preceding `pure-match-start` in the same span carries `value`/`pattern`. |
 | `"bool-check"`    | `evaluation: MarkerEvalDetail`. Emitted as the last event inside a `marker-eval` span. |
 
 `MarkerEvalDetail` is tagged on `shape`: `"unconditional"`,
-`"bare" + { value, met }`, `"eq" + { lhs, rhs, met }`, or
-`"regex" + { value, pattern, met }`.
+`"bare" + { value, met }`, or `"pure-match" + { value, pattern, is_regex, met }`.
+There is no separate `"eq"`/`"regex"` shape - `MatchKind` was removed in favor of
+the `is_regex: bool` flag, and marker `=` and `?` conditions both evaluate
+through the same pure matcher, so they share one payload shape.
 
 **Diagnostics**
 

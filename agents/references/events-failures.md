@@ -73,10 +73,9 @@ Reasons carry context:
 
 - `unconditional`
 - `bare` `{ value, met }`
-- `eq` `{ lhs, rhs, met }`
-- `regex` `{ value, pattern, met }`
+- `pure-match` `{ value, pattern, is_regex, met }` -- covers both `=` (`is_regex: false`, containment) and `?` (`is_regex: true`, regex); there is no separate `eq`/`regex` shape.
 
-**Truthiness** (used by `bare` `met`, and by `eq`/`regex` which apply `met` after the comparison): only the empty string is falsy; any non-empty string is truthy. See [markers](markers.md) > *Expression shapes* for the full rule including how `=` and `?` produce their result strings.
+**Truthiness** (used by `bare` `met`, and by `pure-match` which applies `met` after the comparison): only the empty string is falsy; any non-empty string is truthy. See [markers](markers.md) > *Expression shapes* for the full rule including how `=` and `?` produce their result strings.
 
 ### Reading the marker-eval span
 
