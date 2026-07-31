@@ -135,8 +135,24 @@ enum PureMatchTail {
 /// `None` branch here (no immediate newline after the ident) and backtracks.
 fn stmt_expr_or_pure_match<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+    // After the `=` operator, guard against a second `=` that is *adjacent*
+    // (no whitespace between them). `x == y` lexes as `[Eq, Eq]`, whereas the
+    // deliberate `x = = y` (pattern beginning with `=`) lexes as
+    // `[Eq, Space, Eq]`. Checking for the adjacent `Eq` *before* `ws()` keeps
+    // the spaced form valid: `ws()` would otherwise swallow the separating
+    // space and make `= =` indistinguishable from `==`.
     let literal_tail = ws()
         .ignore_then(just(Token::Eq))
+        .ignore_then(just(Token::Eq).map_with(|_, e| e.span()).or_not().try_map(
+            |second_eq, span| match second_eq {
+                Some(_) => Err(Rich::custom(
+                    span,
+                    "there is no `==` operator; use `=` for an exact-match \
+                         assertion, or `:=` to bind",
+                )),
+                None => Ok(()),
+            },
+        ))
         .ignore_then(ws())
         .ignore_then(interp_literal(Token::Newline))
         .map(|payload| PureMatchTail::Literal(payload.node));
@@ -745,6 +761,93 @@ mod tests {
     fn bare_eq_reassign_is_now_pure_match_not_legacy_error() {
         let s = parse_stmt("x = e\n");
         assert!(matches!(s, AstStmt::PureMatchLiteral { .. }));
+    }
+
+    #[test]
+    fn double_eq_no_space_is_error() {
+        // `x == y` is the `==`-typo footgun: reject it rather than silently
+        // matching against a pattern beginning with `=`.
+        let err = parse_stmt_err("x == y\n");
+        assert!(
+            err.contains("==") || err.contains("operator"),
+            "expected a `==` diagnostic, got: {err}"
+        );
+    }
+
+    #[test]
+    fn double_eq_then_ident_is_error() {
+        let pairs = lex_to_pairs("x ==y\n");
+        let input = make_input(&pairs, "x ==y\n".len());
+        assert!(
+            stmt().parse(input).into_result().is_err(),
+            "`x ==y` must be a parse error"
+        );
+    }
+
+    #[test]
+    fn spaced_eq_eq_is_valid_literal_match() {
+        // A SPACE between the two `=` means the user deliberately wants a
+        // pattern that begins with `=`. This must stay valid.
+        let s = parse_stmt("x = = y\n");
+        match s {
+            AstStmt::PureMatchLiteral { pattern, .. } => {
+                assert!(
+                    matches!(&pattern.parts[0], AstStringPart::Literal { value, .. } if value == "= y")
+                );
+            }
+            _ => panic!("expected PureMatchLiteral, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn single_eq_literal_still_ok() {
+        let s = parse_stmt("x = y\n");
+        match s {
+            AstStmt::PureMatchLiteral { pattern, .. } => {
+                assert!(
+                    matches!(&pattern.parts[0], AstStringPart::Literal { value, .. } if value == "y")
+                );
+            }
+            _ => panic!("expected PureMatchLiteral, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn eq_no_space_noneq_pattern_ok() {
+        let s = parse_stmt("x =y\n");
+        match s {
+            AstStmt::PureMatchLiteral { pattern, .. } => {
+                assert!(
+                    matches!(&pattern.parts[0], AstStringPart::Literal { value, .. } if value == "y")
+                );
+            }
+            _ => panic!("expected PureMatchLiteral, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn empty_literal_pattern_ok() {
+        let s = parse_stmt("x =\n");
+        match s {
+            AstStmt::PureMatchLiteral { pattern, .. } => {
+                assert!(is_empty_payload(&pattern));
+            }
+            _ => panic!("expected PureMatchLiteral, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn regex_line_unaffected() {
+        // The `==` guard must not touch the regex path.
+        let s = parse_stmt("x ? a==b\n");
+        match s {
+            AstStmt::PureMatchRegex { pattern, .. } => {
+                assert!(
+                    matches!(&pattern.parts[0], AstStringPart::Literal { value, .. } if value == "a==b")
+                );
+            }
+            _ => panic!("expected PureMatchRegex, got {s:?}"),
+        }
     }
 
     #[test]
