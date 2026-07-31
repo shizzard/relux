@@ -734,16 +734,12 @@ impl fmt::Display for SkipEvaluation {
                 is_regex,
                 met,
             } => {
-                let verb = if *is_regex { "matched" } else { "contains" };
-                let neg = if *is_regex {
-                    "did not match"
-                } else {
-                    "does not contain"
-                };
-                if *met {
+                if *is_regex {
+                    let verb = if *met { "matched" } else { "did not match" };
                     write!(f, "{value:?} {verb} {pattern:?}")
                 } else {
-                    write!(f, "{value:?} {neg} {pattern:?}")
+                    let op = if *met { "==" } else { "!=" };
+                    write!(f, "{value:?} {op} {pattern:?}")
                 }
             }
         }
@@ -1820,12 +1816,12 @@ mod tests {
     #[test]
     fn diagnostic_from_skip_literal_match() {
         let d = Diagnostic::from(&make_skip(SkipEvaluation::PureMatch {
-            value: "ubuntu-linux".into(),
+            value: "linux".into(),
             pattern: "linux".into(),
             is_regex: false,
             met: true,
         }));
-        assert!(d.labels[0].message.contains("contains"));
+        assert!(d.labels[0].message.contains("=="));
     }
 
     #[test]
@@ -1836,7 +1832,7 @@ mod tests {
             is_regex: false,
             met: false,
         }));
-        assert!(d.labels[0].message.contains("does not contain"));
+        assert!(d.labels[0].message.contains("!="));
     }
 
     #[test]

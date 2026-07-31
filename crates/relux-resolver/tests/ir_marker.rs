@@ -154,10 +154,10 @@ test "eq" {
 }
 
 #[test]
-fn marker_skip_if_eq_rhs_empty_is_contains_match() {
-    // Contains semantics: every string contains the empty string, so an
-    // unset RHS now makes `=` met (this is a deliberate consequence of the
-    // contains rule, not exact-equality's "both empty or neither" behavior).
+fn marker_skip_if_eq_rhs_empty_is_not_exact_match() {
+    // Exact semantics: a non-empty value does not equal the empty string,
+    // so an unset RHS leaves `=` unmet (the old contains rule matched here,
+    // because every string contains the empty string).
     let mut env = HashMap::new();
     env.insert("MY_VAR".into(), "val".into());
     let suite = resolve_source(
@@ -173,13 +173,13 @@ test "eq" {
         )],
         env,
     );
-    assert!(is_skipped(&suite.plans[0]));
+    assert!(is_runnable(&suite.plans[0]));
 }
 
 #[test]
-fn marker_skip_if_eq_is_contains_not_exact() {
-    // `X = linux` with X = "ubuntu-linux" must now be met (contains),
-    // where the old exact-equality semantics would have been unmet.
+fn marker_skip_if_eq_is_exact_not_contains() {
+    // `X = linux` with X = "ubuntu-linux" is unmet under exact equality,
+    // where the old contains semantics would have matched by substring.
     let mut env = HashMap::new();
     env.insert("MY_VAR".into(), "ubuntu-linux".into());
     env.insert("SUBSTR".into(), "linux".into());
@@ -197,8 +197,8 @@ test "eq" {
         env,
     );
     assert!(
-        is_skipped(&suite.plans[0]),
-        "expected `=` to match by containment"
+        is_runnable(&suite.plans[0]),
+        "expected `=` to require exact equality, not containment"
     );
 }
 

@@ -63,8 +63,8 @@ pub enum IrMarkerCond {
     Unconditional,
     /// `<expr>` - truthy if the evaluated value is non-empty.
     Bare { expr: IrPureExpr },
-    /// `<lhs> = <rhs>` - literal match: met when `lhs` contains `rhs`
-    /// (substring), not exact equality. Anchor a regex for exact.
+    /// `<lhs> = <rhs>` - literal match: met when `lhs` equals `rhs`
+    /// exactly. For a substring or pattern check, use `?` (regex).
     /// `cond_span` locates the `lhs = rhs` body for diagnostics, mirroring
     /// `Regex`'s `pattern_span`.
     Eq {

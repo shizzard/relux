@@ -1,13 +1,14 @@
 //! One-shot string matching against a complete value - the shared
 //! primitive behind marker conditions and (later) pure-match statements.
-//! Literal mode is substring-contains; regex mode is an unanchored search
+//! Literal mode is exact equality; regex mode is an unanchored search
 //! with numeric-keyed captures. Pure: no I/O, no observability.
 
 use std::collections::HashMap;
 
 /// A successful match. `matched_text` is the whole-match substring
-/// (regex group 0, or the literal needle). `captures` holds numeric-keyed
-/// regex groups (`"0"`..`"n"`); always empty for a literal match.
+/// (regex group 0, or the whole value for a literal - which equals the
+/// pattern). `captures` holds numeric-keyed regex groups (`"0"`..`"n"`);
+/// always empty for a literal match.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PureMatchHit {
     pub matched_text: String,
@@ -52,9 +53,9 @@ pub fn pure_match(
             matched_text,
             captures,
         }))
-    } else if value.contains(pattern) {
+    } else if value == pattern {
         Ok(Some(PureMatchHit {
-            matched_text: pattern.to_string(),
+            matched_text: value.to_string(),
             captures: HashMap::new(),
         }))
     } else {
@@ -67,15 +68,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn literal_contains_hit_has_needle_and_no_captures() {
-        let hit = pure_match("ubuntu-linux", "linux", false).unwrap().unwrap();
+    fn literal_exact_hit_has_value_and_no_captures() {
+        let hit = pure_match("linux", "linux", false).unwrap().unwrap();
         assert_eq!(hit.matched_text, "linux");
         assert!(hit.captures.is_empty());
     }
 
     #[test]
-    fn literal_contains_miss_is_none() {
+    fn literal_exact_miss_is_none() {
+        // Not equal - a plain no-match.
         assert!(pure_match("darwin", "linux", false).unwrap().is_none());
+        // Superstring is a miss too: it contains the needle, but is not equal.
+        assert!(
+            pure_match("ubuntu-linux", "linux", false)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -107,7 +115,7 @@ mod tests {
 
     #[test]
     fn literal_never_errors_on_regex_metachars() {
-        // A bare `(` is a literal needle here, not a regex - no error.
-        assert!(pure_match("a(b", "(", false).unwrap().is_some());
+        // A bare `(` is a literal value here, not a regex - no error.
+        assert!(pure_match("(", "(", false).unwrap().is_some());
     }
 }
