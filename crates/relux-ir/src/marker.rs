@@ -216,12 +216,22 @@ pub fn decide_markers(
                         crate::evaluator::eval_pure_expr(lhs, &vars, env, fns, &mut recording);
                     let rhs_val =
                         crate::evaluator::eval_pure_expr(rhs, &vars, env, fns, &mut recording);
-                    let met = lhs_val == rhs_val;
+                    // Literal mode never errors, so the Result/Option unwraps cleanly.
+                    let met = crate::eval_pure_match(
+                        &mut recording,
+                        &lhs_val,
+                        &rhs_val,
+                        false,
+                        &marker_span,
+                    )
+                    .expect("literal pure_match cannot fail")
+                    .is_some();
                     (
                         met,
-                        SkipEvaluation::Eq {
-                            lhs: lhs_val,
-                            rhs: rhs_val,
+                        SkipEvaluation::PureMatch {
+                            value: lhs_val,
+                            pattern: rhs_val,
+                            is_regex: false,
                             met,
                         },
                     )
@@ -255,9 +265,10 @@ pub fn decide_markers(
 
                     (
                         met,
-                        SkipEvaluation::Regex {
+                        SkipEvaluation::PureMatch {
                             value,
                             pattern: pattern_str,
+                            is_regex: true,
                             met,
                         },
                     )

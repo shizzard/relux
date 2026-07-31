@@ -283,14 +283,10 @@
             out.push({ type: 'kv', key: 'value', value: e.value, mono: true });
             out.push({ type: 'kv', key: 'met', value: String(e.met), accent: true });
             break;
-          case 'eq':
-            out.push({ type: 'kv', key: 'lhs', value: e.lhs, mono: true });
-            out.push({ type: 'kv', key: 'rhs', value: e.rhs, mono: true });
-            out.push({ type: 'kv', key: 'met', value: String(e.met), accent: true });
-            break;
-          case 'regex':
+          case 'pure-match':
             out.push({ type: 'kv', key: 'value', value: e.value, mono: true });
             out.push({ type: 'kv', key: 'pattern', value: e.pattern, mono: true });
+            out.push({ type: 'kv', key: 'is_regex', value: String(e.is_regex) });
             out.push({ type: 'kv', key: 'met', value: String(e.met), accent: true });
             break;
         }

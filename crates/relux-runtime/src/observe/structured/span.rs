@@ -68,14 +68,10 @@ pub enum MarkerEvalDetail {
         value: String,
         met: bool,
     },
-    Eq {
-        lhs: String,
-        rhs: String,
-        met: bool,
-    },
-    Regex {
+    PureMatch {
         value: String,
         pattern: String,
+        is_regex: bool,
         met: bool,
     },
 }

@@ -203,10 +203,10 @@ export function eventSummary(event: Event): string {
           return 'unconditional';
         case 'bare':
           return `"${truncate(escapeBytes(ev.value), SUMMARY_MAX)}" \u{2192} ${ev.met}`;
-        case 'eq':
-          return `"${truncate(escapeBytes(ev.lhs), 32)}" = "${truncate(escapeBytes(ev.rhs), 32)}" \u{2192} ${ev.met}`;
-        case 'regex':
-          return `"${truncate(escapeBytes(ev.value), 32)}" ? ${truncate(ev.pattern, 32)} \u{2192} ${ev.met}`;
+        case 'pure-match':
+          return ev.is_regex
+            ? `"${truncate(escapeBytes(ev.value), 32)}" ? ${truncate(ev.pattern, 32)} \u{2192} ${ev.met}`
+            : `"${truncate(escapeBytes(ev.value), 32)}" = ${truncate(ev.pattern, 32)} \u{2192} ${ev.met}`;
       }
     }
     case 'annotate':

@@ -1271,18 +1271,15 @@ pub(crate) fn marker_detail_from_evaluation(
             value: value.clone(),
             met: *met,
         },
-        Eq { lhs, rhs, met } => MarkerEvalDetail::Eq {
-            lhs: lhs.clone(),
-            rhs: rhs.clone(),
-            met: *met,
-        },
-        Regex {
+        PureMatch {
             value,
             pattern,
+            is_regex,
             met,
-        } => MarkerEvalDetail::Regex {
+        } => MarkerEvalDetail::PureMatch {
             value: value.clone(),
             pattern: pattern.clone(),
+            is_regex: *is_regex,
             met: *met,
         },
     }
