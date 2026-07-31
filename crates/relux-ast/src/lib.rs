@@ -188,6 +188,16 @@ pub enum AstStmt {
         pattern: AstInterpolation,
         span: Span,
     },
+    PureMatchLiteral {
+        lhs: Spanned<AstExpr>,
+        pattern: AstInterpolation,
+        span: Span,
+    },
+    PureMatchRegex {
+        lhs: Spanned<AstExpr>,
+        pattern: AstInterpolation,
+        span: Span,
+    },
     TimedMatchRegex {
         timeout: AstTimeout,
         pattern: Spanned<AstInterpolation>,
@@ -224,6 +234,8 @@ impl_ast_node_enum!(AstStmt {
     SendRaw,
     MatchRegex,
     MatchLiteral,
+    PureMatchLiteral,
+    PureMatchRegex,
     TimedMatchRegex,
     TimedMatchLiteral,
     BufferReset,

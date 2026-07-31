@@ -137,6 +137,17 @@ pub enum Failure {
         context: FailureContext,
     },
     #[error(
+        "pure match in shell '{shell}' did not satisfy pattern {pattern}: value {value:?} did not match"
+    )]
+    PureMatch {
+        value: String,
+        pattern: String,
+        is_regex: bool,
+        span: IrSpan,
+        shell: String,
+        context: FailureContext,
+    },
+    #[error(
         "multimatch did not satisfy all patterns in shell '{shell}' ({matched_count}/{total} matched)",
         matched_count = matched.len(),
         total = patterns.len(),
@@ -166,6 +177,7 @@ impl Failure {
             Failure::FailPatternMatched { .. } => "FailPatternMatched",
             Failure::ShellExited { .. } => "ShellExited",
             Failure::Runtime { .. } => "Runtime",
+            Failure::PureMatch { .. } => "PureMatch",
             Failure::MultiMatch { .. } => "MultiMatch",
         }
     }
@@ -176,6 +188,7 @@ impl Failure {
             | Failure::FailPatternMatched { context, .. }
             | Failure::ShellExited { context, .. }
             | Failure::Runtime { context, .. }
+            | Failure::PureMatch { context, .. }
             | Failure::MultiMatch { context, .. } => context,
         }
     }
@@ -264,6 +277,29 @@ impl From<&Failure> for relux_core::error::DiagnosticReport {
                             None
                         },
                     },
+                }
+            }
+            Failure::PureMatch {
+                value,
+                pattern,
+                is_regex,
+                span,
+                shell,
+                ..
+            } => {
+                let op = if *is_regex { "?" } else { "=" };
+                DiagnosticReport {
+                    severity: Severity::Error,
+                    message: format!("pure match in shell `{shell}` did not match"),
+                    labels: vec![
+                        (
+                            span.clone(),
+                            format!("value did not satisfy `{op} {pattern}`"),
+                        )
+                            .into(),
+                    ],
+                    help: None,
+                    note: Some(format!("value: {value}")),
                 }
             }
             Failure::MultiMatch {

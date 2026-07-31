@@ -131,6 +131,12 @@ pub enum IrShellStmt {
         pattern: IrInterpolation,
         span: IrSpan,
     },
+    PureMatch {
+        lhs: IrExpr,
+        pattern: IrInterpolation,
+        is_regex: bool,
+        span: IrSpan,
+    },
     TimedMatchRegex {
         timeout: IrTimeout,
         pattern: IrInterpolation,
@@ -175,6 +181,7 @@ impl_ir_node_enum!(IrShellStmt {
     SendRaw,
     MatchRegex,
     MatchLiteral,
+    PureMatch,
     TimedMatchRegex,
     TimedMatchLiteral,
     Timeout,
@@ -410,6 +417,27 @@ impl IrNodeLowering for IrShellStmt {
                     span: s(span),
                 })
             }
+            AstStmt::PureMatchLiteral { lhs, pattern, span } => {
+                let ir_lhs = IrExpr::lower(&lhs.node, file, ctx)?;
+                let ir_pattern = IrInterpolation::lower(pattern, file, ctx)?;
+                Ok(IrShellStmt::PureMatch {
+                    lhs: ir_lhs,
+                    pattern: ir_pattern,
+                    is_regex: false,
+                    span: s(span),
+                })
+            }
+            AstStmt::PureMatchRegex { lhs, pattern, span } => {
+                let ir_lhs = IrExpr::lower(&lhs.node, file, ctx)?;
+                let ir_pattern = IrInterpolation::lower(pattern, file, ctx)?;
+                super::regex_validate::validate_static_regex(pattern, file)?;
+                Ok(IrShellStmt::PureMatch {
+                    lhs: ir_lhs,
+                    pattern: ir_pattern,
+                    is_regex: true,
+                    span: s(span),
+                })
+            }
             AstStmt::TimedMatchRegex {
                 timeout,
                 pattern,
@@ -537,6 +565,10 @@ impl IrNodeLowering for IrPureStmt {
                     span: s(span),
                 })
             }
+            // Pure matching is not yet available inside `pure fn` bodies.
+            AstStmt::PureMatchLiteral { span, .. } | AstStmt::PureMatchRegex { span, .. } => Err(
+                LoweringBail::invalid(InvalidReport::pure_match_in_pure_fn(s(span))),
+            ),
             // All shell operators are purity violations
             AstStmt::Send { span, .. }
             | AstStmt::SendRaw { span, .. }

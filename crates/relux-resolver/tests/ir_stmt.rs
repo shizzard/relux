@@ -692,6 +692,63 @@ fn lower_pure_stmt_rejects_clear_fail() {
 }
 
 #[test]
+fn lower_pure_match_literal_stmt() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let stmt = extract_first_stmt("fn t() {\n  name = expected\n}\n");
+    let ir = IrShellStmt::lower(&stmt, &file, &mut ctx).unwrap();
+    assert!(matches!(
+        ir,
+        IrShellStmt::PureMatch {
+            is_regex: false,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn lower_pure_match_regex_stmt() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let stmt = extract_first_stmt("fn t() {\n  name ? ^id=(\\d+)$\n}\n");
+    let ir = IrShellStmt::lower(&stmt, &file, &mut ctx).unwrap();
+    assert!(matches!(ir, IrShellStmt::PureMatch { is_regex: true, .. }));
+}
+
+#[test]
+fn lower_pure_match_regex_invalid_regex_diagnoses() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let stmt = extract_first_stmt("fn t() {\n  name ? (unclosed\n}\n");
+    let result = IrShellStmt::lower(&stmt, &file, &mut ctx);
+    assert!(
+        result.is_err(),
+        "invalid static regex in a pure match must surface at lowering"
+    );
+}
+
+#[test]
+fn lower_pure_match_rejected_in_pure_fn() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let stmt = extract_first_stmt("fn t() {\n  name = expected\n}\n");
+    let result = IrPureStmt::lower(&stmt, &file, &mut ctx);
+    match result {
+        Err(LoweringBail::Invalid(report)) => {
+            assert!(
+                report.to_string().contains("not yet available"),
+                "expected pure-match-in-pure-fn message, got: {report}"
+            );
+        }
+        other => panic!("expected Invalid report, got {other:?}"),
+    }
+}
+
+#[test]
 fn ir_shell_stmt_multimatch_node_span() {
     let s = test_span();
     let pat = IrMultiMatchPattern::new(IrInterpolation::new(vec![], s.clone()), true, s.clone());

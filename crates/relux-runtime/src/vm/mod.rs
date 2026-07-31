@@ -565,6 +565,53 @@ impl Vm {
                 self.set_captures_from_map(captures);
                 Ok(full)
             }
+            IrShellStmt::PureMatch {
+                lhs,
+                pattern,
+                is_regex,
+                ..
+            } => {
+                let value = self.eval_expr(lhs).await?;
+                let pat = interpolate_ir(pattern, &self.ctx).await;
+                self.emit_interpolation(pattern, &pat, Some(&span)).await;
+                let outcome = {
+                    let mut sink = crate::observe::structured::log_sink::LogSink::new(
+                        &self.log,
+                        self.current_span(),
+                    );
+                    relux_ir::eval_pure_match(&mut sink, &value, &pat, *is_regex, &span)
+                };
+                match outcome {
+                    Ok(Some(hit)) => {
+                        if *is_regex {
+                            self.set_captures_from_map(hit.captures);
+                        }
+                        Ok(value)
+                    }
+                    Ok(None) => {
+                        let context = self.capture_failure_context().await;
+                        Err(Failure::PureMatch {
+                            value,
+                            pattern: pat,
+                            is_regex: *is_regex,
+                            span: span.clone(),
+                            shell: self.ctx.current_name().to_string(),
+                            context,
+                        }
+                        .into())
+                    }
+                    Err(e) => {
+                        let context = self.capture_failure_context().await;
+                        Err(Failure::Runtime {
+                            message: format!("invalid regex: {}", e.reason),
+                            span: Some(span.clone()),
+                            shell: Some(self.ctx.current_name().to_string()),
+                            context,
+                        }
+                        .into())
+                    }
+                }
+            }
             IrShellStmt::TimedMatchLiteral {
                 timeout, pattern, ..
             } => {

@@ -251,6 +251,7 @@ impl<'a> Visitor<'a> {
             }
             IrShellStmt::Assign { stmt, .. } => self.visit_expr(stmt.value())?,
             IrShellStmt::Expr { expr, .. } => self.visit_expr(expr)?,
+            IrShellStmt::PureMatch { lhs, .. } => self.visit_expr(lhs)?,
         }
         Ok(())
     }

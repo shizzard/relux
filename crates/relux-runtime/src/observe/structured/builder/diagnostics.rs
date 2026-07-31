@@ -199,6 +199,23 @@ impl StructuredLogBuilder {
                 call_stack: context.call_stack().to_vec(),
                 vars_in_scope: context.vars_in_scope().to_vec(),
             },
+            Failure::PureMatch {
+                value,
+                pattern,
+                is_regex,
+                shell,
+                context,
+                ..
+            } => FailureRecord::PureMatch {
+                span: context.span().unwrap_or(0),
+                event_seq: context.event_seq().unwrap_or(0),
+                shell: shell.clone(),
+                value: value.clone(),
+                pattern: pattern.clone(),
+                is_regex: *is_regex,
+                call_stack: context.call_stack().to_vec(),
+                vars_in_scope: context.vars_in_scope().to_vec(),
+            },
             Failure::MultiMatch {
                 shell,
                 patterns,

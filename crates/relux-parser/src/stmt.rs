@@ -116,6 +116,50 @@ fn stmt_match_literal<'a>()
         .then_ignore(newline())
 }
 
+/// `<expr> = <pattern>` -> `AstStmt::PureMatchLiteral` (exact-equality assert).
+fn stmt_pure_match_literal<'a>()
+-> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+    expr()
+        .then_ignore(ws())
+        .then_ignore(just(Token::Eq))
+        .then_ignore(ws())
+        .then(interp_literal(Token::Newline))
+        .map_with(|(lhs, payload), e| {
+            let span = crate::span_from_chumsky(e.span());
+            Spanned::new(
+                AstStmt::PureMatchLiteral {
+                    lhs,
+                    pattern: payload.node,
+                    span,
+                },
+                span,
+            )
+        })
+        .then_ignore(newline())
+}
+
+/// `<expr> ? <pattern>` -> `AstStmt::PureMatchRegex` (regex assert; binds `$n`).
+fn stmt_pure_match_regex<'a>()
+-> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+    expr()
+        .then_ignore(ws())
+        .then_ignore(just(Token::Question))
+        .then_ignore(ws())
+        .then(interp_regex(Token::Newline))
+        .map_with(|(lhs, payload), e| {
+            let span = crate::span_from_chumsky(e.span());
+            Spanned::new(
+                AstStmt::PureMatchRegex {
+                    lhs,
+                    pattern: payload.node,
+                    span,
+                },
+                span,
+            )
+        })
+        .then_ignore(newline())
+}
+
 /// `!? payload` -> `AstStmt::FailRegex`, or `!?` alone -> `AstStmt::ClearFailPattern`
 fn stmt_fail_regex<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
@@ -342,20 +386,17 @@ fn stmt_let<'a>()
         .then_ignore(newline())
 }
 
-/// `name := expr` -> `AstStmt::Assign`. A bare `name = expr` emits the R013
-/// migration hint: the legacy `=` path lives in the inner `choice` (after the
-/// key is committed and with `ws()` outside the choice) so its custom error is
-/// the furthest alternative and is surfaced, mirroring `stmt_let`.
+/// `name := expr` -> `AstStmt::Assign`. Reassignment binds only via `:=`; a
+/// bare `name = expr` is no longer a reassignment - it parses as a pure-match
+/// assertion (`stmt_pure_match_literal`), which sits ahead of this production
+/// in the `stmt()` choice.
 fn stmt_assign<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     ident_var()
         .then(
-            ws().ignore_then(choice((
-                op_bind().ignore_then(ws()).ignore_then(expr()),
-                just(Token::Eq)
-                    .map_with(|_, e| e.span())
-                    .try_map(|span, _| Err(legacy_assign_err(span))),
-            ))),
+            ws().ignore_then(op_bind())
+                .ignore_then(ws())
+                .ignore_then(expr()),
         )
         .map_with(|(name, value), e| {
             let span = crate::span_from_chumsky(e.span());
@@ -398,6 +439,11 @@ pub fn stmt<'a>()
                 stmt_timed_match_regex(),
                 stmt_match_regex(),
                 stmt_match_literal(),
+                // Pure-match: LHS is `expr()` then a bare `=`/`?`. Reassignment
+                // is `ident := expr`, so `:=` inputs fail both pure-match
+                // productions on the `:` and fall through to `stmt_assign`.
+                stmt_pure_match_regex(),
+                stmt_pure_match_literal(),
                 stmt_send_raw(),
                 stmt_send(),
                 stmt_fail_regex(),
@@ -656,12 +702,54 @@ mod tests {
     }
 
     #[test]
-    fn legacy_reassign_eq_reports_migration_hint() {
-        let err = parse_stmt_err("x = \"v\"\n");
-        assert!(
-            err.contains("write `name := value`"),
-            "expected := migration hint, got: {err}"
-        );
+    fn pure_match_literal_parses() {
+        let s = parse_stmt("name = expected\n");
+        match s {
+            AstStmt::PureMatchLiteral { lhs, pattern, .. } => {
+                assert!(matches!(lhs.node, AstExpr::Var { .. }));
+                assert!(
+                    matches!(&pattern.parts[0], AstStringPart::Literal { value, .. } if value == "expected")
+                );
+            }
+            _ => panic!("expected PureMatchLiteral, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn pure_match_regex_parses() {
+        let s = parse_stmt("name ? ^id=(\\d+)$\n");
+        match s {
+            AstStmt::PureMatchRegex { lhs, pattern, .. } => {
+                assert!(matches!(lhs.node, AstExpr::Var { .. }));
+                assert!(
+                    matches!(&pattern.parts[0], AstStringPart::Literal { value, .. } if value == r"^id=(\d+)$")
+                );
+            }
+            _ => panic!("expected PureMatchRegex, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn pure_match_lhs_can_be_a_call() {
+        let s = parse_stmt("build_payload() = ok\n");
+        match s {
+            AstStmt::PureMatchLiteral { lhs, .. } => {
+                assert!(matches!(lhs.node, AstExpr::Call { .. }));
+            }
+            _ => panic!("expected PureMatchLiteral, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn walrus_still_reassigns_not_pure_match() {
+        let s = parse_stmt("name := expr\n");
+        assert!(matches!(s, AstStmt::Assign { .. }));
+    }
+
+    #[test]
+    fn bare_eq_reassign_is_now_pure_match_not_legacy_error() {
+        let s = parse_stmt("x = e\n");
+        assert!(matches!(s, AstStmt::PureMatchLiteral { .. }));
     }
 
     #[test]

@@ -141,6 +141,18 @@ fn format_failure_detail(failure: &Failure, source_table: &SourceTable) -> Strin
             };
             format!("{shell_line}message: {message}{loc_line}")
         }
+        Failure::PureMatch {
+            value,
+            pattern,
+            is_regex,
+            span,
+            shell,
+            ..
+        } => {
+            let loc = source_location(span, source_table);
+            let op = if *is_regex { "?" } else { "=" };
+            format!("shell: {shell}\npattern: {op} {pattern}\nvalue: {value}\n{loc}")
+        }
         Failure::MultiMatch {
             shell,
             patterns,

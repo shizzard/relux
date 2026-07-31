@@ -77,6 +77,16 @@ pub enum FailureRecord {
         call_stack: Vec<StackFrame>,
         vars_in_scope: Vec<(String, String)>,
     },
+    PureMatch {
+        span: SpanId,
+        event_seq: EventSeq,
+        shell: String,
+        value: String,
+        pattern: String,
+        is_regex: bool,
+        call_stack: Vec<StackFrame>,
+        vars_in_scope: Vec<(String, String)>,
+    },
     MultiMatch {
         span: SpanId,
         event_seq: EventSeq,
