@@ -124,8 +124,8 @@ effect FailTail {
 
 test "service handles load" {
     start FailTail {
-        FAILTAIL_TRIGGER = "panic|error"
-        FAILTAIL_LOG = "/var/log/service.log"
+        FAILTAIL_TRIGGER := "panic|error"
+        FAILTAIL_LOG := "/var/log/service.log"
     }
     start Service as Svc
     shell client {
@@ -136,7 +136,7 @@ test "service handles load" {
 }
 ```
 
-The `FailTail` effect declares two required variables with `expect` and exposes its `tail` shell. It starts tailing the log and sets a fail pattern. If anything fatal appears in the log while the test runs its requests, the test fails on the spot. The `{ FAILTAIL_TRIGGER = ... }` syntax passes configuration into the effect — we will cover these **overlay variables** later in this article. Without effects, you would duplicate this tail-and-fail-pattern setup in every test that exercises the service.
+The `FailTail` effect declares two required variables with `expect` and exposes its `tail` shell. It starts tailing the log and sets a fail pattern. If anything fatal appears in the log while the test runs its requests, the test fails on the spot. The `{ FAILTAIL_TRIGGER := ... }` syntax passes configuration into the effect — we will cover these **overlay variables** later in this article. Without effects, you would duplicate this tail-and-fail-pattern setup in every test that exercises the service.
 
 ## Defining an effect
 
@@ -311,7 +311,7 @@ Effects can expose computed values alongside shells. Use `expose var` to declare
 
 ```relux
 effect StartDb {
-    let port = available_port()
+    let port := available_port()
     expose shell db
     expose var port
 
@@ -338,7 +338,7 @@ test "connect to dynamic port" {
 
 ```relux
     shell client {
-        let db_url = "http://localhost:${Db.port}"
+        let db_url := "http://localhost:${Db.port}"
         > curl ${db_url}/status
         <? running
     }
@@ -350,7 +350,7 @@ Composed effects can re-expose variables from their dependencies, just like shel
 
 ```relux
 effect StartAuth {
-    let auth_port = available_port()
+    let auth_port := available_port()
     start StartDb as Db
     expose shell auth
     expose var auth_port
@@ -405,7 +405,7 @@ In the test log viewer this story is hard to miss. The first `start Counter as C
 
 ## Overlay variables
 
-So far, every effect has been a fixed recipe — the same setup every time. But what if you need two databases with different names, or the same service on different ports? The `FailTail` example in the introduction hinted at the answer: `expect` declares what the effect requires, and the `{ FAILTAIL_TRIGGER = ... }` syntax at the `start` site provides it. These are **overlay variables** — key-value pairs passed at the `start` site that parameterize the effect:
+So far, every effect has been a fixed recipe — the same setup every time. But what if you need two databases with different names, or the same service on different ports? The `FailTail` example in the introduction hinted at the answer: `expect` declares what the effect requires, and the `{ FAILTAIL_TRIGGER := ... }` syntax at the `start` site provides it. These are **overlay variables** — key-value pairs passed at the `start` site that parameterize the effect:
 
 ```relux
 effect Labeled {
@@ -420,10 +420,10 @@ effect Labeled {
 
 test "different overlays create separate instances" {
     start Labeled as A {
-        LABEL = "alpha"
+        LABEL := "alpha"
     }
     start Labeled as B {
-        LABEL = "beta"
+        LABEL := "beta"
     }
     shell A.service {
         > echo $$SVC_LABEL
@@ -436,19 +436,19 @@ test "different overlays create separate instances" {
 }
 ```
 
-The `Labeled` effect declares `expect LABEL` — a required variable that must be provided by the caller. Each `start` site provides its own value for `LABEL`, and Relux creates **separate instances** of the effect — one with `LABEL = "alpha"`, another with `LABEL = "beta"`. Each instance gets its own shell, its own setup run, its own state. If a caller forgets to pass a required variable, `relux check` reports the error before any test runs.
+The `Labeled` effect declares `expect LABEL` — a required variable that must be provided by the caller. Each `start` site provides its own value for `LABEL`, and Relux creates **separate instances** of the effect — one with `LABEL := "alpha"`, another with `LABEL := "beta"`. Each instance gets its own shell, its own setup run, its own state. If a caller forgets to pass a required variable, `relux check` reports the error before any test runs.
 
 `expect` is a **contract**, not a sandbox. It declares which variables the effect *requires* — the ones the resolver validates. It does not prevent the effect from reading other variables. An effect always inherits the full parent environment: the base system environment, plus any variables set in the caller's scope. The overlay adds to or overrides specific entries in that inherited environment. This means most configuration flows through naturally, and only the values that vary per-instance need to be listed in `expect` and passed via overlays.
 
-This is where overlays connect to deduplication. The full identity of an effect instance is **(effect name, evaluated overlay values)**. Same name with same overlay = shared instance. Same name with different overlay = separate instances. Two `start Labeled as X { LABEL = "alpha" }` with the same overlay value would share one instance, regardless of the alias name.
+This is where overlays connect to deduplication. The full identity of an effect instance is **(effect name, evaluated overlay values)**. Same name with same overlay = shared instance. Same name with different overlay = separate instances. Two `start Labeled as X { LABEL := "alpha" }` with the same overlay value would share one instance, regardless of the alias name.
 
-The test log viewer makes this concrete. Click each `setup` span and the detail panel shows an `expects` subsection listing the overlay values the effect was started with — `LABEL = alpha` for one instance, `LABEL = beta` for another. Two starts with the same `LABEL` would dedupe to one full setup and one `reused` span; two with different `LABEL`s produce two full setups. The identity tuple — `(effect name, overlay values)` — is right there in the events list, one row per identity.
+The test log viewer makes this concrete. Click each `setup` span and the detail panel shows an `expects` subsection listing the overlay values the effect was started with — `LABEL: alpha` for one instance, `LABEL: beta` for another. Two starts with the same `LABEL` would dedupe to one full setup and one `reused` span; two with different `LABEL`s produce two full setups. The identity tuple — `(effect name, overlay values)` — is right there in the events list, one row per identity.
 
-When the overlay key and the variable being passed have the same name, you can use the shorthand syntax — a bare key without `= value`:
+When the overlay key and the variable being passed have the same name, you can use the shorthand syntax — a bare key without `:= value`:
 
 ```relux
-let LABEL = "alpha"
-start Labeled as A { LABEL }   // desugars to LABEL = LABEL
+let LABEL := "alpha"
+start Labeled as A { LABEL }   // desugars to LABEL := LABEL
 ```
 
 Overlay variables are the mechanism for reusing a single effect definition across different configurations — like the `FailTail` example from the introduction, where the trigger pattern and log path are passed in as overlays.
@@ -495,8 +495,8 @@ Because deduplication means two aliases can point to the same shell, mutations t
 If you need truly independent instances, give them different overlay values — even a dummy key is enough to create separate identities:
 
 ```relux
-start MyEffect as A { INSTANCE = "1" }
-start MyEffect as B { INSTANCE = "2" }
+start MyEffect as A { INSTANCE := "1" }
+start MyEffect as B { INSTANCE := "2" }
 ```
 
 ## Try it yourself

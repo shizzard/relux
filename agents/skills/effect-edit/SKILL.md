@@ -547,7 +547,7 @@ Don't:
 # against the first test's port.
 effect Server {
   expect data_dir
-  let port = "8080"           # was: expect (data_dir, port)
+  let port := "8080"           # was: expect (data_dir, port)
   shell run {
     send "./server --data ${data_dir} --port ${port}"
   }

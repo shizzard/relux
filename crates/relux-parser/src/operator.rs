@@ -28,6 +28,24 @@ pub fn op_send_raw<'a>()
         .labelled("send raw operator (=>)")
 }
 
+/// `:=` - bind (declaration, reassignment, overlay value).
+pub fn op_bind<'a>()
+-> impl Parser<'a, ParserInput<'a>, SimpleSpan, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+    just(Token::Colon)
+        .map_with(|_, e| e.span())
+        .then(just(Token::Eq).map_with(|_, e| e.span()))
+        .map(|(a, b): (SimpleSpan, SimpleSpan)| SimpleSpan::from(a.start..b.end))
+        .labelled("bind operator (:=)")
+}
+
+/// Migration diagnostic for the pre-R013 `=` assignment form.
+pub fn legacy_assign_err<'a>(span: SimpleSpan) -> Rich<'a, Token<'a>> {
+    Rich::custom(
+        span,
+        "assignment uses `:=`, not `=` (write `name := value`)",
+    )
+}
+
 /// `<?` - match regex
 pub fn op_match_regex<'a>()
 -> impl Parser<'a, ParserInput<'a>, SimpleSpan, extra::Err<Rich<'a, Token<'a>>>> + Clone {

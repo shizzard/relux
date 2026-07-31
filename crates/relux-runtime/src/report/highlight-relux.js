@@ -160,6 +160,9 @@ hljs.registerLanguage("relux", function (hljs) {
     className: "string"
   };
 
+  // Binding operator: `let x := e`, `x := e`, overlay `{ K := e }`.
+  const OP_BIND = { scope: "keyword", match: /:=/ };
+
   // Declaration-site split-scope rules. ALL use the array form of `match`
   // so the object `scope` actually attaches per-piece classes.
 
@@ -260,14 +263,6 @@ hljs.registerLanguage("relux", function (hljs) {
     scope: { 1: "keyword", 3: "variable" }
   };
 
-  // Assignment / reassignment LHS - catches bare `hostname = "x"` and the
-  // env bindings inside `start X { K = V }`. The negative lookahead on
-  // `=(?!>)` keeps `=>` (raw send) out of this rule.
-  const ASSIGN_LHS = {
-    match: [/\b[a-zA-Z_][a-zA-Z0-9_]*/, /\s*/, /=(?!>)/],
-    scope: { 1: "variable" }
-  };
-
   // Parenthesised argument / parameter lists. Activated by any `(...)`
   // - covers fn declaration params `fn foo(p1, p2)` AND call-site args
   // `trim(input)` / `let code = match_exit_code(0)`.
@@ -318,8 +313,8 @@ hljs.registerLanguage("relux", function (hljs) {
 
   // Bare variable use site - a lowercase identifier that isn't a keyword,
   // a function call (followed by `(`), a dotted prefix (followed by `.`),
-  // an assignment LHS (followed by `=`), or a block opener (followed by
-  // `{`). Catches return values like `filename` on its own line, and
+  // or a block opener (followed by `{`). Catches return values like
+  // `filename` on its own line, binding LHS names in `x := e`, and
   // identifier uses in expression positions that no earlier rule covers.
   //
   // Contains rules fire BEFORE the keyword map, so the negative lookahead
@@ -364,9 +359,6 @@ hljs.registerLanguage("relux", function (hljs) {
       DECL_AS_TYPE,
       DECL_AS_VAR,
 
-      // Assignment / reassignment LHS.
-      ASSIGN_LHS,
-
       // Parenthesised arg / param lists (fn decls and call sites).
       FN_CALL_ARGS,
 
@@ -383,6 +375,7 @@ hljs.registerLanguage("relux", function (hljs) {
       OP_FAIL_LITERAL,
       OP_SEND_RAW,
       OP_SEND,
+      OP_BIND,
 
       // Standalone timeout (must come before bare-number rule).
       DURATION,

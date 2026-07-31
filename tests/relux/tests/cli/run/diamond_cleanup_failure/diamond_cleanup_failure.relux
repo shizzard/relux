@@ -6,7 +6,7 @@ test "failure mid-setup still releases acquired dependencies" ~60s {
     both cleanups run in the expected reverse order (effect's own
     before its deps').
     """
-    let marker = "${__RELUX_TEST_ARTIFACTS}/order"
+    let marker := "${__RELUX_TEST_ARTIFACTS}/order"
 
     shell s {
         > export MARKER_FILE=${marker}

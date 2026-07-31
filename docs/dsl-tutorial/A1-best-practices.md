@@ -93,7 +93,7 @@ Save the capture to a named variable immediately after the match, before doing a
 
 // Durable — the port is safe no matter what happens next:
 <? ^port=(\d+)$
-let port = $1
+let port := $1
 > curl http://localhost:${port}/health
 ```
 
@@ -150,7 +150,7 @@ If you need to extract a value, do the match outside the block with a regular `<
     ? ^\d+ items processed$
 }
 <? ^port=(\d+)$
-let port = $1
+let port := $1
 > curl http://localhost:${port}/health
 ```
 
@@ -184,7 +184,7 @@ test "captures do not survive function calls" {
 
         // Also wrong — the return value is the prompt string, because
         // match_ok() is the last expression in extract_port():
-        let result = extract_port()
+        let result := extract_port()
         > echo "result=${result}"
         <? ^result=8080        // result is the prompt, not "8080"
     }
@@ -197,13 +197,13 @@ The fix is to design the function to explicitly return what you need. Save the c
 fn extract_port() {
     > echo "port=8080"
     <? ^port=(\d+)$
-    let port = $1
+    let port := $1
     match_ok()
     port
 }
 ```
 
-Now `let port = extract_port()` in the caller gives you `"8080"`.
+Now `let port := extract_port()` in the caller gives you `"8080"`.
 
 This is consistent with the scoping model: functions cannot modify the caller's variable state. Return values are the explicit, reliable channel for passing data back.
 
@@ -269,9 +269,9 @@ When string interpolation gets deeply nested, the intent can become hard to read
 
 ```relux
 test "nested interpolation" {
-    let host = "localhost"
-    let port = "5432"
-    let db = "myapp"
+    let host := "localhost"
+    let port := "5432"
+    let db := "myapp"
     shell s {
         > psql "postgres://${host}:${port}/${db}?sslmode=disable"
         <? ^connected$
@@ -288,10 +288,10 @@ pure fn pg_url(host, port, db) {
 }
 
 test "extracted into pure function" {
-    let host = "localhost"
-    let port = "5432"
+    let host := "localhost"
+    let port := "5432"
     shell s {
-        let url = pg_url(host, port, db)
+        let url := pg_url(host, port, db)
         > psql "${url}"
         <? ^connected$
         match_prompt()
@@ -395,8 +395,8 @@ Because deduplication means two aliases can point to the same shell, mutations t
 If you need truly independent instances, give them different overlay values — even a dummy key is enough to create separate identities:
 
 ```relux
-start MyEffect as A { INSTANCE = "1" }
-start MyEffect as B { INSTANCE = "2" }
+start MyEffect as A { INSTANCE := "1" }
+start MyEffect as B { INSTANCE := "2" }
 ```
 
 ## Cleanup

@@ -119,7 +119,7 @@ Fail pattern payloads support [variable interpolation](06-variables.md), just li
 
 ```relux
 shell s {
-    let bad = "PANIC"
+    let bad := "PANIC"
     !? ${bad}
     > echo "no panic here"
     <? ^no panic here$

@@ -175,7 +175,7 @@ following body elements changes:
   `<{ ... }`, etc.).
 - **Pattern body** -- anchoring an unanchored regex, tightening
   a broad pattern, swapping captures.
-- **Captures-to-let** -- inserting `let x = $1` immediately
+- **Captures-to-let** -- inserting `let x := $1` immediately
   after a `<?` so the value survives the next match's clobber.
 - **Sends** -- changing the command, adding a `=>` continuation,
   rewording an `>` payload.
@@ -188,7 +188,7 @@ following body elements changes:
 - **`start <Effect>` set** -- adding a `start`, dropping one,
   swapping for a different effect, changing the overlay.
 - **Test-scope `let` bindings** -- adding test-isolation values
-  (`let port = available_port()`), changing an existing one,
+  (`let port := available_port()`), changing an existing one,
   dropping one that is no longer used.
 - **Markers** -- adding / removing `# skip`, `# run`, `# flaky`
   on the test declaration or its file-level header.
@@ -691,7 +691,7 @@ test "starts and serves health on the configured port" {
     "ready on :<port>" line, hits /healthz from a second shell,
     asserts a 200 response.
     """
-    let port = available_port()
+    let port := available_port()
     shell s {
         > my-server --port ${port}
         <? ^ready on :${port}$
@@ -713,7 +713,7 @@ test "starts and serves health on the configured port" {
     "ready on :<port>" line, hits /healthz from a second shell,
     asserts a 200 response.
     """
-    let port = available_port()
+    let port := available_port()
     ...
 }
 ```
@@ -806,7 +806,7 @@ test "stores rows on the bound port" {
     shell s {
         > docker inspect -f '{{...}}' pg-${__RELUX_RUN_ID}
         <? ^([0-9]+)$
-        let port = $1
+        let port := $1
         ...
     }
 }

@@ -21,7 +21,7 @@ test "create duplicate database" {
     Verify creating a database that already exists returns 409.
     """
     shell db {
-        let db_root = "${__RELUX_TEST_ARTIFACTS}/database"
+        let db_root := "${__RELUX_TEST_ARTIFACTS}/database"
 
         > mkdir ${db_root}
         match_ok()
@@ -34,11 +34,11 @@ test "create duplicate database" {
 
     shell client {
         log("create the database")
-        let response_filename = http_request(200, "http://localhost:9000/db/testdb", "POST")
+        let response_filename := http_request(200, "http://localhost:9000/db/testdb", "POST")
         jq_match_query(response_filename, ".created", "^testdb$")
 
         log("create it again — should fail")
-        let response_filename = http_request(409, "http://localhost:9000/db/testdb", "POST")
+        let response_filename := http_request(409, "http://localhost:9000/db/testdb", "POST")
         jq_match_query(response_filename, ".error", "^.*already exists.*$")
     }
 }
@@ -67,12 +67,12 @@ fn curl(url, method) {
 
 # skip unless which("curl")
 fn curl(url, method, req_body) {
-    let outdir = "${__RELUX_TEST_ARTIFACTS}/http"
+    let outdir := "${__RELUX_TEST_ARTIFACTS}/http"
     > mkdir -p ${outdir}
     match_ok()
 
-    let file_rand = rand(10)
-    let filename = "${outdir}/${file_rand}.http_response.txt"
+    let file_rand := rand(10)
+    let filename := "${outdir}/${file_rand}.http_response.txt"
 
     > curl -v -X ${method} -d '${req_body}' -o ${filename} ${url}
     <? ^> $
@@ -95,7 +95,7 @@ fn http_request(expected_code, url, method) {
 }
 
 fn http_request(expected_code, url, method, req_body) {
-    let response_filename = curl(url, method, req_body)
+    let response_filename := curl(url, method, req_body)
     http_match_code(expected_code)
     match_ok()
     response_filename
@@ -199,11 +199,11 @@ test "key-value CRUD" {
     ...
     shell client {
         log("create the database")
-        let response_filename = http_request(200, db_url("/db/mydb"), "POST")
+        let response_filename := http_request(200, db_url("/db/mydb"), "POST")
         jq_match_query(response_filename, ".created", "^mydb$")
 
         log("write a key")
-        let response_filename = http_request(200, db_url("/db/mydb/greeting"), "PUT", "{\"value\": \"hello\"}")
+        let response_filename := http_request(200, db_url("/db/mydb/greeting"), "PUT", "{\"value\": \"hello\"}")
         jq_match_query(response_filename, ".wrote", "^greeting$")
         ...
     }

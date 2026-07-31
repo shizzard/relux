@@ -6,6 +6,8 @@ use relux_lexer::Token;
 use super::ParserInput;
 use super::expr::expr;
 use super::ident::ident_var;
+use super::operator::legacy_assign_err;
+use super::operator::op_bind;
 use super::punctuation::punctuation_brace_close;
 use super::punctuation::punctuation_brace_open;
 use super::ws::flex_ws;
@@ -15,34 +17,49 @@ use relux_ast::AstOverlayEntry;
 
 // --- L4: Overlay Combinators -----------------------------
 
-/// `var = expr` - single overlay entry, or bare `var` (shorthand for `var = var`).
+/// `var := expr` - single overlay entry, or bare `var` (shorthand for `var := var`).
 fn overlay_entry<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstOverlayEntry>, extra::Err<Rich<'a, Token<'a>>>> + Clone
 {
-    // Full form: `KEY = expr`
-    let full = ident_var()
-        .then_ignore(ws().then(just(Token::Eq)).then(ws()))
-        .then(expr())
-        .map_with(|(key, value), e| {
+    // Peek (zero-consume, via rewind) whether a `:=` or `=` operator follows the
+    // key. This keeps the shorthand's trailing separator space intact when no
+    // operator is present, and -- crucially -- stops the always-succeeding
+    // shorthand alternative from masking the legacy `=` error.
+    let op_ahead = ws()
+        .ignore_then(just(Token::Colon).or(just(Token::Eq)))
+        .rewind();
+
+    // The operator branch: `:= expr` binds; a bare `=` emits the R013 migration
+    // hint. `ws()` is outside the choice so `op_bind` fails at `=` with zero
+    // consumption while `just(Eq)` consumes it and surfaces the custom error.
+    let value = ws().ignore_then(choice((
+        op_bind().ignore_then(ws()).ignore_then(expr()),
+        just(Token::Eq)
+            .map_with(|_, e| e.span())
+            .try_map(|span, _| Err(legacy_assign_err(span))),
+    )));
+
+    ident_var()
+        .then(op_ahead.ignore_then(value).or_not())
+        .map_with(|(key, maybe_value), e| {
             let span = crate::span_from_chumsky(e.span());
+            // Shorthand (no operator ahead): `KEY` desugars to `KEY := KEY`.
+            let value = match maybe_value {
+                Some(v) => v,
+                None => {
+                    let var_expr = AstExpr::Var {
+                        name: key.node.name.clone(),
+                        span: key.span,
+                    };
+                    Spanned::new(var_expr, key.span)
+                }
+            };
             Spanned::new(AstOverlayEntry { key, value, span }, span)
-        });
-
-    // Shorthand: bare `KEY` desugars to `KEY = KEY`
-    let shorthand = ident_var().map_with(|key, e| {
-        let span = crate::span_from_chumsky(e.span());
-        let var_expr = AstExpr::Var {
-            name: key.node.name.clone(),
-            span: key.span,
-        };
-        let value = Spanned::new(var_expr, key.span);
-        Spanned::new(AstOverlayEntry { key, value, span }, span)
-    });
-
-    choice((full, shorthand)).labelled("overlay entry")
+        })
+        .labelled("overlay entry")
 }
 
-/// `{ key = val, key = val }` - overlay block with optional trailing comma.
+/// `{ key := val, key := val }` - overlay block with optional trailing comma.
 pub fn overlay<'a>()
 -> impl Parser<'a, ParserInput<'a>, Vec<Spanned<AstOverlayEntry>>, extra::Err<Rich<'a, Token<'a>>>>
 + Clone {
@@ -85,14 +102,14 @@ mod tests {
 
     #[test]
     fn single_entry() {
-        let entries = parse_overlay(r#"{ PORT = "5433" }"#);
+        let entries = parse_overlay(r#"{ PORT := "5433" }"#);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].node.key.node.name, "PORT");
     }
 
     #[test]
     fn multiple_entries() {
-        let entries = parse_overlay(r#"{ PORT = "5433", HOST = "localhost" }"#);
+        let entries = parse_overlay(r#"{ PORT := "5433", HOST := "localhost" }"#);
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].node.key.node.name, "PORT");
         assert_eq!(entries[1].node.key.node.name, "HOST");
@@ -100,7 +117,7 @@ mod tests {
 
     #[test]
     fn trailing_comma() {
-        let entries = parse_overlay(r#"{ PORT = "5433", }"#);
+        let entries = parse_overlay(r#"{ PORT := "5433", }"#);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].node.key.node.name, "PORT");
     }
@@ -109,8 +126,8 @@ mod tests {
     fn multiline_overlay() {
         let entries = parse_overlay(
             r#"{
-  PORT = "5433"
-  HOST = "localhost"
+  PORT := "5433"
+  HOST := "localhost"
 }"#,
         );
         assert_eq!(entries.len(), 2);
@@ -126,7 +143,7 @@ mod tests {
 
     #[test]
     fn overlay_with_var_value() {
-        let entries = parse_overlay("{ PORT = port_var }");
+        let entries = parse_overlay("{ PORT := port_var }");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].node.key.node.name, "PORT");
         assert!(matches!(entries[0].node.value.node, AstExpr::Var { .. }));
@@ -134,7 +151,7 @@ mod tests {
 
     #[test]
     fn overlay_with_call_value() {
-        let entries = parse_overlay("{ PORT = get_port() }");
+        let entries = parse_overlay("{ PORT := get_port() }");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].node.key.node.name, "PORT");
         assert!(matches!(entries[0].node.value.node, AstExpr::Call { .. }));
@@ -142,10 +159,44 @@ mod tests {
 
     #[test]
     fn overlay_with_numeric_value() {
-        let entries = parse_overlay("{ PORT = 5432 }");
+        let entries = parse_overlay("{ PORT := 5432 }");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].node.key.node.name, "PORT");
         assert!(matches!(entries[0].node.value.node, AstExpr::String { .. }));
+    }
+
+    #[test]
+    fn legacy_overlay_eq_reports_migration_hint() {
+        let source = r#"{ PORT = "5433" }"#;
+        let pairs = lex_to_pairs(source);
+        let input = make_input(&pairs, source.len());
+        let errs = overlay().parse(input).into_result().unwrap_err();
+        let msg = errs
+            .iter()
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join("; ");
+        assert!(
+            msg.contains("write `name := value`"),
+            "expected := migration hint, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn legacy_overlay_eq_with_sibling_reports_migration_hint() {
+        let source = r#"{ HOST := "h", PORT = "5433" }"#;
+        let pairs = lex_to_pairs(source);
+        let input = make_input(&pairs, source.len());
+        let errs = overlay().parse(input).into_result().unwrap_err();
+        let msg = errs
+            .iter()
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join("; ");
+        assert!(
+            msg.contains("write `name := value`"),
+            "expected := migration hint, got: {msg}"
+        );
     }
 
     #[test]
@@ -165,7 +216,7 @@ mod tests {
         let entries = parse_overlay(
             r#"{
   NODE_PORT
-  NODE_NAME = "node1"
+  NODE_NAME := "node1"
 }"#,
         );
         assert_eq!(entries.len(), 2);

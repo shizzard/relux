@@ -13,13 +13,13 @@ Use the form that matches the surrounding syntactic context:
 
 ```relux
 // bare BIF call
-let port = available_port()
+let port := available_port()
 // interpolation inside a string
-let url  = "http://localhost:${port}/api"
+let url  := "http://localhost:${port}/api"
 // interpolation inside the send payload
 > curl ${url}
 // bare in BIF arg position
-let host = default(HOST, "localhost")
+let host := default(HOST, "localhost")
 // bare in marker condition (above a test/effect declaration)
 # skip unless CI
 ```
@@ -61,7 +61,7 @@ The braces hold exactly one reference: `${name}` (variable), `${1}` (capture ind
 Don't:
 
 ```relux
-let db_path = "${__RELUX_RUN_ARTIFACTS}/users-${uuid()}.db"
+let db_path := "${__RELUX_RUN_ARTIFACTS}/users-${uuid()}.db"
 > curl http://localhost:${available_port()}/health
 <? port=${default(PORT, "8080")}
 ```
@@ -69,13 +69,13 @@ let db_path = "${__RELUX_RUN_ARTIFACTS}/users-${uuid()}.db"
 Do:
 
 ```relux
-let suffix = uuid()
-let db_path = "${__RELUX_RUN_ARTIFACTS}/users-${suffix}.db"
+let suffix := uuid()
+let db_path := "${__RELUX_RUN_ARTIFACTS}/users-${suffix}.db"
 
-let port = available_port()
+let port := available_port()
 > curl http://localhost:${port}/health
 
-let port = default(PORT, "8080")
+let port := default(PORT, "8080")
 <? port=${port}
 ```
 
@@ -86,14 +86,14 @@ A pattern with `${name}` where `name` is empty becomes a pattern with the surrou
 Don't:
 
 ```relux
-let host = ""
+let host := ""
 <? user=alice host=${host}
 ```
 
 Do:
 
 ```relux
-let host = default(HOST, "localhost")
+let host := default(HOST, "localhost")
 <? user=alice host=${host}
 ```
 
@@ -104,14 +104,14 @@ Special regex characters in a let-bound value are still metacharacters when spli
 Don't:
 
 ```relux
-let path = "/api/v1.0/users"
+let path := "/api/v1.0/users"
 <? GET ${path}
 ```
 
 Do:
 
 ```relux
-let path = "/api/v1.0/users"
+let path := "/api/v1.0/users"
 <= GET ${path}
 ```
 

@@ -114,7 +114,7 @@ test "function let shadows without mutating outer" {
     outer variable is unchanged after the function returns.
     """
     shell s {
-        let x = "outer"
+        let x := "outer"
         say(x)
         > echo "x=${x}"
         <? ^x=outer$

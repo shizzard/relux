@@ -195,7 +195,7 @@ fn plan_test_with_pure_fn() {
 }
 
 test "with pure" {
-  let g = greeting()
+  let g := greeting()
   shell sh {
     > echo ${g}
   }
@@ -210,7 +210,7 @@ fn plan_test_with_bif() {
     let suite = resolve_source_no_env(&[(
         "tests/a",
         r#"test "with bif" {
-  let v = trim("  hello  ")
+  let v := trim("  hello  ")
   shell sh {
     > echo ${v}
   }
@@ -333,7 +333,7 @@ fn plan_test_with_let() {
     let suite = resolve_source_no_env(&[(
         "tests/a",
         r#"test "with let" {
-  let x = "hello"
+  let x := "hello"
   shell sh {
     > echo ${x}
   }
@@ -596,7 +596,7 @@ fn plan_invalid_purity_violation() {
 }
 
 test "t" {
-  let v = bad()
+  let v := bad()
   shell sh {
     > echo ${v}
   }
@@ -808,7 +808,7 @@ fn plan_test_let_impure_fn_invalidates() {
   > cmd
 }
 test "t" {
-  let x = impure_fn()
+  let x := impure_fn()
   shell sh {
     > cmd
   }
@@ -827,7 +827,7 @@ fn plan_effect_let_impure_fn_invalidates() {
   > cmd
 }
 effect E {
-  let x = impure_fn()
+  let x := impure_fn()
   shell sh {
     > start
   }

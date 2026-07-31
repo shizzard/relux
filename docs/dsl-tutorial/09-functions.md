@@ -161,7 +161,7 @@ fn try_read_secret() {
 
 test "function cannot see caller variables" {
     shell s {
-        let secret = "caller-only"
+        let secret := "caller-only"
         try_read_secret()
     }
 }
@@ -189,7 +189,7 @@ After `say("test")` returns, `${msg}` in the caller's scope resolves to the empt
 
 ```relux
 fn shadow_x() {
-    let x = "from-function"
+    let x := "from-function"
     > echo "inside: x=${x}"
     <? ^inside: x=from-function$
     match_ok()
@@ -197,7 +197,7 @@ fn shadow_x() {
 
 test "function let does not mutate outer variable" {
     shell s {
-        let x = "outer"
+        let x := "outer"
         shadow_x()
         > echo "x=${x}"
         <? ^x=outer$
@@ -220,7 +220,7 @@ fn make_label(prefix, value) {
 
 test "expression as return value" {
     shell s {
-        let label = make_label("key", "val")
+        let label := make_label("key", "val")
         > echo "${label}"
         <? ^key:val$
     }
@@ -235,14 +235,14 @@ A common pattern is a function that runs a command, matches the output with `<?`
 fn capture_version() {
     > echo "version=3.2.1"
     <? ^version=(.+)$
-    let ver = $1
+    let ver := $1
     match_ok()
     ver
 }
 
 test "capture return value from match" {
     shell s {
-        let ver = capture_version()
+        let ver := capture_version()
         > echo "got=${ver}"
         <? ^got=3.2.1$
     }
@@ -263,7 +263,7 @@ fn make_prefix(tag) {
 }
 
 fn log_msg(tag, msg) {
-    let pfx = make_prefix(tag)
+    let pfx := make_prefix(tag)
     > echo "${pfx} ${msg}"
     <? ^\[${tag}\] ${msg}$
     match_ok()
@@ -282,12 +282,12 @@ Return values can chain through multiple levels:
 
 ```relux
 fn depth_a(x) {
-    let val = depth_b(x)
+    let val := depth_b(x)
     "${val}-a"
 }
 
 fn depth_b(x) {
-    let val = depth_c(x)
+    let val := depth_c(x)
     "${val}-b"
 }
 
@@ -297,7 +297,7 @@ fn depth_c(x) {
 
 test "nested function return value chains" {
     shell s {
-        let result = depth_a("root")
+        let result := depth_a("root")
         > echo "${result}"
         <? ^root-c-b-a$
     }
@@ -334,7 +334,7 @@ test "captures do not survive function calls" {
 
         // Also wrong — the return value is the prompt string, because
         // match_ok() is the last expression in extract_port():
-        let result = extract_port()
+        let result := extract_port()
         > echo "result=${result}"
         <? ^result=8080        // result is the prompt, not "8080"
     }
@@ -347,13 +347,13 @@ The fix is to design the function to explicitly return what you need. Save the c
 fn extract_port() {
     > echo "port=8080"
     <? ^port=(\d+)$
-    let port = $1
+    let port := $1
     match_ok()
     port
 }
 ```
 
-Now `let port = extract_port()` in the caller gives you `"8080"`.
+Now `let port := extract_port()` in the caller gives you `"8080"`.
 
 This is consistent with the scoping model: functions cannot modify the caller's variable state. Return values are the explicit, reliable channel for passing data back.
 

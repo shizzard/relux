@@ -52,7 +52,7 @@ test "..." {
     shell s {
         > start-pg
         <? pid=(\d+)
-        let pg_pid = $1
+        let pg_pid := $1
     }
     cleanup {
         // pg_pid not in scope -- shell-scoped lets don't reach cleanup
@@ -70,7 +70,7 @@ test "..." {
     shell s {
         > start-pg
         <? pid=(\d+)
-        pg_pid = $1
+        pg_pid := $1
     }
     cleanup {
         > pg-stop --pid ${pg_pid}

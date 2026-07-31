@@ -110,7 +110,7 @@ test "capture into variable" {
     shell s {
         > echo "key=alpha"
         <? ^key=(\w+)$
-        let saved = $1
+        let saved := $1
         > echo "other=beta"
         <? ^other=(\w+)$
         > echo "saved=${saved} current=${1}"
@@ -119,17 +119,17 @@ test "capture into variable" {
 }
 ```
 
-`let saved = $1` reads the current value of `$1` (which is `alpha`) and stores it in a named variable. When the second match replaces captures, `$1` becomes `beta` — but `saved` still holds `alpha`.
+`let saved := $1` reads the current value of `$1` (which is `alpha`) and stores it in a named variable. When the second match replaces captures, `$1` becomes `beta` — but `saved` still holds `alpha`.
 
 ## `let` with a regex match expression
 
-You can combine `let` and `<?` in a single statement. When you write `let result = <? pattern`, Relux performs the match *and* assigns the return value to the variable. The return value of a regex match is the full match text — the same as `$0`:
+You can combine `let` and `<?` in a single statement. When you write `let result := <? pattern`, Relux performs the match *and* assigns the return value to the variable. The return value of a regex match is the full match text — the same as `$0`:
 
 ```relux
 test "let from match expression captures full match" {
     shell s {
         > echo "code=42"
-        let result = <? code=(\d+)
+        let result := <? code=(\d+)
         > echo "result='${result}' group='${1}'"
         <? ^result='code=42' group='42'$
     }
@@ -145,7 +145,7 @@ Like all operators in Relux, `<?` supports [variable interpolation](06-variables
 ```relux
 test "interpolation in regex pattern" {
     shell s {
-        let key = "version"
+        let key := "version"
         > echo "version=42"
         <? ^${key}=(\d+)$
         > echo "captured ${1}"
@@ -179,7 +179,7 @@ Save the capture to a named variable immediately after the match, before doing a
 
 // Durable — the port is safe no matter what happens next:
 <? ^port=(\d+)$
-let port = $1
+let port := $1
 > curl http://localhost:${port}/health
 ```
 
@@ -219,7 +219,7 @@ Write a test that does the following:
 
 1. Run a command that produces output with two key-value pairs on the same line — something like `echo "host=db.local port=5432"`.
 2. Use a single `<?` with two capture groups to extract both values into `$1` and `$2`.
-3. Immediately save both captures to named variables (`let host = $1`, `let port = $2`).
+3. Immediately save both captures to named variables (`let host := $1`, `let port := $2`).
 4. Run another command that produces different output and match it with `<?` — this will overwrite the capture groups.
 5. Verify that the named variables still hold the original values by echoing them back and matching the result.
 

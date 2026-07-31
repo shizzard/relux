@@ -8,7 +8,7 @@ Every test that needs the database service repeats the same setup:
 
 ```relux
     shell db {
-        let db_root = "${__RELUX_TEST_ARTIFACTS}/database"
+        let db_root := "${__RELUX_TEST_ARTIFACTS}/database"
 
         > mkdir ${db_root}
         match_ok()
@@ -35,7 +35,7 @@ effect Db {
     expose shell service
 
     shell service {
-        let db_root = "${__RELUX_TEST_ARTIFACTS}/database"
+        let db_root := "${__RELUX_TEST_ARTIFACTS}/database"
 
         > mkdir ${db_root}
         match_ok()
@@ -75,7 +75,7 @@ test "key-value CRUD" {
 
     shell client {
         log("create the database")
-        let response_filename = http_request(200, db_url("/db/mydb"), "POST")
+        let response_filename := http_request(200, db_url("/db/mydb"), "POST")
         jq_match_query(response_filename, ".created", "^mydb$")
         ...
     }

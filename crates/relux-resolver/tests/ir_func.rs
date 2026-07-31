@@ -239,10 +239,10 @@ fn lower_fn_calls_bif() {
 #[test]
 fn lower_fn_calls_pure_fn() {
     let source = r#"pure fn greet(name) {
-  let v = name
+  let v := name
 }
 fn caller() {
-  let x = greet("world")
+  let x := greet("world")
 }
 "#;
     let mut ctx = ctx_with_source(source);
@@ -445,7 +445,7 @@ fn lower_fn_error_cached() {
 
 #[test]
 fn lower_pure_fn_simple() {
-    let source = "pure fn greet(name) {\n  let v = name\n}\n";
+    let source = "pure fn greet(name) {\n  let v := name\n}\n";
     let mut ctx = ctx_with_source(source);
     let fn_id = FnId {
         module: ModulePath("tests/a".into()),
@@ -469,7 +469,7 @@ fn lower_pure_fn_simple() {
 #[test]
 fn lower_pure_fn_calls_pure_fn() {
     let source = r#"pure fn helper() {
-  let v = "h"
+  let v := "h"
 }
 pure fn caller() {
   helper()
@@ -487,7 +487,7 @@ pure fn caller() {
 
 #[test]
 fn lower_pure_fn_calls_pure_bif() {
-    let source = "pure fn f() {\n  let v = trim(\"x\")\n}\n";
+    let source = "pure fn f() {\n  let v := trim(\"x\")\n}\n";
     let mut ctx = ctx_with_source(source);
     let fn_id = FnId {
         module: ModulePath("tests/a".into()),
@@ -540,7 +540,7 @@ fn lower_pure_fn_cycle() {
 #[test]
 fn lower_pure_fn_memoized() {
     let source = r#"pure fn shared() {
-  let v = "s"
+  let v := "s"
 }
 pure fn a() {
   shared()

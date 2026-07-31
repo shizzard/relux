@@ -191,7 +191,7 @@ effect TempDir {
 
 test "temporary directory is cleaned up" {
     start TempDir as t {
-        DIR = "/tmp/relux-test-workspace"
+        DIR := "/tmp/relux-test-workspace"
     }
     shell t.workspace {
         > touch testfile.txt

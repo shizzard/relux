@@ -5,7 +5,7 @@ test "bif rendering exercises every bif bucket" {
         pure BIF (trim), log, annotate, sleep, match_ok, ctrl_l.
     """
     shell s {
-        let trimmed = trim("  hi  ")
+        let trimmed := trim("  hi  ")
         > echo "${trimmed}"
         <? ^hi$
         match_ok()

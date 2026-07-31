@@ -3,7 +3,7 @@ test "let with value" {
     Verify let binds a variable to a string value for interpolation.
     """
     shell s {
-        let x = "hello"
+        let x := "hello"
         > echo ${x}
         <? ^hello$
     }
@@ -25,10 +25,10 @@ test "reassignment updates value" {
     Verify reassigning a variable replaces its previous value.
     """
     shell s {
-        let x = "before"
+        let x := "before"
         > echo ${x}
         <? ^before$
-        x = "after"
+        x := "after"
         > echo ${x}
         <? ^after$
     }
@@ -40,8 +40,8 @@ test "let with self-referencing interpolation" {
     of the variable before rebinding it.
     """
     shell s {
-        let x = "foo"
-        let x = "bar${x}"
+        let x := "foo"
+        let x := "bar${x}"
         > echo ${x}
         <? ^barfoo$
     }
@@ -52,9 +52,9 @@ test "multiple independent variables" {
     Verify multiple variables can be declared and interpolated independently.
     """
     shell s {
-        let a = "alpha"
-        let b = "bravo"
-        let c = "charlie"
+        let a := "alpha"
+        let b := "bravo"
+        let c := "charlie"
         > echo "${a} ${b} ${c}"
         <? ^alpha bravo charlie$
     }

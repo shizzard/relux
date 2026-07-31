@@ -17,7 +17,7 @@ How an effect publishes shells and computed variables to its callers.
 
 - `expose` requires a discriminator: `expose shell <name>` or `expose var <name>`. A bare `expose <name>` is a parse error.
 - `expose shell` declares a setup-phase shell as part of the public interface; it survives setup and is accessible to callers.
-- `expose var` declares a `let`-bound value (computed during setup) as part of the public interface. The target **must** be a `let` name in the same effect; the resolver rejects `expose var X` when `X` is an `expect` / overlay var (or anything else). To re-publish an overlay var, introduce a let shim first: `let port = PORT` then `expose var port`.
+- `expose var` declares a `let`-bound value (computed during setup) as part of the public interface. The target **must** be a `let` name in the same effect; the resolver rejects `expose var X` when `X` is an `expect` / overlay var (or anything else). To re-publish an overlay var, introduce a let shim first: `let port := PORT` then `expose var port`.
 - Cross-effect re-export uses dot-access: `expose shell Dep.shell as new_name`.
 
 ## Caller access
@@ -31,9 +31,9 @@ After `start Service as Svc`:
 ```relux
 shell client {
     // bare in let RHS
-    let port = Svc.port
+    let port := Svc.port
     // interpolation inside a string
-    let url  = "http://localhost:${Svc.port}"
+    let url  := "http://localhost:${Svc.port}"
     // interpolation in send payload
     > curl http://localhost:${Svc.port}/health
     // interpolation in match pattern
@@ -49,9 +49,9 @@ Don't:
 test "uses Svc" {
     // test-level let runs before `start Service` fires;
     // Svc.port has no value yet -- empty interpolation
-    let url = "http://localhost:${Svc.port}"
+    let url := "http://localhost:${Svc.port}"
     start Service as Svc {
-        PORT = 8080
+        PORT := 8080
     }
     shell client {
         > curl ${url}
@@ -66,11 +66,11 @@ Do:
 ```relux
 test "uses Svc" {
     start Service as Svc {
-        PORT = 8080
+        PORT := 8080
     }
     shell client {
         // shell-context let: setup has populated Svc.port
-        let url = "http://localhost:${Svc.port}"
+        let url := "http://localhost:${Svc.port}"
         > curl ${url}
     }
 }
@@ -161,7 +161,7 @@ Don't (assume this is local because the diff only touches `let`):
 ```relux
 effect Server {
     expect data_dir
-    let port = "8080"            // was: let port = "9000"
+    let port := "8080"            // was: let port := "9000"
     expose var port
     shell run { send "./server --data ${data_dir} --port ${port}" }
 }

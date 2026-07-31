@@ -6,7 +6,7 @@ The top-level forms of a `.relux` file and the rules that govern how each block'
 
 ```relux
 test "name" {
-    let x = "..."
+    let x := "..."
     start Effect
     shell s { ... }
     cleanup { ... }
@@ -25,7 +25,7 @@ test "name" {
 ```relux
 effect Name {
     expect VAR1, VAR2
-    let x = "..."
+    let x := "..."
     start Other as O
     expose shell name
     shell name { ... }

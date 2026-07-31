@@ -8,7 +8,7 @@ fn make_label(prefix, value) {
 }
 
 fn make_label_via_let(prefix, value) {
-    let result = "${prefix}:${value}"
+    let result := "${prefix}:${value}"
 }
 
 fn noop() {
@@ -19,7 +19,7 @@ test "expression as return value" {
     Verify a bare string expression as the last statement is returned.
     """
     shell s {
-        let label = make_label("key", "val")
+        let label := make_label("key", "val")
         > echo "${label}"
         <? ^key:val$
     }
@@ -31,7 +31,7 @@ test "let as return value" {
     assigned value.
     """
     shell s {
-        let label = make_label_via_let("key", "val")
+        let label := make_label_via_let("key", "val")
         > echo "${label}"
         <? ^key:val$
     }
@@ -54,7 +54,7 @@ test "empty function returns empty string" {
     Verify a function with no statements returns an empty string.
     """
     shell s {
-        let val = noop()
+        let val := noop()
         > echo "result='${val}'"
         <? ^result=''$
     }

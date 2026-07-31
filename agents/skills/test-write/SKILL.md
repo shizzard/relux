@@ -358,10 +358,10 @@ on input it sent rather than output the program produced
    for cleanup are in `../../references/cleanup.md` > *Don't depend on
    test-body state inside cleanup*; if a value is needed in
    cleanup, declare its name with `let pid` at the test scope and
-   reassign inside the shell body with `pid = $1`.
+   reassign inside the shell body with `pid := $1`.
 
-   Test-isolation values (`let port = available_port()`,
-   `let run_id = uuid()`) belong here -- once, at the top, so
+   Test-isolation values (`let port := available_port()`,
+   `let run_id := uuid()`) belong here -- once, at the top, so
    every shell in the test sees the same value.
 
 6. **Compose `shell` blocks.** One block per shell the test
@@ -797,8 +797,8 @@ Do:
 ```relux
 test "stores the user" {
     """..."""
-    let suffix = uuid()
-    let db_path = "${__RELUX_RUN_ARTIFACTS}/users-${suffix}.db"
+    let suffix := uuid()
+    let db_path := "${__RELUX_RUN_ARTIFACTS}/users-${suffix}.db"
     shell s {
         > my-app create-user --db ${db_path} --name alice
         <? created user alice

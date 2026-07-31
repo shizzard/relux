@@ -3,7 +3,7 @@ test "uuid returns a valid v4 uuid" {
     Verify uuid() produces a valid UUID v4 string.
     """
     shell s {
-        let id = uuid()
+        let id := uuid()
         > echo "${id}"
         <? ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
     }
@@ -14,8 +14,8 @@ test "uuid returns unique values" {
     Verify successive uuid() calls produce different values.
     """
     shell s {
-        let a = uuid()
-        let b = uuid()
+        let a := uuid()
+        let b := uuid()
         > test "${a}" != "${b}" && echo "unique"
         <? ^unique$
     }
@@ -26,8 +26,8 @@ test "rand returns string of requested length" {
     Verify rand(n) returns an alphanumeric string of exactly n characters.
     """
     shell s {
-        let val = rand(12)
-        let n = len(val)
+        let val := rand(12)
+        let n := len(val)
         > echo "${n}"
         <? ^12$
     }
@@ -38,7 +38,7 @@ test "rand with alpha mode" {
     Verify rand(n, "alpha") returns only alphabetic characters.
     """
     shell s {
-        let val = rand(20, "alpha")
+        let val := rand(20, "alpha")
         > echo "${val}"
         <? ^[a-zA-Z]{20}$
     }
@@ -49,7 +49,7 @@ test "rand with num mode" {
     Verify rand(n, "num") returns only numeric digits.
     """
     shell s {
-        let val = rand(16, "num")
+        let val := rand(16, "num")
         > echo "${val}"
         <? ^[0-9]{16}$
     }
@@ -60,7 +60,7 @@ test "rand with hex mode" {
     Verify rand(n, "hex") returns only hexadecimal characters.
     """
     shell s {
-        let val = rand(10, "hex")
+        let val := rand(10, "hex")
         > echo "${val}"
         <? ^[0-9a-f]{10}$
     }
@@ -71,7 +71,7 @@ test "rand with bin mode" {
     Verify rand(n, "bin") returns only binary digits.
     """
     shell s {
-        let val = rand(8, "bin")
+        let val := rand(8, "bin")
         > echo "${val}"
         <? ^[01]{8}$
     }
@@ -82,7 +82,7 @@ test "rand with oct mode" {
     Verify rand(n, "oct") returns only octal digits.
     """
     shell s {
-        let val = rand(12, "oct")
+        let val := rand(12, "oct")
         > echo "${val}"
         <? ^[0-7]{12}$
     }

@@ -6,7 +6,7 @@ test "uses bad pure fn" {
     """
     This test should not pass check.
     """
-    let val = bad()
+    let val := bad()
     shell s {
         > echo "${val}"
         <? ^$

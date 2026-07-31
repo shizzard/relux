@@ -153,17 +153,17 @@ pure fn mark_non_smoke() {
 }
 
 test "smoke: health" {
-    let _group = mark_smoke()
+    let _group := mark_smoke()
     shell s { ... }
 }
 
 test "regression: full" {
-    let _group = mark_non_smoke()
+    let _group := mark_non_smoke()
     shell s { ... }
 }
 ```
 
-Skip propagation runs at resolve time: the resolver walks every `fn` / `pure fn` the test references and inherits their markers. The `let _group = mark_smoke()` counts as a reference, so a skip on `mark_smoke` skips the test before any runtime work fires. The returned string is discarded -- the call is purely a propagation hook. Use complementary guards (`# run if X` / `# skip if X`) to partition the suite cleanly.
+Skip propagation runs at resolve time: the resolver walks every `fn` / `pure fn` the test references and inherits their markers. The `let _group := mark_smoke()` counts as a reference, so a skip on `mark_smoke` skips the test before any runtime work fires. The returned string is discarded -- the call is purely a propagation hook. Use complementary guards (`# run if X` / `# skip if X`) to partition the suite cleanly.
 
 ### Skip propagates transitively; check upstream before adding more markers
 
@@ -225,7 +225,7 @@ Don't (assume the skip hides the broken call):
 ```relux
 # skip
 test "wip" {
-    shell s { let x = no_such_fn() }   // Invalid, not Skipped
+    shell s { let x := no_such_fn() }   // Invalid, not Skipped
 }
 ```
 

@@ -35,7 +35,7 @@ test "same effect needed twice shares one instance" {
 }
 
 pure fn tag() {
-    let t = "v1"
+    let t := "v1"
 }
 
 effect SetupOnce {
@@ -58,10 +58,10 @@ test "call-expression overlays at different positions deduplicate" {
     print DUPLICATE, failing the FIRST match.
     """
     start SetupOnce as S1 {
-        TAG = tag()
+        TAG := tag()
     }
     start SetupOnce as S2 {
-        TAG = tag()
+        TAG := tag()
     }
     shell S1.s {
         > echo ok
@@ -76,10 +76,10 @@ test "different overlays create separate instances" {
     create separate instances, each with their own shell and overlay.
     """
     start Parameterized as A {
-        LABEL = "alpha"
+        LABEL := "alpha"
     }
     start Parameterized as B {
-        LABEL = "beta"
+        LABEL := "beta"
     }
     shell A.svc {
         > echo $$SVC_LABEL

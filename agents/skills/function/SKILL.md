@@ -158,7 +158,7 @@ Use when no function with this `(name, arity)` exists at the target.
 
    ```relux
    pure fn compose_url(host, port) {
-       let url = "http://${host}:${port}/api"
+       let url := "http://${host}:${port}/api"
    }
    ```
 
@@ -172,7 +172,7 @@ Use when no function with this `(name, arity)` exists at the target.
 
    The same applies when the body delegates to another function --
    `fn http_get(url) { http_request("GET", url) }`, not
-   `fn http_get(url) { let r = http_request("GET", url) r }`. `let`
+   `fn http_get(url) { let r := http_request("GET", url) r }`. `let`
    bindings earn their place when an intermediate value is reused, or
    when naming makes a multi-step body readable; not for the final
    expression.
@@ -433,7 +433,7 @@ cross-module caller is gone.
 For N functions sharing the same marker condition (e.g., all
 requiring `docker`), place the marker on each `fn` directly. **Do
 not** consolidate them onto a shared guarded `pure fn` calling
-`let _ = mark_<group>()`. Functions auto-propagate markers to
+`let _ := mark_<group>()`. Functions auto-propagate markers to
 callers at resolve time with zero runtime cost; the consolidate
 pattern's guard call adds per-invocation cost on the hot path.
 The consolidate pattern is for tests and effects, not function

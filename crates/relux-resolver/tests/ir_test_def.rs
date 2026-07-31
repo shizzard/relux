@@ -175,7 +175,7 @@ fn lower_test_let_rejects_impure_fn_call() {
   > cmd
 }
 test "t" {
-  let x = impure_fn()
+  let x := impure_fn()
   shell sh {
     > cmd
   }
@@ -189,7 +189,7 @@ test "t" {
 #[test]
 fn lower_test_let_accepts_pure_fn_call() {
     let source = r#"test "t" {
-  let x = trim("hi")
+  let x := trim("hi")
   shell sh {
     > cmd
   }
@@ -209,7 +209,7 @@ fn lower_test_let_accepts_pure_fn_call() {
 #[test]
 fn lower_test_let_accepts_string_literal() {
     let source = r#"test "t" {
-  let x = "hello"
+  let x := "hello"
   shell sh {
     > cmd
   }

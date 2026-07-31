@@ -3,7 +3,7 @@ test "interpolation in send payload" {
     Verify ${var} is interpolated in send operator payloads.
     """
     shell s {
-        let name = "relux"
+        let name := "relux"
         > echo "hello ${name}"
         <? ^hello relux$
     }
@@ -14,9 +14,9 @@ test "multiple interpolations in one string" {
     Verify multiple ${var} references in a single string are all resolved.
     """
     shell s {
-        let a = "one"
-        let b = "two"
-        let c = "three"
+        let a := "one"
+        let b := "two"
+        let c := "three"
         > echo "${a}-${b}-${c}"
         <? ^one-two-three$
     }
@@ -38,7 +38,7 @@ test "interpolation at string boundaries" {
     Verify interpolation works at the start, middle, and end of a string.
     """
     shell s {
-        let v = "X"
+        let v := "X"
         > echo "${v}-mid-${v}"
         <? ^X-mid-X$
     }
@@ -59,7 +59,7 @@ test "dollar escape with variable interpolation" {
     Verify $$ and ${var} can coexist in the same payload.
     """
     shell s {
-        let name = "USD"
+        let name := "USD"
         > echo "currency: $$${name}"
         <= echo "currency: $USD"
     }
@@ -72,7 +72,7 @@ test "interpolation in literal match payload" {
     then the second matches the actual output.
     """
     shell s {
-        let word = "fox"
+        let word := "fox"
         > echo "the quick brown fox"
         <= echo "the quick brown fox"
         <= quick brown ${word}
@@ -84,7 +84,7 @@ test "interpolation in regex match payload" {
     Verify ${var} is interpolated in regex match operator payloads.
     """
     shell s {
-        let prefix = "hello"
+        let prefix := "hello"
         > echo "hello world"
         <? ^${prefix} \w+$
     }

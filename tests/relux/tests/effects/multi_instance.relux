@@ -12,8 +12,8 @@ test "different overlays produce separate instances" {
   Verify that starting the same effect with different overlay values
   creates separate instances with independent state.
   """
-  start Counter as A { COUNTER_NAME = "alpha" }
-  start Counter as B { COUNTER_NAME = "beta" }
+  start Counter as A { COUNTER_NAME := "alpha" }
+  start Counter as B { COUNTER_NAME := "beta" }
   shell A.counter {
     > echo $$COUNT_ID
     <? ^alpha$
@@ -31,8 +31,8 @@ test "same overlay values deduplicate to one instance" {
   Verify that starting the same effect with identical overlay values
   shares a single instance.
   """
-  start Counter as A { COUNTER_NAME = "shared" }
-  start Counter as B { COUNTER_NAME = "shared" }
+  start Counter as A { COUNTER_NAME := "shared" }
+  start Counter as B { COUNTER_NAME := "shared" }
   shell A.counter {
     > export MARKER=set_by_a
     match_ok()

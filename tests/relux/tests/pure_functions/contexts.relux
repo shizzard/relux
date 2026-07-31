@@ -15,7 +15,7 @@ effect Tagged {
 }
 
 effect WithVar {
-    let greeting = tag("msg", "hello")
+    let greeting := tag("msg", "hello")
     expose shell wv
     shell wv {
         > echo ${greeting}
@@ -26,7 +26,7 @@ test "pure function in test-scope let" {
     """
     Verify a pure function can be called in a test-level let declaration.
     """
-    let label = tag("env", "test")
+    let label := tag("env", "test")
     shell s {
         > echo ${label}
         <? ^env:test$
@@ -37,7 +37,7 @@ test "pure function with bif in test-scope let" {
     """
     Verify a pure function composed with a BIF works in test-level let.
     """
-    let label = tag("status", upper("ok"))
+    let label := tag("status", upper("ok"))
     shell s {
         > echo ${label}
         <? ^status:OK$
@@ -59,7 +59,7 @@ test "pure function in overlay value" {
     Verify a pure function can be called in an effect overlay value.
     """
     start Tagged as T {
-        CONFIG = make_label("production")
+        CONFIG := make_label("production")
     }
     shell T.tagged {
         > echo $CONFIG

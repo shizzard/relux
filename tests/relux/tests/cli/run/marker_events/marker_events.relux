@@ -4,7 +4,7 @@ test "marker events: markers root with two marker-eval children" {
     replayed under a synthetic `markers` root span at runtime:
       - two `marker-eval` spans (skip + flaky)
       - one `pure-match` event from the regex marker
-      - the test-level `let greeting = trim(...)` emits a pure FnCall
+      - the test-level `let greeting := trim(...)` emits a pure FnCall
         span under the test root
     """
     shell s {

@@ -119,7 +119,7 @@ If you need to extract a value, do the match outside the block with a regular `<
     ? ^\d+ items processed$
 }
 <? ^port=(\d+)$
-let port = $1
+let port := $1
 > curl http://localhost:${port}/health
 ```
 

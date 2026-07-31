@@ -73,7 +73,7 @@ Do:
     ? ^\d+ items processed$
 }
 <? ^port=(\d+)$
-let port = $1
+let port := $1
 > curl http://localhost:${port}/health
 ```
 
@@ -99,7 +99,7 @@ Do:
     ? ^port=\d+$
 }
 <? ^port=(\d+)$
-let port = $1
+let port := $1
 > use_port ${port}
 ```
 

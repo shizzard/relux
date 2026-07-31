@@ -249,7 +249,7 @@ mod tests {
     fn shell_block_diverse_stmts() {
         let sb = parse_shell(
             r#"shell main {
-  let x = "hello"
+  let x := "hello"
   > echo ${x}
   <= hello
   <? \d+

@@ -3,7 +3,7 @@ test "fail pattern invalid after interpolation" {
     Set a fail pattern whose interpolated value is invalid regex.
     """
     shell s {
-        let pat = "("
+        let pat := "("
         !? ${pat}
         > echo hello
         <? ^hello$

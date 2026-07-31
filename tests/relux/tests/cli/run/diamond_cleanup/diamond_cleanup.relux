@@ -5,7 +5,7 @@ test "diamond shared dep cleans up after both parents, exactly once" ~60s {
       * E0 cleanup runs strictly after both E1 and E2 cleanups
       * cleanup of dependencies awaits both parents' own cleanup
     """
-    let marker = "${__RELUX_TEST_ARTIFACTS}/order"
+    let marker := "${__RELUX_TEST_ARTIFACTS}/order"
 
     shell s {
         > export MARKER_FILE=${marker}

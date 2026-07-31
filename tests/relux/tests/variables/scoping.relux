@@ -1,11 +1,11 @@
 fn set_var(val) {
-    let local = "fn-only"
+    let local := "fn-only"
     > echo "param=${val} local=${local}"
     <? ^param=${val} local=${local}$
 }
 
 fn shadow_outer() {
-    let x = "shadowed"
+    let x := "shadowed"
     > echo "inside=${x}"
     <? ^inside=shadowed$
 }
@@ -37,7 +37,7 @@ test "function let shadows without mutating outer" {
     outer variable is unchanged after the function returns.
     """
     shell s {
-        let x = "outer"
+        let x := "outer"
         shadow_outer()
         > echo "x=${x}"
         <? ^x=outer$
@@ -49,7 +49,7 @@ test "test-level variable shared across shells" {
     Verify a variable declared at test level is visible in all
     shell blocks within the same test.
     """
-    let shared = "from-test"
+    let shared := "from-test"
     shell a {
         > echo "a=${shared}"
         <? ^a=from-test$

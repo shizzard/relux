@@ -45,10 +45,10 @@ When N independent instances are needed but the service has no natural resource 
 
 ```relux
 start Service as A {
-    PORT = 8080
-    LOG_LEVEL = "info"
+    PORT := 8080
+    LOG_LEVEL := "info"
 }
-// shorthand for PORT = PORT
+// shorthand for PORT := PORT
 start Service as B {
     PORT
 }
@@ -57,7 +57,7 @@ start Service as B {
 - Provided at the `start` site, evaluated at setup time.
 - Layered on top of the inherited environment for the effect's shells.
 - Unspecified overlay keys fall through to the inherited env.
-- Each overlay entry sits on its own line. No comma separators; no single-line `{ K = v, K2 = v2 }` form. The DSL is line-oriented throughout.
+- Each overlay entry sits on its own line. No comma separators; no single-line `{ K := v, K2 := v2 }` form. The DSL is line-oriented throughout.
 
 ## Identity tuple
 
@@ -109,7 +109,7 @@ effect Db { expect DATA_DIR, PORT; expose shell db; shell db { ... } }
 
 effect Api {
     expect API_PORT
-    start Db as Dep { DATA_DIR; PORT = 5432 }
+    start Db as Dep { DATA_DIR; PORT := 5432 }
     expose shell Dep.db as db
     expose shell svc
     shell svc {
@@ -183,10 +183,10 @@ Don't:
 ```relux
 // two instances; full setup twice
 start WebService {
-    PORT = 8080
+    PORT := 8080
 }
 start WebService {
-    PORT = 8081
+    PORT := 8081
 }
 ```
 
@@ -195,10 +195,10 @@ Do:
 ```relux
 // one instance; second start is reused
 start WebService {
-    PORT = 8080
+    PORT := 8080
 }
 start WebService {
-    PORT = 8080
+    PORT := 8080
 }
 ```
 
@@ -225,12 +225,12 @@ effect Db {
 
 // in the test:
 start Db as A {
-    INSTANCE = 1
-    DB_NAME = "test"
+    INSTANCE := 1
+    DB_NAME := "test"
 }
 start Db as B {
-    INSTANCE = 2
-    DB_NAME = "test"
+    INSTANCE := 2
+    DB_NAME := "test"
 }
 ```
 

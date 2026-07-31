@@ -3,7 +3,7 @@ test "regex invalid after interpolation" {
     Use a variable whose value makes the regex invalid.
     """
     shell s {
-        let pat = "("
+        let pat := "("
         > echo hello
         <? ${pat}
     }

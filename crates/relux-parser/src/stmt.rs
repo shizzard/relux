@@ -9,6 +9,8 @@ use super::expr::expr;
 use super::ident::ident_var;
 use super::interpolation::interp_literal;
 use super::interpolation::interp_regex;
+use super::operator::legacy_assign_err;
+use super::operator::op_bind;
 use super::operator::op_fail_literal;
 use super::operator::op_fail_regex;
 use super::operator::op_match_literal;
@@ -309,18 +311,24 @@ fn stmt_timeout<'a>()
         .then_ignore(newline())
 }
 
-/// `let name [= expr]` -> `AstStmt::Let`
+/// `let name [:= expr]` -> `AstStmt::Let`
 fn stmt_let<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+    let initializer = ws()
+        .ignore_then(choice((
+            op_bind().ignore_then(ws()).ignore_then(expr()).map(Some),
+            // Legacy `let x = e`: emit the migration hint.
+            just(Token::Eq)
+                .map_with(|_, e| e.span())
+                .try_map(|span, _| Err(legacy_assign_err(span))),
+        )))
+        .or_not()
+        .map(Option::flatten);
+
     keyword(Token::Let)
         .ignore_then(ws())
         .ignore_then(ident_var())
-        .then(
-            ws().ignore_then(just(Token::Eq))
-                .ignore_then(ws())
-                .ignore_then(expr())
-                .or_not(),
-        )
+        .then(initializer)
         .map_with(|(name, value), e| {
             let span = crate::span_from_chumsky(e.span());
             Spanned::new(
@@ -334,12 +342,21 @@ fn stmt_let<'a>()
         .then_ignore(newline())
 }
 
-/// `name = expr` -> `AstStmt::Assign`
+/// `name := expr` -> `AstStmt::Assign`. A bare `name = expr` emits the R013
+/// migration hint: the legacy `=` path lives in the inner `choice` (after the
+/// key is committed and with `ws()` outside the choice) so its custom error is
+/// the furthest alternative and is surfaced, mirroring `stmt_let`.
 fn stmt_assign<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     ident_var()
-        .then_ignore(ws().then(just(Token::Eq)).then(ws()))
-        .then(expr())
+        .then(
+            ws().ignore_then(choice((
+                op_bind().ignore_then(ws()).ignore_then(expr()),
+                just(Token::Eq)
+                    .map_with(|_, e| e.span())
+                    .try_map(|span, _| Err(legacy_assign_err(span))),
+            ))),
+        )
         .map_with(|(name, value), e| {
             let span = crate::span_from_chumsky(e.span());
             Spanned::new(
@@ -426,6 +443,19 @@ mod tests {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
         stmt().parse(input).into_result().unwrap().node
+    }
+
+    fn parse_stmt_err(source: &str) -> String {
+        let pairs = lex_to_pairs(source);
+        let input = make_input(&pairs, source.len());
+        stmt()
+            .parse(input)
+            .into_result()
+            .unwrap_err()
+            .into_iter()
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join("; ")
     }
 
     #[test]
@@ -570,6 +600,21 @@ mod tests {
     }
 
     #[test]
+    fn let_binds_with_walrus() {
+        let s = parse_stmt("let x := \"v\"\n");
+        assert!(matches!(s, AstStmt::Let { .. }));
+    }
+
+    #[test]
+    fn legacy_let_eq_reports_migration_hint() {
+        let err = parse_stmt_err("let x = \"v\"\n");
+        assert!(
+            err.contains("write `name := value`"),
+            "expected := migration hint, got: {err}"
+        );
+    }
+
+    #[test]
     fn let_without_value() {
         let s = parse_stmt("let x\n");
         match s {
@@ -583,7 +628,7 @@ mod tests {
 
     #[test]
     fn let_with_value() {
-        let s = parse_stmt("let x = my_var\n");
+        let s = parse_stmt("let x := my_var\n");
         match s {
             AstStmt::Let { stmt: l, .. } => {
                 assert_eq!(l.name.node.name, "x");
@@ -595,13 +640,28 @@ mod tests {
 
     #[test]
     fn assign_statement() {
-        let s = parse_stmt("x = my_var\n");
+        let s = parse_stmt("x := my_var\n");
         match s {
             AstStmt::Assign { stmt: a, .. } => {
                 assert_eq!(a.name.node.name, "x");
             }
             _ => panic!("expected Assign, got {s:?}"),
         }
+    }
+
+    #[test]
+    fn reassign_uses_walrus() {
+        let stmt = parse_stmt("x := \"v\"\n");
+        assert!(matches!(stmt, AstStmt::Assign { .. }));
+    }
+
+    #[test]
+    fn legacy_reassign_eq_reports_migration_hint() {
+        let err = parse_stmt_err("x = \"v\"\n");
+        assert!(
+            err.contains("write `name := value`"),
+            "expected := migration hint, got: {err}"
+        );
     }
 
     #[test]
@@ -664,7 +724,7 @@ mod tests {
 
     #[test]
     fn let_with_string_value() {
-        let s = parse_stmt("let x = \"hello\"\n");
+        let s = parse_stmt("let x := \"hello\"\n");
         match s {
             AstStmt::Let { stmt: l, .. } => {
                 assert_eq!(l.name.node.name, "x");
@@ -677,7 +737,7 @@ mod tests {
 
     #[test]
     fn let_with_call_value() {
-        let s = parse_stmt("let x = foo()\n");
+        let s = parse_stmt("let x := foo()\n");
         match s {
             AstStmt::Let { stmt: l, .. } => {
                 assert_eq!(l.name.node.name, "x");
@@ -780,7 +840,7 @@ mod tests {
 
     #[test]
     fn assign_with_string_value() {
-        let s = parse_stmt("x = \"hello\"\n");
+        let s = parse_stmt("x := \"hello\"\n");
         match s {
             AstStmt::Assign { stmt: a, .. } => {
                 assert_eq!(a.name.node.name, "x");
@@ -792,7 +852,7 @@ mod tests {
 
     #[test]
     fn assign_with_call_value() {
-        let s = parse_stmt("x = foo()\n");
+        let s = parse_stmt("x := foo()\n");
         match s {
             AstStmt::Assign { stmt: a, .. } => {
                 assert_eq!(a.name.node.name, "x");
@@ -893,7 +953,7 @@ mod tests {
 
     #[test]
     fn let_underscore_variable() {
-        let s = parse_stmt("let _private = \"secret\"\n");
+        let s = parse_stmt("let _private := \"secret\"\n");
         match s {
             AstStmt::Let { stmt: l, .. } => {
                 assert_eq!(l.name.node.name, "_private");

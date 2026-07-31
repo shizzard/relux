@@ -67,7 +67,7 @@ mod tests {
 
     #[test]
     fn start_with_overlay() {
-        let n = parse_start("start Db { PORT = \"5433\" }\n");
+        let n = parse_start("start Db { PORT := \"5433\" }\n");
         assert_eq!(n.effect.node.name, "Db");
         assert!(n.alias.is_none());
         assert_eq!(n.overlay.len(), 1);
@@ -76,7 +76,7 @@ mod tests {
 
     #[test]
     fn start_with_alias_and_overlay() {
-        let n = parse_start("start Db as MyDb { PORT = \"5433\" }\n");
+        let n = parse_start("start Db as MyDb { PORT := \"5433\" }\n");
         assert_eq!(n.effect.node.name, "Db");
         assert_eq!(n.alias.as_ref().unwrap().node.name, "MyDb");
         assert_eq!(n.overlay.len(), 1);
@@ -84,7 +84,7 @@ mod tests {
 
     #[test]
     fn start_with_trailing_comma_overlay() {
-        let n = parse_start("start Db as MyDb { PORT = \"5433\", HOST = \"localhost\", }\n");
+        let n = parse_start("start Db as MyDb { PORT := \"5433\", HOST := \"localhost\", }\n");
         assert_eq!(n.overlay.len(), 2);
     }
 
@@ -100,8 +100,8 @@ mod tests {
     fn start_with_multiline_overlay() {
         let n = parse_start(
             r#"start Db {
-  PORT = "5433"
-  HOST = "localhost"
+  PORT := "5433"
+  HOST := "localhost"
 }
 "#,
         );
@@ -129,14 +129,14 @@ mod tests {
         let n = parse_start(
             r#"start Node as N1 {
   NODE_PORT
-  NODE_NAME = "node1"
+  NODE_NAME := "node1"
 }
 "#,
         );
         assert_eq!(n.effect.node.name, "Node");
         assert_eq!(n.alias.as_ref().unwrap().node.name, "N1");
         assert_eq!(n.overlay.len(), 2);
-        // First entry is shorthand: NODE_PORT desugared to NODE_PORT = NODE_PORT
+        // First entry is shorthand: NODE_PORT desugared to NODE_PORT := NODE_PORT
         assert_eq!(n.overlay[0].node.key.node.name, "NODE_PORT");
         assert!(matches!(
             n.overlay[0].node.value.node,
