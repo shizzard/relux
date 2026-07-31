@@ -128,6 +128,29 @@ hljs.registerLanguage("relux", function (hljs) {
     className: "string"
   };
 
+  // Pure-match infix operators in statement position: `<expr> = <pattern>`
+  // (literal, exact equality) and `<expr> ? <pattern>` (regex, binds $n).
+  // Bare `=` / `?` - distinct from the shell `<=` / `<?` forms, the fail
+  // `!=` / `!?` forms, and the `:=` bind. The lookbehind keeps those composite
+  // operators off these modes; the trailing whitespace lookahead keeps `=>`
+  // and `==` off the literal form. Like the shell forms, the operator is a
+  // `keyword` and the pattern payload runs as `string` to end of line.
+  const OP_PURE_MATCH_REGEX = {
+    begin: /(?<![<!?])\?(?=\s|$)/,
+    beginScope: "keyword",
+    end: /$/,
+    contains: PAYLOAD_CONTAINS,
+    className: "string"
+  };
+
+  const OP_PURE_MATCH_LITERAL = {
+    begin: /(?<![:<!=>])=(?=\s|$)/,
+    beginScope: "keyword",
+    end: /$/,
+    contains: PAYLOAD_CONTAINS,
+    className: "string"
+  };
+
   const OP_FAIL_REGEX = {
     begin: /!\?/,
     beginScope: "keyword",
@@ -376,6 +399,12 @@ hljs.registerLanguage("relux", function (hljs) {
       OP_SEND_RAW,
       OP_SEND,
       OP_BIND,
+
+      // Pure-match infix `=` / `?` (bare, statement position). Must come after
+      // OP_BIND so `:=` binds, and after the shell/fail forms so their composite
+      // operators win at the leading `<` / `!`.
+      OP_PURE_MATCH_REGEX,
+      OP_PURE_MATCH_LITERAL,
 
       // Standalone timeout (must come before bare-number rule).
       DURATION,
