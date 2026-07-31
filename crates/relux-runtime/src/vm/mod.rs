@@ -277,11 +277,24 @@ impl Vm {
     /// Must be called *at* the failure construction site - once the VM is
     /// dropped the buffer is gone.
     pub(crate) async fn capture_failure_context(&self) -> FailureContext {
-        let span = self.ctx.current_span();
+        let call_stack = self.log.resolve_stack(self.ctx.current_span());
+        self.capture_failure_context_with_stack(call_stack).await
+    }
+
+    /// Like `capture_failure_context`, but with a pre-resolved call stack.
+    /// The pure-fn-call error path resolves the stack from the innermost
+    /// still-open pure-fn span (see `LogSink::deepest_open_span`) so the
+    /// nested pure-fn frames appear; those frames are descendants of the
+    /// enclosing `FnCall` span and would be missed by resolving from
+    /// `current_span`.
+    pub(crate) async fn capture_failure_context_with_stack(
+        &self,
+        call_stack: Vec<crate::observe::structured::failure::StackFrame>,
+    ) -> FailureContext {
         FailureContext::Vm {
-            span,
+            span: self.ctx.current_span(),
             event_seq: self.log.current_seq(),
-            call_stack: self.log.resolve_stack(span),
+            call_stack,
             buffer_tail: self.pty.output_buf.snapshot_tail(BUFFER_TAIL_BYTES).await,
             vars_in_scope: self.ctx.snapshot_user_vars().await,
         }
@@ -1147,7 +1160,17 @@ impl Vm {
             ) {
                 Ok(v) => v,
                 Err(err) => {
-                    let context = self.capture_failure_context().await;
+                    // Resolve the call chain from the innermost still-open
+                    // pure-fn span so nested pure-fn frames (descendants of
+                    // this shell-fn span) render in the failure. Dropping
+                    // the sink first closes those spans (tighter `end_ts`);
+                    // they stay in the span map, so resolution still works.
+                    let leaf = sink.deepest_open_span();
+                    drop(sink);
+                    let call_stack = self
+                        .log
+                        .resolve_stack(leaf.unwrap_or_else(|| self.current_span()));
+                    let context = self.capture_failure_context_with_stack(call_stack).await;
                     let shell = self.ctx.current_name().to_string();
                     self.ctx.pop_span();
                     self.log.push_fn_exit();

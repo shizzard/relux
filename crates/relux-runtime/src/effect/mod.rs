@@ -848,10 +848,14 @@ impl EffectManager {
             ) {
                 Ok(v) => v,
                 Err(err) => {
+                    let call_stack = sink
+                        .deepest_open_span()
+                        .map(|leaf| self.rt_ctx.log.resolve_stack(leaf))
+                        .unwrap_or_default();
                     return Err(Failure::from_pure_eval(
                         err,
                         String::new(),
-                        FailureContext::pre_vm_with_span(caller_span),
+                        FailureContext::pre_vm_with_frames(Some(caller_span), call_stack),
                     )
                     .into());
                 }
@@ -883,10 +887,14 @@ impl EffectManager {
             ) {
                 Ok(v) => v,
                 Err(err) => {
+                    let call_stack = sink
+                        .deepest_open_span()
+                        .map(|leaf| self.rt_ctx.log.resolve_stack(leaf))
+                        .unwrap_or_default();
                     return Err(Failure::from_pure_eval(
                         err,
                         String::new(),
-                        FailureContext::pre_vm_with_span(setup_span),
+                        FailureContext::pre_vm_with_frames(Some(setup_span), call_stack),
                     )
                     .into());
                 }

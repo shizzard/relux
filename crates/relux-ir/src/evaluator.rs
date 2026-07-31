@@ -243,7 +243,6 @@ fn eval_body(
                             pattern: pat,
                             is_regex: *is_regex,
                             span: span.clone(),
-                            call_stack: Vec::new(),
                         });
                     }
                     Err(e) => {

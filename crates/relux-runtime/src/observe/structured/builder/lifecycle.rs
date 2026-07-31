@@ -104,9 +104,16 @@ impl StructuredLogBuilder {
                 break;
             };
             let (name, args) = span.kind.frame_data();
+            // A pure-fn call renders as `pure-fn-call` so the failure
+            // report distinguishes the compile-time pure chain from an
+            // impure `fn` call; both are `SpanKind::FnCall` spans.
+            let kind = match &span.kind {
+                SpanKind::FnCall { is_pure: true, .. } => "pure-fn-call",
+                other => other.kind_str(),
+            };
             chain.push(StackFrame {
                 span: id,
-                kind: span.kind.kind_str().to_string(),
+                kind: kind.to_string(),
                 name,
                 args,
                 alias: span.kind.frame_alias(),

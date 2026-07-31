@@ -561,6 +561,65 @@ mod tests {
     }
 
     #[test]
+    fn resolve_stack_renders_nested_pure_fn_chain_top_down() {
+        // A pure-match failure reached through nested pure fns resolves
+        // its call chain from the innermost still-open pure-fn span. The
+        // frames must be outermost-first with kind `pure-fn-call` for
+        // every pure-fn frame; the impure shell frame keeps `shell-block`.
+        let (b, _rx) = make_builder();
+        let test_span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let test_id = test_span.id();
+        let block_span = b.open_span(
+            SpanKind::ShellBlock { shell: "s".into() },
+            Some(test_id),
+            None,
+        );
+        let block_id = block_span.id();
+        let outer = b.open_span(
+            SpanKind::FnCall {
+                name: "outer".into(),
+                args: vec![("s".into(), "actual".into())],
+                result: None,
+                callee_kind: FnCallKind::User,
+                is_pure: true,
+            },
+            Some(block_id),
+            None,
+        );
+        let outer_id = outer.id();
+        let inner = b.open_span(
+            SpanKind::FnCall {
+                name: "inner".into(),
+                args: vec![("s".into(), "actual".into())],
+                result: None,
+                callee_kind: FnCallKind::User,
+                is_pure: true,
+            },
+            Some(outer_id),
+            None,
+        );
+        let inner_id = inner.id();
+
+        // Resolve from the innermost (deepest) open pure-fn span.
+        let frames = b.resolve_stack(inner_id);
+        let rendered: Vec<(&str, Option<&str>)> = frames
+            .iter()
+            .map(|f| (f.kind.as_str(), f.name.as_deref()))
+            .collect();
+        assert_eq!(
+            rendered,
+            vec![
+                ("test", Some("t")),
+                ("shell-block", Some("s")),
+                ("pure-fn-call", Some("outer")),
+                ("pure-fn-call", Some("inner")),
+            ]
+        );
+        assert_eq!(frames[2].span, outer_id);
+        assert_eq!(frames[3].span, inner_id);
+    }
+
+    #[test]
     fn fn_call_round_trips_callee_kind_and_is_pure() {
         let (b, _rx) = make_builder();
         let test_span = b.open_span(SpanKind::Test { name: "t".into() }, None, None);

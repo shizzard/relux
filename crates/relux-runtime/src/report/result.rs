@@ -200,7 +200,6 @@ impl Failure {
                 pattern,
                 is_regex,
                 span,
-                ..
             } => Failure::PureMatch {
                 value,
                 pattern,

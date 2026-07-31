@@ -44,6 +44,16 @@ impl<'a> LogSink<'a> {
             .unwrap_or(self.root_parent)
     }
 
+    /// The innermost still-open pure-fn span, if any pure-fn call is on the
+    /// stack. On the error path (`leave_pure_fn` skipped by `?`
+    /// propagation) the nested pure-fn spans stay on the stack, so the
+    /// failure boundary resolves the call chain from this leaf - the
+    /// nested frames are descendants of the root parent and would not
+    /// otherwise appear when resolving from the enclosing span.
+    pub fn deepest_open_span(&self) -> Option<SpanId> {
+        self.stack.last().map(SpanGuard::id)
+    }
+
     /// Apply a buffered sequence of sink ops, re-emitting them onto
     /// the structured log. Used to replay marker recordings.
     pub fn replay(&mut self, ops: &[SinkOp]) {
@@ -166,5 +176,64 @@ impl<'a> PureEvalSink for LogSink<'a> {
     fn record_var_read(&mut self, name: &str, value: &str, span: &IrSpan) {
         let parent = self.current_parent();
         self.log.emit_var_read(parent, name, value, Some(span));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::observe::progress;
+    use crate::observe::structured::span::SpanKind;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    fn make_builder() -> StructuredLogBuilder {
+        let (tx, _rx) = progress::channel();
+        let sources = relux_core::table::SharedTable::new();
+        StructuredLogBuilder::new(
+            tx,
+            Instant::now(),
+            sources,
+            Arc::from(PathBuf::from("/project").as_path()),
+        )
+    }
+
+    #[test]
+    fn deepest_open_span_tracks_the_innermost_unbalanced_pure_fn() {
+        let log = make_builder();
+        let root = log.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        let mut sink = LogSink::new(&log, root.id());
+        assert_eq!(sink.deepest_open_span(), None);
+
+        // enter outer, then inner; on the error path `leave_pure_fn` is
+        // skipped, so the innermost frame stays and is the resolve leaf.
+        sink.enter_pure_fn("outer", &[], false, &IrSpan::synthetic());
+        let outer = sink.deepest_open_span().expect("outer open");
+        sink.enter_pure_fn("inner", &[], false, &IrSpan::synthetic());
+        let inner = sink.deepest_open_span().expect("inner open");
+        assert_ne!(outer, inner);
+
+        // Resolving from the innermost span surfaces both pure-fn frames
+        // under the test root, top-down.
+        let frames = log.resolve_stack(inner);
+        let rendered: Vec<(&str, Option<&str>)> = frames
+            .iter()
+            .map(|f| (f.kind.as_str(), f.name.as_deref()))
+            .collect();
+        assert_eq!(
+            rendered,
+            vec![
+                ("test", Some("t")),
+                ("pure-fn-call", Some("outer")),
+                ("pure-fn-call", Some("inner")),
+            ]
+        );
+
+        // Balanced leave pops back to the outer frame, then to none.
+        sink.leave_pure_fn("");
+        assert_eq!(sink.deepest_open_span(), Some(outer));
+        sink.leave_pure_fn("");
+        assert_eq!(sink.deepest_open_span(), None);
     }
 }

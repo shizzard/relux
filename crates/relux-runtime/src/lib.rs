@@ -993,10 +993,17 @@ async fn run_test_body(
                 ) {
                     Ok(v) => v,
                     Err(err) => {
+                        // Resolve the pure-fn chain from the innermost
+                        // still-open pure-fn span so a failure reached
+                        // through nested pure fns carries its call chain.
+                        let call_stack = sink
+                            .deepest_open_span()
+                            .map(|leaf| rt_ctx.log.resolve_stack(leaf))
+                            .unwrap_or_default();
                         return Err(Failure::from_pure_eval(
                             err,
                             String::new(),
-                            FailureContext::pre_vm_with_span(test_span),
+                            FailureContext::pre_vm_with_frames(Some(test_span), call_stack),
                         )
                         .into());
                     }
