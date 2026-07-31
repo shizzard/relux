@@ -16,6 +16,7 @@ use super::need::start_decl;
 use super::punctuation::punctuation_brace_close;
 use super::punctuation::punctuation_brace_open;
 use super::stmt::stmt_let_standalone;
+use super::stmt::stmt_pure_match_standalone;
 use super::timeout::timeout;
 use super::token::keyword;
 use super::ws::leading_ws;
@@ -112,12 +113,33 @@ pub fn def_test<'a>()
             AstStmt::Let { stmt, span } => AstTestItem::Let { stmt, span },
             _ => unreachable!(),
         });
+    // A pure-match assertion in the preamble: `<expr> = pat` / `<expr> ? pat`.
+    // Placed after `let_item` in the choice: `let_item` is keyword-led
+    // (unambiguous), while this starts with a bare `expr()`.
+    let pure_match_item = leading_ws()
+        .ignore_then(stmt_pure_match_standalone())
+        .map(|s| match s.node {
+            AstStmt::PureMatchLiteral { lhs, pattern, span } => AstTestItem::PureMatch {
+                lhs,
+                pattern,
+                is_regex: false,
+                span,
+            },
+            AstStmt::PureMatchRegex { lhs, pattern, span } => AstTestItem::PureMatch {
+                lhs,
+                pattern,
+                is_regex: true,
+                span,
+            },
+            _ => unreachable!(),
+        });
     let let_comment = leading_ws().ignore_then(comment()).map_with(|c, e| {
         let span = crate::span_from_chumsky(e.span());
         AstTestItem::Comment { text: c, span }
     });
     let let_section = choice((
         let_item,
+        pure_match_item,
         let_comment,
         // Fragile: SENTINEL comment must be filtered by is_sentinel_comment - edit with caution.
         ws().ignore_then(newline()).to(AstTestItem::Comment {
@@ -420,6 +442,54 @@ test "my test" {
             t.body
                 .iter()
                 .any(|item| matches!(&item.node, AstTestItem::Let { .. }))
+        );
+    }
+
+    #[test]
+    fn test_with_pure_match_regex_in_preamble() {
+        let t =
+            parse_test("test \"t\" {\n  let u := \"x\"\n  u ? ^x$\n  shell m {\n    > :\n  }\n}\n");
+        // The let precedes the pure-match, which precedes the shell.
+        let let_pos = t
+            .body
+            .iter()
+            .position(|item| matches!(&item.node, AstTestItem::Let { .. }))
+            .expect("expected a Let item");
+        let pm_pos = t
+            .body
+            .iter()
+            .position(|item| matches!(&item.node, AstTestItem::PureMatch { is_regex: true, .. }))
+            .expect("expected a regex PureMatch item");
+        let shell_pos = t
+            .body
+            .iter()
+            .position(|item| matches!(&item.node, AstTestItem::Shell { .. }))
+            .expect("expected a Shell item");
+        assert!(let_pos < pm_pos, "let must come before pure-match");
+        assert!(pm_pos < shell_pos, "pure-match must come before shell");
+    }
+
+    #[test]
+    fn test_with_pure_match_literal_in_preamble() {
+        let t =
+            parse_test("test \"t\" {\n  let u := \"x\"\n  u = x\n  shell m {\n    > :\n  }\n}\n");
+        assert!(t.body.iter().any(|item| matches!(
+            &item.node,
+            AstTestItem::PureMatch {
+                is_regex: false,
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn test_bare_expr_in_preamble_is_rejected() {
+        // The preamble accepts only `let` bindings and pure-match assertions;
+        // a bare expression statement (no `=`/`?` tail) must fail to parse.
+        let t = try_parse_test("test \"t\" {\n  foo(x)\n  shell m {\n> :\n}\n}\n");
+        assert!(
+            t.is_none(),
+            "a bare expression in the preamble must be rejected"
         );
     }
 
