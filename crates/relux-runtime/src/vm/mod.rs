@@ -1138,13 +1138,16 @@ impl Vm {
             self.log.push_fn_enter(&fn_name);
             let mut sink =
                 crate::observe::structured::log_sink::LogSink::new(&self.log, fn_guard.id());
-            let return_value = relux_ir::evaluator::eval_pure_fn(
+            let return_value = match relux_ir::evaluator::eval_pure_fn(
                 ir_fn,
                 evaluated_args,
                 &self.ctx.env,
                 &self.tables.pure_fns,
                 &mut sink,
-            );
+            ) {
+                Ok(v) => v,
+                Err(e) => match e {},
+            };
             self.ctx.pop_span();
             self.log.set_fn_call_result(fn_guard.id(), &return_value);
             self.log.push_fn_exit();

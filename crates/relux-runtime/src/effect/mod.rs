@@ -838,13 +838,16 @@ impl EffectManager {
         let mut sink =
             crate::observe::structured::log_sink::LogSink::new(&self.rt_ctx.log, caller_span);
         for entry in start.overlay() {
-            let value = relux_ir::evaluator::eval_pure_expr(
+            let value = match relux_ir::evaluator::eval_pure_expr(
                 entry.value(),
                 caller_vars,
                 caller_env,
                 &self.rt_ctx.tables.pure_fns,
                 &mut sink,
-            );
+            ) {
+                Ok(v) => v,
+                Err(e) => match e {},
+            };
             overlay.insert(entry.key().name().to_string(), value);
         }
         Ok(overlay)
@@ -862,13 +865,16 @@ impl EffectManager {
         let mut sink =
             crate::observe::structured::log_sink::LogSink::new(&self.rt_ctx.log, setup_span);
         let value = if let Some(expr) = stmt.value() {
-            relux_ir::evaluator::eval_pure_expr(
+            match relux_ir::evaluator::eval_pure_expr(
                 expr,
                 &vars,
                 effect_env,
                 &self.rt_ctx.tables.pure_fns,
                 &mut sink,
-            )
+            ) {
+                Ok(v) => v,
+                Err(e) => match e {},
+            }
         } else {
             String::new()
         };

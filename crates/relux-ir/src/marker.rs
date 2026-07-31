@@ -208,13 +208,16 @@ pub fn decide_markers(
             let (mut met, evaluation) = match &marker.cond {
                 IrMarkerCond::Unconditional => unreachable!(),
                 IrMarkerCond::Bare { expr } => {
-                    let value = crate::evaluator::eval_pure_expr(
+                    let value = match crate::evaluator::eval_pure_expr(
                         expr,
                         &relux_core::pure::VarScope::new(),
                         env,
                         fns,
                         &mut recording,
-                    );
+                    ) {
+                        Ok(v) => v,
+                        Err(e) => match e {},
+                    };
                     let met = !value.is_empty();
                     (met, SkipEvaluation::Bare { value, met })
                 }
@@ -224,10 +227,26 @@ pub fn decide_markers(
                     cond_span,
                 } => {
                     let vars = relux_core::pure::VarScope::new();
-                    let lhs_val =
-                        crate::evaluator::eval_pure_expr(lhs, &vars, env, fns, &mut recording);
-                    let rhs_val =
-                        crate::evaluator::eval_pure_expr(rhs, &vars, env, fns, &mut recording);
+                    let lhs_val = match crate::evaluator::eval_pure_expr(
+                        lhs,
+                        &vars,
+                        env,
+                        fns,
+                        &mut recording,
+                    ) {
+                        Ok(v) => v,
+                        Err(e) => match e {},
+                    };
+                    let rhs_val = match crate::evaluator::eval_pure_expr(
+                        rhs,
+                        &vars,
+                        env,
+                        fns,
+                        &mut recording,
+                    ) {
+                        Ok(v) => v,
+                        Err(e) => match e {},
+                    };
                     // Literal mode never errors, so the Result/Option unwraps cleanly.
                     let met = crate::eval_pure_match(
                         &mut recording,
@@ -254,10 +273,26 @@ pub fn decide_markers(
                     pattern_span,
                 } => {
                     let vars = relux_core::pure::VarScope::new();
-                    let value =
-                        crate::evaluator::eval_pure_expr(expr, &vars, env, fns, &mut recording);
-                    let pattern_str =
-                        crate::evaluator::eval_pure_expr(pattern, &vars, env, fns, &mut recording);
+                    let value = match crate::evaluator::eval_pure_expr(
+                        expr,
+                        &vars,
+                        env,
+                        fns,
+                        &mut recording,
+                    ) {
+                        Ok(v) => v,
+                        Err(e) => match e {},
+                    };
+                    let pattern_str = match crate::evaluator::eval_pure_expr(
+                        pattern,
+                        &vars,
+                        env,
+                        fns,
+                        &mut recording,
+                    ) {
+                        Ok(v) => v,
+                        Err(e) => match e {},
+                    };
 
                     let hit = crate::eval_pure_match(
                         &mut recording,

@@ -983,13 +983,16 @@ async fn run_test_body(
             let mut vars = scope.vars().lock().await;
             let mut sink = LogSink::new(&rt_ctx.log, test_span);
             let value = if let Some(expr) = stmt.value() {
-                relux_ir::evaluator::eval_pure_expr(
+                match relux_ir::evaluator::eval_pure_expr(
                     expr,
                     &vars,
                     &rt_ctx.env,
                     &rt_ctx.tables.pure_fns,
                     &mut sink,
-                )
+                ) {
+                    Ok(v) => v,
+                    Err(e) => match e {},
+                }
             } else {
                 String::new()
             };

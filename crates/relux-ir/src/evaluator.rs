@@ -4,6 +4,7 @@ use crate::IrPureExpr;
 use crate::IrPureFn;
 use crate::IrPureStmt;
 use crate::IrStringPart;
+use crate::PureEvalError;
 use crate::PureFnTable;
 use crate::pure_sink::PureEvalSink;
 use relux_core::diagnostics::IrSpan;
@@ -14,9 +15,10 @@ use relux_core::pure::VarScope;
 
 /// Evaluate a pure expression to a string value.
 ///
-/// Infallible - all failure modes (undefined functions, wrong arity,
-/// cycles) are caught at lowering time. Missing variables evaluate
-/// to empty string.
+/// Returns `Result<String, PureEvalError>`. In this milestone the error
+/// is uninhabited, so evaluation is effectively infallible - all failure
+/// modes (undefined functions, wrong arity, cycles) are still caught at
+/// lowering time, and missing variables evaluate to empty string.
 ///
 /// The `sink` parameter is informed of every pure-fn call entry/exit
 /// and every interpolation that resolves a variable, so callers that
@@ -29,13 +31,13 @@ pub fn eval_pure_expr(
     env: &LayeredEnv,
     fns: &PureFnTable,
     sink: &mut dyn PureEvalSink,
-) -> String {
+) -> Result<String, PureEvalError> {
     match expr {
-        IrPureExpr::String { value, span } => eval_interpolation(value, span, vars, env, sink),
+        IrPureExpr::String { value, span } => Ok(eval_interpolation(value, span, vars, env, sink)),
         IrPureExpr::Var { name, span } => {
             let value = resolve_var(name, vars, env);
             sink.record_var_read(name, &value, span);
-            value
+            Ok(value)
         }
         IrPureExpr::Call { call, .. } => eval_pure_call(call, vars, env, fns, sink),
     }
@@ -43,16 +45,16 @@ pub fn eval_pure_expr(
 
 /// Evaluate a resolved pure function with the given arguments.
 ///
-/// Infallible - see `eval_pure_expr`.
+/// See `eval_pure_expr` for the fallibility contract.
 pub fn eval_pure_fn(
     func: &IrPureFn,
     args: Vec<String>,
     env: &LayeredEnv,
     fns: &PureFnTable,
     sink: &mut dyn PureEvalSink,
-) -> String {
+) -> Result<String, PureEvalError> {
     match func {
-        IrPureFn::Builtin { name, .. } => relux_core::pure::bifs::dispatch(name, args),
+        IrPureFn::Builtin { name, .. } => Ok(relux_core::pure::bifs::dispatch(name, args)),
         IrPureFn::UserDefined { params, body, .. } => {
             let mut scope = VarScope::new();
             for (param, arg) in params.iter().zip(args) {
@@ -71,13 +73,13 @@ fn eval_pure_call(
     env: &LayeredEnv,
     fns: &PureFnTable,
     sink: &mut dyn PureEvalSink,
-) -> String {
+) -> Result<String, PureEvalError> {
     use crate::IrNode;
     let args: Vec<String> = call
         .args()
         .iter()
         .map(|arg| eval_pure_expr(arg, vars, env, fns, sink))
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
 
     let resolved = call.resolved();
     let func = fns
@@ -111,9 +113,9 @@ fn eval_pure_call(
     };
     sink.enter_pure_fn(&name, &named_args, is_builtin, call.span());
 
-    let result = eval_pure_fn(func, args, env, fns, sink);
+    let result = eval_pure_fn(func, args, env, fns, sink)?;
     sink.leave_pure_fn(&result);
-    result
+    Ok(result)
 }
 
 fn eval_interpolation(
@@ -173,17 +175,17 @@ fn eval_body(
     env: &LayeredEnv,
     fns: &PureFnTable,
     sink: &mut dyn PureEvalSink,
-) -> String {
+) -> Result<String, PureEvalError> {
     let mut last_value = String::new();
     for (i, stmt) in body.iter().enumerate() {
         let is_last = i == body.len() - 1;
         match stmt {
             IrPureStmt::Comment { .. } => {}
             IrPureStmt::Let { stmt: let_stmt, .. } => {
-                let value = let_stmt
-                    .value()
-                    .map(|v| eval_pure_expr(v, scope, env, fns, sink))
-                    .unwrap_or_default();
+                let value = match let_stmt.value() {
+                    Some(v) => eval_pure_expr(v, scope, env, fns, sink)?,
+                    None => String::new(),
+                };
                 scope.insert(let_stmt.name().name().to_string(), value.clone());
                 if is_last {
                     last_value = value;
@@ -192,21 +194,21 @@ fn eval_body(
             IrPureStmt::Assign {
                 stmt: assign_stmt, ..
             } => {
-                let value = eval_pure_expr(assign_stmt.value(), scope, env, fns, sink);
+                let value = eval_pure_expr(assign_stmt.value(), scope, env, fns, sink)?;
                 scope.assign(assign_stmt.name().name(), value.clone());
                 if is_last {
                     last_value = value;
                 }
             }
             IrPureStmt::Expr { expr, .. } => {
-                let value = eval_pure_expr(expr, scope, env, fns, sink);
+                let value = eval_pure_expr(expr, scope, env, fns, sink)?;
                 if is_last {
                     last_value = value;
                 }
             }
         }
     }
-    last_value
+    Ok(last_value)
 }
 
 // --- Tests -----------------------------------------------
@@ -253,7 +255,7 @@ mod sink_tests {
         let mut vars = VarScope::new();
         vars.insert("who".into(), "world".into());
         let mut sink = RecordingSink::default();
-        let out = eval_pure_expr(&expr, &vars, &empty_env(), &empty_fns(), &mut sink);
+        let out = eval_pure_expr(&expr, &vars, &empty_env(), &empty_fns(), &mut sink).unwrap();
         assert_eq!(out, "hi world");
         match sink.ops.as_slice() {
             [SinkOp::RecordInterpolation { result, .. }] => assert_eq!(result, "hi world"),
@@ -281,7 +283,8 @@ mod sink_tests {
             &empty_env(),
             &empty_fns(),
             &mut sink,
-        );
+        )
+        .unwrap();
         assert!(sink.ops.is_empty());
     }
 
@@ -304,7 +307,34 @@ mod sink_tests {
             &empty_env(),
             &empty_fns(),
             &mut NoOpSink,
-        );
+        )
+        .unwrap();
         assert_eq!(out, "x");
+    }
+
+    #[test]
+    fn eval_pure_expr_returns_ok_for_a_literal() {
+        let interp = IrInterpolation::new(
+            vec![IrStringPart::Literal {
+                value: "v".into(),
+                span: IrSpan::synthetic(),
+            }],
+            IrSpan::synthetic(),
+        );
+        let expr = IrPureExpr::String {
+            value: interp,
+            span: IrSpan::synthetic(),
+        };
+        // `.unwrap()` pins the `Ok` contract without requiring
+        // `PureEvalError: PartialEq` (it derives none - it is uninhabited).
+        let out = eval_pure_expr(
+            &expr,
+            &VarScope::new(),
+            &empty_env(),
+            &empty_fns(),
+            &mut NoOpSink,
+        )
+        .unwrap();
+        assert_eq!(out, "v");
     }
 }
