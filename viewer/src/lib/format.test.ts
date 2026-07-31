@@ -310,11 +310,12 @@ describe('eventSummary', () => {
     expect(eventSummary(ev('var-read', { name: 'x', value: 'v' }))).toBe('x = v');
   });
 
-  it('summarises pure-match with arrow and `no match` when result is empty', () => {
-    const a = ev('pure-match', { match_kind: 'regex', value: 'abc', pattern: '.', result: '', captures: {} });
-    expect(eventSummary(a)).toBe('. \u{2192} (no match)');
-    const b = ev('pure-match', { match_kind: 'regex', value: 'abc', pattern: '.', result: 'a', captures: {} });
-    expect(eventSummary(b)).toBe('. \u{2192} a');
+  it('summarises the pure-match trio', () => {
+    expect(
+      eventSummary(ev('pure-match-start', { value: 'abc', pattern: '.', is_regex: true })),
+    ).toContain('.');
+    expect(eventSummary(ev('pure-match-done', { matched: 'a', captures: {} }))).toContain('a');
+    expect(eventSummary(ev('pure-match-failed', {}))).toBe('(no match)');
   });
 
   it('summarises bool-check across all four shapes', () => {

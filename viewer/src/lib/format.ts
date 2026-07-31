@@ -70,7 +70,9 @@ const KIND_GLYPHS: Record<string, string> = {
   'var-assign': '\u{003D}',
   'string-eval': '\u{0024}',
   interpolation: '\u{0024}',
-  'pure-match': '\u{003F}',
+  'pure-match-start': '\u{003F}',
+  'pure-match-done': '\u{003F}',
+  'pure-match-failed': '\u{003F}',
   'var-read': '\u{2261}',
   'bool-check': '\u{2714}',
   annotate: '\u{266B}',
@@ -186,10 +188,12 @@ export function eventSummary(event: Event): string {
       return truncate(escapeBytes(event.result), SUMMARY_MAX);
     case 'interpolation':
       return truncate(escapeBytes(event.result), SUMMARY_MAX);
-    case 'pure-match':
-      return event.result === ''
-        ? `${truncate(event.pattern, SUMMARY_MAX)} \u{2192} (no match)`
-        : `${truncate(event.pattern, SUMMARY_MAX)} \u{2192} ${truncate(escapeBytes(event.result), SUMMARY_MAX)}`;
+    case 'pure-match-start':
+      return `${truncate(event.pattern, SUMMARY_MAX)}`;
+    case 'pure-match-done':
+      return `${truncate(escapeBytes(event.matched), SUMMARY_MAX)}`;
+    case 'pure-match-failed':
+      return '(no match)';
     case 'var-read':
       return `${event.name} = ${truncate(escapeBytes(event.value), SUMMARY_MAX)}`;
     case 'bool-check': {

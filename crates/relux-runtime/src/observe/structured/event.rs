@@ -191,16 +191,22 @@ pub enum EventKind {
         result: String,
         bindings: Vec<(String, String)>,
     },
-    /// Pure string-match. Today: marker `expr ? ^pat$` conditions.
-    /// `result` is the matched substring (`$0`) or `""` on no match.
-    /// `captures` mirrors shell-buffer match captures.
-    PureMatch {
-        match_kind: super::span::MatchKind,
+    /// Pure string-match attempt - emitted before the match runs.
+    /// `value` is the haystack inline (a shell match reads the buffer).
+    PureMatchStart {
         value: String,
         pattern: String,
-        result: String,
+        is_regex: bool,
+    },
+    /// Pure string-match success. `matched` is the whole-match substring
+    /// (`$0` / the literal needle); `captures` mirrors shell-buffer captures.
+    PureMatchDone {
+        matched: String,
         captures: HashMap<String, String>,
     },
+    /// Pure string-match failure (no match). Empty payload; the preceding
+    /// `PureMatchStart` in the same span carries value/pattern.
+    PureMatchFailed {},
     /// Pure variable read: a bare-var expression resolved against the
     /// active scope or environment. `value` is the resolved string
     /// (`""` when the variable is undefined). Read counterpart to
@@ -328,20 +334,35 @@ mod pure_match_tests {
     use std::collections::HashMap;
 
     #[test]
-    fn pure_match_event_kind_serialises() {
+    fn pure_match_trio_serialises() {
         let mut caps = HashMap::new();
         caps.insert("0".to_string(), "abc".to_string());
-        let k = EventKind::PureMatch {
-            match_kind: super::super::span::MatchKind::Regex,
+        let start = EventKind::PureMatchStart {
             value: "abc".into(),
             pattern: "^a.c$".into(),
-            result: "abc".into(),
+            is_regex: true,
+        };
+        let done = EventKind::PureMatchDone {
+            matched: "abc".into(),
             captures: caps,
         };
-        let v = serde_json::to_value(&k).unwrap();
-        assert_eq!(v["kind"], serde_json::json!("pure-match"));
-        assert_eq!(v["match_kind"], serde_json::json!("regex"));
-        assert_eq!(v["result"], serde_json::json!("abc"));
+        let failed = EventKind::PureMatchFailed {};
+        assert_eq!(
+            serde_json::to_value(&start).unwrap()["kind"],
+            serde_json::json!("pure-match-start")
+        );
+        assert_eq!(
+            serde_json::to_value(&start).unwrap()["is_regex"],
+            serde_json::json!(true)
+        );
+        assert_eq!(
+            serde_json::to_value(&done).unwrap()["kind"],
+            serde_json::json!("pure-match-done")
+        );
+        assert_eq!(
+            serde_json::to_value(&failed).unwrap()["kind"],
+            serde_json::json!("pure-match-failed")
+        );
     }
 
     #[test]

@@ -13,14 +13,12 @@
 use std::collections::HashMap;
 
 use relux_core::diagnostics::IrSpan;
-use relux_ir::pure_sink::MatchKind as IrMatchKind;
 use relux_ir::pure_sink::PureEvalSink;
 use relux_ir::pure_sink::SinkOp;
 
 use super::builder::SpanGuard;
 use super::builder::StructuredLogBuilder;
 use super::span::FnCallKind;
-use super::span::MatchKind;
 use super::span::SpanId;
 use super::span::SpanKind;
 
@@ -68,28 +66,29 @@ impl<'a> LogSink<'a> {
                 } => {
                     self.record_interpolation(template, result, bindings, span);
                 }
-                SinkOp::Match {
-                    kind,
+                SinkOp::PureMatchStart {
                     value,
                     pattern,
-                    result,
+                    is_regex,
+                    span,
+                } => {
+                    self.record_pure_match_start(value, pattern, *is_regex, span);
+                }
+                SinkOp::PureMatchDone {
+                    matched,
                     captures,
                     span,
                 } => {
-                    self.record_match(*kind, value, pattern, result, captures, span);
+                    self.record_pure_match_done(matched, captures, span);
+                }
+                SinkOp::PureMatchFailed { span } => {
+                    self.record_pure_match_failed(span);
                 }
                 SinkOp::VarRead { name, value, span } => {
                     self.record_var_read(name, value, span);
                 }
             }
         }
-    }
-}
-
-fn to_runtime_match_kind(k: IrMatchKind) -> MatchKind {
-    match k {
-        IrMatchKind::Regex => MatchKind::Regex,
-        IrMatchKind::Literal => MatchKind::Literal,
     }
 }
 
@@ -136,25 +135,32 @@ impl<'a> PureEvalSink for LogSink<'a> {
             .emit_pure_interpolation(parent, template, result, bindings, Some(span));
     }
 
-    fn record_match(
+    fn record_pure_match_start(
         &mut self,
-        kind: IrMatchKind,
         value: &str,
         pattern: &str,
-        result: &str,
+        is_regex: bool,
+        span: &IrSpan,
+    ) {
+        let parent = self.current_parent();
+        self.log
+            .emit_pure_match_start(parent, value, pattern, is_regex, Some(span));
+    }
+
+    fn record_pure_match_done(
+        &mut self,
+        matched: &str,
         captures: &HashMap<String, String>,
         span: &IrSpan,
     ) {
         let parent = self.current_parent();
-        self.log.emit_pure_match(
-            parent,
-            to_runtime_match_kind(kind),
-            value,
-            pattern,
-            result,
-            captures,
-            Some(span),
-        );
+        self.log
+            .emit_pure_match_done(parent, matched, captures, Some(span));
+    }
+
+    fn record_pure_match_failed(&mut self, span: &IrSpan) {
+        let parent = self.current_parent();
+        self.log.emit_pure_match_failed(parent, Some(span));
     }
 
     fn record_var_read(&mut self, name: &str, value: &str, span: &IrSpan) {

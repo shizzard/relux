@@ -237,45 +237,22 @@ pub fn decide_markers(
                     let pattern_str =
                         crate::evaluator::eval_pure_expr(pattern, &vars, env, fns, &mut recording);
 
-                    let regex = regex::Regex::new(&pattern_str).map_err(|e| {
+                    let hit = crate::eval_pure_match(
+                        &mut recording,
+                        &value,
+                        &pattern_str,
+                        true,
+                        pattern_span,
+                    )
+                    .map_err(|e| {
                         LoweringBail::invalid(InvalidReport::invalid_regex(
-                            pattern_str.clone(),
-                            e.to_string(),
+                            e.pattern,
+                            e.reason,
                             pattern_span.clone(),
                         ))
                     })?;
+                    let met = hit.is_some();
 
-                    let (met, result_str, captures): (
-                        bool,
-                        String,
-                        std::collections::HashMap<String, String>,
-                    ) = if let Some(cap) = regex.captures(&value) {
-                        let mut caps = std::collections::HashMap::new();
-                        for i in 0..cap.len() {
-                            if let Some(m) = cap.get(i) {
-                                caps.insert(i.to_string(), m.as_str().to_string());
-                            }
-                        }
-                        (
-                            true,
-                            cap.get(0)
-                                .map(|m| m.as_str().to_string())
-                                .unwrap_or_default(),
-                            caps,
-                        )
-                    } else {
-                        (false, String::new(), std::collections::HashMap::new())
-                    };
-
-                    use crate::pure_sink::PureEvalSink;
-                    recording.record_match(
-                        crate::pure_sink::MatchKind::Regex,
-                        &value,
-                        &pattern_str,
-                        &result_str,
-                        &captures,
-                        pattern_span,
-                    );
                     (
                         met,
                         SkipEvaluation::Regex {

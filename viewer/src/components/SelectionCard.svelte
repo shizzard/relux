@@ -296,16 +296,16 @@
         }
         return out;
       }
-      case 'pure-match': {
-        const out: Row[] = [
+      case 'pure-match-start':
+        return [
           { type: 'kv', key: 'value', value: ev.value, mono: true },
           { type: 'kv', key: 'pattern', value: ev.pattern, mono: true, accent: true },
+          { type: 'kv', key: 'is_regex', value: String(ev.is_regex) },
         ];
-        if (ev.result !== '') {
-          out.push({ type: 'kv', key: 'matched', value: ev.result, mono: true, accent: true });
-        } else {
-          out.push({ type: 'kv', key: 'matched', value: '(none)' });
-        }
+      case 'pure-match-done': {
+        const out: Row[] = [
+          { type: 'kv', key: 'matched', value: ev.matched, mono: true, accent: true },
+        ];
         const caps = Object.entries(ev.captures).filter(
           (entry): entry is [string, string] =>
             entry[0] !== '0' && entry[1] !== undefined,
@@ -318,6 +318,8 @@
         }
         return out;
       }
+      case 'pure-match-failed':
+        return [{ type: 'kv', key: 'result', value: '(no match)' }];
       case 'annotate':
         return [{ type: 'kv', key: 'text', value: ev.text }];
       case 'log':

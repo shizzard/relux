@@ -25,17 +25,6 @@ pub enum FnCallKind {
     ts(export, export_to = "../../../viewer/src/types/")
 )]
 #[serde(rename_all = "kebab-case")]
-pub enum MatchKind {
-    Regex,
-    Literal,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[cfg_attr(
-    feature = "ts-export",
-    ts(export, export_to = "../../../viewer/src/types/")
-)]
-#[serde(rename_all = "kebab-case")]
 pub enum MarkerEvalKind {
     Skip,
     Run,

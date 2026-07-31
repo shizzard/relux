@@ -46,7 +46,6 @@ pub use span::MarkerEvalDecision;
 pub use span::MarkerEvalDetail;
 pub use span::MarkerEvalKind;
 pub use span::MarkerEvalModifier;
-pub use span::MatchKind;
 pub use span::Span;
 pub use span::SpanId;
 pub use span::SpanKind;
