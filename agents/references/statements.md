@@ -56,6 +56,8 @@ pair ? ^(\w+)=(.+)$           // on a hit: $1 key, $2 value
 
 `x := e` binds/reassigns; `x = e` asserts that `x` equals `e`. They are different statements. `let x = e` is an error -- declarations require `:=`.
 
+There is no `==` operator: `x == y` parses as a pure match of `x` against the literal pattern `= y` (leading `= `), usually not what you want. Use `x = y` to assert equality, `x := y` to bind.
+
 Don't (meant to bind, actually asserts and fails when unequal):
 
 ```relux

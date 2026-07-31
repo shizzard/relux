@@ -118,6 +118,13 @@ Reassignment always uses `:=`. Bare `=` is now the exact-equality
 pure-match assertion, so `x = e` no longer binds anything. `let x = e`
 remains an error: use `let x := e`.
 
+> **There is no `==` operator.** All values are strings, and a pattern
+> may legitimately begin with `=`, so `==` is not a comparison — it is
+> two tokens. Writing `x == y` parses as a pure match of `x` against the
+> literal pattern `= y` (note the leading `= `), which almost never
+> matches and fails at runtime with a confusing message. Write `x = y`
+> for "x equals y exactly"; write `x := y` to bind.
+
 ## What lands in the structured log
 
 Every pure match emits a three-event trio into
