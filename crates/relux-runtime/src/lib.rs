@@ -986,6 +986,7 @@ async fn run_test_body(
                 match relux_ir::evaluator::eval_pure_expr(
                     expr,
                     &vars,
+                    &std::collections::HashMap::new(),
                     &rt_ctx.env,
                     &rt_ctx.tables.pure_fns,
                     &mut sink,

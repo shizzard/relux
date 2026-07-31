@@ -10,6 +10,7 @@ use crate::pure_sink::PureEvalSink;
 use relux_core::diagnostics::IrSpan;
 use relux_core::pure::LayeredEnv;
 use relux_core::pure::VarScope;
+use std::collections::HashMap;
 
 // --- Public API ------------------------------------------
 
@@ -28,18 +29,25 @@ use relux_core::pure::VarScope;
 pub fn eval_pure_expr(
     expr: &IrPureExpr,
     vars: &VarScope,
+    captures: &HashMap<String, String>,
     env: &LayeredEnv,
     fns: &PureFnTable,
     sink: &mut dyn PureEvalSink,
 ) -> Result<String, PureEvalError> {
     match expr {
-        IrPureExpr::String { value, span } => Ok(eval_interpolation(value, span, vars, env, sink)),
+        IrPureExpr::String { value, span } => {
+            Ok(eval_interpolation(value, span, vars, captures, env, sink))
+        }
         IrPureExpr::Var { name, span } => {
             let value = resolve_var(name, vars, env);
             sink.record_var_read(name, &value, span);
             Ok(value)
         }
-        IrPureExpr::Call { call, .. } => eval_pure_call(call, vars, env, fns, sink),
+        IrPureExpr::Call { call, .. } => eval_pure_call(call, vars, captures, env, fns, sink),
+        IrPureExpr::Capture { index, .. } => Ok(captures
+            .get(&index.to_string())
+            .cloned()
+            .unwrap_or_default()),
     }
 }
 
@@ -57,10 +65,11 @@ pub fn eval_pure_fn(
         IrPureFn::Builtin { name, .. } => Ok(relux_core::pure::bifs::dispatch(name, args)),
         IrPureFn::UserDefined { params, body, .. } => {
             let mut scope = VarScope::new();
+            let captures: HashMap<String, String> = HashMap::new();
             for (param, arg) in params.iter().zip(args) {
                 scope.insert(param.name().to_string(), arg);
             }
-            eval_body(body, &mut scope, env, fns, sink)
+            eval_body(body, &mut scope, &captures, env, fns, sink)
         }
     }
 }
@@ -70,6 +79,7 @@ pub fn eval_pure_fn(
 fn eval_pure_call(
     call: &IrPureCallExpr,
     vars: &VarScope,
+    captures: &HashMap<String, String>,
     env: &LayeredEnv,
     fns: &PureFnTable,
     sink: &mut dyn PureEvalSink,
@@ -78,7 +88,7 @@ fn eval_pure_call(
     let args: Vec<String> = call
         .args()
         .iter()
-        .map(|arg| eval_pure_expr(arg, vars, env, fns, sink))
+        .map(|arg| eval_pure_expr(arg, vars, captures, env, fns, sink))
         .collect::<Result<Vec<_>, _>>()?;
 
     let resolved = call.resolved();
@@ -122,6 +132,7 @@ fn eval_interpolation(
     interp: &IrInterpolation,
     span: &IrSpan,
     vars: &VarScope,
+    captures: &HashMap<String, String>,
     env: &LayeredEnv,
     sink: &mut dyn PureEvalSink,
 ) -> String {
@@ -151,8 +162,13 @@ fn eval_interpolation(
                 result.push('$');
                 template.push_str("$$");
             }
-            IrStringPart::CaptureRef { .. } => {
-                unreachable!("CaptureRef in pure interpolation context")
+            IrStringPart::CaptureRef { index, .. } => {
+                let v = captures
+                    .get(&index.to_string())
+                    .map(String::as_str)
+                    .unwrap_or("");
+                result.push_str(v);
+                template.push_str(&format!("${{{index}}}"));
             }
         }
     }
@@ -172,6 +188,7 @@ fn resolve_var(name: &str, vars: &VarScope, env: &LayeredEnv) -> String {
 fn eval_body(
     body: &[IrPureStmt],
     scope: &mut VarScope,
+    captures: &HashMap<String, String>,
     env: &LayeredEnv,
     fns: &PureFnTable,
     sink: &mut dyn PureEvalSink,
@@ -183,7 +200,7 @@ fn eval_body(
             IrPureStmt::Comment { .. } => {}
             IrPureStmt::Let { stmt: let_stmt, .. } => {
                 let value = match let_stmt.value() {
-                    Some(v) => eval_pure_expr(v, scope, env, fns, sink)?,
+                    Some(v) => eval_pure_expr(v, scope, captures, env, fns, sink)?,
                     None => String::new(),
                 };
                 scope.insert(let_stmt.name().name().to_string(), value.clone());
@@ -194,14 +211,14 @@ fn eval_body(
             IrPureStmt::Assign {
                 stmt: assign_stmt, ..
             } => {
-                let value = eval_pure_expr(assign_stmt.value(), scope, env, fns, sink)?;
+                let value = eval_pure_expr(assign_stmt.value(), scope, captures, env, fns, sink)?;
                 scope.assign(assign_stmt.name().name(), value.clone());
                 if is_last {
                     last_value = value;
                 }
             }
             IrPureStmt::Expr { expr, .. } => {
-                let value = eval_pure_expr(expr, scope, env, fns, sink)?;
+                let value = eval_pure_expr(expr, scope, captures, env, fns, sink)?;
                 if is_last {
                     last_value = value;
                 }
@@ -255,7 +272,15 @@ mod sink_tests {
         let mut vars = VarScope::new();
         vars.insert("who".into(), "world".into());
         let mut sink = RecordingSink::default();
-        let out = eval_pure_expr(&expr, &vars, &empty_env(), &empty_fns(), &mut sink).unwrap();
+        let out = eval_pure_expr(
+            &expr,
+            &vars,
+            &HashMap::new(),
+            &empty_env(),
+            &empty_fns(),
+            &mut sink,
+        )
+        .unwrap();
         assert_eq!(out, "hi world");
         match sink.ops.as_slice() {
             [SinkOp::RecordInterpolation { result, .. }] => assert_eq!(result, "hi world"),
@@ -280,6 +305,7 @@ mod sink_tests {
         let _ = eval_pure_expr(
             &expr,
             &VarScope::new(),
+            &HashMap::new(),
             &empty_env(),
             &empty_fns(),
             &mut sink,
@@ -304,6 +330,7 @@ mod sink_tests {
         let out = eval_pure_expr(
             &expr,
             &VarScope::new(),
+            &HashMap::new(),
             &empty_env(),
             &empty_fns(),
             &mut NoOpSink,
@@ -330,11 +357,50 @@ mod sink_tests {
         let out = eval_pure_expr(
             &expr,
             &VarScope::new(),
+            &HashMap::new(),
             &empty_env(),
             &empty_fns(),
             &mut NoOpSink,
         )
         .unwrap();
         assert_eq!(out, "v");
+    }
+
+    #[test]
+    fn capture_resolves_from_frame_and_empty_when_unbound() {
+        let mut caps = HashMap::new();
+        caps.insert("1".to_string(), "alice".to_string());
+        let bound = IrPureExpr::Capture {
+            index: 1,
+            span: IrSpan::synthetic(),
+        };
+        let unbound = IrPureExpr::Capture {
+            index: 2,
+            span: IrSpan::synthetic(),
+        };
+        assert_eq!(
+            eval_pure_expr(
+                &bound,
+                &VarScope::new(),
+                &caps,
+                &empty_env(),
+                &empty_fns(),
+                &mut NoOpSink
+            )
+            .unwrap(),
+            "alice"
+        );
+        assert_eq!(
+            eval_pure_expr(
+                &unbound,
+                &VarScope::new(),
+                &caps,
+                &empty_env(),
+                &empty_fns(),
+                &mut NoOpSink
+            )
+            .unwrap(),
+            ""
+        );
     }
 }

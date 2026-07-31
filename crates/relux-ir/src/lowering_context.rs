@@ -58,6 +58,7 @@ pub struct LoweringContext {
     effect_stack: Vec<(EffectId, IrSpan)>,
     scope_stack: Vec<LoweringScope>,
     shallow_env: Option<Arc<crate::shallow_env::ShallowLayeredEnv>>,
+    pure_fn_body_depth: usize,
 }
 
 impl std::fmt::Debug for LoweringContext {
@@ -93,7 +94,22 @@ impl LoweringContext {
             effect_stack: Vec::new(),
             scope_stack: Vec::new(),
             shallow_env: None,
+            pure_fn_body_depth: 0,
         }
+    }
+
+    // --- Pure-fn-body marker -----------------------------
+
+    pub fn enter_pure_fn_body(&mut self) {
+        self.pure_fn_body_depth += 1;
+    }
+
+    pub fn leave_pure_fn_body(&mut self) {
+        self.pure_fn_body_depth -= 1;
+    }
+
+    pub fn in_pure_fn_body(&self) -> bool {
+        self.pure_fn_body_depth > 0
     }
 
     // --- Accessors ---------------------------------------

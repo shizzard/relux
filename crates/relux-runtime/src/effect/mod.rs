@@ -841,6 +841,7 @@ impl EffectManager {
             let value = match relux_ir::evaluator::eval_pure_expr(
                 entry.value(),
                 caller_vars,
+                &std::collections::HashMap::new(),
                 caller_env,
                 &self.rt_ctx.tables.pure_fns,
                 &mut sink,
@@ -868,6 +869,7 @@ impl EffectManager {
             match relux_ir::evaluator::eval_pure_expr(
                 expr,
                 &vars,
+                &std::collections::HashMap::new(),
                 effect_env,
                 &self.rt_ctx.tables.pure_fns,
                 &mut sink,

@@ -83,11 +83,14 @@ impl IrNodeLowering for IrPureFn {
             .iter()
             .map(|p| IrIdent::lower(&p.node, file, ctx))
             .collect::<Result<Vec<_>, _>>()?;
+        ctx.enter_pure_fn_body();
         let body = ast
             .body
             .iter()
             .map(|s| IrPureStmt::lower(&s.node, file, ctx))
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, _>>();
+        ctx.leave_pure_fn_body();
+        let body = body?;
 
         Ok(IrPureFn::UserDefined {
             name,

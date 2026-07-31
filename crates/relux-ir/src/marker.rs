@@ -205,12 +205,15 @@ pub fn decide_markers(
             let negate = matches!(marker.modifier, MarkerEvalModifier::Unless);
 
             let mut recording = crate::pure_sink::RecordingSink::default();
+            let captures: std::collections::HashMap<String, String> =
+                std::collections::HashMap::new();
             let (mut met, evaluation) = match &marker.cond {
                 IrMarkerCond::Unconditional => unreachable!(),
                 IrMarkerCond::Bare { expr } => {
                     let value = match crate::evaluator::eval_pure_expr(
                         expr,
                         &relux_core::pure::VarScope::new(),
+                        &captures,
                         env,
                         fns,
                         &mut recording,
@@ -230,6 +233,7 @@ pub fn decide_markers(
                     let lhs_val = match crate::evaluator::eval_pure_expr(
                         lhs,
                         &vars,
+                        &captures,
                         env,
                         fns,
                         &mut recording,
@@ -240,6 +244,7 @@ pub fn decide_markers(
                     let rhs_val = match crate::evaluator::eval_pure_expr(
                         rhs,
                         &vars,
+                        &captures,
                         env,
                         fns,
                         &mut recording,
@@ -276,6 +281,7 @@ pub fn decide_markers(
                     let value = match crate::evaluator::eval_pure_expr(
                         expr,
                         &vars,
+                        &captures,
                         env,
                         fns,
                         &mut recording,
@@ -286,6 +292,7 @@ pub fn decide_markers(
                     let pattern_str = match crate::evaluator::eval_pure_expr(
                         pattern,
                         &vars,
+                        &captures,
                         env,
                         fns,
                         &mut recording,
