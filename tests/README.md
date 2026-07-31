@@ -30,6 +30,7 @@ Assertions against already-computed values (`<expr> = <pattern>` exact equality,
 `<expr> ? <pattern>` regex), distinct from the buffer-scanning `<=` / `<?`.
 
 - `pure_match.relux` - `=` exact equality, `?` regex capture binding, `?` inside a `fn` body
+- `pure_fn_capture.relux` - `?` pure match inside a `pure fn` body: `let id := extract_id(payload)` extracts a capture via `$1`, captures are per-call and discarded on return
 
 ### `variables/` - Variable system
 
@@ -98,6 +99,7 @@ that invokes the `relux` binary and verifies its output or exit code.
 - `match_timeout/` - reports match timeout when a pattern is never found
 - `fail_pattern/` - reports when a fail pattern matches output
 - `pure_match_fail/` - reports when a pure-match assertion (`<expr> = <pattern>`) does not match
+- `pure_match_nested_fail/` - reports a pure-match failure reached through nested `pure fn` calls, with the top-down `pure-fn-call` frame chain in the call stack
 - `fail_fast/` - stops after the first test failure with `--strategy fail-fast`
 - `file_not_found/` - reports a clear error for non-existent test file paths
 - `tap_output/` - generates valid TAP14 results file with `--tap`
@@ -114,6 +116,7 @@ that invokes the `relux` binary and verifies its output or exit code.
 - `run_if/` - runs when condition variable is set; skips when unset
 - `run_unless/` - skips when condition variable is set; runs when unset
 - `flaky/` - flaky marker causes the test to be reported as skipped
+- `skip_pure_fn/` - marker condition calling a `pure fn` with a non-matching `?` pure match resolves false (Skipped, not Failed); a matching pure fn runs the test
 - `multiple/` - multiple markers with AND semantics
 
 ## Covered Elsewhere

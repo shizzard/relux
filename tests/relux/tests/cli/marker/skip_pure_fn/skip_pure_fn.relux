@@ -1,0 +1,27 @@
+test "run if with a non-matching pure fn skips, never fails" {
+    """
+    Verify a condition marker whose expression calls a pure fn that runs a
+    non-matching `?` pure match resolves the condition to false rather than
+    failing the test: the pure-eval failure inside the marker is swallowed
+    (a marker decides skip/run, it does not assert). With `# run if` and a
+    false condition, the test is reported Skipped, not Failed.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 skipped
+        match_ok()
+    }
+}
+
+test "run if with a matching pure fn runs the test" {
+    """
+    Verify the same marker runs the test when the pure fn's `?` pure match
+    succeeds: with MODE set to a matching value the condition is truthy, so
+    `# run if` runs the gated test and it passes.
+    """
+    shell s {
+        > MODE=on ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? 1 passed
+        match_ok()
+    }
+}

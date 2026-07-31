@@ -1,0 +1,12 @@
+pure fn feature_on(mode) {
+    mode ? ^on$
+    "1"
+}
+
+# run if feature_on(MODE)
+test "gated on a non-matching pure fn" {
+    shell s {
+        > echo hello
+        <? ^hello$
+    }
+}

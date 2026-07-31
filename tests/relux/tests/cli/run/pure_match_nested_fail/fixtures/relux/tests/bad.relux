@@ -1,0 +1,16 @@
+pure fn inner(s) {
+    s ? ^ok=(\d+)$
+    $1
+}
+
+pure fn outer(s) {
+    inner(s)
+}
+
+test "nested pure match fails" {
+    let got := outer("nope")
+    shell s {
+        > echo "${got}"
+        <? never
+    }
+}
