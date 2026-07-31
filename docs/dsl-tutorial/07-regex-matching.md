@@ -215,8 +215,10 @@ Binding always uses `:=` (`let version := $1`, `count := 8080`). Writing
 `version = 3.2.1` asserts; it does not assign. And `let x = ...` is an
 error — declarations require `:=`.
 
-Pure matches work in `shell` blocks and in `fn` bodies. They are not yet
-allowed inside `pure fn` bodies.
+Pure matches work in `shell` blocks, in `fn` bodies, and inside `pure fn`
+bodies. Inside a `pure fn`, a `?` match binds its numbered captures into
+the function's own per-call frame, discarded when the call returns — the
+extraction idiom covered in [Pure Functions](13-pure-functions.md#matching-and-extracting-with--and-n).
 
 ## Best practices
 

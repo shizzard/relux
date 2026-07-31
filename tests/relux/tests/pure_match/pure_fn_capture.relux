@@ -25,15 +25,14 @@ test "pure fn captures are discarded on return" {
     `pure fn` are local to that call: after the pure fn returns, the
     caller's shell frame has no `$1` from the function's match, exactly
     like shell-frame captures do not leak out of a called fn. The shell
-    performs its own regex match first to prove a later `$1` reflects the
-    shell match, never the pure fn's internal capture.
+    reads `${1}` before running any match of its own -- the caller never
+    set a capture, so an empty `${1}` here is the only correct result; a
+    leak from the pure fn's internal `$1` would echo `7` instead.
     """
     let value := extract_id("id=7")
     shell s {
         value = 7
-        > echo "shell-cap=abc"
-        <? shell-cap=(\w+)
-        > echo "cap=${1}"
-        <? ^cap=abc$
+        > echo "caller-cap=[${1}]"
+        <? ^caller-cap=\[\]$
     }
 }
