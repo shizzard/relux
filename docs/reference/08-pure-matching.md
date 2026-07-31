@@ -118,12 +118,13 @@ Reassignment always uses `:=`. Bare `=` is now the exact-equality
 pure-match assertion, so `x = e` no longer binds anything. `let x = e`
 remains an error: use `let x := e`.
 
-> **There is no `==` operator.** All values are strings, and a pattern
-> may legitimately begin with `=`, so `==` is not a comparison — it is
-> two tokens. Writing `x == y` parses as a pure match of `x` against the
-> literal pattern `= y` (note the leading `= `), which almost never
-> matches and fails at runtime with a confusing message. Write `x = y`
-> for "x equals y exactly"; write `x := y` to bind.
+> **There is no `==` operator.** All values are strings, so `==` is not
+> a comparison. Writing `x == y` — a `=` immediately followed by another
+> `=`, with no space between them — is a **parse error**: there is no
+> `==` operator. Write `x = y` for "x equals y exactly"; write `x := y`
+> to bind. A pattern may legitimately begin with `=`, so if you really
+> want to assert that `x` equals the literal text `= y`, put a space
+> between the two: `x = = y` is valid and matches the pattern `= y`.
 
 ## What lands in the structured log
 
