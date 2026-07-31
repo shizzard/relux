@@ -1013,7 +1013,12 @@ async fn run_test_body(
     let caller_vars = scope.vars().lock().await.clone();
     let root_env = rt_ctx.env.clone();
     let exported = manager
-        .instantiate_top_level(test.starts(), &caller_vars, &root_env)
+        .instantiate_top_level(
+            test.starts(),
+            &caller_vars,
+            &root_env,
+            &std::collections::HashMap::new(),
+        )
         .await?;
 
     // 4. Build shell map from exposed effect shells

@@ -108,6 +108,7 @@ impl EffectManager {
         caller_vars: &'a VarScope,
         caller_env: &'a Arc<LayeredEnv>,
         parent_span: SpanId,
+        caller_captures: &'a std::collections::HashMap<String, String>,
     ) -> std::pin::Pin<
         Box<
             dyn std::future::Future<Output = Result<Vec<(ExportedEffect, EffectGuard)>, ExecError>>
@@ -122,7 +123,7 @@ impl EffectManager {
                 Vec::with_capacity(starts.len());
             for start in starts {
                 let evaluated = self
-                    .eval_overlay(start, caller_vars, caller_env, parent_span)
+                    .eval_overlay(start, caller_vars, caller_env, parent_span, caller_captures)
                     .await?;
 
                 let expect_names: Vec<&str> = self
@@ -207,9 +208,16 @@ impl EffectManager {
         starts: &[IrEffectStart],
         caller_vars: &VarScope,
         caller_env: &Arc<LayeredEnv>,
+        caller_captures: &std::collections::HashMap<String, String>,
     ) -> Result<Vec<ExportedEffect>, ExecError> {
         let pairs = self
-            .instantiate(starts, caller_vars, caller_env, self.test_span)
+            .instantiate(
+                starts,
+                caller_vars,
+                caller_env,
+                self.test_span,
+                caller_captures,
+            )
             .await?;
         let mut top = self.top_level_guards.lock().await;
         let mut exported = Vec::with_capacity(pairs.len());
@@ -420,7 +428,13 @@ impl EffectManager {
         //    so there is nothing for cleanup to act on.
         let effect_vars = scope.vars().lock().await.clone();
         let exported_deps = self
-            .instantiate(effect.starts(), &effect_vars, &effect_env, setup_span_id)
+            .instantiate(
+                effect.starts(),
+                &effect_vars,
+                &effect_env,
+                setup_span_id,
+                &std::collections::HashMap::new(),
+            )
             .await?;
 
         // From here on, `dep_guards` accumulates the guards for the
@@ -834,6 +848,7 @@ impl EffectManager {
         caller_vars: &VarScope,
         caller_env: &Arc<LayeredEnv>,
         caller_span: SpanId,
+        caller_captures: &std::collections::HashMap<String, String>,
     ) -> Result<Env, ExecError> {
         let mut overlay = Env::new();
         let mut sink =
@@ -842,7 +857,7 @@ impl EffectManager {
             let value = match relux_ir::evaluator::eval_pure_expr(
                 entry.value(),
                 caller_vars,
-                &std::collections::HashMap::new(),
+                caller_captures,
                 caller_env,
                 &self.rt_ctx.tables.pure_fns,
                 &mut sink,
