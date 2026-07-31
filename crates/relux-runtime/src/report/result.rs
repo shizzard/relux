@@ -747,6 +747,54 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_report_pure_match_carries_value_and_pattern() {
+        use relux_core::error::DiagnosticReport;
+        for (is_regex, op) in [(false, "="), (true, "?")] {
+            let f = Failure::PureMatch {
+                value: "hello world".into(),
+                pattern: "goodbye".into(),
+                is_regex,
+                shell: "default".into(),
+                span: dummy_span(),
+                context: FailureContext::pre_vm(),
+            };
+            let rep: DiagnosticReport = (&f).into();
+            assert!(
+                rep.message.contains("pure match"),
+                "message names the failure: {}",
+                rep.message
+            );
+            let label_text = rep
+                .labels
+                .first()
+                .map(|l| l.message.clone())
+                .expect("pure-match DiagnosticReport must carry a label");
+            assert!(
+                label_text.contains("goodbye"),
+                "label carries the pattern: {label_text}"
+            );
+            assert!(
+                label_text.contains(op),
+                "label carries the `{op}` operator: {label_text}"
+            );
+            let note = rep
+                .note
+                .expect("pure-match DiagnosticReport must carry a value note");
+            assert!(
+                note.contains("hello world"),
+                "note carries the value: {note}"
+            );
+            // A pure match has no shell buffer; the report must not fabricate
+            // a buffer-tail section (DiagnosticReport has no buffer field, and
+            // nothing should smuggle one into the note).
+            assert!(
+                !note.to_lowercase().contains("buffer"),
+                "pure-match report must not carry a buffer tail: {note}"
+            );
+        }
+    }
+
+    #[test]
     fn log_link_with_log_dir() {
         let run_dir = Path::new("/tmp/runs/run-001");
         let result = TestResult {
