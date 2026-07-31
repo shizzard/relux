@@ -10,10 +10,13 @@
 Give Relux a way to match a string-valued expression against a literal or regex
 pattern without routing it through a shell. Rather than introduce a new operator
 family, this revision reuses the kind glyphs the language already has - `=`
-(literal / contains) and `?` (regex) - as infix operators on a value, and
+(literal) and `?` (regex) - as infix operators on a value, and
 relocates variable binding from `=` to `:=` to make room for them. The result is
-one uniform match rule across shell matches, fail patterns, marker conditions,
-and value matches, with no new match glyph and no change to marker syntax. A
+one match *kind* rule - `=` literal, `?` regex - across shell matches, fail
+patterns, marker conditions, and value matches, with no new match glyph and no
+change to marker syntax or semantics. The literal comparison follows the source:
+a shell buffer is an unbounded stream, scanned for a substring (contains); a
+value is a complete, bounded string, compared for exact equality. A
 value-match statement is an assertion: a non-match fails the test immediately,
 exactly like a shell `<?` that never matches - Relux has no error handling, so
 there is nothing to propagate. A value-match used as a marker condition is a
@@ -90,14 +93,17 @@ everywhere.
 | write to shell    | `>` , `=>` (raw)                  | unchanged; `=>` is a pre-existing outlier          |
 | read + match shell| `<=` `<?` , timed `<~5s=` `<@2s?` | unchanged; `=` / `?` are the kind                  |
 | fail-guard shell  | `!=` `!?`                         | unchanged                                          |
-| **match a value** | **`expr = lit`** , **`expr ? re`**| new in bodies; identical to marker syntax          |
+| **match a value** | **`expr = lit`** , **`expr ? re`**| new in bodies; `=` exact, `?` regex; identical to marker syntax |
 | soft / hard timer | `~Ns` `@Ns`                       | unchanged                                          |
 | **bind / reassign**| **`:=`**                         | relocated off `=`                                  |
 
-The kind glyphs `=` (literal / contains) and `?` (regex) now mean the same thing
-in every position. The source is named by whatever prefixes them: `<` for the
-shell buffer, `!` for a fail-guard on the buffer, or an explicit left-hand
-expression for a value. One rule, no new match glyph.
+The kind glyphs `=` (literal) and `?` (regex) name *how* to match; the source -
+named by whatever prefixes them - names *what* is matched and, for a literal, how
+it is compared. `<` (shell buffer) and `!` (fail-guard on the buffer) name an
+unbounded stream, so a literal `=` scans it for a substring (contains). An
+explicit left-hand expression - or a marker condition - names a bounded value, so
+a literal `=` compares it for exact equality. `?` is a regex against the source in
+every position. One kind rule, no new match glyph.
 
 ### Relocating assignment to `:=`
 
@@ -132,7 +138,7 @@ Two statement forms, structurally the infix mirror of `<=` / `<?`:
 
 | Form            | Behavior                                                                 |
 |-----------------|--------------------------------------------------------------------------|
-| `<expr> = <pat>`| LHS is searched for substring `<pat>` (contains). Fails if not present.   |
+| `<expr> = <pat>`| LHS is compared to `<pat>` for exact equality. Fails if not equal.        |
 | `<expr> ? <pat>`| LHS is matched against regex `<pat>`. Fails if no match.                   |
 
 `<pat>` is a string with interpolation, identical to the RHS of `<=` / `<?`.
@@ -140,17 +146,22 @@ Two statement forms, structurally the infix mirror of `<=` / `<?`:
 string (with interpolation), function call, qualified variable (`Alias.var`),
 capture reference (`$n`), numeric literal.
 
-The literal form is **contains**, not exact-equality - consistent with `<=`,
-which is a substring match against the buffer. Exact matching is expressed the
-same way it is for the buffer: anchor a regex.
+The literal form is **exact equality**, not contains. A value is a complete,
+bounded string, so the natural literal question is 'is it exactly this?' - unlike
+the shell buffer, an unbounded stream that `<=` scans for a substring. Substring
+and pattern matching on a value go through `?` (an unanchored regex is a
+contains):
 
 ```relux
-value ? ^linux$        # exact
-value = linux          # contains ("linux", "linux-arm", "ubuntu-linux", ...)
+value = linux          # exact: matches only the string "linux"
+value ? linux          # contains: "linux", "linux-arm", "ubuntu-linux", ...
+value ? ^linux$        # exact via regex, equivalent to `= linux`
 ```
 
-This gives the language one uniform rule: `=` / `!=` / `<=` are contains; `?` /
-`!?` / `<?` are regex; anchor a regex for exact.
+The rule is split by source rather than uniform across it: buffer-sourced
+literals (`<=`, `!=`) are contains because a stream is scanned; value-sourced
+literals (`=`, and marker `=`) are exact because a value is compared. `?` / `!?` /
+`<?` are regex everywhere.
 
 Value-match is **statement-only**. It is not an expression and does not appear in
 let-RHS positions, overlay values, or cleanup blocks. To extract a value from a
@@ -189,27 +200,28 @@ Successful regex matches populate numeric captures `$0..$n`, read via `$n`
 Failed matches never bind captures; failure aborts evaluation before the binding
 step.
 
-### Markers: same syntax, aligned semantics
+### Markers: same syntax, same semantics
 
-Marker conditions keep bare `=` / `?` - the syntax does not change. Their
-*meaning* aligns with the rest of the language: `=` is now contains (substring),
-matching `<=`, `!=`, and the body value-match, where a marker `=` previously meant
-exact equality. `?` (regex) is unchanged. Exact matching is expressed the same way
-everywhere - anchor a regex:
+Marker conditions keep bare `=` / `?`, and their meaning is unchanged: `=` is
+exact equality (as it has always been in markers), `?` is regex. A marker
+condition names a value - an environment variable, a pure-fn result - so it shares
+the value-match semantics: literal `=` compares for exact equality, matching the
+body value-match form. This alignment costs nothing, because marker `=` already
+meant exact, so there is no marker migration.
 
 ```relux
 # skip unless TARGET ? ^(linux|darwin)$   # regex, unchanged
-# run if PATH = /usr/local/bin            # contains (was exact)
-# skip unless OS ? ^linux$                # exact, via anchored regex
+# run if OS = linux                       # exact, unchanged
+# run if PATH ? bin                        # contains, via regex
 ```
 
-Markers remain truthiness tests: `=` returns the LHS if it contains the RHS, empty
+Markers remain truthiness tests: `=` returns the LHS if it equals the RHS, empty
 otherwise; `?` returns the match or empty. A non-match is falsy, never a failure.
 The bare truthy form (`# skip unless X`) continues to work.
 
-With `=` meaning contains in every position, the literal/regex semantics of a
-match are identical in a marker condition and a body statement; the two differ
-only in failure behavior - a condition is falsy on no-match, a statement asserts.
+Because a marker condition and a body statement both match against a value, their
+literal/regex semantics are identical; the two differ only in failure behavior - a
+condition is falsy on no-match, a statement asserts.
 
 ### Where the value-match statement appears
 
@@ -361,15 +373,13 @@ through release-please to the next major.
    return `Result<String, PureEvalError>`. External embedders of `relux-ir` see
    the signature change.
 
-5. **Marker `=` shifts from exact equality to contains.** The syntax is unchanged
-   (bare `=`), but `X = v` in a marker now tests containment, consistent with `<=`
-   and the body form. Anchored regex (`X ? ^v$`) preserves exact matching. Marker
-   `?` is unchanged.
-
-Marker *syntax* does not change - bare `=` / `?` stay, and there is no operator
-migration to `|?` / `|=`. The only marker-facing change is the `=` semantic
-alignment in item 5, kept so the "contains everywhere, anchor for exact" rule
-holds without exception.
+Markers are unaffected at the DSL surface: bare `=` / `?` stay, there is no
+operator migration to `|?` / `|=`, and marker `=` keeps its existing exact-equality
+meaning - the body value-match adopts *that* semantics rather than the reverse. The
+only marker-facing change is internal: their evaluation now routes through the
+shared matcher and emits the `PureMatchStart` / `Done` / `Failed` trio instead of
+the single `PureMatch` event (breaking change 2), and drops the `MatchKind` enum
+(breaking change 3).
 
 ### Migration table
 
@@ -379,9 +389,10 @@ holds without exception.
 | `x = e`                             | `x := e`                                | reassignment                                       |
 | `start E as a { K = e }`            | `start E as a { K := e }`               | overlay value                                      |
 | `# skip unless X ? p` (regex)       | unchanged                               | marker `?` unchanged                                |
-| `# run if OS = linux` (exact)       | `# run if OS ? ^linux$`                 | marker `=` is now contains; anchor for exact        |
+| `# run if OS = linux` (exact)       | unchanged                               | marker `=` stays exact equality                     |
 | `> echo "${v}"` + `<? p` + `$1`     | `pure fn f(s) { s ? p; $1 }` + `let id := f(v)` | value match, no shell round-trip           |
-| exact value check                   | `v ? ^x$`                               | anchor a regex, as with `<? ^x$`                    |
+| exact value check                   | `v = x`                                 | value `=` is exact equality                         |
+| contains value check                | `v ? x`                                 | unanchored regex is a contains                      |
 
 ## Architecture and change surface
 
@@ -473,10 +484,12 @@ fallible); `02-syntax` (the `:=` binding form and the value-match statements);
 ## What changed from the original draft
 
 - **Dropped `|?` / `|=`.** Value matching uses bare `=` / `?`; no new match glyph.
-- **Markers keep their syntax, not their `=` meaning.** Bare `?` / `=` stay (no
-  `|?` / `|=` migration), but marker `=` aligns to contains like every other
-  literal match; exact is anchored regex. The draft's *syntactic* migration is
-  dropped; the semantic alignment is kept so the uniform rule holds.
+- **Markers keep their syntax and their `=` meaning.** Bare `?` / `=` stay (no
+  `|?` / `|=` migration), and marker `=` remains exact equality. The draft's
+  *syntactic* migration is dropped, and no semantic alignment is needed - markers
+  already matched values by equality, which is exactly what the body value-match
+  adopts. The literal comparison is split by source instead: buffer-sourced `<=` /
+  `!=` are contains, value-sourced `=` (bodies and markers) is exact.
 - **Assignment relocates to `:=`.** This is the new enabling change and the
   dominant breaking cost.
 - **Reframed failure as fail-fast, not propagation.** A value-match assertion
