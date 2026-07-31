@@ -116,46 +116,54 @@ fn stmt_match_literal<'a>()
         .then_ignore(newline())
 }
 
-/// `<expr> = <pattern>` -> `AstStmt::PureMatchLiteral` (exact-equality assert).
-fn stmt_pure_match_literal<'a>()
--> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
-    expr()
-        .then_ignore(ws())
-        .then_ignore(just(Token::Eq))
-        .then_ignore(ws())
-        .then(interp_literal(Token::Newline))
-        .map_with(|(lhs, payload), e| {
-            let span = crate::span_from_chumsky(e.span());
-            Spanned::new(
-                AstStmt::PureMatchLiteral {
-                    lhs,
-                    pattern: payload.node,
-                    span,
-                },
-                span,
-            )
-        })
-        .then_ignore(newline())
+/// The pure-match operator that may follow a bare `expr()` at statement
+/// position. Absent (`None` from `.or_not()`) means a bare expression statement.
+enum PureMatchTail {
+    /// `= <pattern>` -> exact-equality assert.
+    Literal(AstInterpolation),
+    /// `? <pattern>` -> regex assert (binds `$n`).
+    Regex(AstInterpolation),
 }
 
-/// `<expr> ? <pattern>` -> `AstStmt::PureMatchRegex` (regex assert; binds `$n`).
-fn stmt_pure_match_regex<'a>()
+/// `<expr>` as a statement: a bare expression, or a pure-match assertion when a
+/// bare `=` / `?` follows. Parsing the LHS `expr()` once (rather than in three
+/// competing productions) means a bare expression missing its newline reports
+/// "expected newline", not the confusing "expected '=', or '?'".
+///
+/// Disambiguation vs. reassignment: `name := expr` is handled by `stmt_assign`,
+/// which sits ahead of this in the `stmt()` choice; a `:=` input fails the
+/// `None` branch here (no immediate newline after the ident) and backtracks.
+fn stmt_expr_or_pure_match<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
+    let literal_tail = ws()
+        .ignore_then(just(Token::Eq))
+        .ignore_then(ws())
+        .ignore_then(interp_literal(Token::Newline))
+        .map(|payload| PureMatchTail::Literal(payload.node));
+
+    let regex_tail = ws()
+        .ignore_then(just(Token::Question))
+        .ignore_then(ws())
+        .ignore_then(interp_regex(Token::Newline))
+        .map(|payload| PureMatchTail::Regex(payload.node));
+
     expr()
-        .then_ignore(ws())
-        .then_ignore(just(Token::Question))
-        .then_ignore(ws())
-        .then(interp_regex(Token::Newline))
-        .map_with(|(lhs, payload), e| {
+        .then(choice((literal_tail, regex_tail)).or_not())
+        .map_with(|(lhs, tail), e| {
             let span = crate::span_from_chumsky(e.span());
-            Spanned::new(
-                AstStmt::PureMatchRegex {
-                    lhs,
-                    pattern: payload.node,
+            let stmt = match tail {
+                Some(PureMatchTail::Literal(pattern)) => {
+                    AstStmt::PureMatchLiteral { lhs, pattern, span }
+                }
+                Some(PureMatchTail::Regex(pattern)) => {
+                    AstStmt::PureMatchRegex { lhs, pattern, span }
+                }
+                None => AstStmt::Expr {
+                    expr: lhs.node,
                     span,
                 },
-                span,
-            )
+            };
+            Spanned::new(stmt, span)
         })
         .then_ignore(newline())
 }
@@ -388,8 +396,8 @@ fn stmt_let<'a>()
 
 /// `name := expr` -> `AstStmt::Assign`. Reassignment binds only via `:=`; a
 /// bare `name = expr` is no longer a reassignment - it parses as a pure-match
-/// assertion (`stmt_pure_match_literal`), which sits ahead of this production
-/// in the `stmt()` choice.
+/// assertion in `stmt_expr_or_pure_match`, which sits after this production in
+/// the `stmt()` choice.
 fn stmt_assign<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
     ident_var()
@@ -411,17 +419,6 @@ fn stmt_assign<'a>()
         .then_ignore(newline())
 }
 
-/// `expr` -> `AstStmt::Expr` (catch-all for bare function calls)
-fn stmt_expr<'a>()
--> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
-    expr()
-        .map_with(|e, extra| {
-            let span = crate::span_from_chumsky(extra.span());
-            Spanned::new(AstStmt::Expr { expr: e.node, span }, span)
-        })
-        .then_ignore(newline())
-}
-
 /// Full statement combinator: `leading_ws()` then ordered choice.
 pub fn stmt<'a>()
 -> impl Parser<'a, ParserInput<'a>, Spanned<AstStmt>, extra::Err<Rich<'a, Token<'a>>>> + Clone {
@@ -439,11 +436,6 @@ pub fn stmt<'a>()
                 stmt_timed_match_regex(),
                 stmt_match_regex(),
                 stmt_match_literal(),
-                // Pure-match: LHS is `expr()` then a bare `=`/`?`. Reassignment
-                // is `ident := expr`, so `:=` inputs fail both pure-match
-                // productions on the `:` and fall through to `stmt_assign`.
-                stmt_pure_match_regex(),
-                stmt_pure_match_literal(),
                 stmt_send_raw(),
                 stmt_send(),
                 stmt_fail_regex(),
@@ -451,7 +443,10 @@ pub fn stmt<'a>()
                 stmt_timeout(),
                 stmt_let(),
                 stmt_assign(),
-                stmt_expr(),
+                // Bare expression or pure-match assertion (`expr`, `expr = pat`,
+                // `expr ? pat`). Parses the LHS `expr()` once; sits last so
+                // `ident := expr` is claimed by `stmt_assign` above first.
+                stmt_expr_or_pure_match(),
             ))
             .labelled("statement"),
         )
@@ -764,6 +759,77 @@ mod tests {
             }
             _ => panic!("expected Expr(Call), got {s:?}"),
         }
+    }
+
+    #[test]
+    fn bare_var_is_expr_statement() {
+        let s = parse_stmt("somevar\n");
+        match s {
+            AstStmt::Expr {
+                expr: AstExpr::Var { .. },
+                ..
+            } => {}
+            _ => panic!("expected Expr(Var), got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn walrus_assign_not_claimed_by_pure_match() {
+        // `x := e` must remain an Assign: the merged expr-or-pure-match
+        // production requires an immediate newline (or `=`/`?`) after the LHS,
+        // so `x :` fails it and backtracks to `stmt_assign`.
+        let s = parse_stmt("x := e\n");
+        assert!(matches!(s, AstStmt::Assign { .. }));
+    }
+
+    #[test]
+    fn pure_match_regex_pattern_may_contain_eq() {
+        // The `=` inside the payload must not be mistaken for the literal
+        // operator: `?` already selected the regex branch.
+        let s = parse_stmt("x ? a=b\n");
+        match s {
+            AstStmt::PureMatchRegex { pattern, .. } => {
+                assert!(
+                    matches!(&pattern.parts[0], AstStringPart::Literal { value, .. } if value == "a=b")
+                );
+            }
+            _ => panic!("expected PureMatchRegex, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn pure_match_literal_pattern_may_contain_question() {
+        // The `?` inside the payload must not be mistaken for the regex
+        // operator: `=` already selected the literal branch.
+        let s = parse_stmt("x = a?b\n");
+        match s {
+            AstStmt::PureMatchLiteral { pattern, .. } => {
+                assert!(
+                    matches!(&pattern.parts[0], AstStringPart::Literal { value, .. } if value == "a?b")
+                );
+            }
+            _ => panic!("expected PureMatchLiteral, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn bare_expr_without_newline_offers_terminator_not_only_operators() {
+        // Nit 2: a bare expression missing its statement terminator must not
+        // surface only the confusing "expected '=', or '?'". Because the LHS is
+        // parsed once and the pure-match operator is optional, the statement
+        // terminator (newline) is now an accepted alternative and appears in
+        // the expected set. `}` here stands in for an inline `fn noop() { "x" }`
+        // body where the statement is not newline-closed.
+        //
+        // chumsky renders the (labelled) newline expectation as "something
+        // else" once it merges with the `=`/`?` token expectations at the same
+        // offset; either spelling proves the terminator is offered.
+        let err = parse_stmt_err("\"x\" }\n");
+        assert!(
+            err.contains("newline") || err.contains("something else"),
+            "error should offer the statement terminator, not only the \
+             pure-match operators '=' / '?'; got: {err}"
+        );
     }
 
     #[test]
