@@ -156,6 +156,68 @@ test "interpolation in regex pattern" {
 
 The pattern `^${key}=(\d+)$` becomes `^version=(\d+)$` after interpolation.
 
+## Matching a value you already have
+
+Everything so far matched the shell's *output* — bytes streaming out of
+the PTY. Sometimes you instead have a value already in hand — a variable
+you built, a capture you saved, the result of a function — and you want
+to assert something about it without sending anything to a shell. That is
+a **pure match**, and it comes in the same two flavors: `=` for exact
+equality and `?` for a regex.
+
+The forms read left to right: the value, then the operator, then the
+pattern.
+
+```relux
+test "assert a computed value" {
+    shell s {
+        > echo "release-3.2.1"
+        <? ^release-(\d+\.\d+\.\d+)$
+        let version := $1
+
+        // Now assert on the value we captured, no shell involved:
+        version ? ^\d+\.\d+\.\d+$      // regex: three dotted numbers
+        version = 3.2.1                // exact equality
+    }
+}
+```
+
+`version ? ^\d+\.\d+\.\d+$` compiles the right-hand side as a regex and
+checks it against `version`. `version = 3.2.1` is *exact equality* — it
+passes only if `version` is precisely `3.2.1`, not merely contains it.
+That is the key difference from the shell operator `<=`, which is a
+substring search over the output buffer; `=` compares the whole value.
+
+Like the shell match operators, a pure match is an **assertion**. If it
+does not match, the test fails immediately, right on that line — Relux
+has no way to catch or recover from a failed match. There is no negated
+form.
+
+The `?` form binds captures too, exactly like `<?`:
+
+```relux
+test "capture from a pure match" {
+    shell s {
+        let pair := "host=db.local"
+        pair ? ^(\w+)=(.+)$
+        > echo "key=${1} value=${2}"
+        <? ^key=host value=db.local$
+    }
+}
+```
+
+After `pair ? ^(\w+)=(.+)$`, `$1` is `host` and `$2` is `db.local` —
+the same numbered captures a `<?` would set, available to the next send.
+The `=` form never binds captures.
+
+One trap worth calling out early: `=` is an assertion, not a binding.
+Binding always uses `:=` (`let version := $1`, `count := 8080`). Writing
+`version = 3.2.1` asserts; it does not assign. And `let x = ...` is an
+error — declarations require `:=`.
+
+Pure matches work in `shell` blocks and in `fn` bodies. They are not yet
+allowed inside `pure fn` bodies.
+
 ## Best practices
 
 ### Use regex only when you need it

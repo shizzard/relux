@@ -88,7 +88,7 @@ Field notes:
 | `kind`        | Extra fields                                    |
 | ------------- | ----------------------------------------------- |
 | `"pass"`      | none                                            |
-| `"fail"`      | one of the four [`FailureRecord`](#failure) variants, flattened |
+| `"fail"`      | one of the [`FailureRecord`](#failure) variants, flattened |
 | `"cancelled"` | [`CancellationRecord`](#cancellation), flattened |
 | `"skip"`      | [`SkipRecord`](#skip), flattened                |
 
@@ -102,7 +102,8 @@ The variant tag carried by `FailureRecord` lives on `type` (not
 `FailureRecord` is a tagged enum on `type`. All variants carry a
 pre-computed `call_stack` (the active span stack at the failure site)
 and `vars_in_scope`. Most variants also carry a `buffer_tail` (the
-last bytes of the PTY buffer when the failure landed).
+last bytes of the PTY buffer when the failure landed) — the exceptions
+are `"runtime"` and `"pure-match"`, neither of which observes a buffer.
 
 | `type`                  | Source of failure                                                        |
 | ----------------------- | ------------------------------------------------------------------------ |
@@ -111,6 +112,7 @@ last bytes of the PTY buffer when the failure landed).
 | `"shell-exited"`        | the PTY shell died unexpectedly (carries `exit_code: i32 \| null`)       |
 | `"runtime"`             | any other runtime error (carries `message`; `span`/`event_seq` optional) |
 | `"multi-match"`         | a `<{ ... }` block timed out before all patterns matched (carries `patterns`, `matched` indices, `effective`) |
+| `"pure-match"`          | a [pure-match statement](08-pure-matching.md) (`<expr> = <pattern>` / `<expr> ? <pattern>`) did not match. Carries `value`, `pattern`, `is_regex`; **no `buffer_tail`** (a pure match has no buffer) |
 
 Each variant also carries the `span` and `event_seq` that pinpoint the
 event-stream location of the failure.

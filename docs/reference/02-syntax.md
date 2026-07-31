@@ -187,7 +187,7 @@ let <name> := <expression>   # declare from expression
 <name> := <expression>       # reassign existing variable
 ```
 
-- Binding uses `:=` — declaration (`let x := e`), reassignment (`x := e`), and overlay entries (`{ KEY := e }`) all use it. Bare `=` is no longer a binding operator; it serves as the literal-match arm inside a multimatch block (`= <literal>`, see below).
+- Binding uses `:=` — declaration (`let x := e`), reassignment (`x := e`), and overlay entries (`{ KEY := e }`) all use it. Bare `=` is no longer a binding operator; it is the exact-equality [pure-match](08-pure-matching.md) assertion at statement level (`x = e` asserts `x` equals `e`) and the literal-match arm inside a multimatch block (`= <literal>`, see below). `let x = e` is an error — use `let x := e`.
 - Quoted values required for `let` assignments
 - Interpolation inside strings: `"${name}"`, `"${1}"`, `"${2}"`, etc.
 - Bare variable reference: `name`, `$1`, `$2`
@@ -220,6 +220,31 @@ All operators are followed by a space, then payload to end of line.
 - `<?` matches regex against shell output; sets `$1`, `$2`, etc. for capture groups
 - `<=` matches literal with variable substitution
 - Both block until match or timeout
+
+### Pure Match
+
+Statement forms that assert a computed value against a pattern (see
+[Pure Matching](08-pure-matching.md)). Distinct from `<?` / `<=`, which
+scan a shell's output buffer; a pure match compares a complete value and
+reads nothing from the PTY.
+
+| Statement           | Meaning                                                        |
+| ------------------- | -------------------------------------------------------------- |
+| `<expr> = <pattern>`| assert `<expr>` equals `<pattern>` exactly (literal equality)  |
+| `<expr> ? <pattern>`| assert `<expr>` matches the regex `<pattern>`; binds `$0`..`$n`|
+
+- `<expr>` is any pure expression (identifier, quoted/interpolated string, function call, `Alias.var`, `$n`, number).
+- `<pattern>` is an interpolated string to end of line (same shape as the `<=` / `<?` payload).
+- `=` is exact equality (not a substring test); use `?` for a substring or pattern check.
+- A no-match fails the test immediately — a pure match is an assertion and cannot time out. There is no negated form.
+- Valid in `shell` blocks and `fn` bodies; not yet valid in `pure fn` bodies (compile error).
+- Statement-only: cannot be a `let` right-hand side, an overlay value, or a cleanup value.
+
+```relux
+os = linux                 // passes only if os is exactly "linux"
+"${HOST}:${PORT}" ? ^db\.local:\d+$
+greeting ? (hello) (world) // on a hit: $1="hello", $2="world"
+```
 
 ### Multi-Pattern Match
 

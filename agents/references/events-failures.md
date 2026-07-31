@@ -24,8 +24,9 @@ Tagged by `type`. Common fields (when present): `span`, `event_seq`, `shell`, `c
 | `shell-exited` | `exit_code` (or `null`). |
 | `multi-match` | `patterns` (all), `matched` (indices that matched before timeout), `effective`. |
 | `runtime` | `message` only; `span`, `event_seq`, `shell` are nullable. Used for pre-VM resolver errors. |
+| `pure-match` | `value`, `pattern`, `is_regex`. A [pure-match statement](statements.md) (`<expr> = <pattern>` / `<expr> ? <pattern>`) did not match. No `buffer_tail` -- a pure match has no buffer. |
 
-- `buffer_tail` is the tail of the shell's buffer at failure time -- usually the most informative single field.
+- `buffer_tail` is the tail of the shell's buffer at failure time -- usually the most informative single field. Absent on `runtime` and `pure-match` (neither observes a buffer).
 - `call_stack` is leaf-to-root `StackFrame[]`. Each frame:
   - `span` -- `SpanId` (same key used by events' `span` field and the top-level `spans` map, where it appears as `id`).
   - `kind` -- the span kind string (`"fn-call"`, `"shell-block"`, `"test"`, `"effect-setup"`, etc.).
@@ -73,7 +74,7 @@ Reasons carry context:
 
 - `unconditional`
 - `bare` `{ value, met }`
-- `pure-match` `{ value, pattern, is_regex, met }` -- covers both `=` (`is_regex: false`, containment) and `?` (`is_regex: true`, regex); there is no separate `eq`/`regex` shape.
+- `pure-match` `{ value, pattern, is_regex, met }` -- covers both `=` (`is_regex: false`, exact equality) and `?` (`is_regex: true`, regex); there is no separate `eq`/`regex` shape.
 
 **Truthiness** (used by `bare` `met`, and by `pure-match` which applies `met` after the comparison): only the empty string is falsy; any non-empty string is truthy. See [markers](markers.md) > *Expression shapes* for the full rule including how `=` and `?` produce their result strings.
 
