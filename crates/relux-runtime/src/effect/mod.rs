@@ -26,6 +26,7 @@ use crate::observe::structured::SpanKind;
 use crate::report::result::ExecError;
 use crate::report::result::Failure;
 use crate::report::result::FailureContext;
+use crate::report::result::pure_eval_failure;
 use crate::vm::Vm;
 use crate::vm::context::ExecutionContext;
 use crate::vm::context::Scope;
@@ -848,16 +849,7 @@ impl EffectManager {
             ) {
                 Ok(v) => v,
                 Err(err) => {
-                    let call_stack = sink
-                        .deepest_open_span()
-                        .map(|leaf| self.rt_ctx.log.resolve_stack(leaf))
-                        .unwrap_or_default();
-                    return Err(Failure::from_pure_eval(
-                        err,
-                        String::new(),
-                        FailureContext::pre_vm_with_frames(Some(caller_span), call_stack),
-                    )
-                    .into());
+                    return Err(pure_eval_failure(err, caller_span, &sink, &self.rt_ctx.log));
                 }
             };
             overlay.insert(entry.key().name().to_string(), value);
@@ -887,16 +879,7 @@ impl EffectManager {
             ) {
                 Ok(v) => v,
                 Err(err) => {
-                    let call_stack = sink
-                        .deepest_open_span()
-                        .map(|leaf| self.rt_ctx.log.resolve_stack(leaf))
-                        .unwrap_or_default();
-                    return Err(Failure::from_pure_eval(
-                        err,
-                        String::new(),
-                        FailureContext::pre_vm_with_frames(Some(setup_span), call_stack),
-                    )
-                    .into());
+                    return Err(pure_eval_failure(err, setup_span, &sink, &self.rt_ctx.log));
                 }
             }
         } else {

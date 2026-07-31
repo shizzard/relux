@@ -12,6 +12,8 @@ use crate::cancel::CancelReason;
 use crate::observe::structured::EventSeq;
 use crate::observe::structured::SpanId;
 use crate::observe::structured::StackFrame;
+use crate::observe::structured::StructuredLogBuilder;
+use crate::observe::structured::log_sink::LogSink;
 
 /// Diagnostic context captured at failure-construction time. Travels with
 /// every `Failure` so that downstream consumers (structured-log artifact,
@@ -181,6 +183,34 @@ pub enum Failure {
         effective: Box<IrTimeout>,
         context: FailureContext,
     },
+}
+
+/// Resolve the pure-fn call chain from the innermost still-open pure-fn
+/// span. On the pure-eval error path `leave_pure_fn` is skipped by `?`
+/// propagation, so those spans stay open and carry the chain. Empty when
+/// no pure fn is on the stack (a direct pure-match failure).
+pub fn resolve_pure_stack(sink: &LogSink, log: &StructuredLogBuilder) -> Vec<StackFrame> {
+    sink.deepest_open_span()
+        .map(|leaf| log.resolve_stack(leaf))
+        .unwrap_or_default()
+}
+
+/// Build the `ExecError` for a pure-eval failure at a pre-VM boundary
+/// (test-level / effect-level `let` or pure-match, overlay). Resolves the
+/// pure-fn chain and wraps it in a `PreVm` failure context.
+pub fn pure_eval_failure(
+    err: relux_ir::PureEvalError,
+    span: SpanId,
+    sink: &LogSink,
+    log: &StructuredLogBuilder,
+) -> ExecError {
+    let call_stack = resolve_pure_stack(sink, log);
+    Failure::from_pure_eval(
+        err,
+        String::new(),
+        FailureContext::pre_vm_with_frames(Some(span), call_stack),
+    )
+    .into()
 }
 
 impl Failure {

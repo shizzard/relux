@@ -1162,14 +1162,22 @@ impl Vm {
                 Err(err) => {
                     // Resolve the call chain from the innermost still-open
                     // pure-fn span so nested pure-fn frames (descendants of
-                    // this shell-fn span) render in the failure. Dropping
-                    // the sink first closes those spans (tighter `end_ts`);
-                    // they stay in the span map, so resolution still works.
-                    let leaf = sink.deepest_open_span();
+                    // this shell-fn span) render in the failure. When no
+                    // pure fn is open (a direct match in this fn's own body),
+                    // fall back to the enclosing `FnCall` span so the frame
+                    // is not lost.
+                    let mut call_stack =
+                        crate::report::result::resolve_pure_stack(&sink, &self.log);
+                    // `resolve_stack` of any validly-opened span always yields
+                    // at least that span's frame, so an empty result means
+                    // `deepest_open_span()` was `None` (no pure fn open).
+                    if call_stack.is_empty() {
+                        call_stack = self.log.resolve_stack(self.current_span());
+                    }
+                    // Dropping the sink closes those spans (tighter `end_ts`)
+                    // before the context snapshots the current seq; the spans
+                    // stay in the map, so the resolution above still holds.
                     drop(sink);
-                    let call_stack = self
-                        .log
-                        .resolve_stack(leaf.unwrap_or_else(|| self.current_span()));
                     let context = self.capture_failure_context_with_stack(call_stack).await;
                     let shell = self.ctx.current_name().to_string();
                     self.ctx.pop_span();
