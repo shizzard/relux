@@ -28,7 +28,7 @@
 - Reassignment (`x := expr`) mutates an existing variable from an outer scope
 - Environment variables from the host process are available as pre-set variables in all scopes (read-only — `let` creates a shadow, not a modification of the process environment)
 - Hierarchical `.env` files, when present, layer over the host process environment and take precedence over it; their values feed interpolation, marker evaluation, and the shell under test
-- Regex capture groups (`$1`, `$2`, ...) are set after a `<?` match and remain in scope until overwritten by the next `<?`
+- Regex capture groups (`$1`, `$2`, ...) are set after a `<?` match or a `?` [pure match](08-pure-matching.md) and remain in scope until overwritten by the next regex match. Inside a `pure fn` body a `?` pure match binds `$1..$n` into the function's own per-call frame, discarded when the function returns (they do not leak to the caller, just as a called `fn`'s captures do not leak out)
 
 ## Functions
 
@@ -48,7 +48,8 @@
 - Cannot contain shell operators (`>`, `=>`, `<?`, `<=`, `!?`, `!=`, timeouts)
 - Cannot call impure built-in functions (e.g., `match_prompt()`, `ctrl_c()`)
 - Cannot call regular `fn` functions — only other pure functions and pure built-in functions
-- Can only contain: `let` declarations, variable reassignment, and expressions
+- Can only contain: `let` declarations, variable reassignment, expressions, and [pure-match](08-pure-matching.md) statements (`<expr> = <pattern>` / `<expr> ? <pattern>`)
+- A `?` pure match inside the body binds `$1..$n` into the call's own capture frame, so a `pure fn` can extract a value and return it; a non-matching pure match fails the test through the runtime site that called the function (a marker condition is the exception — a pure-eval failure there is falsy, not a test failure)
 - Can be called from condition markers, overlay expressions, and regular shell blocks
 - "Pure" means shell-independent, not side-effect-free — pure BIFs like `sleep()` and `log()` are allowed
 
@@ -143,7 +144,7 @@
   - `"${HOST}:${PORT}"` — compound interpolation
   - `42` — bare number (compared as string)
 - Bare variable identifiers (e.g. `CI`) are valid in markers
-- Expression evaluation uses ENV-only lookup (`Arc<LayeredEnv>` — the layered host-plus-`.env` environment) — no frame variables or test-scope variables exist at evaluation time
+- Marker expression evaluation uses ENV-only lookup (`Arc<LayeredEnv>` — the layered host-plus-`.env` environment) — no frame variables or test-scope variables exist at marker-evaluation time (this scoping is specific to marker conditions; pure evaluation elsewhere, e.g. a `?` pure match inside a `pure fn`, does have a per-call capture frame)
 - Truthiness: empty string or unset variable is false, any non-empty string is true
 - `=` operator: evaluates both sides, returns the LHS value if it equals RHS exactly, empty string otherwise (unlike the shell literal-match operators `<=`/`!=`, which scan accumulated output for a substring; a marker compares against a complete value)
   - An empty RHS matches only an empty or unset LHS

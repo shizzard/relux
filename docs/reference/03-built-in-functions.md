@@ -9,6 +9,8 @@ Relux provides built-in functions (BIFs) that are always available without impor
 
 "Pure" here means shell-independent, not side-effect-free — pure BIFs may still perform I/O (e.g. `sleep`, `log`, `which`).
 
+Shell-independent also does not mean infallible. A `pure fn` body may contain a [pure match](08-pure-matching.md) (`<expr> = <pattern>` / `<expr> ? <pattern>`), and a non-matching pure match is an assertion failure: a `pure fn` that runs one can fail the test through whichever runtime site called it (a `let`, an overlay value, or a shell-block call). The one exception is a marker condition, where a pure-eval failure makes the condition falsy rather than failing the test.
+
 ## Pure BIFs
 
 ### String

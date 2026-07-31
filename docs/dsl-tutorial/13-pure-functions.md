@@ -84,6 +84,7 @@ The body can contain:
 - **`let` declarations**: `let full := "${first} ${last}"`
 - **Variable reassignment**: `x := upper(x)`
 - **Calls to other pure functions and pure built-in functions**
+- **Pure-match statements**: `<expr> = <pattern>` (exact equality) and `<expr> ? <pattern>` (regex) — assertions against a computed value, covered below
 
 The return value is the last expression in the body, the same rule as regular functions. A function ending with a `let` returns the assigned value. A function ending with a string literal returns that string.
 
@@ -97,6 +98,37 @@ pure fn build_greeting(first, last) {
 ```
 
 `build_greeting("jane", "doe")` returns `"JANE DOE"`. The `let` binds the concatenated name, then `upper()` — a pure built-in function — transforms it to uppercase. The result of `upper(full)` is the last expression, so it becomes the return value.
+
+## Matching and extracting with `?` and `$n`
+
+A pure function can do more than build strings — it can *assert* the shape of a value and *extract* part of it. A [pure match](../reference/08-pure-matching.md) statement compares a computed value against a pattern:
+
+- `<expr> = <pattern>` asserts `<expr>` equals `<pattern>` exactly (byte-for-byte).
+- `<expr> ? <pattern>` asserts `<expr>` matches the regex `<pattern>` (unanchored). On a hit it binds the numbered capture groups `$1`, `$2`, ... so you can pull values out.
+
+Neither reads from a shell, so both are legal in a pure function. A no-match is an assertion failure — it fails the test, the same way a `<?` that never matches would.
+
+The `?` form makes pure functions good at extraction. Write a helper that asserts an input's shape and returns a captured group:
+
+```relux
+pure fn extract_id(s) {
+    s ? ^id=(\d+)$
+    $1
+}
+
+test "extract an id" {
+    let payload := "id=42"
+    let id := extract_id(payload)   // id is "42"
+    shell s {
+        > echo "id=${id}"
+        <? ^id=42$
+    }
+}
+```
+
+`extract_id("id=42")` matches the regex, binds `$1` to `42`, and returns it. If the argument does not have the `id=<digits>` shape — say `extract_id("nope")` — the pure match fails and the test fails right there, pointing at the call.
+
+The captures a pure function binds are **local to that call**. Each call to `extract_id` starts with an empty capture frame, and when the function returns, its `$1` is discarded — it does not leak back into the caller's shell captures (just as a regular `fn`'s captures do not leak out). Keep anything you need by returning it and binding it with `let`, exactly as `let id := extract_id(payload)` does above.
 
 ## What pure functions cannot do
 

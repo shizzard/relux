@@ -378,7 +378,12 @@ buffer. Buffer events always carry a shell. The common envelope:
 ```
 
 `kind` mirrors the span's `SpanKind` discriminator (e.g.
-`"fn-call"`, `"shell-block"`). `alias` is the user-supplied
+`"fn-call"`, `"shell-block"`), with one refinement: a **pure** fn call
+(a `SpanKind::FnCall` with `is_pure: true`) renders as `"pure-fn-call"`
+rather than `"fn-call"`, so a failure report distinguishes the pure call
+chain from an impure `fn` call. A `"pure-match"` failure reached through
+one or more `pure fn` bodies therefore carries `"pure-fn-call"` frames in
+its `call_stack`, outermost-first. `alias` is the user-supplied
 `start FX as Alias` binding when present; only effect-setup /
 effect-cleanup frames carry one today.
 

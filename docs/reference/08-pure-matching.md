@@ -104,6 +104,30 @@ exception is a **marker condition**: a pure-eval failure there makes the
 condition falsy rather than failing the test (a marker is evaluated to
 decide skip/run/flaky, not to assert).
 
+This is the extraction idiom: a `pure fn` asserts the value's shape with
+`?` and returns a capture, and a caller binds the result with `let`.
+
+```relux
+pure fn extract_id(s) {
+    s ? ^id=(\d+)$
+    $1
+}
+
+test "extract an id" {
+    let payload := "id=42"
+    let id := extract_id(payload)   // id is "42"
+    shell s {
+        > echo "id=${id}"
+        <? ^id=42$
+    }
+}
+```
+
+The captures `extract_id` binds are local to its call: once it returns,
+`$1` is gone (just as a called `fn`'s captures do not leak into the
+caller's shell frame). Keep the extracted value by returning it and
+binding it with `let`, as above.
+
 A pure match is **statement-only**. It cannot appear as the right-hand
 side of a `let`, an overlay value, or a cleanup value. The statement's
 value is the left-hand side value, but the intended use is the assertion
