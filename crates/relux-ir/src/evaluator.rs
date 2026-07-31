@@ -74,6 +74,50 @@ pub fn eval_pure_fn(
     }
 }
 
+/// Evaluate a pure-match statement: resolve the LHS and interpolated
+/// pattern, run the match, and on a regex hit overwrite `captures`.
+/// Returns the LHS value (what the statement evaluates to). A no-match
+/// yields `PureMatchFailed`; a bad interpolated regex yields
+/// `MalformedPattern`.
+#[allow(clippy::too_many_arguments)]
+pub fn apply_pure_match(
+    sink: &mut dyn PureEvalSink,
+    vars: &VarScope,
+    captures: &mut HashMap<String, String>,
+    lhs: &IrPureExpr,
+    pattern: &IrInterpolation,
+    is_regex: bool,
+    span: &IrSpan,
+    env: &LayeredEnv,
+    fns: &PureFnTable,
+) -> Result<String, PureEvalError> {
+    let value = eval_pure_expr(lhs, vars, &*captures, env, fns, sink)?;
+    let pat = eval_interpolation(pattern, span, vars, &*captures, env, sink);
+    match crate::eval_pure_match(sink, &value, &pat, is_regex, span) {
+        Ok(Some(hit)) => {
+            if is_regex {
+                *captures = hit.captures;
+            }
+        }
+        Ok(None) => {
+            return Err(PureEvalError::PureMatchFailed {
+                value,
+                pattern: pat,
+                is_regex,
+                span: span.clone(),
+            });
+        }
+        Err(e) => {
+            return Err(PureEvalError::MalformedPattern {
+                pattern: e.pattern,
+                reason: e.reason,
+                span: span.clone(),
+            });
+        }
+    }
+    Ok(value)
+}
+
 // --- Internal helpers ------------------------------------
 
 fn eval_pure_call(
@@ -229,30 +273,9 @@ fn eval_body(
                 is_regex,
                 span,
             } => {
-                let value = eval_pure_expr(lhs, scope, &*captures, env, fns, sink)?;
-                let pat = eval_interpolation(pattern, span, scope, &*captures, env, sink);
-                match crate::eval_pure_match(sink, &value, &pat, *is_regex, span) {
-                    Ok(Some(hit)) => {
-                        if *is_regex {
-                            *captures = hit.captures;
-                        }
-                    }
-                    Ok(None) => {
-                        return Err(PureEvalError::PureMatchFailed {
-                            value,
-                            pattern: pat,
-                            is_regex: *is_regex,
-                            span: span.clone(),
-                        });
-                    }
-                    Err(e) => {
-                        return Err(PureEvalError::MalformedPattern {
-                            pattern: e.pattern,
-                            reason: e.reason,
-                            span: span.clone(),
-                        });
-                    }
-                }
+                let value = apply_pure_match(
+                    sink, scope, captures, lhs, pattern, *is_regex, span, env, fns,
+                )?;
                 if is_last {
                     last_value = value;
                 }
