@@ -8,6 +8,7 @@ use std::sync::Arc;
 use crate::hash::StableHasher;
 
 pub mod bifs;
+pub mod matching;
 
 // --- VarScope --------------------------------------------
 
