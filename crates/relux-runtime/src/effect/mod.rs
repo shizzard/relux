@@ -411,11 +411,62 @@ impl EffectManager {
             env: effect_env.clone(),
         };
 
-        // 3. Evaluate effect-level lets into scope (parser enforces lets before starts)
+        // 3. Evaluate effect-level preamble (lets + pure-matches) into scope
+        //    (parser enforces these come before starts). `body_captures`
+        //    is hoisted across the whole preamble so a regex pure-match's
+        //    `$n` captures flow into later lets, pure-matches, and the
+        //    sub-dependency overlays instantiated in step 4.
+        let mut body_captures: HashMap<String, String> = HashMap::new();
         for item in effect.body() {
-            if let IrEffectItem::Let { stmt, span } = item {
-                self.eval_effect_let(stmt, span, &scope, &effect_env, setup_span_id)
+            match item {
+                IrEffectItem::Let { stmt, span } => {
+                    self.eval_effect_let(
+                        stmt,
+                        span,
+                        &scope,
+                        &effect_env,
+                        setup_span_id,
+                        &body_captures,
+                    )
                     .await?;
+                }
+                IrEffectItem::PureMatch {
+                    lhs,
+                    pattern,
+                    is_regex,
+                    span,
+                } => {
+                    let vars = scope.vars().lock().await;
+                    let mut sink = crate::observe::structured::log_sink::LogSink::new(
+                        &self.rt_ctx.log,
+                        setup_span_id,
+                    );
+                    if let Err(err) = relux_ir::evaluator::apply_pure_match(
+                        &mut sink,
+                        &vars,
+                        &mut body_captures,
+                        lhs,
+                        pattern,
+                        *is_regex,
+                        span,
+                        &effect_env,
+                        &self.rt_ctx.tables.pure_fns,
+                    ) {
+                        return Err(pure_eval_failure(
+                            err,
+                            setup_span_id,
+                            &sink,
+                            &self.rt_ctx.log,
+                        ));
+                    }
+                }
+                // Non-preamble items run in the body walk below.
+                IrEffectItem::Comment { .. }
+                | IrEffectItem::Expect { .. }
+                | IrEffectItem::Start { .. }
+                | IrEffectItem::Expose { .. }
+                | IrEffectItem::Shell { .. }
+                | IrEffectItem::Cleanup { .. } => {}
             }
         }
 
@@ -433,7 +484,7 @@ impl EffectManager {
                 &effect_vars,
                 &effect_env,
                 setup_span_id,
-                &std::collections::HashMap::new(),
+                &body_captures,
             )
             .await?;
 
@@ -566,6 +617,7 @@ impl EffectManager {
                 | IrEffectItem::Start { .. }
                 | IrEffectItem::Expose { .. }
                 | IrEffectItem::Let { .. }
+                | IrEffectItem::PureMatch { .. }
                 | IrEffectItem::Cleanup { .. } => continue,
                 IrEffectItem::Shell { block, .. } => {
                     let switch_span = block.name().span();
@@ -879,6 +931,7 @@ impl EffectManager {
         scope: &Scope,
         effect_env: &Arc<LayeredEnv>,
         setup_span: SpanId,
+        captures: &HashMap<String, String>,
     ) -> Result<(), ExecError> {
         let mut vars = scope.vars().lock().await;
         let mut sink =
@@ -887,7 +940,7 @@ impl EffectManager {
             match relux_ir::evaluator::eval_pure_expr(
                 expr,
                 &vars,
-                &std::collections::HashMap::new(),
+                captures,
                 effect_env,
                 &self.rt_ctx.tables.pure_fns,
                 &mut sink,

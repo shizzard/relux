@@ -847,3 +847,69 @@ fn lower_effect_no_expect_is_valid() {
     assert!(result.is_ok());
     assert!(result.unwrap().expects().is_empty());
 }
+
+// --- Pure-match effect item lowering ---------------------
+//
+// The parser does not yet emit `AstEffectItem::PureMatch`, so these
+// hand-build the AST item and lower it directly.
+
+fn pure_match_effect_item(is_regex: bool, pattern: &str) -> AstEffectItem {
+    let span = Span::new(0, 10);
+    AstEffectItem::PureMatch {
+        lhs: Spanned::new(
+            AstExpr::Var {
+                name: "x".into(),
+                span,
+            },
+            span,
+        ),
+        pattern: AstInterpolation {
+            parts: vec![AstStringPart::Literal {
+                value: pattern.into(),
+                span,
+            }],
+            span,
+        },
+        is_regex,
+        span,
+    }
+}
+
+#[test]
+fn lower_effect_item_pure_match_regex() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let item = pure_match_effect_item(true, "^id=(\\d+)$");
+    let ir = IrEffectItem::lower(&item, &file, &mut ctx).unwrap();
+    assert!(matches!(ir, IrEffectItem::PureMatch { is_regex: true, .. }));
+}
+
+#[test]
+fn lower_effect_item_pure_match_literal() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let item = pure_match_effect_item(false, "expected");
+    let ir = IrEffectItem::lower(&item, &file, &mut ctx).unwrap();
+    assert!(matches!(
+        ir,
+        IrEffectItem::PureMatch {
+            is_regex: false,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn lower_effect_item_pure_match_regex_invalid_diagnoses() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let item = pure_match_effect_item(true, "(unclosed");
+    let result = IrEffectItem::lower(&item, &file, &mut ctx);
+    assert!(
+        result.is_err(),
+        "invalid static regex in an effect pure-match must surface at lowering"
+    );
+}

@@ -190,6 +190,7 @@ impl<'a> Visitor<'a> {
                     self.visit_pure_expr(expr)?;
                 }
             }
+            IrTestItem::PureMatch { lhs, .. } => self.visit_pure_expr(lhs)?,
             IrTestItem::Shell { block, .. } => {
                 for stmt in block.body() {
                     self.visit_shell_stmt(stmt)?;
@@ -215,6 +216,7 @@ impl<'a> Visitor<'a> {
                     self.visit_pure_expr(expr)?;
                 }
             }
+            IrEffectItem::PureMatch { lhs, .. } => self.visit_pure_expr(lhs)?,
             IrEffectItem::Shell { block, .. } => {
                 for stmt in block.body() {
                     self.visit_shell_stmt(stmt)?;

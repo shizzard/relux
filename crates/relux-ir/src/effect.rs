@@ -17,6 +17,7 @@ use super::block::IrShellBlock;
 use super::comment::IrComment;
 use super::expr::IrPureExpr;
 use super::ident::IrIdent;
+use super::interpolation::IrInterpolation;
 use super::stmt::IrPureLetStmt;
 use super::tables::LocalEffectKey;
 
@@ -151,13 +152,40 @@ impl_ir_node_struct!(IrExposeDecl);
 
 #[derive(Debug, Clone)]
 pub enum IrEffectItem {
-    Comment { comment: IrComment, span: IrSpan },
-    Expect { vars: Vec<IrIdent>, span: IrSpan },
-    Start { start: IrEffectStart, span: IrSpan },
-    Let { stmt: IrPureLetStmt, span: IrSpan },
-    Expose { decl: IrExposeDecl, span: IrSpan },
-    Shell { block: IrShellBlock, span: IrSpan },
-    Cleanup { block: IrCleanupBlock, span: IrSpan },
+    Comment {
+        comment: IrComment,
+        span: IrSpan,
+    },
+    Expect {
+        vars: Vec<IrIdent>,
+        span: IrSpan,
+    },
+    Start {
+        start: IrEffectStart,
+        span: IrSpan,
+    },
+    Let {
+        stmt: IrPureLetStmt,
+        span: IrSpan,
+    },
+    PureMatch {
+        lhs: IrPureExpr,
+        pattern: IrInterpolation,
+        is_regex: bool,
+        span: IrSpan,
+    },
+    Expose {
+        decl: IrExposeDecl,
+        span: IrSpan,
+    },
+    Shell {
+        block: IrShellBlock,
+        span: IrSpan,
+    },
+    Cleanup {
+        block: IrCleanupBlock,
+        span: IrSpan,
+    },
 }
 
 impl_ir_node_enum!(IrEffectItem {
@@ -165,6 +193,7 @@ impl_ir_node_enum!(IrEffectItem {
     Expect,
     Start,
     Let,
+    PureMatch,
     Expose,
     Shell,
     Cleanup
@@ -367,6 +396,24 @@ impl IrNodeLowering for IrEffectItem {
                 let ir = IrPureLetStmt::lower(stmt, file, ctx)?;
                 Ok(IrEffectItem::Let {
                     stmt: ir,
+                    span: s(span),
+                })
+            }
+            AstEffectItem::PureMatch {
+                lhs,
+                pattern,
+                is_regex,
+                span,
+            } => {
+                let ir_lhs = IrPureExpr::lower(&lhs.node, file, ctx)?;
+                let ir_pattern = IrInterpolation::lower(pattern, file, ctx)?;
+                if *is_regex {
+                    super::regex_validate::validate_static_regex(pattern, file)?;
+                }
+                Ok(IrEffectItem::PureMatch {
+                    lhs: ir_lhs,
+                    pattern: ir_pattern,
+                    is_regex: *is_regex,
                     span: s(span),
                 })
             }

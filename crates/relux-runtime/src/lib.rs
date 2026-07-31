@@ -978,47 +978,77 @@ async fn run_test_body(
         timeout: meta.timeout().cloned(),
     };
 
-    // 2. Evaluate test-level lets into scope (parser enforces lets come before starts)
+    // 2. Evaluate test-level preamble (lets + pure-matches) into scope.
+    //    The parser enforces these come before starts. `body_captures`
+    //    is hoisted across the whole preamble so a regex pure-match's
+    //    `$n` captures are visible to later lets and pure-matches, and
+    //    ultimately to effect overlays (see the instantiate call below).
+    let mut body_captures: HashMap<String, String> = HashMap::new();
     for item in test.body() {
-        if let IrTestItem::Let { stmt, span } = item {
-            let mut vars = scope.vars().lock().await;
-            let mut sink = LogSink::new(&rt_ctx.log, test_span);
-            let value = if let Some(expr) = stmt.value() {
-                match relux_ir::evaluator::eval_pure_expr(
-                    expr,
+        match item {
+            IrTestItem::Let { stmt, span } => {
+                let mut vars = scope.vars().lock().await;
+                let mut sink = LogSink::new(&rt_ctx.log, test_span);
+                let value = if let Some(expr) = stmt.value() {
+                    match relux_ir::evaluator::eval_pure_expr(
+                        expr,
+                        &vars,
+                        &body_captures,
+                        &rt_ctx.env,
+                        &rt_ctx.tables.pure_fns,
+                        &mut sink,
+                    ) {
+                        Ok(v) => v,
+                        Err(err) => {
+                            return Err(pure_eval_failure(err, test_span, &sink, &rt_ctx.log));
+                        }
+                    }
+                } else {
+                    String::new()
+                };
+                let name = stmt.name().name();
+                vars.insert(name.to_string(), value.clone());
+                drop(vars);
+                rt_ctx
+                    .log
+                    .emit_var_let(test_span, None, None, name, &value, Some(span));
+            }
+            IrTestItem::PureMatch {
+                lhs,
+                pattern,
+                is_regex,
+                span,
+            } => {
+                let vars = scope.vars().lock().await;
+                let mut sink = LogSink::new(&rt_ctx.log, test_span);
+                if let Err(err) = relux_ir::evaluator::apply_pure_match(
+                    &mut sink,
                     &vars,
-                    &std::collections::HashMap::new(),
+                    &mut body_captures,
+                    lhs,
+                    pattern,
+                    *is_regex,
+                    span,
                     &rt_ctx.env,
                     &rt_ctx.tables.pure_fns,
-                    &mut sink,
                 ) {
-                    Ok(v) => v,
-                    Err(err) => {
-                        return Err(pure_eval_failure(err, test_span, &sink, &rt_ctx.log));
-                    }
+                    return Err(pure_eval_failure(err, test_span, &sink, &rt_ctx.log));
                 }
-            } else {
-                String::new()
-            };
-            let name = stmt.name().name();
-            vars.insert(name.to_string(), value.clone());
-            drop(vars);
-            rt_ctx
-                .log
-                .emit_var_let(test_span, None, None, name, &value, Some(span));
+            }
+            // Non-preamble items run in the body walk below.
+            IrTestItem::Comment { .. }
+            | IrTestItem::DocString { .. }
+            | IrTestItem::Start { .. }
+            | IrTestItem::Shell { .. }
+            | IrTestItem::Cleanup { .. } => {}
         }
     }
 
-    // 3. Instantiate effects (overlays can now see test-level vars)
+    // 3. Instantiate effects (overlays can now see test-level vars + captures)
     let caller_vars = scope.vars().lock().await.clone();
     let root_env = rt_ctx.env.clone();
     let exported = manager
-        .instantiate_top_level(
-            test.starts(),
-            &caller_vars,
-            &root_env,
-            &std::collections::HashMap::new(),
-        )
+        .instantiate_top_level(test.starts(), &caller_vars, &root_env, &body_captures)
         .await?;
 
     // 4. Build shell map from exposed effect shells
@@ -1078,6 +1108,7 @@ async fn run_test_body(
                 IrTestItem::Comment { .. } | IrTestItem::DocString { .. } => continue,
                 IrTestItem::Start { .. } => continue,
                 IrTestItem::Let { .. } => continue,
+                IrTestItem::PureMatch { .. } => continue,
                 IrTestItem::Shell { block, .. } => {
                     let switch_span = block.name().span();
                     if let Some(qualifier) = block.qualifier() {

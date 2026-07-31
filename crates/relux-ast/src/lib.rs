@@ -418,13 +418,40 @@ pub struct AstEffectDef {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstEffectItem {
-    Comment { text: String, span: Span },
-    Expect { decl: AstExpectDecl, span: Span },
-    Start { decl: AstStartDecl, span: Span },
-    Let { stmt: AstLetStmt, span: Span },
-    Expose { decl: AstExposeDecl, span: Span },
-    Shell { block: AstShellBlock, span: Span },
-    Cleanup { block: AstCleanupBlock, span: Span },
+    Comment {
+        text: String,
+        span: Span,
+    },
+    Expect {
+        decl: AstExpectDecl,
+        span: Span,
+    },
+    Start {
+        decl: AstStartDecl,
+        span: Span,
+    },
+    Let {
+        stmt: AstLetStmt,
+        span: Span,
+    },
+    PureMatch {
+        lhs: Spanned<AstExpr>,
+        pattern: AstInterpolation,
+        is_regex: bool,
+        span: Span,
+    },
+    Expose {
+        decl: AstExposeDecl,
+        span: Span,
+    },
+    Shell {
+        block: AstShellBlock,
+        span: Span,
+    },
+    Cleanup {
+        block: AstCleanupBlock,
+        span: Span,
+    },
 }
 
 impl_ast_node_enum!(AstEffectItem {
@@ -432,6 +459,7 @@ impl_ast_node_enum!(AstEffectItem {
     Expect,
     Start,
     Let,
+    PureMatch,
     Expose,
     Shell,
     Cleanup
@@ -450,12 +478,36 @@ pub struct AstTestDef {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstTestItem {
-    Comment { text: String, span: Span },
-    DocString { text: String, span: Span },
-    Start { decl: AstStartDecl, span: Span },
-    Let { stmt: AstLetStmt, span: Span },
-    Shell { block: AstShellBlock, span: Span },
-    Cleanup { block: AstCleanupBlock, span: Span },
+    Comment {
+        text: String,
+        span: Span,
+    },
+    DocString {
+        text: String,
+        span: Span,
+    },
+    Start {
+        decl: AstStartDecl,
+        span: Span,
+    },
+    Let {
+        stmt: AstLetStmt,
+        span: Span,
+    },
+    PureMatch {
+        lhs: Spanned<AstExpr>,
+        pattern: AstInterpolation,
+        is_regex: bool,
+        span: Span,
+    },
+    Shell {
+        block: AstShellBlock,
+        span: Span,
+    },
+    Cleanup {
+        block: AstCleanupBlock,
+        span: Span,
+    },
 }
 
 impl_ast_node_enum!(AstTestItem {
@@ -463,6 +515,7 @@ impl_ast_node_enum!(AstTestItem {
     DocString,
     Start,
     Let,
+    PureMatch,
     Shell,
     Cleanup
 });
