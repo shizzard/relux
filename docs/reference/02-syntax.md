@@ -64,6 +64,8 @@ effect <EffectName> {
     start <EffectName> as <Alias>
     start <EffectName> as <Alias> { KEY := expr, KEY }
     let <name> := <expr>
+    <expr> = <pattern>                       // setup pure match (asserts)
+    <expr> ? <pattern>                        // setup pure match (binds $n)
     expose shell <shell_name>
     expose shell <Alias>.<shell_name> as <public_name>
     expose var <var_name>
@@ -98,6 +100,8 @@ test "<name>" {
     <doc string>
     """
     let <name>
+    <expr> = <pattern>                  // preamble pure match (asserts)
+    <expr> ? <pattern>                  // preamble pure match (binds $n)
     start <EffectName>
     start <EffectName> as <Alias>
     start <EffectName> as <Alias> { KEY := expr, KEY }
@@ -237,7 +241,8 @@ reads nothing from the PTY.
 - `<pattern>` is an interpolated string to end of line (same shape as the `<=` / `<?` payload).
 - `=` is exact equality (not a substring test); use `?` for a substring or pattern check.
 - A no-match fails the test immediately — a pure match is an assertion and cannot time out. There is no negated form.
-- Valid in `shell` blocks, `fn` bodies, and `pure fn` bodies. Inside a `pure fn`, a `?` match binds captures into the function's own per-call frame, so `$1` can be returned to extract a value.
+- Valid in `shell` blocks, `fn` bodies, `pure fn` bodies, and **test / effect preambles** (alongside `let`). Inside a `pure fn`, a `?` match binds captures into the function's own per-call frame, so `$1` can be returned to extract a value.
+- In a preamble, a `?` match binds `$n` into a preamble capture frame that later preamble `let`s and `start` overlays read; a `shell` block does **not** inherit it (a shell owns its own frame). `$n` reads the ambient frame, `""` when unset. See [Pure Matching](08-pure-matching.md#preamble-captures-and-the-shell-boundary).
 - Statement-only: cannot be a `let` right-hand side, an overlay value, or a cleanup value.
 
 ```relux

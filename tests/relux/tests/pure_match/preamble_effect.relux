@@ -1,0 +1,40 @@
+effect Backend {
+    expect HOST
+    expose shell b
+    shell b {
+        > echo "backend host=${HOST}"
+        <? ^backend host=cache\.local$
+        match_ok()
+    }
+}
+
+effect Cache {
+    let dsn := "redis://cache.local:6379/2"
+    dsn ? ^redis://([^:]+):(\d+)/(\d+)$
+    let port := "${2}"
+    let db_index := "${3}"
+    start Backend as B { HOST := "${1}" }
+    expose shell out
+    expose var db_index
+    shell out {
+        > echo "cache port=${port} db=${db_index}"
+        <? ^cache port=6379 db=2$
+        match_ok()
+    }
+}
+
+test "effect preamble destructures a dsn into a let and a dep overlay" {
+    """
+    Verify an effect setup preamble can `?` pure-match a value, bind its
+    captures into a preamble frame, and feed those captures both into
+    later effect `let`s (`port`, `db_index` read $2/$3) and into a nested
+    `start Backend` overlay (`HOST := "${1}"`). The effect's own exposed
+    shell reads only the derived `let`s (not raw captures, which a shell
+    frame never inherits), and the test asserts the exposed `db_index`.
+    """
+    start Cache as C
+    shell C.out {
+        > echo "db=${C.db_index}"
+        <? ^db=2$
+    }
+}

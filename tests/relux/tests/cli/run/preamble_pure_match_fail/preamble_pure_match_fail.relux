@@ -1,0 +1,12 @@
+test "run reports a preamble pure match failure" {
+    """
+    Verify relux run reports a pure-match assertion failure when the
+    failing match lives in a test preamble (before any shell block), so
+    the test fails and the process exits nonzero before any shell spawns.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? did not match
+        match_not_ok(1)
+    }
+}

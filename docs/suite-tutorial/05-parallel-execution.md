@@ -213,6 +213,36 @@ The three `available_port()` calls at the top allocate unique ports. The overlay
 
 The same pattern applies to the db and auth test files. Each test allocates the ports it needs and passes them through overlays.
 
+## Destructuring a value in the preamble
+
+`available_port()` gives each test fresh ports, but sometimes the values come pre-packed in a single string -- a CI runner exports one `DATABASE_URL`, or a fixture hands you a DSN. Rather than slice it apart with `split()` calls, you can assert its shape and pull the pieces out with a `?` pure match right in the test preamble, alongside the `let`s.
+
+A `?` pure match in the preamble binds the numbered capture groups into a preamble capture frame. Later preamble `let`s read it, and -- the part that makes this pattern pay off -- so do the overlay expressions on `start`:
+
+```relux
+test "db CRUD against a supplied DSN" {
+    """
+    Verify basic CRUD when the database endpoint arrives as a single
+    connection string rather than a bare port.
+    """
+    let dsn := "postgres://ci:secret@localhost:9000/app"
+    dsn ? ^postgres://[^@]+@[^:]+:(\d+)/\w+$
+    let db_port := "${1}"
+
+    start Db {
+        DB_PORT := "${1}"
+    }
+
+    shell client {
+        http_request(200, db_url(db_port, "/db/app"), "POST")
+    }
+}
+```
+
+The match asserts the DSN is well-formed -- a malformed value fails the test immediately, before any service starts -- and binds `$1` to the port. The `let db_port := "${1}"` reads that capture, and the `start Db` overlay reads it directly as `DB_PORT := "${1}"`.
+
+One boundary to remember: `shell` blocks do **not** inherit the preamble capture frame. Each shell owns its own frame, populated only by its own `<?` matches. That is why the example carries the port across with `let db_port := "${1}"` and then uses `db_port` inside `shell client` -- a bare `${1}` there would read the shell's own (empty) frame, not the preamble's.
+
 ## Error-path tests
 
 The `SeededTasks` effect pays off in error-path tests. Create `tasks/errors.relux`:

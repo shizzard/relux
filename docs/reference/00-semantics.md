@@ -89,7 +89,7 @@
 ## Pure Matching
 
 - A **pure match** asserts that a computed value satisfies a pattern; it reads nothing from a shell (contrast the `<?` / `<=` operators, which scan the output buffer)
-- Two statement forms, valid in `shell` blocks, `fn` bodies, and `pure fn` bodies:
+- Two statement forms, valid in `shell` blocks, `fn` bodies, `pure fn` bodies, and **test / effect preambles** (alongside `let`, before the first `shell` block):
   - `<expr> = <pattern>` — asserts `<expr>` equals `<pattern>` exactly (byte-for-byte literal equality; a superstring or partial overlap fails). This is the same exact-equality semantics as the marker `=` operator
   - `<expr> ? <pattern>` — asserts `<expr>` matches the regex `<pattern>` (unanchored, like `<?`)
 - `<pattern>` is an interpolated string (`${var}` resolved before comparison); `<expr>` is any pure expression
@@ -97,6 +97,8 @@
 - A successful `?` binds the numeric capture groups `$0`, `$1`, ..., `$n` in the current shell, exactly like `<?`; they persist until the next regex match overwrites them. The `=` form binds no captures
 - A `?` pattern that fails to compile (only reachable when interpolation produces malformed regex) is a runtime failure, not a no-match
 - Inside a `pure fn` body, a `?` pure match binds numeric captures into the function's own per-call capture frame (each call starts empty), so a `pure fn` can match `$1` out of a value and return it. A no-match inside a `pure fn` fails the test through the runtime site that called it (`let`, overlay, shell-block call); inside a marker condition, a pure-eval failure instead makes the condition falsy rather than failing the test
+- In a test or effect **preamble**, a `?` pure match binds `$n` into a single capture frame hoisted across the whole preamble: later preamble `let`s, later preamble pure matches, and a `start` overlay's expressions all read it. A non-matching preamble pure match fails the test (test-level) or fails effect instantiation (effect-level). `$n` reads the ambient frame uniformly, rendering `""` when no regex has run, so a `$n` with no preceding match is not an error
+- **Shells do not inherit the preamble capture frame.** A `shell` block owns its own frame, populated only by its own `<?` matches, starting empty; `$n` inside a shell reads the shell's frame, never the preamble's. Carry a preamble capture into a shell by binding it to a `let`. Markers run before the preamble, so a marker condition sees an empty frame
 - Statement-only: a pure match cannot be a `let` right-hand side, an overlay value, or a cleanup value. `x = e` asserts; binding still requires `x := e` (and `let x = e` remains an error)
 
 ## Effects
@@ -123,6 +125,7 @@
 - Exposed variables are only accessible in shell contexts (runtime); test-level and effect-level `let` bindings cannot reference them (purity violation — `let` is evaluated at resolve time, before effects are started)
 - Exposed variables are read-only from the caller's perspective
 - For composed effects, `expose` can re-export a dependency's shell or variable: `expose shell Dep.shell as public_name`, `expose var Dep.port as db_port`
+- An effect's setup preamble may contain [pure-match](08-pure-matching.md) statements alongside its `let`s; a `?` match binds `$n` into a preamble capture frame that later setup `let`s and `start` overlays read (the effect's own `shell` blocks do not inherit it). A non-matching setup pure match fails effect instantiation, failing every test that depends on the effect
 - Effects run before the test body; the dependency graph is resolved and executed in topological order
 - Circular effect dependencies are a parse error
 - If an effect fails (a match times out during setup), all tests depending on it are failed
@@ -169,9 +172,9 @@
 - Condition markers (`# skip/run/flaky ...`) are placed immediately before the `test` declaration
 - Test structure (in order):
   1. Doc string (optional `"""..."""`)
-  2. `let` declarations (test-scoped variables)
+  2. Preamble: `let` declarations (test-scoped variables) and [pure-match](08-pure-matching.md) statements (`<expr> = <pattern>` / `<expr> ? <pattern>`), interleaved; a `?` match binds `$n` into a preamble capture frame the later preamble items and overlays read
   3. `start` declarations (effect dependencies)
-  4. `shell` blocks (test body)
+  4. `shell` blocks (test body) — each owns its own capture frame; the preamble frame is not inherited
   5. `cleanup` block (optional)
 - Effects are instantiated and their shells are available before the test body runs
 - A test succeeds if all match operations in all shell blocks pass

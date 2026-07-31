@@ -90,6 +90,9 @@ produces malformed regex) is a runtime failure, not a no-match.
 Pure-match statements are valid inside:
 
 - **`shell` blocks** (in tests and effects)
+- **test and effect preambles** — alongside `let`, before the first
+  `shell` block (and, in an effect, before its `start` and `expose`
+  items)
 - regular **`fn` bodies**
 - **`pure fn` bodies**
 
@@ -127,6 +130,49 @@ The captures `extract_id` binds are local to its call: once it returns,
 `$1` is gone (just as a called `fn`'s captures do not leak into the
 caller's shell frame). Keep the extracted value by returning it and
 binding it with `let`, as above.
+
+## Preamble captures and the shell boundary
+
+A `?` pure match in a test or effect **preamble** binds its numeric
+captures into a single capture frame that is hoisted across the whole
+preamble. Later preamble `let`s and later preamble pure matches read it,
+and a `start`'s overlay expressions read it too:
+
+```relux
+test "destructure a dsn in the preamble" {
+    let url := "postgres://user:pw@db.internal:5432/shop"
+    url ? ^postgres://[^@]+@([^:/]+):(\d+)/(\w+)$
+    let host := "${1}"                 // reads the preamble frame
+    let port := "${2}"
+    start Conn as C { HOST := host, DB := "${3}" }  // overlay reads $3
+    shell C.c { // ... }
+}
+```
+
+`$n` reads the **ambient** capture frame uniformly, rendering `""` when
+no regex has run — so a `$n` in a `let` or overlay with no preceding
+regex match is not an error, just an empty string.
+
+**Shells do not inherit the preamble frame.** A `shell` block owns its
+own capture frame, populated only by that shell's own `<?` matches; it
+starts empty. `$n` inside a shell reads the shell's frame, never the
+preamble's. To carry a preamble capture into a shell, bind it to a `let`
+in the preamble and read the `let`:
+
+```relux
+test "captures do not leak into shells" {
+    let subject := "token=abc"
+    subject ? ^token=(\S+)$             // preamble frame: $1 = "abc"
+    let kept := "${1}"                  // carry it across the boundary
+    shell s {
+        > echo "shell=[${1}] kept=[${kept}]"
+        <? ^shell=\[\] kept=\[abc\]$    // shell $1 is empty; kept survives
+    }
+}
+```
+
+Markers are evaluated before the preamble runs, so a marker condition
+sees an empty capture frame.
 
 A pure match is **statement-only**. It cannot appear as the right-hand
 side of a `let`, an overlay value, or a cleanup value. The statement's

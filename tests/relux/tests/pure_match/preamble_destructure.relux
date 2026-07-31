@@ -1,0 +1,45 @@
+effect Conn {
+    expect HOST, PORT, DB
+    expose shell c
+    shell c {
+        > echo "conn ${HOST}:${PORT}/${DB}"
+        <? ^conn db\.internal:5432/shop$
+        match_ok()
+    }
+}
+
+test "preamble regex destructures a url into lets and a start overlay" {
+    """
+    Verify a `?` pure match in the test preamble binds numeric captures
+    into a preamble capture frame that later preamble `let`s and a `start`
+    overlay both read. The url is destructured into host/port/db; two
+    `let`s pull $1/$2 out of the frame, while the `start Conn` overlay
+    reads capture $3 directly. This proves preamble captures propagate
+    into both later lets and into overlay expressions.
+    """
+    let url := "postgres://user:pw@db.internal:5432/shop"
+    url ? ^postgres://[^@]+@([^:/]+):(\d+)/(\w+)$
+    let host := "${1}"
+    let port := "${2}"
+    start Conn as C { HOST := host, PORT := port, DB := "${3}" }
+    shell C.c {
+        > echo "host=${host} port=${port}"
+        <? ^host=db\.internal port=5432$
+    }
+}
+
+test "an overlay $n with no preceding regex match renders empty" {
+    """
+    Verify that reading a numeric capture with no preceding regex pure
+    match in the preamble is not an error: $1 reads the ambient frame,
+    which is empty, so the overlay value renders "". The gate that once
+    made $n a pure-context-only construct is gone; $n uniformly reads the
+    ambient frame ("" when unset).
+    """
+    let label := "${1}"
+    start Conn as C { HOST := "db.internal", PORT := "5432", DB := "shop" }
+    shell C.c {
+        > echo "label=[${label}]"
+        <? ^label=\[\]$
+    }
+}

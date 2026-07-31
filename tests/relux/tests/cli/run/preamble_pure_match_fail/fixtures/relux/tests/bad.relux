@@ -1,0 +1,8 @@
+test "preamble pure match fails" {
+    let v := "abc"
+    v = xyz
+    shell s {
+        > echo hi
+        <? ^hi$
+    }
+}
