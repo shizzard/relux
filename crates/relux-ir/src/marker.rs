@@ -63,8 +63,15 @@ pub enum IrMarkerCond {
     Unconditional,
     /// `<expr>` - truthy if the evaluated value is non-empty.
     Bare { expr: IrPureExpr },
-    /// `<lhs> == <rhs>`.
-    Eq { lhs: IrPureExpr, rhs: IrPureExpr },
+    /// `<lhs> = <rhs>` - literal match: met when `lhs` contains `rhs`
+    /// (substring), not exact equality. Anchor a regex for exact.
+    /// `cond_span` locates the `lhs = rhs` body for diagnostics, mirroring
+    /// `Regex`'s `pattern_span`.
+    Eq {
+        lhs: IrPureExpr,
+        rhs: IrPureExpr,
+        cond_span: IrSpan,
+    },
     /// `<expr> =~ /<pattern>/`. `pattern` is the interpolation lowered into an
     /// `IrPureExpr::String`; `pattern_span` locates the `/.../` for diagnostics.
     Regex {
@@ -132,9 +139,10 @@ pub fn lower_markers(
             AstMarkerCondBody::Bare { expr, .. } => IrMarkerCond::Bare {
                 expr: IrPureExpr::lower(expr, file_id, ctx)?,
             },
-            AstMarkerCondBody::Eq { lhs, rhs, .. } => IrMarkerCond::Eq {
+            AstMarkerCondBody::Eq { lhs, rhs, span } => IrMarkerCond::Eq {
                 lhs: IrPureExpr::lower(lhs, file_id, ctx)?,
                 rhs: IrPureExpr::lower(rhs, file_id, ctx)?,
+                cond_span: IrSpan::new(file_id.clone(), *span),
             },
             AstMarkerCondBody::Regex {
                 expr,
@@ -210,7 +218,11 @@ pub fn decide_markers(
                     let met = !value.is_empty();
                     (met, SkipEvaluation::Bare { value, met })
                 }
-                IrMarkerCond::Eq { lhs, rhs } => {
+                IrMarkerCond::Eq {
+                    lhs,
+                    rhs,
+                    cond_span,
+                } => {
                     let vars = relux_core::pure::VarScope::new();
                     let lhs_val =
                         crate::evaluator::eval_pure_expr(lhs, &vars, env, fns, &mut recording);
@@ -222,7 +234,7 @@ pub fn decide_markers(
                         &lhs_val,
                         &rhs_val,
                         false,
-                        &marker_span,
+                        cond_span,
                     )
                     .expect("literal pure_match cannot fail")
                     .is_some();
