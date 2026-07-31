@@ -24,6 +24,13 @@ Core interaction primitives: sending input and matching output.
 - `buffer_reset.relux` - bare `<?` and `<=` to discard unmatched output and advance cursor
 - `timeout.relux` - `~dur` scoped timeout
 
+### `pure_match/` - Pure-match statements
+
+Assertions against already-computed values (`<expr> = <pattern>` exact equality,
+`<expr> ? <pattern>` regex), distinct from the buffer-scanning `<=` / `<?`.
+
+- `pure_match.relux` - `=` exact equality, `?` regex capture binding, `?` inside a `fn` body
+
 ### `variables/` - Variable system
 
 - `let_and_assign.relux` - declaration, initialization, reassignment
@@ -90,6 +97,7 @@ that invokes the `relux` binary and verifies its output or exit code.
 - `exit_code_fail/` - exits with code 1 when any test fails
 - `match_timeout/` - reports match timeout when a pattern is never found
 - `fail_pattern/` - reports when a fail pattern matches output
+- `pure_match_fail/` - reports when a pure-match assertion (`<expr> = <pattern>`) does not match
 - `fail_fast/` - stops after the first test failure with `--strategy fail-fast`
 - `file_not_found/` - reports a clear error for non-existent test file paths
 - `tap_output/` - generates valid TAP14 results file with `--tap`

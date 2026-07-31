@@ -1,0 +1,11 @@
+test "run reports pure match failure" {
+    """
+    Verify relux run reports a pure-match assertion failure when a computed
+    value does not satisfy its pattern.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? did not match
+        match_not_ok(1)
+    }
+}

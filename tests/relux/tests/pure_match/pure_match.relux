@@ -1,0 +1,49 @@
+fn extract_id(value) {
+    value ? ^item-(\d+)$
+    let id := "${1}"
+    > echo "in-fn id=${id}"
+    <? ^in-fn id=99$
+    "found-${id}"
+}
+
+test "exact-equality pure match passes on an equal value" {
+    """
+    Verify the `=` pure match asserts byte-for-byte equality against a
+    computed value. Each value equals its pattern exactly, so the assertion
+    passes. Exact equality means a substring or superstring would fail, so
+    these prove the equal-value path rather than a substring hit.
+    """
+    shell s {
+        let os := "linux"
+        os = linux
+        let host := "db.internal"
+        host = db.internal
+    }
+}
+
+test "regex pure match binds captures downstream" {
+    """
+    Verify the `?` pure match compiles its pattern as an unanchored regex,
+    passes when it matches the value, and binds the numbered capture groups
+    into the shell so ${1}/${2} are available in later statements.
+    """
+    shell s {
+        let record := "user=42 name=bob"
+        record ? user=(\d+) name=(\w+)
+        > echo "id=${1} who=${2}"
+        <? ^id=42 who=bob$
+    }
+}
+
+test "pure match inside a function body binds captures" {
+    """
+    Verify a `?` pure match is allowed in a regular `fn` body: it binds
+    the capture inside the function frame (asserted there and threaded into
+    the return value), which flows back to the caller.
+    """
+    shell s {
+        let got := extract_id("item-99")
+        > echo "got=${got}"
+        <? ^got=found-99$
+    }
+}
