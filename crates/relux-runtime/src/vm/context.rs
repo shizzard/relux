@@ -52,6 +52,12 @@ impl Captures {
     pub fn clear(&mut self) {
         self.map.clear();
     }
+
+    /// Borrow the underlying map, for the shared interpolation renderer
+    /// which resolves `${n}` against a `&HashMap<String, String>`.
+    pub fn as_map(&self) -> &HashMap<String, String> {
+        &self.map
+    }
 }
 
 // --- Scope -----------------------------------------------
@@ -191,30 +197,31 @@ impl ExecutionContext {
         self.span_stack = vec![span];
     }
 
+    /// The scope chain + env that reproduce `lookup` precedence for the
+    /// current state, for the shared interpolation renderer. `scope_guard`
+    /// is the already-locked `scope.vars()`. Inside a `fn` call the barrier
+    /// hides shell/scope vars and the env fallback is the base env; outside
+    /// a call, shell vars shadow scope vars and an effect scope consults its
+    /// own (chained) env first.
+    pub fn interp_chain<'a>(
+        &'a self,
+        scope_guard: &'a VarScope,
+    ) -> (Vec<&'a VarScope>, &'a LayeredEnv) {
+        if let Some(frame) = self.call_stack.last() {
+            return (vec![&frame.vars], &self.env);
+        }
+        let env: &LayeredEnv = match &self.scope {
+            Scope::Effect { env, .. } => env,
+            Scope::Test { .. } => &self.env,
+        };
+        (vec![&self.shell.vars, scope_guard], env)
+    }
+
     /// Look up a variable by name. Follows the lookup chain per RFC R005.
     pub async fn lookup(&self, key: &str) -> Option<String> {
-        if let Some(frame) = self.call_stack.last() {
-            // Inside a function call - hard barrier
-            if let Some(v) = frame.vars.get(key) {
-                return Some(v.to_string());
-            }
-            return self.env.get(key).map(str::to_string);
-        }
-
-        // Direct shell execution
-        if let Some(v) = self.shell.vars.get(key) {
-            return Some(v.to_string());
-        }
-        if let Some(v) = self.scope.vars().lock().await.get(key) {
-            return Some(v.to_string());
-        }
-        // Effect scope env walks the layered chain (overlays -> base)
-        if let Scope::Effect { env, .. } = &self.scope
-            && let Some(v) = env.get(key)
-        {
-            return Some(v.to_string());
-        }
-        self.env.get(key).map(str::to_string)
+        let guard = self.scope.vars().lock().await;
+        let (scopes, env) = self.interp_chain(&guard);
+        relux_core::pure::lookup_var(&scopes, env, key)
     }
 
     /// Look up a capture reference (e.g. ${1}).
@@ -488,6 +495,66 @@ mod tests {
             .insert("x".into(), "scope".into());
         ctx.shell.vars.insert("x".into(), "shell".into());
         assert_eq!(ctx.lookup("x").await, Some("shell".into()));
+    }
+
+    #[tokio::test]
+    async fn interp_chain_resolution_matches_lookup() {
+        let mut ctx = test_ctx();
+        ctx.shell.vars.insert("s".into(), "shell_val".into());
+        ctx.scope
+            .vars()
+            .lock()
+            .await
+            .insert("g".into(), "scope_val".into());
+        for key in ["s", "g", "PATH", "absent"] {
+            let via_lookup = ctx.lookup(key).await;
+            let guard = ctx.scope.vars().lock().await;
+            let (scopes, env) = ctx.interp_chain(&guard);
+            let via_render = relux_core::pure::lookup_var(&scopes, env, key);
+            assert_eq!(via_lookup, via_render, "mismatch for key {key}");
+        }
+
+        // Call-frame branch: the barrier hides shell/scope vars, the env
+        // fallback is the base env, and the passed guard is ignored.
+        ctx.push_call("fn".into(), vec![("arg".into(), "argval".into())]);
+        for key in ["arg", "s", "PATH", "absent"] {
+            let via_lookup = ctx.lookup(key).await;
+            let guard = ctx.scope.vars().lock().await;
+            let (scopes, env) = ctx.interp_chain(&guard);
+            let via_render = relux_core::pure::lookup_var(&scopes, env, key);
+            assert_eq!(via_lookup, via_render, "mismatch for key {key}");
+        }
+        ctx.pop_call();
+    }
+
+    #[tokio::test]
+    async fn interp_chain_resolution_matches_lookup_effect_scope() {
+        // Effect-scope branch: interp_chain returns the chained effect env
+        // instead of self.env, so PORT (overlay) and PATH (base) both resolve.
+        let mut overlay_map = HashMap::new();
+        overlay_map.insert("PORT".into(), "5432".into());
+
+        let scope = Scope::Effect {
+            name: "Db".into(),
+            vars: Arc::new(Mutex::new(VarScope::new())),
+            _timeout: None,
+            env: Arc::new(LayeredEnv::root(Env::from_map(overlay_map))),
+        };
+        let shell = ShellState::new("db".into());
+        let ctx = ExecutionContext::new(
+            scope,
+            shell,
+            IrTimeout::tolerance(Duration::from_secs(5)),
+            test_env(),
+            0,
+        );
+        for key in ["PORT", "PATH", "absent"] {
+            let via_lookup = ctx.lookup(key).await;
+            let guard = ctx.scope.vars().lock().await;
+            let (scopes, env) = ctx.interp_chain(&guard);
+            let via_render = relux_core::pure::lookup_var(&scopes, env, key);
+            assert_eq!(via_lookup, via_render, "mismatch for key {key}");
+        }
     }
 
     // --- Call stack barrier ------------------------------
