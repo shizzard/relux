@@ -1,0 +1,16 @@
+effect Db {
+    let v := "abc"
+    v = ok
+    shell s {
+        > echo hi
+        <? ^hi$
+    }
+}
+
+test "start effect with preamble pure match fail" {
+    start Db
+    shell s {
+        > echo hi
+        <? ^hi$
+    }
+}

@@ -1,0 +1,43 @@
+test "run reports a preamble pure match failure in an effect with typed match context" {
+    """
+    Verify relux run's events.json failure record for a pure-match that
+    fails in an effect's setup preamble (before the effect's shell block)
+    carries a typed match_context of kind "effect-preamble" naming the
+    effect type, a real non-zero event_seq, and a populated vars_in_scope
+    snapshot. Regression guard for the pre-VM pure-match failure path,
+    which used to serialize event_seq 0, empty vars_in_scope, and a
+    broken "shell ''" clause for effect-preamble failures.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml > ${__RELUX_TEST_ARTIFACTS}/out.log 2>&1
+        match_not_ok(1)
+
+        > grep -c 'did not match' ${__RELUX_TEST_ARTIFACTS}/out.log
+        <? ^[1-9]
+        match_ok()
+
+        // No leftover empty-shell artifact from the pre-fix behavior.
+        > grep -c "shell ''" ${__RELUX_TEST_ARTIFACTS}/out.log
+        <? ^0$
+        match_not_ok(1)
+
+        > events=$(ls -dt ${__RELUX_TEST_ROOT}/fixtures/relux/out/*/logs/relux/tests/bad/start-effect-with-preamble-pure-match-fail/events.json 2>/dev/null | head -1); echo FOUND=$events
+        <? ^FOUND=/
+        match_ok()
+
+        // match_context names the effect type, not a bare/empty shell string.
+        > jq -Mc '.outcome | {kind, type, match_context}' $events
+        <? ^\{"kind":"fail","type":"pure-match","match_context":\{"type":"effect-preamble","name":"Db"\}\}$
+        match_ok()
+
+        // event_seq is the real pure-match-failed event seq, not zero.
+        > jq -M '.outcome.event_seq' $events
+        <? ^[1-9][0-9]*$
+        match_ok()
+
+        // vars_in_scope carries the effect-preamble let bound before the match.
+        > jq -Mc '.outcome.vars_in_scope' $events
+        <? ^\[\["v","abc"\]\]$
+        match_ok()
+    }
+}
