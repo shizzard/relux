@@ -80,9 +80,10 @@ pub fn eval_pure_fn(
 
 /// Evaluate a pure-match statement: resolve the LHS and interpolated
 /// pattern, run the match, and on a regex hit overwrite `captures`.
-/// Returns the LHS value (what the statement evaluates to). A no-match
-/// yields `PureMatchFailed`; a bad interpolated regex yields
-/// `MalformedPattern`.
+/// Returns the matched text -- `$0` (the whole match) for a `?` regex
+/// match, and the whole value for a `=` exact match -- the same value
+/// the shell `<?` operator returns. A no-match yields `PureMatchFailed`;
+/// a bad interpolated regex yields `MalformedPattern`.
 #[allow(clippy::too_many_arguments)]
 pub fn apply_pure_match(
     sink: &mut dyn PureEvalSink,
@@ -99,27 +100,24 @@ pub fn apply_pure_match(
     let pat = eval_interpolation(pattern, span, vars, &*captures, env, sink);
     match crate::eval_pure_match(sink, &value, &pat, is_regex, span) {
         Ok(Some(hit)) => {
+            let matched = hit.matched_text;
             if is_regex {
                 *captures = hit.captures;
             }
+            Ok(matched)
         }
-        Ok(None) => {
-            return Err(PureEvalError::PureMatchFailed {
-                value,
-                pattern: pat,
-                is_regex,
-                span: span.clone(),
-            });
-        }
-        Err(e) => {
-            return Err(PureEvalError::MalformedPattern {
-                pattern: e.pattern,
-                reason: e.reason,
-                span: span.clone(),
-            });
-        }
+        Ok(None) => Err(PureEvalError::PureMatchFailed {
+            value,
+            pattern: pat,
+            is_regex,
+            span: span.clone(),
+        }),
+        Err(e) => Err(PureEvalError::MalformedPattern {
+            pattern: e.pattern,
+            reason: e.reason,
+            span: span.clone(),
+        }),
     }
-    Ok(value)
 }
 
 /// The result of assembling one interpolation: the substituted string,
@@ -429,6 +427,80 @@ mod sink_tests {
                 panic!("expected one RecordInterpolation with a capture binding, got {other:?}")
             }
         }
+    }
+
+    fn literal_expr(value: &str) -> IrPureExpr {
+        IrPureExpr::String {
+            value: IrInterpolation::new(
+                vec![IrStringPart::Literal {
+                    value: value.into(),
+                    span: IrSpan::synthetic(),
+                }],
+                IrSpan::synthetic(),
+            ),
+            span: IrSpan::synthetic(),
+        }
+    }
+
+    fn literal_interp(value: &str) -> IrInterpolation {
+        IrInterpolation::new(
+            vec![IrStringPart::Literal {
+                value: value.into(),
+                span: IrSpan::synthetic(),
+            }],
+            IrSpan::synthetic(),
+        )
+    }
+
+    #[test]
+    fn regex_pure_match_returns_dollar_zero_not_the_lhs() {
+        // A `?` pure match evaluates to `$0` (the whole match), like the
+        // shell `<?` operator -- not to the whole left-hand value. The
+        // pattern is unanchored so `$0` ("v=42") differs from the LHS
+        // ("prefix v=42 suffix"), which makes the two observably distinct.
+        let lhs = literal_expr("prefix v=42 suffix");
+        let pattern = literal_interp("v=(\\d+)");
+        let mut caps = HashMap::new();
+        let mut sink = NoOpSink;
+        let out = apply_pure_match(
+            &mut sink,
+            &VarScope::new(),
+            &mut caps,
+            &lhs,
+            &pattern,
+            true,
+            &IrSpan::synthetic(),
+            &empty_env(),
+            &empty_fns(),
+        )
+        .unwrap();
+        assert_eq!(out, "v=42", "regex pure match returns $0, not the LHS");
+        assert_eq!(caps.get("0").map(String::as_str), Some("v=42"));
+        assert_eq!(caps.get("1").map(String::as_str), Some("42"));
+    }
+
+    #[test]
+    fn exact_pure_match_returns_the_whole_value() {
+        // A `=` exact match's matched text is the whole value (value ==
+        // pattern by definition), and it binds no captures.
+        let lhs = literal_expr("linux");
+        let pattern = literal_interp("linux");
+        let mut caps = HashMap::new();
+        let mut sink = NoOpSink;
+        let out = apply_pure_match(
+            &mut sink,
+            &VarScope::new(),
+            &mut caps,
+            &lhs,
+            &pattern,
+            false,
+            &IrSpan::synthetic(),
+            &empty_env(),
+            &empty_fns(),
+        )
+        .unwrap();
+        assert_eq!(out, "linux");
+        assert!(caps.is_empty(), "`=` binds no captures");
     }
 
     #[test]

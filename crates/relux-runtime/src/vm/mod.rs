@@ -515,10 +515,11 @@ impl Vm {
                 };
                 match outcome {
                     Ok(Some(hit)) => {
+                        let matched = hit.matched_text;
                         if *is_regex {
                             self.set_captures_from_map(hit.captures);
                         }
-                        Ok(value)
+                        Ok(matched)
                     }
                     Ok(None) => {
                         let context = self.capture_failure_context().await;
