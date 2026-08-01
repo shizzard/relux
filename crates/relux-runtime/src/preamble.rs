@@ -24,7 +24,7 @@ use crate::vm::context::Scope;
 /// Evaluate one preamble `let` into `scope`. `captures` is read-only - a
 /// `let` never binds `$n`. On a pure-eval failure, returns the `ExecError`
 /// via `pure_eval_failure`, carrying the real seq and a vars snapshot.
-#[allow(clippy::too_many_arguments)] // mirrors `apply_pure_match`; the arg clump is deferred M4.6
+#[allow(clippy::too_many_arguments)] // mirrors `apply_pure_match`; arg clump is a separate data-model cleanup (arch #5)
 pub(crate) async fn eval_preamble_let(
     log: &StructuredLogBuilder,
     env: &LayeredEnv,
@@ -66,7 +66,7 @@ pub(crate) async fn eval_preamble_let(
 /// Evaluate one preamble pure-match into `scope`, mutating `captures` - a
 /// regex `?` binds `$n` for later steps and overlays. Same failure
 /// translation as `eval_preamble_let`.
-#[allow(clippy::too_many_arguments)] // mirrors `apply_pure_match`; the arg clump is deferred M4.6
+#[allow(clippy::too_many_arguments)] // mirrors `apply_pure_match`; arg clump is a separate data-model cleanup (arch #5)
 pub(crate) async fn eval_preamble_pure_match(
     log: &StructuredLogBuilder,
     env: &LayeredEnv,
