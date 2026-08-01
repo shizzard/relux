@@ -23,7 +23,8 @@ use std::collections::HashMap;
 /// lowering time, and missing variables evaluate to empty string.
 ///
 /// The `sink` parameter is informed of every pure-fn call entry/exit
-/// and every interpolation that resolves a variable, so callers that
+/// and every interpolation containing a value-bearing part (a variable
+/// or a capture), so callers that
 /// care about structured-log emission (runtime, marker recording) can
 /// observe the chain of work. Callers that don't care pass `&mut
 /// NoOpSink`.
@@ -40,7 +41,7 @@ pub fn eval_pure_expr(
             Ok(eval_interpolation(value, span, vars, captures, env, sink))
         }
         IrPureExpr::Var { name, span } => {
-            let value = resolve_var(name, vars, env);
+            let value = lookup_var(&[vars], env, name).unwrap_or_default();
             sink.record_var_read(name, &value, span);
             Ok(value)
         }
@@ -257,53 +258,16 @@ fn eval_interpolation(
     env: &LayeredEnv,
     sink: &mut dyn PureEvalSink,
 ) -> String {
-    let mut result = String::new();
-    let mut bindings: Vec<(String, String)> = Vec::new();
-    let mut has_interp = false;
-    let mut template = String::new();
-    for part in interp.parts() {
-        match part {
-            IrStringPart::Literal { value, .. } => {
-                result.push_str(value);
-                template.push_str(value);
-            }
-            IrStringPart::Var { name, .. } => {
-                has_interp = true;
-                let v = resolve_var(name, vars, env);
-                result.push_str(&v);
-                template.push_str("${");
-                template.push_str(name);
-                template.push('}');
-                bindings.push((name.clone(), v));
-            }
-            IrStringPart::QualifiedVar { .. } => {
-                unreachable!("QualifiedVar in pure interpolation context")
-            }
-            IrStringPart::EscapedDollar { .. } => {
-                result.push('$');
-                template.push_str("$$");
-            }
-            IrStringPart::CaptureRef { index, .. } => {
-                let v = captures
-                    .get(&index.to_string())
-                    .map(String::as_str)
-                    .unwrap_or("");
-                result.push_str(v);
-                template.push_str(&format!("${{{index}}}"));
-            }
-        }
+    let rendered = render_interpolation(interp, &[vars], env, captures);
+    if rendered.emitted {
+        sink.record_interpolation(
+            &rendered.template,
+            &rendered.result,
+            &rendered.bindings,
+            span,
+        );
     }
-    if has_interp {
-        sink.record_interpolation(&template, &result, &bindings, span);
-    }
-    result
-}
-
-fn resolve_var(name: &str, vars: &VarScope, env: &LayeredEnv) -> String {
-    vars.get(name)
-        .or_else(|| env.get(name))
-        .unwrap_or("")
-        .to_string()
+    rendered.result
 }
 
 fn eval_body(
@@ -419,6 +383,49 @@ mod sink_tests {
         match sink.ops.as_slice() {
             [SinkOp::RecordInterpolation { result, .. }] => assert_eq!(result, "hi world"),
             other => panic!("expected one RecordInterpolation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pure_capture_only_interpolation_now_emits_with_binding() {
+        // A capture-only pure interpolation used to emit nothing; unified
+        // behavior emits with the capture in bindings.
+        let interp = IrInterpolation::new(
+            vec![IrStringPart::CaptureRef {
+                index: 1,
+                span: IrSpan::synthetic(),
+            }],
+            IrSpan::synthetic(),
+        );
+        let expr = IrPureExpr::String {
+            value: interp,
+            span: IrSpan::synthetic(),
+        };
+        let mut caps = HashMap::new();
+        caps.insert("1".to_string(), "alice".to_string());
+        let mut sink = RecordingSink::default();
+        let out = eval_pure_expr(
+            &expr,
+            &VarScope::new(),
+            &caps,
+            &empty_env(),
+            &empty_fns(),
+            &mut sink,
+        )
+        .unwrap();
+        assert_eq!(out, "alice");
+        match sink.ops.as_slice() {
+            [
+                SinkOp::RecordInterpolation {
+                    result, bindings, ..
+                },
+            ] => {
+                assert_eq!(result, "alice");
+                assert_eq!(bindings, &vec![("1".to_string(), "alice".to_string())]);
+            }
+            other => {
+                panic!("expected one RecordInterpolation with a capture binding, got {other:?}")
+            }
         }
     }
 
