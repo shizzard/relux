@@ -678,6 +678,35 @@ effect Wrapper {
 }
 
 #[test]
+fn lower_effect_expose_qualified_records_qualifier_span() {
+    let source = r#"effect Base {
+  expose shell sh
+  shell sh {
+    > base
+  }
+}
+effect Wrapper {
+  start Base as B
+  expose shell B.sh as base_shell
+  shell wrapper {
+    > wrapper
+  }
+}
+"#;
+    let mut ctx = ctx_with_source(source);
+    let effect_id = EffectId {
+        module: ModulePath("tests/a".into()),
+        name: EffectName("Wrapper".into()),
+    };
+    let eff = ctx.resolve_effect(&effect_id).unwrap();
+    let expose = &eff.exposes()[0];
+    assert!(
+        expose.qualifier_span().is_some(),
+        "qualified expose must record the qualifier (alias) span"
+    );
+}
+
+#[test]
 fn lower_effect_expose_qualified_invalid_alias() {
     let source = r#"effect Base {
   expose shell sh

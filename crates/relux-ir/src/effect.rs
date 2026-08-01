@@ -98,6 +98,10 @@ pub enum IrExposeKind {
 pub struct IrExposeDecl {
     kind: IrExposeKind,
     qualifier: Option<String>,
+    /// Source span of the qualifier (dependency alias), when present.
+    /// `None` for an unqualified expose, which has no alias to point at and
+    /// never triggers an "unknown alias" diagnostic.
+    qualifier_span: Option<IrSpan>,
     target: String,
     alias: Option<String>,
     target_span: IrSpan,
@@ -108,6 +112,7 @@ impl IrExposeDecl {
     pub fn new(
         kind: IrExposeKind,
         qualifier: Option<String>,
+        qualifier_span: Option<IrSpan>,
         target: String,
         alias: Option<String>,
         target_span: IrSpan,
@@ -116,6 +121,7 @@ impl IrExposeDecl {
         Self {
             kind,
             qualifier,
+            qualifier_span,
             target,
             alias,
             target_span,
@@ -125,6 +131,12 @@ impl IrExposeDecl {
 
     pub fn target_span(&self) -> &IrSpan {
         &self.target_span
+    }
+
+    /// Source span of the qualifier (dependency alias), when this expose is
+    /// qualified. Points at the alias for an "unknown alias" diagnostic.
+    pub fn qualifier_span(&self) -> Option<&IrSpan> {
+        self.qualifier_span.as_ref()
     }
 
     pub fn kind(&self) -> &IrExposeKind {
@@ -448,10 +460,19 @@ impl IrNodeLowering for IrEffectItem {
                     relux_ast::AstExposeKind::Var { .. } => IrExposeKind::Var,
                 };
                 let qualifier = decl.qualifier.as_ref().map(|q| q.node.name.clone());
+                let qualifier_span = decl.qualifier.as_ref().map(|q| s(&q.span));
                 let target = decl.target.node.name.clone();
                 let target_span = s(&decl.target.span);
                 let alias = decl.alias.as_ref().map(|a| a.node.name.clone());
-                let ir = IrExposeDecl::new(kind, qualifier, target, alias, target_span, s(span));
+                let ir = IrExposeDecl::new(
+                    kind,
+                    qualifier,
+                    qualifier_span,
+                    target,
+                    alias,
+                    target_span,
+                    s(span),
+                );
                 Ok(IrEffectItem::Expose {
                     decl: ir,
                     span: s(span),
