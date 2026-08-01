@@ -10,6 +10,7 @@ use crate::pure_sink::PureEvalSink;
 use relux_core::diagnostics::IrSpan;
 use relux_core::pure::LayeredEnv;
 use relux_core::pure::VarScope;
+use relux_core::pure::lookup_var;
 use std::collections::HashMap;
 
 // --- Public API ------------------------------------------
@@ -116,6 +117,82 @@ pub fn apply_pure_match(
         }
     }
     Ok(value)
+}
+
+/// The result of assembling one interpolation: the substituted string,
+/// the redisplay template (placeholders un-substituted), the resolved
+/// bindings, and whether any value-bearing part was present (callers
+/// emit the Interpolation event only when `emitted`).
+pub struct Rendered {
+    pub result: String,
+    pub template: String,
+    pub bindings: Vec<(String, String)>,
+    pub emitted: bool,
+}
+
+/// Assemble an interpolation in a single walk. `scopes` is an ordered
+/// resolution chain (first hit wins) with `env` as the final fallback;
+/// `captures` backs `${n}`. This is the one renderer shared by the pure
+/// evaluator and the shell VM.
+pub fn render_interpolation(
+    interp: &IrInterpolation,
+    scopes: &[&VarScope],
+    env: &LayeredEnv,
+    captures: &HashMap<String, String>,
+) -> Rendered {
+    let mut result = String::new();
+    let mut template = String::new();
+    let mut bindings: Vec<(String, String)> = Vec::new();
+    let mut emitted = false;
+    for part in interp.parts() {
+        match part {
+            IrStringPart::Literal { value, .. } => {
+                result.push_str(value);
+                template.push_str(value);
+            }
+            IrStringPart::Var { name, .. } => {
+                emitted = true;
+                let value = lookup_var(scopes, env, name).unwrap_or_default();
+                result.push_str(&value);
+                template.push_str("${");
+                template.push_str(name);
+                template.push('}');
+                bindings.push((name.clone(), value));
+            }
+            IrStringPart::QualifiedVar {
+                qualifier, name, ..
+            } => {
+                emitted = true;
+                let key = format!("{qualifier}.{name}");
+                let value = lookup_var(scopes, env, &key).unwrap_or_default();
+                result.push_str(&value);
+                template.push_str("${");
+                template.push_str(&key);
+                template.push('}');
+                bindings.push((key, value));
+            }
+            IrStringPart::EscapedDollar { .. } => {
+                result.push('$');
+                template.push_str("$$");
+            }
+            IrStringPart::CaptureRef { index, .. } => {
+                emitted = true;
+                let key = index.to_string();
+                let value = captures.get(&key).cloned().unwrap_or_default();
+                result.push_str(&value);
+                template.push_str("${");
+                template.push_str(&key);
+                template.push('}');
+                bindings.push((key, value));
+            }
+        }
+    }
+    Rendered {
+        result,
+        template,
+        bindings,
+        emitted,
+    }
 }
 
 // --- Internal helpers ------------------------------------
@@ -421,6 +498,115 @@ mod sink_tests {
         )
         .unwrap();
         assert_eq!(out, "v");
+    }
+
+    #[test]
+    fn render_interpolation_assembles_result_template_bindings() {
+        let interp = IrInterpolation::new(
+            vec![
+                IrStringPart::Literal {
+                    value: "hi ".into(),
+                    span: IrSpan::synthetic(),
+                },
+                IrStringPart::Var {
+                    name: "who".into(),
+                    span: IrSpan::synthetic(),
+                },
+            ],
+            IrSpan::synthetic(),
+        );
+        let mut vars = VarScope::new();
+        vars.insert("who".into(), "world".into());
+        let env = LayeredEnv::root(Env::new());
+        let caps: HashMap<String, String> = HashMap::new();
+        let r = render_interpolation(&interp, &[&vars], &env, &caps);
+        assert_eq!(r.result, "hi world");
+        assert_eq!(r.template, "hi ${who}");
+        assert_eq!(r.bindings, vec![("who".to_string(), "world".to_string())]);
+        assert!(r.emitted);
+    }
+
+    #[test]
+    fn render_interpolation_qualified_var_resolves_via_flat_key() {
+        let interp = IrInterpolation::new(
+            vec![IrStringPart::QualifiedVar {
+                qualifier: "Db".into(),
+                name: "port".into(),
+                span: IrSpan::synthetic(),
+            }],
+            IrSpan::synthetic(),
+        );
+        let mut vars = VarScope::new();
+        vars.insert("Db.port".into(), "5432".into());
+        let env = LayeredEnv::root(Env::new());
+        let caps: HashMap<String, String> = HashMap::new();
+        let r = render_interpolation(&interp, &[&vars], &env, &caps);
+        assert_eq!(r.result, "5432");
+        assert_eq!(r.template, "${Db.port}");
+        assert_eq!(
+            r.bindings,
+            vec![("Db.port".to_string(), "5432".to_string())]
+        );
+        assert!(r.emitted);
+    }
+
+    #[test]
+    fn render_interpolation_includes_captureref_in_gate_and_bindings() {
+        let interp = IrInterpolation::new(
+            vec![IrStringPart::CaptureRef {
+                index: 1,
+                span: IrSpan::synthetic(),
+            }],
+            IrSpan::synthetic(),
+        );
+        let vars = VarScope::new();
+        let env = LayeredEnv::root(Env::new());
+        let mut caps: HashMap<String, String> = HashMap::new();
+        caps.insert("1".into(), "alice".into());
+        let r = render_interpolation(&interp, &[&vars], &env, &caps);
+        assert_eq!(r.result, "alice");
+        assert_eq!(r.template, "${1}");
+        assert_eq!(r.bindings, vec![("1".to_string(), "alice".to_string())]);
+        assert!(r.emitted, "capture-only interpolation must emit");
+    }
+
+    #[test]
+    fn render_interpolation_escaped_dollar_template_is_double() {
+        let interp = IrInterpolation::new(
+            vec![IrStringPart::EscapedDollar {
+                span: IrSpan::synthetic(),
+            }],
+            IrSpan::synthetic(),
+        );
+        let vars = VarScope::new();
+        let env = LayeredEnv::root(Env::new());
+        let caps: HashMap<String, String> = HashMap::new();
+        let r = render_interpolation(&interp, &[&vars], &env, &caps);
+        assert_eq!(r.result, "$");
+        assert_eq!(r.template, "$$");
+        assert_eq!(r.bindings, Vec::<(String, String)>::new());
+        assert!(
+            !r.emitted,
+            "a literal-only string (escaped dollar) does not emit"
+        );
+    }
+
+    #[test]
+    fn render_interpolation_unresolved_var_is_empty_string() {
+        let interp = IrInterpolation::new(
+            vec![IrStringPart::Var {
+                name: "missing".into(),
+                span: IrSpan::synthetic(),
+            }],
+            IrSpan::synthetic(),
+        );
+        let vars = VarScope::new();
+        let env = LayeredEnv::root(Env::new());
+        let caps: HashMap<String, String> = HashMap::new();
+        let r = render_interpolation(&interp, &[&vars], &env, &caps);
+        assert_eq!(r.result, "");
+        assert_eq!(r.bindings, vec![("missing".to_string(), "".to_string())]);
+        assert!(r.emitted);
     }
 
     #[test]
