@@ -5,7 +5,7 @@ An effect's body shape, its `expect` contract, and the identity tuple that drive
 ## Body sections (fixed order)
 
 1. `expect` -- required overlay variables.
-2. `let` -- local bindings; can reference expected vars.
+2. `let` -- local bindings; can reference expected vars. May interleave pure-match assertions (`=` / `?`); a `?` capture is readable by later preamble `let`s and by `start` overlay expressions. See [statements](statements.md) > Pure match.
 3. `start` -- sub-dependencies; overlay expressions can reference let-bound vars and expected vars.
 4. `expose` -- public interface (`expose shell`, `expose var`). See [effects-expose](effects-expose.md).
 5. `shell` blocks -- setup logic.

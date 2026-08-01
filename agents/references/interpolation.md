@@ -31,7 +31,7 @@ Don't wrap a bare variable as `"${VAR}"` to "use it as a value" -- bare is alrea
 | Form | Source |
 |------|--------|
 | `${name}` | Variable lookup: shell scope, then test/effect scope, then env. |
-| `${1}`, `${2}`, ... | Capture groups from the most recent `<?` in the shell. |
+| `${1}`, `${2}`, ... | Capture groups from the most recent `<?` or `?` pure match in the current frame. |
 | `${Alias.var}` | Exposed variable from an effect started as `Alias`. |
 | `$$` | Literal `$` (escape for shell-side `${...}` etc.). |
 | `name`, `$1`, `Alias.var` | Bare reference (used in `let` RHS, BIF args, marker conditions, overlay values). |

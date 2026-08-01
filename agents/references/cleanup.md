@@ -19,7 +19,7 @@ Cleanup runs under uncancellable tokens: still executes when the test was cancel
 
 ## Allowed operations
 
-Any statement valid in a shell block is valid here: `>`, `=>`, `<?`, `<=`, `!?`, `!=`, multimatch, `let`, reassignment, timeouts, function calls, BIFs.
+Any statement valid in a shell block is valid here: `>`, `=>`, `<?`, `<=`, `!?`, `!=`, multimatch, `let`, reassignment, pure-match assertions (`=` / `?`), timeouts, function calls, BIFs.
 
 ## Shell visibility
 
