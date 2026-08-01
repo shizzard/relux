@@ -1,0 +1,15 @@
+test "run reports a switch into a shell an effect does not expose" {
+    """
+    Verify relux run reports (with a source location) when a test switches
+    into a qualified shell an effect alias does not expose. The check phase
+    cannot catch this because the exposed-shell set is only known once the
+    effect has been instantiated, so it is a runtime failure that must still
+    point at the offending shell name in the source.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? bad.relux
+        <? effect alias `S` does not expose shell `missing`
+        match_not_ok(1)
+    }
+}

@@ -772,6 +772,36 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_report_runtime_renders_source_span_label() {
+        use relux_core::error::DiagnosticReport;
+        use relux_core::table::FileId;
+        // A real (non-synthetic) source span pointing at the offending
+        // identifier. Every `Failure::Runtime` now carries one, so the
+        // rendered report must surface it as exactly one diagnostic label.
+        let file = FileId::new(std::path::PathBuf::from("tests/auth/login.relux"));
+        let span = IrSpan::new(file.clone(), relux_core::Span::new(12, 24));
+        let f = Failure::Runtime {
+            message: "effect alias `db` does not expose shell `psql`".into(),
+            shell: None,
+            span: span.clone(),
+            context: FailureContext::pre_vm(),
+        };
+        let rep: DiagnosticReport = (&f).into();
+        assert_eq!(
+            rep.labels.len(),
+            1,
+            "a Runtime failure must render exactly one source label"
+        );
+        let label = &rep.labels[0];
+        assert_eq!(label.span.file(), &file, "label points at the source file");
+        assert_eq!(
+            label.span.span(),
+            span.span(),
+            "label carries the exact byte span passed on the failure"
+        );
+    }
+
+    #[test]
     fn summary_runtime_with_shell() {
         let f = Failure::Runtime {
             message: "something broke".into(),

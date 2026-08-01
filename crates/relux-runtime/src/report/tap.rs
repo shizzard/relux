@@ -333,7 +333,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_runtime_error_without_span() {
+    fn failed_runtime_error_with_source_less_span() {
         let st = test_source_table();
         let failure = Failure::Runtime {
             message: "something broke".into(),
