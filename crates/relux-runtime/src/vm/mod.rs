@@ -1171,18 +1171,15 @@ impl Vm {
                 Err(err) => {
                     // Resolve the call chain from the innermost still-open
                     // pure-fn span so nested pure-fn frames (descendants of
-                    // this shell-fn span) render in the failure. When no
-                    // pure fn is open (a direct match in this fn's own body),
-                    // fall back to the enclosing `FnCall` span so the frame
-                    // is not lost.
-                    let mut call_stack =
-                        crate::report::result::resolve_pure_stack(&sink, &self.log);
-                    // `resolve_stack` of any validly-opened span always yields
-                    // at least that span's frame, so an empty result means
-                    // `deepest_open_span()` was `None` (no pure fn open).
-                    if call_stack.is_empty() {
-                        call_stack = self.log.resolve_stack(self.current_span());
-                    }
+                    // this shell-fn span) render in the failure. When no pure
+                    // fn is open - a direct match in this fn's own body -
+                    // resolve from the enclosing `FnCall` span instead, so the
+                    // frame is not lost. Branching on the span source directly
+                    // avoids re-deriving `None` from an empty stack.
+                    let call_stack = match sink.deepest_open_span() {
+                        Some(leaf) => self.log.resolve_stack(leaf),
+                        None => self.log.resolve_stack(self.current_span()),
+                    };
                     // Build the match context from the innermost frame before
                     // `capture_failure_context_with_stack` consumes `call_stack`.
                     let match_context = MatchContext::Fn {
