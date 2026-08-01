@@ -41,9 +41,19 @@ fn failure_shell(failure: &Failure) -> Option<&str> {
         Failure::MatchTimeout { shell, .. }
         | Failure::FailPatternMatched { shell, .. }
         | Failure::ShellExited { shell, .. }
-        | Failure::PureMatch { shell, .. }
         | Failure::MultiMatch { shell, .. } => Some(shell),
+        Failure::PureMatch { match_context, .. } => match_context.shell_name_ref(),
         Failure::Runtime { shell, .. } => shell.as_deref(),
+    }
+}
+
+/// Human-readable match context for a pure-match failure, so a non-shell
+/// context (fn / test-preamble / effect-preamble) is not dropped from TAP
+/// output the way the `shell:` line drops it.
+fn failure_match_context(failure: &Failure) -> Option<String> {
+    match failure {
+        Failure::PureMatch { match_context, .. } => Some(match_context.to_string()),
+        _ => None,
     }
 }
 
@@ -92,6 +102,9 @@ fn render_tap(
 
                 if let Some(shell) = failure_shell(failure) {
                     writeln!(out, "  shell: {shell}").unwrap();
+                }
+                if let Some(ctx) = failure_match_context(failure) {
+                    writeln!(out, "  context: {ctx}").unwrap();
                 }
                 if let Some(pattern) = failure_pattern(failure) {
                     writeln!(out, "  pattern: {pattern}").unwrap();

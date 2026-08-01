@@ -13,6 +13,7 @@ use regex::RegexBuilder;
 use crate::RuntimeContext;
 use crate::observe::structured::EventSeq;
 use crate::observe::structured::FnCallKind;
+use crate::observe::structured::MatchContext;
 use crate::observe::structured::SpanId;
 use crate::observe::structured::SpanKind;
 use crate::observe::structured::StructuredLogBuilder;
@@ -603,12 +604,20 @@ impl Vm {
                     }
                     Ok(None) => {
                         let context = self.capture_failure_context().await;
+                        let match_context = match self.ctx.current_fn_name() {
+                            Some(name) => MatchContext::Fn {
+                                name: name.to_string(),
+                            },
+                            None => MatchContext::Shell {
+                                name: self.ctx.current_name(),
+                            },
+                        };
                         Err(Failure::PureMatch {
                             value,
                             pattern: pat,
                             is_regex: *is_regex,
                             span: span.clone(),
-                            shell: self.ctx.current_name().to_string(),
+                            match_context,
                             context,
                         }
                         .into())
@@ -1174,15 +1183,22 @@ impl Vm {
                     if call_stack.is_empty() {
                         call_stack = self.log.resolve_stack(self.current_span());
                     }
+                    // Build the match context from the innermost frame before
+                    // `capture_failure_context_with_stack` consumes `call_stack`.
+                    let match_context = MatchContext::Fn {
+                        name: call_stack
+                            .last()
+                            .and_then(|f| f.name.clone())
+                            .unwrap_or_else(|| self.ctx.current_name()),
+                    };
                     // Dropping the sink closes those spans (tighter `end_ts`)
                     // before the context snapshots the current seq; the spans
                     // stay in the map, so the resolution above still holds.
                     drop(sink);
                     let context = self.capture_failure_context_with_stack(call_stack).await;
-                    let shell = self.ctx.current_name().to_string();
                     self.ctx.pop_span();
                     self.log.push_fn_exit();
-                    return Err(Failure::from_pure_eval(err, shell, context).into());
+                    return Err(Failure::from_pure_eval(err, match_context, context).into());
                 }
             };
             self.ctx.pop_span();

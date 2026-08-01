@@ -10,6 +10,7 @@ use relux_ir::IrTimeout;
 
 use crate::cancel::CancelReason;
 use crate::observe::structured::EventSeq;
+use crate::observe::structured::MatchContext;
 use crate::observe::structured::SpanId;
 use crate::observe::structured::StackFrame;
 use crate::observe::structured::StructuredLogBuilder;
@@ -186,14 +187,14 @@ pub enum Failure {
         context: FailureContext,
     },
     #[error(
-        "pure match in shell '{shell}' did not satisfy pattern {pattern}: value {value:?} did not match"
+        "pure match in {match_context} did not satisfy pattern {pattern}: value {value:?} did not match"
     )]
     PureMatch {
         value: String,
         pattern: String,
         is_regex: bool,
         span: IrSpan,
-        shell: String,
+        match_context: MatchContext,
         context: FailureContext,
     },
     #[error(
@@ -227,18 +228,31 @@ pub fn resolve_pure_stack(sink: &LogSink, log: &StructuredLogBuilder) -> Vec<Sta
 
 /// Build the `ExecError` for a pure-eval failure at a pre-VM boundary
 /// (test-level / effect-level `let` or pure-match, overlay). Resolves the
-/// pure-fn chain and wraps it in a `PreVm` failure context.
+/// pure-fn chain and wraps it in a `Pure` failure context carrying the
+/// real current seq and a snapshot of the scope vars. When the failure
+/// surfaced from a pure-fn frame, the match context names that fn;
+/// otherwise it is the caller-supplied enclosing context (test/effect
+/// preamble or overlay).
 pub fn pure_eval_failure(
     err: relux_ir::PureEvalError,
     span: SpanId,
+    enclosing_context: MatchContext,
+    vars_in_scope: Vec<(String, String)>,
     sink: &LogSink,
     log: &StructuredLogBuilder,
 ) -> ExecError {
     let call_stack = resolve_pure_stack(sink, log);
+    let match_context = match call_stack.last() {
+        Some(f) if f.kind == "fn-call" || f.kind == "pure-fn-call" => MatchContext::Fn {
+            name: f.name.clone().unwrap_or_default(),
+        },
+        _ => enclosing_context,
+    };
+    let event_seq = log.current_seq();
     Failure::from_pure_eval(
         err,
-        String::new(),
-        FailureContext::pre_vm_with_frames(Some(span), call_stack),
+        match_context,
+        FailureContext::pure(span, event_seq, call_stack, vars_in_scope),
     )
     .into()
 }
@@ -247,11 +261,12 @@ impl Failure {
     /// Build a `Failure` from a pure-evaluation error. A failed pure match
     /// inside a `pure fn` body becomes `Failure::PureMatch`; a malformed
     /// interpolated regex becomes a runtime error naming the bad pattern.
-    /// `shell` is the failing shell's name, or empty for a pre-VM context
-    /// (test-level / effect-level `let`, overlay) that has no shell.
+    /// `match_context` names where the pure match ran (fn, test/effect
+    /// preamble, overlay, or shell); a non-shell context carries no shell
+    /// on the derived `Runtime` failure.
     pub fn from_pure_eval(
         err: relux_ir::PureEvalError,
-        shell: String,
+        match_context: MatchContext,
         context: FailureContext,
     ) -> Self {
         match err {
@@ -265,7 +280,7 @@ impl Failure {
                 pattern,
                 is_regex,
                 span,
-                shell,
+                match_context,
                 context,
             },
             relux_ir::PureEvalError::MalformedPattern {
@@ -275,7 +290,7 @@ impl Failure {
             } => Failure::Runtime {
                 message: format!("invalid regex: {reason}"),
                 span: Some(span),
-                shell: if shell.is_empty() { None } else { Some(shell) },
+                shell: match_context.shell_name_ref().map(str::to_string),
                 context,
             },
         }
@@ -398,13 +413,16 @@ impl From<&Failure> for relux_core::error::DiagnosticReport {
                 pattern,
                 is_regex,
                 span,
-                shell,
+                match_context,
                 ..
             } => {
                 let op = if *is_regex { "?" } else { "=" };
                 DiagnosticReport {
                     severity: Severity::Error,
-                    message: format!("pure match in shell `{shell}` did not match"),
+                    message: format!(
+                        "pure match in {} did not match",
+                        match_context.backtick_label()
+                    ),
                     labels: vec![
                         (
                             span.clone(),
@@ -868,7 +886,9 @@ mod tests {
                 value: "hello world".into(),
                 pattern: "goodbye".into(),
                 is_regex,
-                shell: "default".into(),
+                match_context: MatchContext::Shell {
+                    name: "default".into(),
+                },
                 span: dummy_span(),
                 context: FailureContext::pre_vm(),
             };
@@ -876,6 +896,11 @@ mod tests {
             assert!(
                 rep.message.contains("pure match"),
                 "message names the failure: {}",
+                rep.message
+            );
+            assert!(
+                rep.message.contains("shell `default`"),
+                "message names the match context: {}",
                 rep.message
             );
             let label_text = rep
@@ -905,6 +930,56 @@ mod tests {
                 !note.to_lowercase().contains("buffer"),
                 "pure-match report must not carry a buffer tail: {note}"
             );
+        }
+    }
+
+    #[test]
+    fn from_pure_eval_malformed_pattern_non_shell_carries_no_shell() {
+        // A malformed interpolated regex in a non-shell context (here a test
+        // preamble) must produce a `Runtime` failure with `shell: None`:
+        // the old empty-string special-case is gone, and only a real shell
+        // context contributes a shell name.
+        let err = relux_ir::PureEvalError::MalformedPattern {
+            pattern: "(".into(),
+            reason: "unclosed group".into(),
+            span: dummy_span(),
+        };
+        let f = Failure::from_pure_eval(
+            err,
+            MatchContext::TestPreamble {
+                name: "login".into(),
+            },
+            FailureContext::pure(1, 2, vec![], vec![]),
+        );
+        match f {
+            Failure::Runtime { shell, message, .. } => {
+                assert_eq!(shell, None, "non-shell context carries no shell");
+                assert!(message.contains("invalid regex"), "message: {message}");
+            }
+            other => panic!("expected Runtime, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn from_pure_eval_malformed_pattern_shell_carries_shell() {
+        // The shell context is the only one that surfaces a shell name.
+        let err = relux_ir::PureEvalError::MalformedPattern {
+            pattern: "(".into(),
+            reason: "unclosed group".into(),
+            span: dummy_span(),
+        };
+        let f = Failure::from_pure_eval(
+            err,
+            MatchContext::Shell {
+                name: "default".into(),
+            },
+            FailureContext::pure(1, 2, vec![], vec![]),
+        );
+        match f {
+            Failure::Runtime { shell, .. } => {
+                assert_eq!(shell, Some("default".to_string()));
+            }
+            other => panic!("expected Runtime, got {other:?}"),
         }
     }
 

@@ -23,6 +23,7 @@ use crate::observe::structured::MarkerEvalDecision;
 use crate::observe::structured::MarkerEvalDetail;
 use crate::observe::structured::MarkerEvalKind;
 use crate::observe::structured::MarkerEvalModifier;
+use crate::observe::structured::MatchContext;
 use crate::observe::structured::SpanId;
 use crate::observe::structured::SpanKind;
 use crate::observe::structured::StructuredLogBuilder;
@@ -1000,7 +1001,20 @@ async fn run_test_body(
                     ) {
                         Ok(v) => v,
                         Err(err) => {
-                            return Err(pure_eval_failure(err, test_span, &sink, &rt_ctx.log));
+                            let vars_in_scope = vars
+                                .iter()
+                                .map(|(k, v)| (k.to_string(), v.to_string()))
+                                .collect();
+                            return Err(pure_eval_failure(
+                                err,
+                                test_span,
+                                MatchContext::TestPreamble {
+                                    name: test.name().to_string(),
+                                },
+                                vars_in_scope,
+                                &sink,
+                                &rt_ctx.log,
+                            ));
                         }
                     }
                 } else {
@@ -1032,7 +1046,20 @@ async fn run_test_body(
                     &rt_ctx.env,
                     &rt_ctx.tables.pure_fns,
                 ) {
-                    return Err(pure_eval_failure(err, test_span, &sink, &rt_ctx.log));
+                    let vars_in_scope = vars
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                        .collect();
+                    return Err(pure_eval_failure(
+                        err,
+                        test_span,
+                        MatchContext::TestPreamble {
+                            name: test.name().to_string(),
+                        },
+                        vars_in_scope,
+                        &sink,
+                        &rt_ctx.log,
+                    ));
                 }
             }
             // Non-preamble items run in the body walk below.

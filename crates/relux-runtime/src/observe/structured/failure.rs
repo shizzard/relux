@@ -2,6 +2,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use ts_rs::TS;
 
+use super::MatchContext;
 use super::SourceLocation;
 use super::event::EventSeq;
 use super::event::TimeoutValue;
@@ -30,8 +31,10 @@ pub struct StackFrame {
 /// `vars_in_scope`) lifted from the `FailureContext` captured at the
 /// failure site. `FailureContext::Vm` populates every field; the
 /// `PreVm` variant (effect resolution, pre-VM init) carries only the
-/// surrounding span and lands here as `event_seq: 0` / empty stack /
-/// empty buffer tail - the artifact stays well-formed.
+/// surrounding span and empty stack / empty buffer tail - the artifact
+/// stays well-formed. Pure-match failures now travel via
+/// `FailureContext::Pure` and land with a real `event_seq` and the
+/// scope vars snapshotted at the failure site.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[cfg_attr(
     feature = "ts-export",
@@ -80,7 +83,7 @@ pub enum FailureRecord {
     PureMatch {
         span: SpanId,
         event_seq: EventSeq,
-        shell: String,
+        match_context: MatchContext,
         value: String,
         pattern: String,
         is_regex: bool,

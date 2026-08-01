@@ -21,6 +21,7 @@ use crate::effect::registry::ReleaseOutcome;
 use crate::effect::registry::ShellInstanceKey;
 use crate::effect::registry::ShellMap;
 use crate::effect::registry::VarMap;
+use crate::observe::structured::MatchContext;
 use crate::observe::structured::SpanId;
 use crate::observe::structured::SpanKind;
 use crate::report::result::ExecError;
@@ -452,9 +453,17 @@ impl EffectManager {
                         &effect_env,
                         &self.rt_ctx.tables.pure_fns,
                     ) {
+                        let vars_in_scope = vars
+                            .iter()
+                            .map(|(k, v)| (k.to_string(), v.to_string()))
+                            .collect();
                         return Err(pure_eval_failure(
                             err,
                             setup_span_id,
+                            MatchContext::EffectPreamble {
+                                name: start.effect().name.to_string(),
+                            },
+                            vars_in_scope,
                             &sink,
                             &self.rt_ctx.log,
                         ));
@@ -916,7 +925,20 @@ impl EffectManager {
             ) {
                 Ok(v) => v,
                 Err(err) => {
-                    return Err(pure_eval_failure(err, caller_span, &sink, &self.rt_ctx.log));
+                    let vars_in_scope = caller_vars
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                        .collect();
+                    return Err(pure_eval_failure(
+                        err,
+                        caller_span,
+                        MatchContext::EffectPreamble {
+                            name: start.effect().name.to_string(),
+                        },
+                        vars_in_scope,
+                        &sink,
+                        &self.rt_ctx.log,
+                    ));
                 }
             };
             overlay.insert(entry.key().name().to_string(), value);
@@ -947,7 +969,20 @@ impl EffectManager {
             ) {
                 Ok(v) => v,
                 Err(err) => {
-                    return Err(pure_eval_failure(err, setup_span, &sink, &self.rt_ctx.log));
+                    let vars_in_scope = vars
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                        .collect();
+                    return Err(pure_eval_failure(
+                        err,
+                        setup_span,
+                        MatchContext::EffectPreamble {
+                            name: scope.name().to_string(),
+                        },
+                        vars_in_scope,
+                        &sink,
+                        &self.rt_ctx.log,
+                    ));
                 }
             }
         } else {
