@@ -37,6 +37,17 @@ pub enum FailureContext {
         buffer_tail: String,
         vars_in_scope: Vec<(String, String)>,
     },
+    /// Failure raised from pure evaluation at a pre-VM boundary (test/effect
+    /// preamble, overlay, or a pure-fn body reached from one). Unlike
+    /// `PreVm`, a pure-match failure always emitted its event trio and knows
+    /// its scope vars, so `event_seq` and `vars_in_scope` are non-optional
+    /// and real. No buffer (a pure match reads no shell).
+    Pure {
+        span: SpanId,
+        event_seq: EventSeq,
+        call_stack: Vec<StackFrame>,
+        vars_in_scope: Vec<(String, String)>,
+    },
     /// Failure raised before/around any VM. `span` points at the
     /// surrounding span when one is known (effect-setup span,
     /// shell-block span, cleanup-block span), `None` otherwise. The
@@ -71,9 +82,25 @@ impl FailureContext {
         Self::PreVm { span, call_stack }
     }
 
+    /// Construct a `Pure` context for a pre-VM pure-evaluation failure.
+    pub fn pure(
+        span: SpanId,
+        event_seq: EventSeq,
+        call_stack: Vec<StackFrame>,
+        vars_in_scope: Vec<(String, String)>,
+    ) -> Self {
+        Self::Pure {
+            span,
+            event_seq,
+            call_stack,
+            vars_in_scope,
+        }
+    }
+
     pub fn span(&self) -> Option<SpanId> {
         match self {
             Self::Vm { span, .. } => Some(*span),
+            Self::Pure { span, .. } => Some(*span),
             Self::PreVm { span, .. } => *span,
         }
     }
@@ -81,6 +108,7 @@ impl FailureContext {
     pub fn event_seq(&self) -> Option<EventSeq> {
         match self {
             Self::Vm { event_seq, .. } => Some(*event_seq),
+            Self::Pure { event_seq, .. } => Some(*event_seq),
             Self::PreVm { .. } => None,
         }
     }
@@ -88,6 +116,7 @@ impl FailureContext {
     pub fn call_stack(&self) -> &[StackFrame] {
         match self {
             Self::Vm { call_stack, .. } => call_stack,
+            Self::Pure { call_stack, .. } => call_stack,
             Self::PreVm { call_stack, .. } => call_stack,
         }
     }
@@ -95,13 +124,14 @@ impl FailureContext {
     pub fn buffer_tail(&self) -> &str {
         match self {
             Self::Vm { buffer_tail, .. } => buffer_tail,
-            Self::PreVm { .. } => "",
+            Self::Pure { .. } | Self::PreVm { .. } => "",
         }
     }
 
     pub fn vars_in_scope(&self) -> &[(String, String)] {
         match self {
             Self::Vm { vars_in_scope, .. } => vars_in_scope,
+            Self::Pure { vars_in_scope, .. } => vars_in_scope,
             Self::PreVm { .. } => &[],
         }
     }
@@ -876,6 +906,15 @@ mod tests {
                 "pure-match report must not carry a buffer tail: {note}"
             );
         }
+    }
+
+    #[test]
+    fn pure_context_exposes_real_seq_and_vars() {
+        let ctx = FailureContext::pure(7, 42, vec![], vec![("v".into(), "abc".into())]);
+        assert_eq!(ctx.span(), Some(7));
+        assert_eq!(ctx.event_seq(), Some(42));
+        assert_eq!(ctx.buffer_tail(), "");
+        assert_eq!(ctx.vars_in_scope(), &[("v".to_string(), "abc".to_string())]);
     }
 
     #[test]
