@@ -453,10 +453,7 @@ impl EffectManager {
                         &effect_env,
                         &self.rt_ctx.tables.pure_fns,
                     ) {
-                        let vars_in_scope = vars
-                            .iter()
-                            .map(|(k, v)| (k.to_string(), v.to_string()))
-                            .collect();
+                        let vars_in_scope = vars.snapshot();
                         return Err(pure_eval_failure(
                             err,
                             setup_span_id,
@@ -925,10 +922,7 @@ impl EffectManager {
             ) {
                 Ok(v) => v,
                 Err(err) => {
-                    let vars_in_scope = caller_vars
-                        .iter()
-                        .map(|(k, v)| (k.to_string(), v.to_string()))
-                        .collect();
+                    let vars_in_scope = caller_vars.snapshot();
                     return Err(pure_eval_failure(
                         err,
                         caller_span,
@@ -969,10 +963,7 @@ impl EffectManager {
             ) {
                 Ok(v) => v,
                 Err(err) => {
-                    let vars_in_scope = vars
-                        .iter()
-                        .map(|(k, v)| (k.to_string(), v.to_string()))
-                        .collect();
+                    let vars_in_scope = vars.snapshot();
                     return Err(pure_eval_failure(
                         err,
                         setup_span,

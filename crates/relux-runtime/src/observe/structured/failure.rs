@@ -26,6 +26,15 @@ pub struct StackFrame {
     pub location: Option<SourceLocation>,
 }
 
+impl StackFrame {
+    /// Whether this frame is a function call - an impure `fn` (`"fn-call"`)
+    /// or a compile-time `pure fn` (`"pure-fn-call"`). Both render the
+    /// failing match's context as `MatchContext::Fn`.
+    pub fn is_fn_call(&self) -> bool {
+        self.kind == "fn-call" || self.kind == "pure-fn-call"
+    }
+}
+
 /// Self-contained record of a test failure. Variant-specific fields plus
 /// pre-computed convenience fields (`call_stack`, `buffer_tail`,
 /// `vars_in_scope`) lifted from the `FailureContext` captured at the
@@ -149,6 +158,32 @@ mod tests {
             }
             other => panic!("expected MultiMatch, got {other:?}"),
         }
+    }
+
+    fn stack_frame(kind: &str) -> StackFrame {
+        StackFrame {
+            span: 1,
+            kind: kind.to_string(),
+            name: None,
+            args: vec![],
+            alias: None,
+            location: None,
+        }
+    }
+
+    #[test]
+    fn is_fn_call_true_for_fn_call() {
+        assert!(stack_frame("fn-call").is_fn_call());
+    }
+
+    #[test]
+    fn is_fn_call_true_for_pure_fn_call() {
+        assert!(stack_frame("pure-fn-call").is_fn_call());
+    }
+
+    #[test]
+    fn is_fn_call_false_for_other_kinds() {
+        assert!(!stack_frame("shell-block").is_fn_call());
     }
 }
 

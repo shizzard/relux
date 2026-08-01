@@ -51,6 +51,19 @@ impl VarScope {
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
         self.vars.iter().map(|(k, v)| (k.as_str(), v.as_str()))
     }
+
+    /// Snapshot the bindings as an owned, sorted `(name, value)` list for
+    /// failure diagnostics. Sorted by key for stable output - matches
+    /// `ExecutionContext::snapshot_user_vars` so preamble and shell-body
+    /// failures serialize vars the same way.
+    pub fn snapshot(&self) -> Vec<(String, String)> {
+        let mut out: Vec<(String, String)> = self
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        out.sort();
+        out
+    }
 }
 
 // --- Env -------------------------------------------------

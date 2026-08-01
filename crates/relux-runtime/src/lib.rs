@@ -1001,10 +1001,7 @@ async fn run_test_body(
                     ) {
                         Ok(v) => v,
                         Err(err) => {
-                            let vars_in_scope = vars
-                                .iter()
-                                .map(|(k, v)| (k.to_string(), v.to_string()))
-                                .collect();
+                            let vars_in_scope = vars.snapshot();
                             return Err(pure_eval_failure(
                                 err,
                                 test_span,
@@ -1046,10 +1043,7 @@ async fn run_test_body(
                     &rt_ctx.env,
                     &rt_ctx.tables.pure_fns,
                 ) {
-                    let vars_in_scope = vars
-                        .iter()
-                        .map(|(k, v)| (k.to_string(), v.to_string()))
-                        .collect();
+                    let vars_in_scope = vars.snapshot();
                     return Err(pure_eval_failure(
                         err,
                         test_span,

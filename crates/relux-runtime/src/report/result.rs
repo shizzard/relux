@@ -243,7 +243,7 @@ pub fn pure_eval_failure(
 ) -> ExecError {
     let call_stack = resolve_pure_stack(sink, log);
     let match_context = match call_stack.last() {
-        Some(f) if f.kind == "fn-call" || f.kind == "pure-fn-call" => MatchContext::Fn {
+        Some(f) if f.is_fn_call() => MatchContext::Fn {
             name: f.name.clone().unwrap_or_default(),
         },
         _ => enclosing_context,

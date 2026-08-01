@@ -1,6 +1,7 @@
 use std::fmt::Write;
 use std::path::Path;
 
+use crate::observe::structured::MatchContext;
 use crate::report::result::Failure;
 use crate::report::result::Outcome;
 use crate::report::result::TestResult;
@@ -49,9 +50,15 @@ fn failure_shell(failure: &Failure) -> Option<&str> {
 
 /// Human-readable match context for a pure-match failure, so a non-shell
 /// context (fn / test-preamble / effect-preamble) is not dropped from TAP
-/// output the way the `shell:` line drops it.
+/// output the way the `shell:` line drops it. A `Shell` context already has
+/// its name on the `shell:` line via `failure_shell`, so this returns
+/// `None` for it to avoid printing the same shell twice.
 fn failure_match_context(failure: &Failure) -> Option<String> {
     match failure {
+        Failure::PureMatch {
+            match_context: MatchContext::Shell { .. },
+            ..
+        } => None,
         Failure::PureMatch { match_context, .. } => Some(match_context.to_string()),
         _ => None,
     }
@@ -392,6 +399,44 @@ mod tests {
         let tap = render_tap(run_dir(), "suite", &results, &st);
         // Inner quotes should be escaped
         assert!(tap.contains("\\\"error\\\""));
+    }
+
+    #[test]
+    fn pure_match_shell_context_has_shell_line_no_context_line() {
+        let st = test_source_table();
+        let failure = Failure::PureMatch {
+            value: "actual".into(),
+            pattern: "expected".into(),
+            is_regex: false,
+            span: test_span(0, 5),
+            match_context: MatchContext::Shell {
+                name: "default".into(),
+            },
+            context: FailureContext::pre_vm(),
+        };
+        let results = vec![fail_result("shell-pure-match", 100, failure, None)];
+        let tap = render_tap(run_dir(), "suite", &results, &st);
+        assert!(tap.contains("shell: default"), "tap: {tap}");
+        assert!(!tap.contains("context:"), "tap: {tap}");
+    }
+
+    #[test]
+    fn pure_match_non_shell_context_has_context_line_no_shell_line() {
+        let st = test_source_table();
+        let failure = Failure::PureMatch {
+            value: "actual".into(),
+            pattern: "expected".into(),
+            is_regex: false,
+            span: test_span(0, 5),
+            match_context: MatchContext::TestPreamble {
+                name: "login".into(),
+            },
+            context: FailureContext::pre_vm(),
+        };
+        let results = vec![fail_result("preamble-pure-match", 100, failure, None)];
+        let tap = render_tap(run_dir(), "suite", &results, &st);
+        assert!(tap.contains("context:"), "tap: {tap}");
+        assert!(!tap.contains("shell:"), "tap: {tap}");
     }
 
     #[test]
