@@ -383,13 +383,13 @@ impl EffectManager {
             .get(start.effect())
             .ok_or_else(|| Failure::Runtime {
                 message: format!("effect {:?} not found in table", start.effect()),
-                span: None,
+                span: Some(start.effect_span().clone()),
                 shell: None,
                 context: FailureContext::pre_vm_with_span(setup_span.id()),
             })?;
         let effect = effect_result.as_ref().map_err(|e| Failure::Runtime {
             message: format!("effect resolution failed: {e:?}"),
-            span: None,
+            span: Some(start.effect_span().clone()),
             shell: None,
             context: FailureContext::pre_vm_with_span(setup_span.id()),
         })?;
@@ -633,7 +633,7 @@ impl EffectManager {
                         let dep =
                             try_guards!(dep_shells.get(alias).ok_or_else(|| Failure::Runtime {
                                 message: format!("unknown effect alias `{alias}`"),
-                                span: None,
+                                span: Some(qualifier.span().clone()),
                                 shell: None,
                                 context: FailureContext::pre_vm_with_span(block_span_id),
                             }));
@@ -642,7 +642,7 @@ impl EffectManager {
                                 message: format!(
                                     "effect alias `{alias}` does not expose shell `{shell_name}`"
                                 ),
-                                span: None,
+                                span: Some(block.name().span().clone()),
                                 shell: None,
                                 context: FailureContext::pre_vm_with_span(block_span_id),
                             }));
@@ -752,7 +752,12 @@ impl EffectManager {
                                     effect.name().name(),
                                     qualifier,
                                 ),
-                                span: None,
+                                span: Some(
+                                    expose
+                                        .qualifier_span()
+                                        .expect("qualified expose has a qualifier span")
+                                        .clone(),
+                                ),
                                 shell: None,
                                 context: FailureContext::pre_vm_with_span(setup_span_id),
                             }
@@ -765,7 +770,7 @@ impl EffectManager {
                                     expose.target(),
                                     qualifier,
                                 ),
-                                span: None,
+                                span: Some(expose.target_span().clone()),
                                 shell: None,
                                 context: FailureContext::pre_vm_with_span(setup_span_id),
                             }
@@ -780,7 +785,7 @@ impl EffectManager {
                                     effect.name().name(),
                                     expose.target(),
                                 ),
-                                span: None,
+                                span: Some(expose.target_span().clone()),
                                 shell: None,
                                 context: FailureContext::pre_vm_with_span(setup_span_id),
                             }));
@@ -810,7 +815,12 @@ impl EffectManager {
                                         effect.name().name(),
                                         qualifier,
                                     ),
-                                    span: None,
+                                    span: Some(
+                                        expose
+                                            .qualifier_span()
+                                            .expect("qualified expose has a qualifier span")
+                                            .clone(),
+                                    ),
                                     shell: None,
                                     context: FailureContext::pre_vm_with_span(setup_span_id),
                                 }
@@ -823,7 +833,7 @@ impl EffectManager {
                                     expose.target(),
                                     qualifier,
                                 ),
-                                span: None,
+                                span: Some(expose.target_span().clone()),
                                 shell: None,
                                 context: FailureContext::pre_vm_with_span(setup_span_id),
                             }
