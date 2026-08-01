@@ -24,15 +24,15 @@ fn yaml_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-/// Extract the span from a Failure, if present.
-fn failure_span(failure: &Failure) -> Option<&IrSpan> {
+/// Extract the source span from a Failure. Every failure carries one.
+fn failure_span(failure: &Failure) -> &IrSpan {
     match failure {
         Failure::MatchTimeout { span, .. }
         | Failure::FailPatternMatched { span, .. }
         | Failure::ShellExited { span, .. }
         | Failure::PureMatch { span, .. }
-        | Failure::MultiMatch { span, .. } => Some(span),
-        Failure::Runtime { span, .. } => span.as_ref(),
+        | Failure::MultiMatch { span, .. }
+        | Failure::Runtime { span, .. } => span,
     }
 }
 
@@ -116,9 +116,8 @@ fn render_tap(
                 if let Some(pattern) = failure_pattern(failure) {
                     writeln!(out, "  pattern: {pattern}").unwrap();
                 }
-                if let Some(span) = failure_span(failure)
-                    && let Some(sf) = source_table.get(span.file())
-                {
+                let span = failure_span(failure);
+                if let Some(sf) = source_table.get(span.file()) {
                     writeln!(out, "  file: {}", sf.path.display()).unwrap();
                     writeln!(
                         out,
@@ -338,7 +337,7 @@ mod tests {
         let st = test_source_table();
         let failure = Failure::Runtime {
             message: "something broke".into(),
-            span: None,
+            span: IrSpan::synthetic(),
             shell: None,
             context: FailureContext::pre_vm(),
         };

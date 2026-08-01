@@ -182,7 +182,7 @@ pub enum Failure {
     )]
     Runtime {
         message: String,
-        span: Option<IrSpan>,
+        span: IrSpan,
         shell: Option<String>,
         context: FailureContext,
     },
@@ -296,7 +296,7 @@ impl Failure {
                 span,
             } => Failure::Runtime {
                 message: invalid_regex_message(&reason),
-                span: Some(span),
+                span,
                 shell: match_context.shell_name_ref().map(str::to_string),
                 context,
             },
@@ -390,28 +390,15 @@ impl From<&Failure> for relux_core::error::DiagnosticReport {
                 };
                 let first_line = message.lines().next().unwrap_or(message);
                 let has_detail = message.contains('\n');
-                match span {
-                    Some(span) => DiagnosticReport {
-                        severity: Severity::Error,
-                        message: msg,
-                        labels: vec![(span.clone(), first_line.to_string()).into()],
-                        help: None,
-                        note: if has_detail {
-                            Some(message.clone())
-                        } else {
-                            None
-                        },
-                    },
-                    None => DiagnosticReport {
-                        severity: Severity::Error,
-                        message: format!("{msg}: {first_line}"),
-                        labels: vec![],
-                        help: None,
-                        note: if has_detail {
-                            Some(message.clone())
-                        } else {
-                            None
-                        },
+                DiagnosticReport {
+                    severity: Severity::Error,
+                    message: msg,
+                    labels: vec![(span.clone(), first_line.to_string()).into()],
+                    help: None,
+                    note: if has_detail {
+                        Some(message.clone())
+                    } else {
+                        None
                     },
                 }
             }
@@ -789,7 +776,7 @@ mod tests {
         let f = Failure::Runtime {
             message: "something broke".into(),
             shell: Some("default".into()),
-            span: None,
+            span: IrSpan::synthetic(),
             context: FailureContext::pre_vm(),
         };
         assert_eq!(
@@ -803,7 +790,7 @@ mod tests {
         let f = Failure::Runtime {
             message: "something broke".into(),
             shell: None,
-            span: None,
+            span: IrSpan::synthetic(),
             context: FailureContext::pre_vm(),
         };
         assert_eq!(f.summary(), "runtime error: something broke");
@@ -1055,7 +1042,7 @@ mod tests {
     fn exec_error_from_conversions() {
         let f = Failure::Runtime {
             message: "x".into(),
-            span: None,
+            span: IrSpan::synthetic(),
             shell: None,
             context: FailureContext::pre_vm(),
         };

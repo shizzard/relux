@@ -100,7 +100,7 @@ impl Vm {
         )
         .map_err(|e| Failure::Runtime {
             message: format!("failed to spawn shell: {e}"),
-            span: Some(block_span.clone()),
+            span: block_span.clone(),
             shell: Some(shell_name.clone()),
             context: FailureContext::pre_vm_with_span(ctx.current_span()),
         })?;
@@ -132,7 +132,7 @@ impl Vm {
             .await
             .map_err(|_| Failure::Runtime {
                 message: "shell did not produce prompt during init".to_string(),
-                span: Some(block_span.clone()),
+                span: block_span.clone(),
                 shell: Some(shell_name),
                 context: FailureContext::pre_vm_with_span(vm.ctx.current_span()),
             })?;
@@ -295,7 +295,7 @@ impl Vm {
                         let context = self.capture_failure_context().await;
                         return Err(Failure::Runtime {
                             message: format!("invalid fail regex: {}", regex_error_summary(&e)),
-                            span: Some(ir_span.clone()),
+                            span: ir_span.clone(),
                             shell: Some(self.ctx.current_name().to_string()),
                             context,
                         }
@@ -377,7 +377,7 @@ impl Vm {
                             "assignment to undeclared variable `{}`",
                             assign.name().name()
                         ),
-                        span: Some(assign.name().span().clone()),
+                        span: assign.name().span().clone(),
                         shell: Some(self.ctx.current_name().to_string()),
                         context,
                     }
@@ -462,7 +462,7 @@ impl Vm {
                         let context = self.capture_failure_context().await;
                         return Err(Failure::Runtime {
                             message: format!("invalid regex: {}", regex_error_summary(&e)),
-                            span: Some(pattern.span().clone()),
+                            span: pattern.span().clone(),
                             shell: Some(self.ctx.current_name().to_string()),
                             context,
                         }
@@ -546,7 +546,7 @@ impl Vm {
                         let context = self.capture_failure_context().await;
                         Err(Failure::Runtime {
                             message: crate::report::result::invalid_regex_message(&e.reason),
-                            span: Some(span.clone()),
+                            span: span.clone(),
                             shell: Some(self.ctx.current_name().to_string()),
                             context,
                         }
@@ -595,7 +595,7 @@ impl Vm {
                         let context = self.capture_failure_context().await;
                         return Err(Failure::Runtime {
                             message: format!("invalid regex: {}", regex_error_summary(&e)),
-                            span: Some(pattern.span().clone()),
+                            span: pattern.span().clone(),
                             shell: Some(self.ctx.current_name().to_string()),
                             context,
                         }
@@ -670,7 +670,7 @@ impl Vm {
                         let context = self.capture_failure_context().await;
                         return Err(Failure::Runtime {
                             message: format!("invalid regex: {}", regex_error_summary(&e)),
-                            span: Some(ir_pat.pattern().span().clone()),
+                            span: ir_pat.pattern().span().clone(),
                             shell: Some(self.ctx.current_name().to_string()),
                             context,
                         }
@@ -944,7 +944,7 @@ impl Vm {
                     let context = self.capture_failure_context().await;
                     return Err(Failure::Runtime {
                         message: format!("function resolution failed: {e:?}"),
-                        span: Some(span.clone()),
+                        span: span.clone(),
                         shell: Some(self.ctx.current_name().to_string()),
                         context,
                     }
@@ -1036,7 +1036,7 @@ impl Vm {
                     let context = self.capture_failure_context().await;
                     return Err(Failure::Runtime {
                         message: format!("pure function resolution failed: {e:?}"),
-                        span: Some(span.clone()),
+                        span: span.clone(),
                         shell: Some(self.ctx.current_name().to_string()),
                         context,
                     }
@@ -1126,7 +1126,7 @@ impl Vm {
                 fn_name,
                 call.args().len()
             ),
-            span: Some(span.clone()),
+            span: span.clone(),
             shell: Some(self.ctx.current_name().to_string()),
             context,
         }

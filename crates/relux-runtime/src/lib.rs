@@ -1116,7 +1116,7 @@ async fn run_test_body(
                         let block_span_id = block_span.id();
                         let dep = effect_shells.get(alias).ok_or_else(|| Failure::Runtime {
                             message: format!("unknown effect alias `{alias}`"),
-                            span: Some(qualifier.span().clone()),
+                            span: qualifier.span().clone(),
                             shell: None,
                             context: FailureContext::pre_vm_with_span(block_span_id),
                         })?;
@@ -1124,7 +1124,7 @@ async fn run_test_body(
                             message: format!(
                                 "effect alias `{alias}` does not expose shell `{shell_name}`"
                             ),
-                            span: Some(switch_span.clone()),
+                            span: switch_span.clone(),
                             shell: None,
                             context: FailureContext::pre_vm_with_span(block_span_id),
                         })?;
@@ -1260,7 +1260,7 @@ async fn run_test_body(
                     source: CleanupSource::Test,
                     failure: Failure::Runtime {
                         message: format!("failed to spawn cleanup shell: {e:?}"),
-                        span: Some(cleanup_span.clone()),
+                        span: cleanup_span.clone(),
                         shell: None,
                         context: FailureContext::pre_vm_with_span(cleanup_block_span_id),
                     }

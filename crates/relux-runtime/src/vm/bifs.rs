@@ -76,7 +76,7 @@ async fn runtime_error(vm: &Vm, message: String, span: &IrSpan) -> Failure {
     let context = vm.capture_failure_context().await;
     Failure::Runtime {
         message,
-        span: Some(span.clone()),
+        span: span.clone(),
         shell: Some(vm.current_name()),
         context,
     }

@@ -285,7 +285,7 @@ mod tests {
                 "basic/fail.relux",
                 Outcome::Fail(Failure::Runtime {
                     message: "boom".into(),
-                    span: None,
+                    span: IrSpan::synthetic(),
                     shell: None,
                     context: FailureContext::pre_vm(),
                 }),
@@ -295,7 +295,7 @@ mod tests {
                 "basic/fail2.relux",
                 Outcome::Fail(Failure::Runtime {
                     message: "boom2".into(),
-                    span: None,
+                    span: IrSpan::synthetic(),
                     shell: None,
                     context: FailureContext::pre_vm(),
                 }),
