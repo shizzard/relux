@@ -42,7 +42,7 @@ Assert that a value you already have satisfies a pattern -- no shell I/O. Distin
 - `<expr>` is any pure expression (identifier, quoted/interpolated string, function call, `Alias.var`, `$n`, number). `<pattern>` is an interpolated string to end of line, same shape as the `<=` / `<?` payload.
 - A no-match FAILS the test immediately -- a pure match is an assertion and cannot time out (the value is already in hand). There is no negated form.
 - A `?` hit binds `$0`..`$n` in the current shell exactly like `<?`; bind with `let` before the next regex match clobbers them. The `=` form binds nothing.
-- Allowed in `shell` blocks and `fn` bodies. NOT allowed in `pure fn` bodies -- compile error (`pure matching is not yet available in pure fn bodies`).
+- Allowed in `shell` blocks, `fn` bodies, `pure fn` bodies, and test/effect preambles (alongside `let`, before the first `shell`). Inside a `pure fn` a no-match propagates and fails the test through the calling site; a marker condition is the one exception -- a pure-eval failure there makes the condition falsy rather than failing the test.
 - Statement-only: never a `let` right-hand side, an overlay value, or a cleanup value.
 - On failure the outcome is a `pure-match` FailureRecord (`value`, `pattern`, `is_regex`; no `buffer_tail`). See [events-failures](events-failures.md).
 

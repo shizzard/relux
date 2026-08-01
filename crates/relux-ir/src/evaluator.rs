@@ -17,10 +17,12 @@ use std::collections::HashMap;
 
 /// Evaluate a pure expression to a string value.
 ///
-/// Returns `Result<String, PureEvalError>`. In this milestone the error
-/// is uninhabited, so evaluation is effectively infallible - all failure
-/// modes (undefined functions, wrong arity, cycles) are still caught at
-/// lowering time, and missing variables evaluate to empty string.
+/// Returns `Result<String, PureEvalError>`. Evaluation is fallible: a
+/// pure match that does not match yields `PureMatchFailed` and a
+/// malformed interpolated regex yields `MalformedPattern`. The remaining
+/// failure modes (undefined functions, wrong arity, cycles) are still
+/// caught at lowering time, and missing variables evaluate to empty
+/// string.
 ///
 /// The `sink` parameter is informed of every pure-fn call entry/exit
 /// and every interpolation containing a value-bearing part (a variable
@@ -493,8 +495,8 @@ mod sink_tests {
             value: interp,
             span: IrSpan::synthetic(),
         };
-        // `.unwrap()` pins the `Ok` contract without requiring
-        // `PureEvalError: PartialEq` (it derives none - it is uninhabited).
+        // A plain-string interpolation cannot fail, so `.unwrap()` pins
+        // the `Ok` contract without requiring `PureEvalError: PartialEq`.
         let out = eval_pure_expr(
             &expr,
             &VarScope::new(),
