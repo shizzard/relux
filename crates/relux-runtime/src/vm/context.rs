@@ -363,6 +363,11 @@ impl ExecutionContext {
         !self.call_stack.is_empty()
     }
 
+    /// The name of the innermost `fn` call frame, if we are inside one.
+    pub fn current_fn_name(&self) -> Option<&str> {
+        self.call_stack.last().map(|f| f.name.as_str())
+    }
+
     /// Snapshot user-visible variables at the current point of execution,
     /// for failure diagnostics. Excludes the layered process env (already in
     /// `events.json :: env.bootstrap`) and matcher captures. Sorted by key
@@ -513,6 +518,23 @@ mod tests {
         ctx.pop_call();
         assert_eq!(ctx.lookup("a").await, Some("1".into()));
         ctx.pop_call();
+    }
+
+    // --- current_fn_name -----------------------------------
+
+    #[test]
+    fn current_fn_name_none_outside_call() {
+        let ctx = test_ctx();
+        assert_eq!(ctx.current_fn_name(), None);
+    }
+
+    #[test]
+    fn current_fn_name_inside_call() {
+        let mut ctx = test_ctx();
+        ctx.push_call("helper".into(), vec![]);
+        assert_eq!(ctx.current_fn_name(), Some("helper"));
+        ctx.pop_call();
+        assert_eq!(ctx.current_fn_name(), None);
     }
 
     // --- Let insert --------------------------------------
