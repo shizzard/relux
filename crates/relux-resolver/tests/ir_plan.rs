@@ -843,3 +843,78 @@ test "t" {
     assert_eq!(suite.plans.len(), 1);
     assert!(is_invalid(&suite.plans[0]));
 }
+
+#[test]
+fn pure_match_pattern_qualified_var_in_test_preamble_is_invalid() {
+    let suite = resolve_source_no_env(&[(
+        "tests/a",
+        r#"test "t" {
+  let name := "x"
+  name ? ${App.field}
+  shell sh {
+    > echo done
+    <? ^done$
+  }
+}
+"#,
+    )]);
+    assert!(is_invalid(&suite.plans[0]));
+}
+
+#[test]
+fn pure_match_pattern_qualified_var_in_effect_preamble_is_invalid() {
+    let suite = resolve_source_no_env(&[(
+        "tests/a",
+        r#"effect Bad {
+  let name := "x"
+  name ? ${App.field}
+  expose shell b
+  shell b {
+    > echo hi
+    <? ^hi$
+    match_ok()
+  }
+}
+
+test "t" {
+  start Bad as B
+  shell B.b {
+    > echo done
+    <? ^done$
+  }
+}
+"#,
+    )]);
+    assert!(is_invalid(&suite.plans[0]));
+}
+
+#[test]
+fn marker_regex_condition_qualified_var_is_invalid() {
+    let suite = resolve_source_no_env(&[(
+        "tests/a",
+        r#"# skip if MY_VAR ? ${App.field}
+test "t" {
+  shell sh {
+    > echo done
+    <? ^done$
+  }
+}
+"#,
+    )]);
+    assert!(is_invalid(&suite.plans[0]));
+}
+
+#[test]
+fn pure_match_pattern_qualified_var_in_shell_is_runnable() {
+    let suite = resolve_source_no_env(&[(
+        "tests/a",
+        r#"test "t" {
+  shell sh {
+    let name := "x"
+    name ? ${App.field}
+  }
+}
+"#,
+    )]);
+    assert!(!is_invalid(&suite.plans[0]));
+}

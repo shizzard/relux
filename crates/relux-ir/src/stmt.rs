@@ -574,7 +574,7 @@ impl IrNodeLowering for IrPureStmt {
             }
             AstStmt::PureMatchLiteral { lhs, pattern, span } => {
                 let ir_lhs = IrPureExpr::lower(&lhs.node, file, ctx)?;
-                let ir_pattern = IrInterpolation::lower(pattern, file, ctx)?;
+                let ir_pattern = IrInterpolation::lower_pure(pattern, file, ctx)?;
                 Ok(IrPureStmt::PureMatch {
                     lhs: ir_lhs,
                     pattern: ir_pattern,
@@ -584,7 +584,7 @@ impl IrNodeLowering for IrPureStmt {
             }
             AstStmt::PureMatchRegex { lhs, pattern, span } => {
                 let ir_lhs = IrPureExpr::lower(&lhs.node, file, ctx)?;
-                let ir_pattern = IrInterpolation::lower(pattern, file, ctx)?;
+                let ir_pattern = IrInterpolation::lower_pure(pattern, file, ctx)?;
                 super::regex_validate::validate_static_regex(pattern, file)?;
                 Ok(IrPureStmt::PureMatch {
                     lhs: ir_lhs,

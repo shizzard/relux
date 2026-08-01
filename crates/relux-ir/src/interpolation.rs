@@ -1,5 +1,6 @@
 use relux_ast::AstInterpolation;
 use relux_ast::AstStringPart;
+use relux_core::diagnostics::InvalidReport;
 use relux_core::diagnostics::IrSpan;
 use relux_core::diagnostics::LoweringBail;
 use relux_core::table::FileId;
@@ -21,6 +22,26 @@ impl IrInterpolation {
 
     pub fn parts(&self) -> &[IrStringPart] {
         &self.parts
+    }
+
+    /// Lower an interpolation used in a pure context - a pure-match pattern or
+    /// a pure string expression. Rejects `${Alias.field}` (`QualifiedVarRef`)
+    /// parts, which read effect-scoped state and are never pure. Without this
+    /// check a qualified var in a pattern lowers clean and then panics at eval
+    /// time in `eval_interpolation`'s `QualifiedVar` arm.
+    pub fn lower_pure(
+        ast: &AstInterpolation,
+        file: &FileId,
+        ctx: &mut LoweringContext,
+    ) -> Result<Self, LoweringBail> {
+        for part in &ast.parts {
+            if let AstStringPart::QualifiedVarRef { span, .. } = part {
+                return Err(LoweringBail::invalid(InvalidReport::purity_violation(
+                    IrSpan::new(file.clone(), *span),
+                )));
+            }
+        }
+        Self::lower(ast, file, ctx)
     }
 }
 

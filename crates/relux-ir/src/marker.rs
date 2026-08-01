@@ -150,7 +150,7 @@ pub fn lower_markers(
                 span,
             } => {
                 let expr = IrPureExpr::lower(expr, file_id, ctx)?;
-                let ir_interp = IrInterpolation::lower(pattern, file_id, ctx)?;
+                let ir_interp = IrInterpolation::lower_pure(pattern, file_id, ctx)?;
                 let pattern = IrPureExpr::String {
                     value: ir_interp,
                     span: IrSpan::new(file_id.clone(), pattern.span),

@@ -231,3 +231,53 @@ fn lower_interpolation_adjacent_vars() {
     assert!(matches!(&ir.parts()[0], IrStringPart::Var { name, .. } if name == "a"));
     assert!(matches!(&ir.parts()[1], IrStringPart::Var { name, .. } if name == "b"));
 }
+
+#[test]
+fn lower_pure_rejects_qualified_var_ref() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let ast = AstInterpolation {
+        parts: vec![AstStringPart::QualifiedVarRef {
+            qualifier: "App".into(),
+            name: "field".into(),
+            span: Span::new(2, 12),
+        }],
+        span: Span::new(0, 13),
+    };
+    let result = IrInterpolation::lower_pure(&ast, &file, &mut ctx);
+    assert!(matches!(result, Err(LoweringBail::Invalid(_))));
+}
+
+#[test]
+fn lower_pure_accepts_plain_var() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let ast = AstInterpolation {
+        parts: vec![AstStringPart::VarRef {
+            name: "x".into(),
+            span: Span::new(2, 4),
+        }],
+        span: Span::new(0, 5),
+    };
+    let result = IrInterpolation::lower_pure(&ast, &file, &mut ctx);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn plain_lower_still_accepts_qualified_var() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let ast = AstInterpolation {
+        parts: vec![AstStringPart::QualifiedVarRef {
+            qualifier: "App".into(),
+            name: "field".into(),
+            span: Span::new(2, 12),
+        }],
+        span: Span::new(0, 13),
+    };
+    let result = IrInterpolation::lower(&ast, &file, &mut ctx);
+    assert!(result.is_ok());
+}

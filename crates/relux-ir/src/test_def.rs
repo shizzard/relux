@@ -147,7 +147,7 @@ impl IrNodeLowering for IrTestItem {
                 span,
             } => {
                 let ir_lhs = IrPureExpr::lower(&lhs.node, file, ctx)?;
-                let ir_pattern = IrInterpolation::lower(pattern, file, ctx)?;
+                let ir_pattern = IrInterpolation::lower_pure(pattern, file, ctx)?;
                 if *is_regex {
                     super::regex_validate::validate_static_regex(pattern, file)?;
                 }

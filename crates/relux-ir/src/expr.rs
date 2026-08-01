@@ -1,6 +1,5 @@
 use relux_ast::AstCallExpr;
 use relux_ast::AstExpr;
-use relux_ast::AstStringPart;
 use relux_core::diagnostics::FnId;
 use relux_core::diagnostics::InvalidReport;
 use relux_core::diagnostics::IrSpan;
@@ -205,18 +204,10 @@ impl IrNodeLowering for IrPureExpr {
     ) -> Result<Self, LoweringBail> {
         match ast {
             AstExpr::String { interp, span } => {
-                // Check for impure constructs in interpolation parts. A
-                // `CaptureRef` reads the ambient capture frame (empty -> "")
+                // A `CaptureRef` reads the ambient capture frame (empty -> "")
                 // exactly like the shell path, so it is uniformly legal; a
-                // `QualifiedVarRef` is never pure.
-                for part in &interp.parts {
-                    if let AstStringPart::QualifiedVarRef { span: s, .. } = part {
-                        return Err(LoweringBail::invalid(InvalidReport::purity_violation(
-                            IrSpan::new(file.clone(), *s),
-                        )));
-                    }
-                }
-                let ir_interp = IrInterpolation::lower(interp, file, ctx)?;
+                // `QualifiedVarRef` is never pure. `lower_pure` enforces this.
+                let ir_interp = IrInterpolation::lower_pure(interp, file, ctx)?;
                 Ok(IrPureExpr::String {
                     value: ir_interp,
                     span: IrSpan::new(file.clone(), *span),
