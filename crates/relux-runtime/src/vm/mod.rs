@@ -85,6 +85,7 @@ impl Vm {
         shell_marker: String,
         ctx: ExecutionContext,
         rt_ctx: &RuntimeContext,
+        block_span: IrSpan,
     ) -> Result<Self, ExecError> {
         let shell_command = rt_ctx.shell.command.to_string();
         let shell_prompt = rt_ctx.shell.prompt.to_string();
@@ -99,7 +100,7 @@ impl Vm {
         )
         .map_err(|e| Failure::Runtime {
             message: format!("failed to spawn shell: {e}"),
-            span: None,
+            span: Some(block_span.clone()),
             shell: Some(shell_name.clone()),
             context: FailureContext::pre_vm_with_span(ctx.current_span()),
         })?;
@@ -131,7 +132,7 @@ impl Vm {
             .await
             .map_err(|_| Failure::Runtime {
                 message: "shell did not produce prompt during init".to_string(),
-                span: None,
+                span: Some(block_span.clone()),
                 shell: Some(shell_name),
                 context: FailureContext::pre_vm_with_span(vm.ctx.current_span()),
             })?;

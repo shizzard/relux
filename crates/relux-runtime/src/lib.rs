@@ -1160,7 +1160,14 @@ async fn run_test_body(
                             let shell_key = ShellInstanceKey::Test {
                                 shell_name: name.clone(),
                             };
-                            let vm = Vm::new(name.clone(), shell_key.marker(), ctx, rt_ctx).await?;
+                            let vm = Vm::new(
+                                name.clone(),
+                                shell_key.marker(),
+                                ctx,
+                                rt_ctx,
+                                block.span().clone(),
+                            )
+                            .await?;
                             shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
                         }
                         let vm_arc = shells.get(&name).expect("shell just inserted above");
@@ -1221,6 +1228,7 @@ async fn run_test_body(
             cleanup_marker.clone(),
             ctx,
             &cleanup_rt_ctx,
+            cleanup_span.clone(),
         )
         .await
         {

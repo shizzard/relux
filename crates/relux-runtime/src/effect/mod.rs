@@ -697,7 +697,14 @@ impl EffectManager {
                                 shell_name: name.clone(),
                             };
                             let vm = try_guards!(
-                                Vm::new(name.clone(), shell_key.marker(), ctx, &self.rt_ctx).await
+                                Vm::new(
+                                    name.clone(),
+                                    shell_key.marker(),
+                                    ctx,
+                                    &self.rt_ctx,
+                                    block.span().clone(),
+                                )
+                                .await
                             );
                             shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
                         }
@@ -1128,6 +1135,7 @@ impl EffectManager {
             cleanup_marker.to_string(),
             ctx,
             &cleanup_rt_ctx,
+            cleanup_block.span().clone(),
         )
         .await?;
         vm.exec_stmts(cleanup_block.body()).await?;
