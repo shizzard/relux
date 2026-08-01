@@ -905,6 +905,25 @@ test "t" {
 }
 
 #[test]
+fn marker_regex_condition_plain_var_is_runnable() {
+    // Control for `marker_regex_condition_qualified_var_is_invalid`: the same
+    // marker regex-condition shape with a plain var lowers fine, so the
+    // qualified-var case is Invalid because of the purity check, not the grammar.
+    let suite = resolve_source_no_env(&[(
+        "tests/a",
+        r#"# skip if MY_VAR ? ${x}
+test "t" {
+  shell sh {
+    > echo done
+    <? ^done$
+  }
+}
+"#,
+    )]);
+    assert!(!is_invalid(&suite.plans[0]));
+}
+
+#[test]
 fn pure_match_pattern_qualified_var_in_shell_is_runnable() {
     let suite = resolve_source_no_env(&[(
         "tests/a",
