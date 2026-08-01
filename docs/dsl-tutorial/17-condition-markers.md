@@ -1,6 +1,6 @@
 # Condition Markers
 
-[Previous: Modules and Imports](15-modules-and-imports.md)
+[Previous: Modules and Imports](16-modules-and-imports.md)
 
 Integration tests exercise real systems, and real systems have prerequisites. Some tests only make sense on a particular operating system. Some require a tool like `docker` or `psql` to be installed. Some are too slow to run locally on every test run, and belong exclusively to CI.
 
@@ -402,4 +402,4 @@ Putting a marker on an effect skips every test that depends on it. This is power
 
 ---
 
-Next: [The CLI](17-the-cli.md) — complete coverage of `relux init`, `new`, `check`, `run`, and `history`
+Next: [The CLI](18-the-cli.md) — complete coverage of `relux init`, `new`, `check`, `run`, and `history`

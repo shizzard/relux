@@ -208,6 +208,8 @@ test "test-level variable shared across shells" {
 
 Both `a` and `b` can see `shared` because it was declared at test level.
 
+Those test-scoped declarations sit at the top of the test, before its first `shell` block. That leading region — everything a test runs before its first shell — is the test's **preamble**. It executes once, top to bottom, before any shell spawns, so the variables it binds are already in place when the shells start. (Effects, which you will meet in a later article, have a preamble of their own.)
+
 **Shell scope** — variables declared inside a `shell` block. These live in that shell's scope and are not visible to other shells:
 
 ```relux

@@ -1,6 +1,6 @@
 # Modules and Imports
 
-[Previous: Cleanup](14-cleanup.md)
+[Previous: Cleanup](15-cleanup.md)
 
 The previous articles built up everything you need to test programs thoroughly, but every example so far has lived in a single file. As a test suite grows, you end up with the same helper functions and effect definitions duplicated across test files. Change the startup sequence for a service, and you are editing the same code in five different places.
 
@@ -161,4 +161,4 @@ There is no visibility modifier. If a function exists in a module, it is exporte
 
 ---
 
-Next: [Condition Markers](16-condition-markers.md) — conditionally skipping or running tests based on environment
+Next: [Condition Markers](17-condition-markers.md) — conditionally skipping or running tests based on environment

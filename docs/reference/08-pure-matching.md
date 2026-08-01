@@ -175,9 +175,12 @@ Markers are evaluated before the preamble runs, so a marker condition
 sees an empty capture frame.
 
 A pure match is **statement-only**. It cannot appear as the right-hand
-side of a `let`, an overlay value, or a cleanup value. The statement's
-value is the left-hand side value, but the intended use is the assertion
-(and, for `?`, the capture side effect) rather than a returned result.
+side of a `let`, an overlay value, or a cleanup value. The statement
+evaluates to the matched text -- `$0` (the whole match) for `?`, and the
+whole value for `=` -- the same value the shell `<?` operator returns.
+Its intended use, though, is the assertion (and, for `?`, the capture
+side effect) rather than a returned result; the value surfaces only when
+a pure match is the last statement of a `fn` / `pure fn` body.
 
 ## `:=` binds, `=` asserts
 

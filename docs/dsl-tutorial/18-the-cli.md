@@ -1,8 +1,8 @@
 # The CLI
 
-[Previous: Condition Markers](16-condition-markers.md)
+[Previous: Condition Markers](17-condition-markers.md)
 
-This is the final article in the tutorial series. You have come a long way — from your [first test](02-getting-started.md) through [send and match](03-send-match-and-logs.md), [variables](06-variables.md), [functions](09-functions.md), [effects](12-effects-and-dependencies.md), [modules](15-modules-and-imports.md), and [condition markers](16-condition-markers.md). You now know the entire Relux DSL. Congratulations — that is a real achievement.
+This is the final article in the tutorial series. You have come a long way — from your [first test](02-getting-started.md) through [send and match](03-send-match-and-logs.md), [variables](06-variables.md), [functions](09-functions.md), [effects](12-effects-and-dependencies.md), [modules](16-modules-and-imports.md), and [condition markers](17-condition-markers.md). You now know the entire Relux DSL. Congratulations — that is a real achievement.
 
 This article covers the tool that drives everything: the `relux` binary itself. You have already used `relux init`, `relux new`, `relux check`, and `relux run` throughout the series. Here we go deeper into every subcommand, every flag, and the workflows they enable.
 
@@ -62,7 +62,7 @@ To create an [effect](12-effects-and-dependencies.md) module:
 relux new --effect services/database
 ```
 
-This creates `relux/lib/services/database.relux` with a skeleton effect definition. Effect modules go under `relux/lib/`, matching the [module resolution rules](15-modules-and-imports.md) you already know.
+This creates `relux/lib/services/database.relux` with a skeleton effect definition. Effect modules go under `relux/lib/`, matching the [module resolution rules](16-modules-and-imports.md) you already know.
 
 To create a library module with function templates:
 
@@ -216,7 +216,7 @@ Both flags can be used together. They are independent of each other and of the c
 
 ### Flaky retries
 
-Tests marked with the `@flaky` [condition marker](16-condition-markers.md) can be automatically retried on failure. The `--flaky-retries` flag sets the maximum retry count:
+Tests marked with the `@flaky` [condition marker](17-condition-markers.md) can be automatically retried on failure. The `--flaky-retries` flag sets the maximum retry count:
 
 ```text
 relux run --flaky-retries 3

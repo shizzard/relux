@@ -453,48 +453,12 @@ start Labeled as A { LABEL }   // desugars to LABEL := LABEL
 
 Overlay variables are the mechanism for reusing a single effect definition across different configurations — like the `FailTail` example from the introduction, where the trigger pattern and log path are passed in as overlays.
 
-## Asserting and destructuring in the preamble
-
-An effect's `let` preamble can *assert* values as well as bind them, using a pure match — the `=` (exact equality) and `?` (regex) operators from [Regex Matching](07-regex-matching.md#matching-a-value-you-already-have). In the preamble they run before any shell spawns, so a malformed overlay is caught at setup rather than deep inside a shell command. A no-match fails the test immediately:
-
-```relux
-effect Db {
-    expect DB_NAME
-    DB_NAME ? ^[a-z][a-z0-9_]*$       // reject an invalid database name up front
-    expose shell service
-
-    shell service {
-        > createdb ${DB_NAME}
-        <? ^CREATE DATABASE$
-        match_prompt()
-    }
-}
-```
-
-A `?` match binds its numbered captures just as it does in a shell, and in the preamble those captures are readable by later preamble `let`s and by the overlay expressions of a nested `start`. This lets an effect accept one packed value and fan its pieces out to a dependency:
-
-```relux
-effect Service {
-    expect DSN
-    DSN ? ^postgres://[^@]+@([^:]+):(\d+)/(\w+)$   // host, port, database
-    let db_host := "${1}"
-    start Db as Dep {
-        HOST := db_host
-        PORT := "${2}"
-        DB_NAME := "${3}"
-    }
-    expose shell Dep.service as service
-}
-```
-
-The pure match sits in the preamble — after `expect`, before `start` and `expose` — and cannot time out, because the value is already in hand. One boundary to remember: the effect's shells do not inherit the preamble capture frame, so bind anything a shell needs to a `let` first — a bare `${1}` inside a shell reads that shell's own captures, not the preamble's.
-
 ## Section ordering
 
 The parser enforces a fixed ordering of sections inside an effect body:
 
 1. `expect` — required overlay variables
-2. `let` — local bindings (can reference expected vars); may interleave pure-match assertions
+2. `let` — local bindings (can reference expected vars)
 3. `start` — sub-dependencies (overlay expressions can reference let-bound vars)
 4. `expose` — which shells and variables are visible to callers
 5. `shell` blocks — setup logic
@@ -503,6 +467,8 @@ The parser enforces a fixed ordering of sections inside an effect body:
 Each section is optional, but they must appear in this order. Writing a `start` before a `let`, or an `expose` before a `start`, is a parse error. Comments and blank lines are allowed anywhere between sections.
 
 This ordering reflects the data flow: expects declare what is available, lets compute derived values, starts wire those values into sub-dependencies, and exposes declare the public interface after all shells and dependencies are established.
+
+Everything before the first `shell` block — the `expect`, `let`, `start`, and `expose` sections — is the effect's **preamble**: setup that runs once, in this order, before any shell spawns. It mirrors a test's preamble, the test-scope `let`s at the top of a test, but has more sections because an effect declares a richer interface.
 
 ## Best practices
 
