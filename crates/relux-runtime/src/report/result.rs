@@ -257,6 +257,13 @@ pub fn pure_eval_failure(
     .into()
 }
 
+/// The single authority for the malformed-pure-regex failure wording,
+/// shared by the shell-body pure-match path (`vm`) and the pre-VM
+/// `from_pure_eval` path.
+pub(crate) fn invalid_regex_message(reason: &str) -> String {
+    format!("invalid regex: {reason}")
+}
+
 impl Failure {
     /// Build a `Failure` from a pure-evaluation error. A failed pure match
     /// inside a `pure fn` body becomes `Failure::PureMatch`; a malformed
@@ -288,7 +295,7 @@ impl Failure {
                 reason,
                 span,
             } => Failure::Runtime {
-                message: format!("invalid regex: {reason}"),
+                message: invalid_regex_message(&reason),
                 span: Some(span),
                 shell: match_context.shell_name_ref().map(str::to_string),
                 context,
@@ -709,6 +716,14 @@ mod tests {
 
     fn dummy_span() -> IrSpan {
         IrSpan::synthetic()
+    }
+
+    #[test]
+    fn invalid_regex_message_wording() {
+        assert_eq!(
+            super::invalid_regex_message("unclosed group"),
+            "invalid regex: unclosed group"
+        );
     }
 
     #[test]

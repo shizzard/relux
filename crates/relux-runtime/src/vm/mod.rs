@@ -625,7 +625,7 @@ impl Vm {
                     Err(e) => {
                         let context = self.capture_failure_context().await;
                         Err(Failure::Runtime {
-                            message: format!("invalid regex: {}", e.reason),
+                            message: crate::report::result::invalid_regex_message(&e.reason),
                             span: Some(span.clone()),
                             shell: Some(self.ctx.current_name().to_string()),
                             context,
