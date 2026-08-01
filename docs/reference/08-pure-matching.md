@@ -227,7 +227,9 @@ every `"pure-match"` failure, including one raised from a test/effect
 preamble, an overlay expression, or a `pure fn` body — there is no
 preamble carve-out that leaves them at `0` / empty.
 
-The console and HTML reporters render "pure match in `<context>` did
-not match" (e.g. "pure match in shell `default` did not match" or
-"pure match in fn `extract_id` did not match") together with the value
-and the failing `= pattern` / `? pattern`.
+The console reporter renders "pure match in `<context>` did not match"
+(e.g. "pure match in shell `default` did not match" or "pure match in
+fn `extract_id` did not match") together with the value and the failing
+`= pattern` / `? pattern`. The HTML viewer instead surfaces the context
+as a structured `context` row on the failing `pure-match-failed` event
+(e.g. `fn 'extract_id'`), alongside the same value and pattern.
