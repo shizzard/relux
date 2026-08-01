@@ -1,0 +1,16 @@
+pure fn bad() {
+    let name := "x"
+    name ? ${App.field}
+}
+
+test "uses bad pure fn" {
+    """
+    A qualified var in a pure-context pure-match pattern must be rejected by
+    check, not panic at eval time.
+    """
+    let val := bad()
+    shell s {
+        > echo done
+        <? ^done$
+    }
+}
