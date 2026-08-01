@@ -1,0 +1,7 @@
+test "statement pure-match emits the event trio" {
+    shell s {
+        let v := "abc"
+        v ? ^a.c$
+        v = abc
+    }
+}

@@ -1,0 +1,13 @@
+test "literal = does not clobber a prior regex capture" {
+    shell s {
+        let pair := "host=db.local"
+        // regex pure-match binds $1=host, $2=db.local
+        pair ? ^(\w+)=(.+)$
+        // literal pure-match; must not touch the capture frame
+        "ok" = ok
+        // captures must survive the literal match
+        > echo "k=${1} v=${2}"
+        <? ^k=host v=db.local$
+        match_ok()
+    }
+}
