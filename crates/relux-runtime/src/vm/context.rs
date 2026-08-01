@@ -508,7 +508,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn interp_chain_resolution_matches_lookup() {
+    async fn interp_chain_resolves_shell_scope_and_call_frame() {
         let mut ctx = test_ctx();
         ctx.shell.vars.insert("s".into(), "shell_val".into());
         ctx.scope
@@ -516,39 +516,70 @@ mod tests {
             .lock()
             .await
             .insert("g".into(), "scope_val".into());
-        for key in ["s", "g", "PATH", "absent"] {
-            let via_lookup = ctx.lookup(key).await;
+
+        // Non-call: shell var, scope var, base env, absent - all via interp_chain.
+        {
             let guard = ctx.scope.vars().lock().await;
             let (scopes, env) = ctx.interp_chain(&guard);
-            let via_render = relux_core::pure::lookup_var(&scopes, env, key);
-            assert_eq!(via_lookup, via_render, "mismatch for key {key}");
+            assert_eq!(
+                relux_core::pure::lookup_var(&scopes, env, "s"),
+                Some("shell_val".to_string())
+            );
+            assert_eq!(
+                relux_core::pure::lookup_var(&scopes, env, "g"),
+                Some("scope_val".to_string())
+            );
+            assert_eq!(
+                relux_core::pure::lookup_var(&scopes, env, "PATH"),
+                Some("/usr/bin".to_string())
+            );
+            assert_eq!(relux_core::pure::lookup_var(&scopes, env, "absent"), None);
         }
 
-        // Call-frame branch: the barrier hides shell/scope vars, the env
-        // fallback is the base env, and the passed guard is ignored.
+        // In-call: the barrier hides shell/scope vars; the frame arg and base env remain.
         ctx.push_call("fn".into(), vec![("arg".into(), "argval".into())]);
-        for key in ["arg", "s", "PATH", "absent"] {
-            let via_lookup = ctx.lookup(key).await;
+        {
             let guard = ctx.scope.vars().lock().await;
             let (scopes, env) = ctx.interp_chain(&guard);
-            let via_render = relux_core::pure::lookup_var(&scopes, env, key);
-            assert_eq!(via_lookup, via_render, "mismatch for key {key}");
+            assert_eq!(
+                relux_core::pure::lookup_var(&scopes, env, "arg"),
+                Some("argval".to_string())
+            );
+            assert_eq!(
+                relux_core::pure::lookup_var(&scopes, env, "s"),
+                None,
+                "barrier hides shell var"
+            );
+            assert_eq!(
+                relux_core::pure::lookup_var(&scopes, env, "g"),
+                None,
+                "barrier hides scope var"
+            );
+            assert_eq!(
+                relux_core::pure::lookup_var(&scopes, env, "PATH"),
+                Some("/usr/bin".to_string())
+            );
+            assert_eq!(relux_core::pure::lookup_var(&scopes, env, "absent"), None);
         }
         ctx.pop_call();
     }
 
     #[tokio::test]
-    async fn interp_chain_resolution_matches_lookup_effect_scope() {
-        // Effect-scope branch: interp_chain returns the chained effect env
-        // instead of self.env, so PORT (overlay) and PATH (base) both resolve.
-        let mut overlay_map = HashMap::new();
-        overlay_map.insert("PORT".into(), "5432".into());
+    async fn interp_chain_resolves_effect_overlay_and_base() {
+        // Effect env chains overlay -> base (as in production), so interp_chain's
+        // single effect env resolves both the overlay var and the base env.
+        let mut base = Env::new();
+        base.insert("PATH".into(), "/usr/bin".into());
+        let root = Arc::new(LayeredEnv::root(base));
+        let mut overlay = Env::new();
+        overlay.insert("PORT".into(), "5432".into());
+        let effect_env = Arc::new(LayeredEnv::child(root, overlay));
 
         let scope = Scope::Effect {
             name: "Db".into(),
             vars: Arc::new(Mutex::new(VarScope::new())),
             _timeout: None,
-            env: Arc::new(LayeredEnv::root(Env::from_map(overlay_map))),
+            env: effect_env,
         };
         let shell = ShellState::new("db".into());
         let ctx = ExecutionContext::new(
@@ -558,13 +589,20 @@ mod tests {
             test_env(),
             0,
         );
-        for key in ["PORT", "PATH", "absent"] {
-            let via_lookup = ctx.lookup(key).await;
-            let guard = ctx.scope.vars().lock().await;
-            let (scopes, env) = ctx.interp_chain(&guard);
-            let via_render = relux_core::pure::lookup_var(&scopes, env, key);
-            assert_eq!(via_lookup, via_render, "mismatch for key {key}");
-        }
+
+        let guard = ctx.scope.vars().lock().await;
+        let (scopes, env) = ctx.interp_chain(&guard);
+        assert_eq!(
+            relux_core::pure::lookup_var(&scopes, env, "PORT"),
+            Some("5432".to_string()),
+            "overlay var resolves"
+        );
+        assert_eq!(
+            relux_core::pure::lookup_var(&scopes, env, "PATH"),
+            Some("/usr/bin".to_string()),
+            "base env resolves through the effect env's parent chain"
+        );
+        assert_eq!(relux_core::pure::lookup_var(&scopes, env, "absent"), None);
     }
 
     // --- Call stack barrier ------------------------------
