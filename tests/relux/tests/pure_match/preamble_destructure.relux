@@ -15,12 +15,15 @@ test "preamble regex destructures a url into lets and a start overlay" {
     overlay both read. The url is destructured into host/port/db; two
     `let`s pull $1/$2 out of the frame, while the `start Conn` overlay
     reads capture $3 directly. This proves preamble captures propagate
-    into both later lets and into overlay expressions.
+    into both later lets and into overlay expressions. An exact-equality (`=`)
+    pure match in the same preamble asserts the extracted host verbatim, so a
+    preamble pass covers `=` as well as `?`.
     """
     let url := "postgres://user:pw@db.internal:5432/shop"
     url ? ^postgres://[^@]+@([^:/]+):(\d+)/(\w+)$
     let host := "${1}"
     let port := "${2}"
+    host = db.internal
     start Conn as C { HOST := host, PORT := port, DB := "${3}" }
     shell C.c {
         > echo "host=${host} port=${port}"

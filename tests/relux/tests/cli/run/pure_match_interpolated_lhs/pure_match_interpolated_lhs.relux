@@ -1,0 +1,13 @@
+test "run: an interpolated-string LHS pure match binds captures end to end" {
+    """
+    The canonical pure-match usage: compose a value from two variables in the
+    LHS (`"${a}/${b}"`), assert its shape with a regex, and read the capture
+    groups back. Every other pure-match fixture uses a bare-identifier or
+    literal LHS; this exercises the interpolated LHS through evaluation.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <= 1 passed
+        match_ok()
+    }
+}

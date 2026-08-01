@@ -1,0 +1,23 @@
+test "pure matches execute inside a cleanup block" {
+    """
+    A cleanup block goes through the generic statement path, so pure matches
+    (`?` / `=`) are valid there. These are the only pure matches in the test,
+    so their trio events prove the cleanup block actually ran them.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <= 1 passed
+        match_ok()
+
+        > events=$(ls -dt ${__RELUX_TEST_ROOT}/fixtures/relux/out/*/logs/relux/tests/cleanup/pure-match-runs-in-a-cleanup-block/events.json 2>/dev/null | head -1); echo FOUND=$events
+        <? ^FOUND=/
+        match_ok()
+
+        > jq -M '[.events[] | select(.kind == "pure-match-start")] | length' $events
+        <? ^2$
+        match_ok()
+        > jq -M '[.events[] | select(.kind == "pure-match-failed")] | length' $events
+        <? ^0$
+        match_ok()
+    }
+}

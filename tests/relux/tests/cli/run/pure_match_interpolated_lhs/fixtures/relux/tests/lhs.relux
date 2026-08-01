@@ -1,0 +1,10 @@
+test "interpolated-string LHS regex-matches and binds captures" {
+    shell s {
+        let a := "foo"
+        let b := "bar"
+        "${a}/${b}" ? ^(\w+)/(\w+)$
+        > echo "1=${1} 2=${2}"
+        <? ^1=foo 2=bar$
+        match_ok()
+    }
+}
