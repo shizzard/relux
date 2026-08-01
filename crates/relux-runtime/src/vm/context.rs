@@ -233,6 +233,16 @@ impl ExecutionContext {
         self.shell.captures.get(&key).map(str::to_string)
     }
 
+    /// The current capture frame as a raw map, for the interpolation
+    /// renderer. Inside a `fn` call this is the call frame's captures;
+    /// otherwise the shell's.
+    pub fn current_captures_map(&self) -> &HashMap<String, String> {
+        match self.call_stack.last() {
+            Some(frame) => frame.captures.as_map(),
+            None => self.shell.captures.as_map(),
+        }
+    }
+
     /// Insert a `let` variable into the current context.
     pub fn let_insert(&mut self, key: String, value: String) {
         if let Some(frame) = self.call_stack.last_mut() {

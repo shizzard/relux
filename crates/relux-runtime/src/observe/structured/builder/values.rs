@@ -3,7 +3,7 @@
 //! These cover both the shell-bound surface (`var-let` / `var-assign`
 //! during shell-block execution, runtime interpolation, runtime string
 //! eval) and the pure surface used by `LogSink` and marker replay
-//! (`pure-interpolation`, `var-read`, `pure-match`).
+//! (interpolation (shell and pure surfaces), `var-read`, `pure-match`).
 
 use std::collections::HashMap;
 
@@ -78,12 +78,14 @@ impl StructuredLogBuilder {
         );
     }
 
+    /// Emit an interpolation event. Shell callers pass `Some(shell)` /
+    /// `Some(marker)`; pure callers (LogSink) pass `None` / `None`.
     #[allow(clippy::too_many_arguments)]
     pub fn emit_interpolation(
         &self,
         span: SpanId,
-        shell: &str,
-        marker: &str,
+        shell: Option<&str>,
+        marker: Option<&str>,
         template: &str,
         result: &str,
         bindings: &[(String, String)],
@@ -91,32 +93,8 @@ impl StructuredLogBuilder {
     ) {
         self.push_event(
             span,
-            Some(shell),
-            Some(marker),
-            location,
-            EventKind::Interpolation {
-                template: template.to_string(),
-                result: result.to_string(),
-                bindings: bindings.to_vec(),
-            },
-        );
-    }
-
-    /// Interpolation event emitted from a pure-eval context (no shell,
-    /// no shell marker). Used by `LogSink` for marker replay and for
-    /// test/effect-level lets.
-    pub fn emit_pure_interpolation(
-        &self,
-        span: SpanId,
-        template: &str,
-        result: &str,
-        bindings: &[(String, String)],
-        location: Option<&IrSpan>,
-    ) {
-        self.push_event(
-            span,
-            None,
-            None,
+            shell,
+            marker,
             location,
             EventKind::Interpolation {
                 template: template.to_string(),

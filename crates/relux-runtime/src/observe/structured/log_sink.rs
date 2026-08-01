@@ -142,7 +142,7 @@ impl<'a> PureEvalSink for LogSink<'a> {
     ) {
         let parent = self.current_parent();
         self.log
-            .emit_pure_interpolation(parent, template, result, bindings, Some(span));
+            .emit_interpolation(parent, None, None, template, result, bindings, Some(span));
     }
 
     fn record_pure_match_start(
