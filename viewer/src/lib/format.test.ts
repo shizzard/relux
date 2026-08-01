@@ -20,6 +20,7 @@ import {
   foldedSummary,
   formatBytes,
   formatDuration,
+  formatMatchContext,
   formatMultiMatchPatternLabel,
   formatTimeout,
   formatTimeoutLine,
@@ -630,5 +631,18 @@ describe('formatMultiMatchPatternLabel', () => {
   it('uses ? for regex and = for literal', () => {
     expect(formatMultiMatchPatternLabel({ pattern: '^job-a$', is_regex: true })).toBe('? ^job-a$');
     expect(formatMultiMatchPatternLabel({ pattern: 'batch complete', is_regex: false })).toBe('= batch complete');
+  });
+});
+
+describe('formatMatchContext', () => {
+  it('labels every match-context kind by its human name, quoting the site name', () => {
+    expect(formatMatchContext({ type: 'fn', name: 'build_url' })).toBe("fn 'build_url'");
+    expect(formatMatchContext({ type: 'test-preamble', name: 'login' })).toBe(
+      "test preamble 'login'",
+    );
+    expect(formatMatchContext({ type: 'effect-preamble', name: 'Db' })).toBe(
+      "effect preamble 'Db'",
+    );
+    expect(formatMatchContext({ type: 'shell', name: 'default' })).toBe("shell 'default'");
   });
 });

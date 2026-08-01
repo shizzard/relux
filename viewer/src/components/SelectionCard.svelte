@@ -26,6 +26,7 @@
     foldedKindLabel,
     formatBytes,
     formatDuration,
+    formatMatchContext,
     formatMultiMatchPatternLabel,
     formatTimeoutLine,
   } from '../lib/format';
@@ -314,8 +315,27 @@
         }
         return out;
       }
-      case 'pure-match-failed':
-        return [{ type: 'kv', key: 'result', value: '(no match)' }];
+      case 'pure-match-failed': {
+        const out: Row[] = [{ type: 'kv', key: 'result', value: '(no match)' }];
+        // When this event is the pure-match that ended the test, surface
+        // where it ran - a pure match has no shell of its own (it may run
+        // in a fn/pure-fn body, a test/effect preamble, or a shell block).
+        const outcome = state.data.outcome;
+        if (
+          outcome.kind === 'fail' &&
+          outcome.type === 'pure-match' &&
+          n(outcome.event_seq) === n(ev.seq)
+        ) {
+          out.push({
+            type: 'kv',
+            key: 'context',
+            value: formatMatchContext(outcome.match_context),
+            mono: true,
+            accent: true,
+          });
+        }
+        return out;
+      }
       case 'annotate':
         return [{ type: 'kv', key: 'text', value: ev.text }];
       case 'log':

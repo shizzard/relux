@@ -1,5 +1,6 @@
 import type { CancelReasonRecord } from '../types/CancelReasonRecord';
 import type { Event } from '../types/Event';
+import type { MatchContext } from '../types/MatchContext';
 import type { MultiMatchPattern } from '../types/MultiMatchPattern';
 import type { Span } from '../types/Span';
 import type { TimeoutValue } from '../types/TimeoutValue';
@@ -395,4 +396,20 @@ export function displayMarkerDecision(d: 'pass' | 'mark'): string {
 export function formatMultiMatchPatternLabel(p: MultiMatchPattern): string {
   const op = p.is_regex ? '?' : '=';
   return `${op} ${p.pattern}`;
+}
+
+// Human label for where a pure match ran (fn / test preamble / effect
+// preamble / shell), used on the `pure-match-failed` detail row when that
+// event is the test's recorded failure. Mirrors the Rust
+// `MatchContext::Display` impl ("<kind> '<name>'") so the viewer and the
+// CLI/TAP reporters agree on wording.
+const MATCH_CONTEXT_KIND_LABELS: Record<MatchContext['type'], string> = {
+  fn: 'fn',
+  'test-preamble': 'test preamble',
+  'effect-preamble': 'effect preamble',
+  shell: 'shell',
+};
+
+export function formatMatchContext(mc: MatchContext): string {
+  return `${MATCH_CONTEXT_KIND_LABELS[mc.type]} '${mc.name}'`;
 }
