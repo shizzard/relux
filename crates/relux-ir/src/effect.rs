@@ -53,6 +53,9 @@ pub struct IrEffectStart {
     effect: DiagEffectId,
     overlay: Vec<IrOverlayEntry>,
     alias: Option<String>,
+    /// Source span of the effect name (`Db` in `start Db`), for a
+    /// "effect not found" / resolution-failed diagnostic.
+    effect_span: IrSpan,
     span: IrSpan,
 }
 
@@ -61,18 +64,25 @@ impl IrEffectStart {
         effect: DiagEffectId,
         overlay: Vec<IrOverlayEntry>,
         alias: Option<String>,
+        effect_span: IrSpan,
         span: IrSpan,
     ) -> Self {
         Self {
             effect,
             overlay,
             alias,
+            effect_span,
             span,
         }
     }
 
     pub fn effect(&self) -> &DiagEffectId {
         &self.effect
+    }
+
+    /// Source span of the effect name in the `start` statement.
+    pub fn effect_span(&self) -> &IrSpan {
+        &self.effect_span
     }
 
     pub fn overlay(&self) -> &[IrOverlayEntry] {
@@ -376,6 +386,7 @@ impl IrNodeLowering for IrEffectStart {
             global_key,
             overlay,
             alias,
+            IrSpan::new(file.clone(), ast.effect.node.span),
             IrSpan::new(file.clone(), ast.span),
         ))
     }

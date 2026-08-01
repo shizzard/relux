@@ -41,9 +41,22 @@ fn test_effect_id() -> EffectId {
 #[test]
 fn ir_effect_with_starts() {
     let s = test_span();
-    let start = IrEffectStart::new(test_effect_id(), vec![], None, s.clone());
+    let start = IrEffectStart::new(test_effect_id(), vec![], None, s.clone(), s.clone());
     let eff = IrEffect::new(test_ident("Db"), vec![], vec![], vec![start], vec![], s);
     assert_eq!(eff.starts().len(), 1);
+}
+
+#[test]
+fn ir_effect_start_records_effect_span() {
+    let effect_span = IrSpan::new(test_file_id(), relux_core::Span::new(6, 8));
+    let start = IrEffectStart::new(
+        test_effect_id(),
+        vec![],
+        None,
+        effect_span.clone(),
+        test_span(),
+    );
+    assert_eq!(start.effect_span().span(), effect_span.span());
 }
 
 #[test]
@@ -61,19 +74,25 @@ fn ir_effect_empty_starts() {
 
 #[test]
 fn ir_effect_start_no_overlay() {
-    let start = IrEffectStart::new(test_effect_id(), vec![], None, test_span());
+    let start = IrEffectStart::new(test_effect_id(), vec![], None, test_span(), test_span());
     assert!(start.overlay().is_empty());
 }
 
 #[test]
 fn ir_effect_start_with_alias() {
-    let start = IrEffectStart::new(test_effect_id(), vec![], Some("my_db".into()), test_span());
+    let start = IrEffectStart::new(
+        test_effect_id(),
+        vec![],
+        Some("my_db".into()),
+        test_span(),
+        test_span(),
+    );
     assert_eq!(start.alias(), Some("my_db"));
 }
 
 #[test]
 fn ir_effect_start_without_alias() {
-    let start = IrEffectStart::new(test_effect_id(), vec![], None, test_span());
+    let start = IrEffectStart::new(test_effect_id(), vec![], None, test_span(), test_span());
     assert_eq!(start.alias(), None);
 }
 
