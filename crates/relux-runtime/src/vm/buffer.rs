@@ -24,7 +24,7 @@ pub struct FailPatternHit {
     pub(crate) matched_text: String,
 }
 
-// --- MatchContext ----------------------------------------
+// --- MatchSlices -----------------------------------------
 
 /// `(before, matched, after)` slices around a match. Used by the VM to push a
 /// `BufferEventKind::Matched` describing how the cursor advanced.
@@ -33,10 +33,10 @@ pub struct FailPatternHit {
 /// The viewer reconstructs each shell's append-only buffer from the `grew`
 /// stream and validates that `before + matched + after` equals the
 /// currently-unmatched buffer tail at the moment of the match.
-pub type MatchContext = (String, String, String);
+pub type MatchSlices = (String, String, String);
 
 // --- Tail truncation helpers (failure-context capture only) ---
-// `match_context` does NOT use these - match events ship full bytes so the
+// `match_slices` does NOT use these - match events ship full bytes so the
 // viewer can rebuild append-only history losslessly. These helpers are
 // kept for `snapshot_tail` and other places that intentionally want a
 // human-sized excerpt of the buffer.
@@ -61,7 +61,7 @@ pub(crate) fn regex_error_summary(e: &regex::Error) -> String {
         .to_string()
 }
 
-fn match_context(text: &str, pos: usize, end_pos: usize, matched: &str) -> MatchContext {
+fn match_slices(text: &str, pos: usize, end_pos: usize, matched: &str) -> MatchSlices {
     (
         text[..pos].to_string(),
         matched.to_string(),
@@ -243,7 +243,7 @@ impl OutputBuffer {
         let pos = inner.decoded.find(needle)?;
         let end_pos = pos + needle.len();
 
-        let (before, matched_str, after) = match_context(&inner.decoded, pos, end_pos, needle);
+        let (before, matched_str, after) = match_slices(&inner.decoded, pos, end_pos, needle);
 
         let consumed = end_pos;
         let m = Match {
@@ -288,7 +288,7 @@ impl OutputBuffer {
             (pos, end_pos, matched_str, captures)
         };
 
-        let (before, _, after) = match_context(&inner.decoded, pos, end_pos, &matched_str);
+        let (before, _, after) = match_slices(&inner.decoded, pos, end_pos, &matched_str);
 
         let consumed = end_pos;
         let m = Match {
@@ -328,7 +328,7 @@ impl OutputBuffer {
         };
         let end_pos = pos + needle.len();
 
-        let (before, matched_str, after) = match_context(&inner.decoded, pos, end_pos, needle);
+        let (before, matched_str, after) = match_slices(&inner.decoded, pos, end_pos, needle);
 
         let consumed = end_pos;
         let m = Match {
@@ -384,7 +384,7 @@ impl OutputBuffer {
             (pos, end_pos, matched_str, captures)
         };
 
-        let (before, _, after) = match_context(&inner.decoded, pos, end_pos, &matched_str);
+        let (before, _, after) = match_slices(&inner.decoded, pos, end_pos, &matched_str);
 
         let consumed = end_pos;
         let m = Match {
