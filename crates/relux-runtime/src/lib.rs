@@ -35,7 +35,6 @@ use crate::report::result::Failure;
 use crate::report::result::FailureContext;
 use crate::report::result::Outcome;
 use crate::report::result::TestResult;
-use crate::report::result::pure_eval_failure;
 use crate::scan::scan_artifacts;
 use crate::vm::Vm;
 use crate::vm::context::ExecutionContext;
@@ -61,6 +60,7 @@ pub mod cancel;
 pub mod effect;
 pub(crate) mod marker_walk;
 pub mod observe;
+pub(crate) mod preamble;
 pub mod report;
 pub mod runtime_context;
 pub(crate) mod scan;
@@ -985,44 +985,24 @@ async fn run_test_body(
     //    `$n` captures are visible to later lets and pure-matches, and
     //    ultimately to effect overlays (see the instantiate call below).
     let mut body_captures: HashMap<String, String> = HashMap::new();
+    let tc = MatchContext::TestPreamble {
+        name: test.name().to_string(),
+    };
     for item in test.body() {
         match item {
             IrTestItem::Let { stmt, span } => {
-                let mut vars = scope.vars().lock().await;
-                let mut sink = LogSink::new(&rt_ctx.log, test_span);
-                let value = if let Some(expr) = stmt.value() {
-                    match relux_ir::evaluator::eval_pure_expr(
-                        expr,
-                        &vars,
-                        &body_captures,
-                        &rt_ctx.env,
-                        &rt_ctx.tables.pure_fns,
-                        &mut sink,
-                    ) {
-                        Ok(v) => v,
-                        Err(err) => {
-                            let vars_in_scope = vars.snapshot();
-                            return Err(pure_eval_failure(
-                                err,
-                                test_span,
-                                MatchContext::TestPreamble {
-                                    name: test.name().to_string(),
-                                },
-                                vars_in_scope,
-                                &sink,
-                                &rt_ctx.log,
-                            ));
-                        }
-                    }
-                } else {
-                    String::new()
-                };
-                let name = stmt.name().name();
-                vars.insert(name.to_string(), value.clone());
-                drop(vars);
-                rt_ctx
-                    .log
-                    .emit_var_let(test_span, None, None, name, &value, Some(span));
+                crate::preamble::eval_preamble_let(
+                    &rt_ctx.log,
+                    &rt_ctx.env,
+                    &rt_ctx.tables.pure_fns,
+                    &scope,
+                    test_span,
+                    &tc,
+                    stmt,
+                    span,
+                    &body_captures,
+                )
+                .await?;
             }
             IrTestItem::PureMatch {
                 lhs,
@@ -1030,31 +1010,20 @@ async fn run_test_body(
                 is_regex,
                 span,
             } => {
-                let vars = scope.vars().lock().await;
-                let mut sink = LogSink::new(&rt_ctx.log, test_span);
-                if let Err(err) = relux_ir::evaluator::apply_pure_match(
-                    &mut sink,
-                    &vars,
-                    &mut body_captures,
+                crate::preamble::eval_preamble_pure_match(
+                    &rt_ctx.log,
+                    &rt_ctx.env,
+                    &rt_ctx.tables.pure_fns,
+                    &scope,
+                    test_span,
+                    &tc,
                     lhs,
                     pattern,
                     *is_regex,
                     span,
-                    &rt_ctx.env,
-                    &rt_ctx.tables.pure_fns,
-                ) {
-                    let vars_in_scope = vars.snapshot();
-                    return Err(pure_eval_failure(
-                        err,
-                        test_span,
-                        MatchContext::TestPreamble {
-                            name: test.name().to_string(),
-                        },
-                        vars_in_scope,
-                        &sink,
-                        &rt_ctx.log,
-                    ));
-                }
+                    &mut body_captures,
+                )
+                .await?;
             }
             // Non-preamble items run in the body walk below.
             IrTestItem::Comment { .. }

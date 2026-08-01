@@ -32,7 +32,6 @@ use crate::vm::Vm;
 use crate::vm::context::ExecutionContext;
 use crate::vm::context::Scope;
 use crate::vm::context::ShellState;
-use relux_core::diagnostics::IrSpan;
 use relux_core::pure::Env;
 use relux_core::pure::LayeredEnv;
 use relux_core::pure::LayeredEnvSource;
@@ -41,7 +40,6 @@ use relux_ir::IrCleanupBlock;
 use relux_ir::IrEffectItem;
 use relux_ir::IrEffectStart;
 use relux_ir::IrNode;
-use relux_ir::IrPureLetStmt;
 
 // --- Warning / CleanupSource -----------------------------
 
@@ -418,15 +416,21 @@ impl EffectManager {
         //    `$n` captures flow into later lets, pure-matches, and the
         //    sub-dependency overlays instantiated in step 4.
         let mut body_captures: HashMap<String, String> = HashMap::new();
+        let ec = MatchContext::EffectPreamble {
+            name: start.effect().name.to_string(),
+        };
         for item in effect.body() {
             match item {
                 IrEffectItem::Let { stmt, span } => {
-                    self.eval_effect_let(
+                    crate::preamble::eval_preamble_let(
+                        &self.rt_ctx.log,
+                        &effect_env,
+                        &self.rt_ctx.tables.pure_fns,
+                        &scope,
+                        setup_span_id,
+                        &ec,
                         stmt,
                         span,
-                        &scope,
-                        &effect_env,
-                        setup_span_id,
                         &body_captures,
                     )
                     .await?;
@@ -437,34 +441,20 @@ impl EffectManager {
                     is_regex,
                     span,
                 } => {
-                    let vars = scope.vars().lock().await;
-                    let mut sink = crate::observe::structured::log_sink::LogSink::new(
+                    crate::preamble::eval_preamble_pure_match(
                         &self.rt_ctx.log,
+                        &effect_env,
+                        &self.rt_ctx.tables.pure_fns,
+                        &scope,
                         setup_span_id,
-                    );
-                    if let Err(err) = relux_ir::evaluator::apply_pure_match(
-                        &mut sink,
-                        &vars,
-                        &mut body_captures,
+                        &ec,
                         lhs,
                         pattern,
                         *is_regex,
                         span,
-                        &effect_env,
-                        &self.rt_ctx.tables.pure_fns,
-                    ) {
-                        let vars_in_scope = vars.snapshot();
-                        return Err(pure_eval_failure(
-                            err,
-                            setup_span_id,
-                            MatchContext::EffectPreamble {
-                                name: start.effect().name.to_string(),
-                            },
-                            vars_in_scope,
-                            &sink,
-                            &self.rt_ctx.log,
-                        ));
-                    }
+                        &mut body_captures,
+                    )
+                    .await?;
                 }
                 // Non-preamble items run in the body walk below.
                 IrEffectItem::Comment { .. }
@@ -938,54 +928,6 @@ impl EffectManager {
             overlay.insert(entry.key().name().to_string(), value);
         }
         Ok(overlay)
-    }
-
-    async fn eval_effect_let(
-        &self,
-        stmt: &IrPureLetStmt,
-        span: &IrSpan,
-        scope: &Scope,
-        effect_env: &Arc<LayeredEnv>,
-        setup_span: SpanId,
-        captures: &HashMap<String, String>,
-    ) -> Result<(), ExecError> {
-        let mut vars = scope.vars().lock().await;
-        let mut sink =
-            crate::observe::structured::log_sink::LogSink::new(&self.rt_ctx.log, setup_span);
-        let value = if let Some(expr) = stmt.value() {
-            match relux_ir::evaluator::eval_pure_expr(
-                expr,
-                &vars,
-                captures,
-                effect_env,
-                &self.rt_ctx.tables.pure_fns,
-                &mut sink,
-            ) {
-                Ok(v) => v,
-                Err(err) => {
-                    let vars_in_scope = vars.snapshot();
-                    return Err(pure_eval_failure(
-                        err,
-                        setup_span,
-                        MatchContext::EffectPreamble {
-                            name: scope.name().to_string(),
-                        },
-                        vars_in_scope,
-                        &sink,
-                        &self.rt_ctx.log,
-                    ));
-                }
-            }
-        } else {
-            String::new()
-        };
-        let name = stmt.name().name();
-        vars.insert(name.to_string(), value.clone());
-        drop(vars);
-        self.rt_ctx
-            .log
-            .emit_var_let(setup_span, None, None, name, &value, Some(span));
-        Ok(())
     }
 
     /// Glue: release one guard, then either run its cleanup body (when
