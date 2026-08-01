@@ -41,7 +41,12 @@ pub struct IrSpan {
 }
 
 impl IrSpan {
-    /// Sentinel span for config-derived or synthetic values not tied to source.
+    /// A span with no source location. Use this ONLY for values that
+    /// genuinely have no place in any `.relux` source -- for example the
+    /// suite-default timeout built from `Relux.toml` (`IrTimeout::tolerance_scaled`).
+    /// A `Failure` must never use this: every failure has a real source
+    /// construct to point at, and `Failure`'s `span: IrSpan` fields are
+    /// non-optional precisely to enforce that.
     pub fn synthetic() -> Self {
         Self {
             file: FileId::new(std::path::PathBuf::from("<synthetic>")),
