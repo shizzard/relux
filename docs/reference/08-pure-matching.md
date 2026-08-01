@@ -213,8 +213,21 @@ orphan `pure-match-start`).
 
 When a pure match fails the test, the outcome carries a
 [`FailureRecord`](06-events-json-schema.md#failure) of type
-`pure-match` with `span`, `event_seq`, `shell`, `value`, `pattern`,
-`is_regex`, `call_stack`, and `vars_in_scope`. It deliberately has **no
-`buffer_tail`** — a pure match has no buffer. The console and HTML
-reporters render "pure match in shell `<shell>` did not match" together
-with the value and the failing `= pattern` / `? pattern`.
+`pure-match` with `span`, `event_seq`, `match_context`, `value`,
+`pattern`, `is_regex`, `call_stack`, and `vars_in_scope`. It
+deliberately has **no `buffer_tail`** — a pure match has no buffer.
+
+`match_context` (a
+[`MatchContext`](06-events-json-schema.md#matchcontext)) names exactly
+where the assertion ran: a `shell` block, a `fn` / `pure fn` body, a
+test preamble, or an effect preamble — replacing the plain shell name
+a `"pure-match"` failure used to carry, since a pure match can run
+outside any shell. `event_seq` and `vars_in_scope` are populated for
+every `"pure-match"` failure, including one raised from a test/effect
+preamble, an overlay expression, or a `pure fn` body — there is no
+preamble carve-out that leaves them at `0` / empty.
+
+The console and HTML reporters render "pure match in `<context>` did
+not match" (e.g. "pure match in shell `default` did not match" or
+"pure match in fn `extract_id` did not match") together with the value
+and the failing `= pattern` / `? pattern`.

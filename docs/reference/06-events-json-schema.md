@@ -16,9 +16,9 @@ machine-readable equivalent of what this page describes in prose.
 - **Tagged enums** carry their discriminator either as `"kind"`
   (`Span`, `Event`, `BufferEvent`, `TestOutcome`, `SpanKind`,
   `EventKind`, `BufferEventKind`) or as `"type"`
-  (`CancelReasonRecord`, `TimeoutValue`, `FailureRecord`). The
-  discriminator is always a kebab-case string. The remaining
-  variant-specific fields are flattened alongside it.
+  (`CancelReasonRecord`, `TimeoutValue`, `FailureRecord`,
+  `MatchContext`). The discriminator is always a kebab-case string. The
+  remaining variant-specific fields are flattened alongside it.
 - **Timestamps** (`ts`, `start_ts`, `end_ts`, `spawn_ts`,
   `terminate_ts`) are fractional milliseconds since test start,
   encoded as JSON numbers.
@@ -112,7 +112,7 @@ are `"runtime"` and `"pure-match"`, neither of which observes a buffer.
 | `"shell-exited"`        | the PTY shell died unexpectedly (carries `exit_code: i32 \| null`)       |
 | `"runtime"`             | any other runtime error (carries `message`; `span`/`event_seq` optional) |
 | `"multi-match"`         | a `<{ ... }` block timed out before all patterns matched (carries `patterns`, `matched` indices, `effective`) |
-| `"pure-match"`          | a [pure-match statement](08-pure-matching.md) (`<expr> = <pattern>` / `<expr> ? <pattern>`) did not match. Carries `value`, `pattern`, `is_regex`; **no `buffer_tail`** (a pure match has no buffer) |
+| `"pure-match"`          | a [pure-match statement](08-pure-matching.md) (`<expr> = <pattern>` / `<expr> ? <pattern>`) did not match. Carries `match_context` (a [`MatchContext`](#matchcontext)), `value`, `pattern`, `is_regex`; **no `buffer_tail`** (a pure match has no buffer) |
 
 Each variant also carries the `span` and `event_seq` that pinpoint the
 event-stream location of the failure.
@@ -406,6 +406,39 @@ effect-cleanup frames carry one today.
 `assertion` is the hard kind that does not. All three duration fields
 are humantime strings — consumers should display them verbatim
 rather than re-parsing.
+
+## `MatchContext`
+
+Names exactly where a `"pure-match"` failure's assertion ran. Tagged
+on `type`:
+
+```jsonc
+// One of:
+{ "type": "fn",               "name": "<fn or pure fn name>" }
+{ "type": "test-preamble",    "name": "<test name>" }
+{ "type": "effect-preamble",  "name": "<effect name>" }
+{ "type": "shell",            "name": "<shell name>" }
+```
+
+- `"fn"` — the pure match ran inside a `fn` or `pure fn` body; `name`
+  is the function name. Reached through one or more `"pure-fn-call"` /
+  `"fn-call"` frames in `call_stack`.
+- `"test-preamble"` — the pure match ran in a test's preamble (before
+  its first `shell` block); `name` is the test name.
+- `"effect-preamble"` — the pure match ran in an effect's preamble
+  (its `let`s and overlay expressions, before `start`/`expose`);
+  `name` is the effect name.
+- `"shell"` — the pure match ran inside a `shell` block; `name` is the
+  shell name.
+
+`MatchContext` replaced a plain `shell: String` field the
+`"pure-match"` failure record used to carry: a pure match can run
+outside any shell (a preamble, a `fn` or `pure fn` body), so a bare
+shell name could not say where the failure actually happened.
+Pre-VM pure-match failures — a test/effect preamble, an overlay
+expression, or a `pure fn` body — carry a real `event_seq` and a
+populated `vars_in_scope`, the same as VM-observed failures; neither
+field is ever `0` / empty for a `"pure-match"` failure.
 
 ## `SourceLocation`
 
