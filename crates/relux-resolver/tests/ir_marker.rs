@@ -561,6 +561,65 @@ test "t" {
 }
 
 #[test]
+fn marker_malformed_pattern_in_pure_fn_is_invalid() {
+    // A malformed interpolated pattern reached THROUGH a pure fn in a bare
+    // condition must be a hard error, exactly like a malformed pattern written
+    // directly on the marker (`marker_invalid_regex_in_condition`). The pattern
+    // `${x}` is unknown at lowering, so it can only fail at eval time as
+    // `PureEvalError::MalformedPattern`; the condition must surface that as
+    // `Plan::Invalid`, never fold it into a falsy condition.
+    let mut env = HashMap::new();
+    env.insert("MY_VAR".into(), "[invalid".into());
+    let suite = resolve_source(
+        &[(
+            "tests/a",
+            r#"pure fn extract(x) {
+  x ? ${x}
+}
+
+# skip if extract(MY_VAR)
+test "t" {
+  shell sh {
+    > echo hello
+  }
+}
+"#,
+        )],
+        env,
+    );
+    assert!(is_invalid(&suite.plans[0]));
+}
+
+#[test]
+fn marker_failed_match_in_pure_fn_is_falsy_not_invalid() {
+    // Control for `marker_malformed_pattern_in_pure_fn_is_invalid`: a
+    // well-formed pattern that simply DOES NOT match (a `PureMatchFailed`, not a
+    // `MalformedPattern`) reached through a pure fn stays a falsy condition, not
+    // a hard error. `# skip if` on a falsy condition means the test runs.
+    let mut env = HashMap::new();
+    env.insert("MY_VAR".into(), "abc".into());
+    let suite = resolve_source(
+        &[(
+            "tests/a",
+            r#"pure fn extract(x) {
+  x ? ^\d+$
+}
+
+# skip if extract(MY_VAR)
+test "t" {
+  shell sh {
+    > echo hello
+  }
+}
+"#,
+        )],
+        env,
+    );
+    assert!(!is_invalid(&suite.plans[0]));
+    assert!(is_runnable(&suite.plans[0]));
+}
+
+#[test]
 fn marker_undefined_fn_in_condition() {
     let suite = resolve_source_no_env(&[(
         "tests/a",

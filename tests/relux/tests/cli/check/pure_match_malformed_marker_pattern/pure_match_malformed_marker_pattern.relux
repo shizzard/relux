@@ -1,0 +1,13 @@
+test "check rejects a malformed pattern reached through a marker condition" {
+    """
+    Verify relux check reports an invalid regex (a hard error, not a silently
+    falsy condition) when a marker condition calls a pure fn whose interpolated
+    pure-match pattern is malformed. A plain no-match stays falsy; only a
+    malformed pattern is fatal, matching every other pure context.
+    """
+    shell s {
+        > ${__RELUX} check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? invalid regex
+        match_not_ok(1)
+    }
+}

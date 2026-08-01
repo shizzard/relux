@@ -15,6 +15,7 @@ use relux_core::table::FileId;
 
 use super::IrNodeLowering;
 use super::LoweringContext;
+use super::PureEvalError;
 use super::expr::IrPureExpr;
 use super::interpolation::IrInterpolation;
 
@@ -173,6 +174,31 @@ pub fn lower_markers(
     Ok(lowered)
 }
 
+/// Resolve one marker-condition operand from a pure evaluation.
+///
+/// A pure evaluation can fail two ways, and a marker condition treats them
+/// differently. A `PureMatchFailed` - a `?`/`=` reached through a called
+/// `pure fn` that did not match - folds to a falsy condition (`Ok(None)`): a
+/// condition that "does not match" is simply not met. A `MalformedPattern` is a
+/// hard error in every pure context, so it bails the whole decision as
+/// `LoweringBail::Invalid`, identical to a malformed pattern written directly on
+/// the marker's own `?` arm. The two must never be conflated.
+fn resolve_cond_operand(
+    res: Result<String, PureEvalError>,
+) -> Result<Option<String>, LoweringBail> {
+    match res {
+        Ok(value) => Ok(Some(value)),
+        Err(PureEvalError::PureMatchFailed { .. }) => Ok(None),
+        Err(PureEvalError::MalformedPattern {
+            pattern,
+            reason,
+            span,
+        }) => Err(LoweringBail::invalid(InvalidReport::invalid_regex(
+            pattern, reason, span,
+        ))),
+    }
+}
+
 /// Decide a definition's lowered markers against `env`. Produces the recordings
 /// and skip/flaky verdict; compiles marker regexes from the resolved pattern
 /// (an invalid pattern is a `LoweringBail::Invalid`, matching current behavior).
@@ -210,22 +236,22 @@ pub fn decide_markers(
             let (mut met, evaluation) = match &marker.cond {
                 IrMarkerCond::Unconditional => unreachable!(),
                 IrMarkerCond::Bare { expr } => {
-                    match crate::evaluator::eval_pure_expr(
+                    match resolve_cond_operand(crate::evaluator::eval_pure_expr(
                         expr,
                         &relux_core::pure::VarScope::new(),
                         &captures,
                         env,
                         fns,
                         &mut recording,
-                    ) {
-                        Ok(value) => {
+                    ))? {
+                        Some(value) => {
                             let met = !value.is_empty();
                             (met, SkipEvaluation::Bare { value, met })
                         }
-                        // A pure-eval failure (a failed pure match, or a
-                        // malformed interpolated pattern) makes the
-                        // condition falsy.
-                        Err(_) => (
+                        // A failed pure match (not a malformed pattern, which
+                        // `resolve_cond_operand` has already bailed on) makes
+                        // the condition falsy.
+                        None => (
                             false,
                             SkipEvaluation::Bare {
                                 value: String::new(),
@@ -240,24 +266,24 @@ pub fn decide_markers(
                     cond_span,
                 } => {
                     let vars = relux_core::pure::VarScope::new();
-                    let lhs_val = crate::evaluator::eval_pure_expr(
+                    let lhs_val = resolve_cond_operand(crate::evaluator::eval_pure_expr(
                         lhs,
                         &vars,
                         &captures,
                         env,
                         fns,
                         &mut recording,
-                    );
-                    let rhs_val = crate::evaluator::eval_pure_expr(
+                    ))?;
+                    let rhs_val = resolve_cond_operand(crate::evaluator::eval_pure_expr(
                         rhs,
                         &vars,
                         &captures,
                         env,
                         fns,
                         &mut recording,
-                    );
+                    ))?;
                     match (lhs_val, rhs_val) {
-                        (Ok(lhs_val), Ok(rhs_val)) => {
+                        (Some(lhs_val), Some(rhs_val)) => {
                             // Literal mode never errors, so the Result/Option
                             // unwraps cleanly.
                             let met = crate::eval_pure_match(
@@ -279,7 +305,8 @@ pub fn decide_markers(
                                 },
                             )
                         }
-                        // A pure-eval failure on either side makes the
+                        // A failed pure match on either side (malformed patterns
+                        // already bailed in `resolve_cond_operand`) makes the
                         // condition falsy.
                         _ => (
                             false,
@@ -298,24 +325,24 @@ pub fn decide_markers(
                     pattern_span,
                 } => {
                     let vars = relux_core::pure::VarScope::new();
-                    let value = crate::evaluator::eval_pure_expr(
+                    let value = resolve_cond_operand(crate::evaluator::eval_pure_expr(
                         expr,
                         &vars,
                         &captures,
                         env,
                         fns,
                         &mut recording,
-                    );
-                    let pattern_str = crate::evaluator::eval_pure_expr(
+                    ))?;
+                    let pattern_str = resolve_cond_operand(crate::evaluator::eval_pure_expr(
                         pattern,
                         &vars,
                         &captures,
                         env,
                         fns,
                         &mut recording,
-                    );
+                    ))?;
                     match (value, pattern_str) {
-                        (Ok(value), Ok(pattern_str)) => {
+                        (Some(value), Some(pattern_str)) => {
                             let hit = crate::eval_pure_match(
                                 &mut recording,
                                 &value,
@@ -342,7 +369,8 @@ pub fn decide_markers(
                                 },
                             )
                         }
-                        // A pure-eval failure on either side makes the
+                        // A failed pure match on either side (malformed patterns
+                        // already bailed in `resolve_cond_operand`) makes the
                         // condition falsy.
                         _ => (
                             false,

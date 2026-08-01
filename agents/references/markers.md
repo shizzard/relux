@@ -55,6 +55,7 @@ Conditions accept bare identifiers and quoted strings (with optional interpolati
 - `=` returns the LHS value if it equals RHS exactly, empty string otherwise -- unlike the shell literal-match operators `<=`/`!=`, which scan a streaming buffer for a substring; a marker compares against a complete value.
 - For a substring or pattern check, use `?` (regex) instead: `expr ? value`.
 - `?` returns the regex match if it matched, empty string otherwise.
+- A no-match (including one reached through a called `pure fn`) is a falsy condition, never an error -- a condition is evaluated to decide skip/run/flaky, not to assert. A **malformed** interpolated pattern is different: it is a hard error in every pure context, marker conditions included, so a broken regex fails the run rather than silently reading as an unmet condition.
 - The bare form (`VAR`) is the variable's value -- no extra interpolation step.
 
 ## Evaluation timing

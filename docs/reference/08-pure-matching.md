@@ -103,9 +103,11 @@ call starts with an empty capture frame. A no-match inside a `pure fn`
 fails the test through whichever runtime site called the function — a
 test- or effect-level `let`, an overlay value, or a shell-block call; a
 malformed interpolated pattern surfaces as a runtime error. The one
-exception is a **marker condition**: a pure-eval failure there makes the
+exception is a **marker condition**: a *no-match* there makes the
 condition falsy rather than failing the test (a marker is evaluated to
-decide skip/run/flaky, not to assert).
+decide skip/run/flaky, not to assert). A **malformed pattern** is *not*
+excepted — it is a hard error in every pure context, marker conditions
+included, so a broken regex never masquerades as an unmet condition.
 
 This is the extraction idiom: a `pure fn` asserts the value's shape with
 `?` and returns a capture, and a caller binds the result with `let`.
