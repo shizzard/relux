@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "relux";
             const default_dark_theme = "relux";
-            window.path_to_searchindex_js = "searchindex-c66d4e5c.js";
+            window.path_to_searchindex_js = "searchindex-3f7ad8f1.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-18d25ac9.js"></script>
+        <script src="toc-9de17168.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -200,10 +200,11 @@
 <li>Uninitialized variables (<code>let x</code>) default to empty string <code>""</code></li>
 <li>Variables are scoped to their enclosing block (<code>test</code>, <code>shell</code>, <code>fn</code>, <code>effect</code>)</li>
 <li>Inner blocks can shadow outer variables with a new <code>let</code> declaration</li>
-<li>Reassignment (<code>x = expr</code>) mutates an existing variable from an outer scope</li>
+<li>Binding uses <code>:=</code>: declaration with a value (<code>let x := expr</code>), reassignment (<code>x := expr</code>), and overlay entries (<code>{ KEY := expr }</code>) all use it; bare <code>=</code> is no longer a binding operator (it serves as the literal-match arm inside a multimatch block)</li>
+<li>Reassignment (<code>x := expr</code>) mutates an existing variable from an outer scope</li>
 <li>Environment variables from the host process are available as pre-set variables in all scopes (read-only — <code>let</code> creates a shadow, not a modification of the process environment)</li>
 <li>Hierarchical <code>.env</code> files, when present, layer over the host process environment and take precedence over it; their values feed interpolation, marker evaluation, and the shell under test</li>
-<li>Regex capture groups (<code>$1</code>, <code>$2</code>, …) are set after a <code>&lt;?</code> match and remain in scope until overwritten by the next <code>&lt;?</code></li>
+<li>Regex capture groups (<code>$1</code>, <code>$2</code>, …) are set after a <code>&lt;?</code> match or a <code>?</code> <a href="08-pure-matching.html">pure match</a> and remain in scope until overwritten by the next regex match. Inside a <code>pure fn</code> body a <code>?</code> pure match binds <code>$1..$n</code> into the function’s own per-call frame, discarded when the function returns (they do not leak to the caller, just as a called <code>fn</code>’s captures do not leak out)</li>
 </ul>
 <h2 id="functions"><a class="header" href="#functions">Functions</a></h2>
 <ul>
@@ -223,7 +224,8 @@
 <li>Cannot contain shell operators (<code>&gt;</code>, <code>=&gt;</code>, <code>&lt;?</code>, <code>&lt;=</code>, <code>!?</code>, <code>!=</code>, timeouts)</li>
 <li>Cannot call impure built-in functions (e.g., <code>match_prompt()</code>, <code>ctrl_c()</code>)</li>
 <li>Cannot call regular <code>fn</code> functions — only other pure functions and pure built-in functions</li>
-<li>Can only contain: <code>let</code> declarations, variable reassignment, and expressions</li>
+<li>Can only contain: <code>let</code> declarations, variable reassignment, expressions, and <a href="08-pure-matching.html">pure-match</a> statements (<code>&lt;expr&gt; = &lt;pattern&gt;</code> / <code>&lt;expr&gt; ? &lt;pattern&gt;</code>)</li>
+<li>A <code>?</code> pure match inside the body binds <code>$1..$n</code> into the call’s own capture frame, so a <code>pure fn</code> can extract a value and return it; a non-matching pure match fails the test through the runtime site that called the function (a marker condition is the exception — a pure-eval failure there is falsy, not a test failure)</li>
 <li>Can be called from condition markers, overlay expressions, and regular shell blocks</li>
 <li>“Pure” means shell-independent, not side-effect-free — pure BIFs like <code>sleep()</code> and <code>log()</code> are allowed</li>
 </ul>
@@ -272,6 +274,24 @@
 </ul>
 </li>
 </ul>
+<h2 id="pure-matching"><a class="header" href="#pure-matching">Pure Matching</a></h2>
+<ul>
+<li>A <strong>pure match</strong> asserts that a computed value satisfies a pattern; it reads nothing from a shell (contrast the <code>&lt;?</code> / <code>&lt;=</code> operators, which scan the output buffer)</li>
+<li>Two statement forms, valid in <code>shell</code> blocks, <code>fn</code> bodies, <code>pure fn</code> bodies, and <strong>test / effect preambles</strong> (alongside <code>let</code>, before the first <code>shell</code> block):
+<ul>
+<li><code>&lt;expr&gt; = &lt;pattern&gt;</code> — asserts <code>&lt;expr&gt;</code> equals <code>&lt;pattern&gt;</code> exactly (byte-for-byte literal equality; a superstring or partial overlap fails). This is the same exact-equality semantics as the marker <code>=</code> operator</li>
+<li><code>&lt;expr&gt; ? &lt;pattern&gt;</code> — asserts <code>&lt;expr&gt;</code> matches the regex <code>&lt;pattern&gt;</code> (unanchored, like <code>&lt;?</code>)</li>
+</ul>
+</li>
+<li><code>&lt;pattern&gt;</code> is an interpolated string (<code>${var}</code> resolved before comparison); <code>&lt;expr&gt;</code> is any pure expression</li>
+<li>A pure match is an assertion: a no-match is an immediate test failure (Relux has no error handling), the same as a <code>&lt;?</code> that never matches. There is no negated form and no timeout — the value is already in hand, so the match either succeeds or fails at once</li>
+<li>A successful <code>?</code> binds the numeric capture groups <code>$0</code>, <code>$1</code>, …, <code>$n</code> in the current shell, exactly like <code>&lt;?</code>; they persist until the next regex match overwrites them. The <code>=</code> form binds no captures</li>
+<li>A <code>?</code> pattern that fails to compile (only reachable when interpolation produces malformed regex) is a runtime failure, not a no-match</li>
+<li>Inside a <code>pure fn</code> body, a <code>?</code> pure match binds numeric captures into the function’s own per-call capture frame (each call starts empty), so a <code>pure fn</code> can match <code>$1</code> out of a value and return it. A no-match inside a <code>pure fn</code> fails the test through the runtime site that called it (<code>let</code>, overlay, shell-block call); inside a marker condition, a pure-eval failure instead makes the condition falsy rather than failing the test</li>
+<li>In a test or effect <strong>preamble</strong>, a <code>?</code> pure match binds <code>$n</code> into a single capture frame hoisted across the whole preamble: later preamble <code>let</code>s, later preamble pure matches, and a <code>start</code> overlay’s expressions all read it. A non-matching preamble pure match fails the test (test-level) or fails effect instantiation (effect-level). <code>$n</code> reads the ambient frame uniformly, rendering <code>""</code> when no regex has run, so a <code>$n</code> with no preceding match is not an error</li>
+<li><strong>Shells do not inherit the preamble capture frame.</strong> A <code>shell</code> block owns its own frame, populated only by its own <code>&lt;?</code> matches, starting empty; <code>$n</code> inside a shell reads the shell’s frame, never the preamble’s. Carry a preamble capture into a shell by binding it to a <code>let</code>. Markers run before the preamble, so a marker condition sees an empty frame</li>
+<li>Statement-only: a pure match cannot be a <code>let</code> right-hand side, an overlay value, or a cleanup value. <code>x = e</code> asserts; binding still requires <code>x := e</code> (and <code>let x = e</code> remains an error)</li>
+</ul>
 <h2 id="effects"><a class="header" href="#effects">Effects</a></h2>
 <ul>
 <li>Effect names must start with an uppercase letter (<code>CamelCase</code>) — this is enforced at the syntactic level, disambiguating effects from functions in imports</li>
@@ -287,9 +307,18 @@
 <li><code>start Effect</code> runs the dependency for side effects only — its shells are not accessible</li>
 <li><code>start Effect as Alias</code> runs the dependency and makes its exposed shells/variables available via dot-access (<code>shell Alias.shell_name</code>, <code>${Alias.var_name}</code>)</li>
 <li>Effect aliases (the name after <code>as</code>) must be CamelCase, matching effect naming conventions</li>
-<li><code>start Effect as Alias { KEY = expr }</code> provides an overlay that remaps the caller’s environment into the dependency’s environment
+<li><code>start Effect as Alias { KEY := expr }</code> provides an overlay that remaps the caller’s environment into the dependency’s environment
 <ul>
-<li>The shorthand form <code>KEY</code> (without <code>= expr</code>) is equivalent to <code>KEY = KEY</code></li>
+<li>The shorthand form <code>KEY</code> (without <code>:= expr</code>) is equivalent to <code>KEY := KEY</code></li>
+</ul>
+</li>
+<li>An overlay value may also be a qualified reference to a sibling start’s exposed variable: <code>start Api { DB_PORT := Db.port }</code>. This induces an implicit dependency — <code>Api</code> is instantiated only after <code>Db</code> is ready, and reads <code>Db</code>’s exposed value at that point; independent siblings still start in parallel, only the data-dependent edge is serialized
+<ul>
+<li>The referenced start must be aliased (<code>start Effect as Alias</code>); an unaliased start cannot be referenced. The referenced effect must <code>expose var</code> the referenced variable — referencing a non-exposed or internal binding is a compile error</li>
+<li>Only variables are referenceable this way: overlay values are strings, so <code>Alias.var</code> can name a sibling’s <code>expose var</code>, never its <code>expose shell</code> — an exposed shell is not a string value</li>
+<li>Forward references are legal: a start may reference a sibling declared later in the same start-list. A reference cycle among siblings (<code>A { X := B.out }</code> and <code>B { Y := A.out }</code> in the same start-list) is a compile error</li>
+<li>The rule applies uniformly to test-level and effect-body start-lists, and the reference works nested inside interpolation too: <code>URL := "${Db.host}:${Db.port}"</code></li>
+<li>This is the preferred way to route a value an effect produces to a sibling effect that needs it. The older pattern — hoist the value to a test-level <code>let</code> and feed it into both effects’ overlays — still compiles and runs unchanged</li>
 </ul>
 </li>
 <li>Effects inherit the full parent environment — overlay entries override specific keys</li>
@@ -300,11 +329,14 @@
 </ul>
 </li>
 <li>When a test or effect starts the same effect multiple times with the same evaluated overlay, only one instance is created</li>
+<li>A dependent’s identity includes any value it sources from a sibling via the <code>Alias.var</code> overlay form above, exactly like any other overlay value: two dependents wired to different producers (e.g. two <code>Api</code> instances reading different <code>Db.port</code> values) get distinct instances</li>
 <li>Exposed shells are accessed via dot notation: <code>shell Alias.shell_name { ... }</code></li>
 <li>Exposed variables are accessed via dot notation in interpolation: <code>${Alias.var_name}</code></li>
+<li>A qualified reference <code>${Alias.var}</code> in a <code>shell</code> body or <code>cleanup</code> body — at effect level and at test level alike — is validated at compile time: <code>Alias</code> must be one of the enclosing effect’s or test’s own <code>start</code> dependency aliases, and that dependency must <code>expose var</code> the referenced variable, or it is a compile error naming the offending qualifier and variable. (Previously this went unvalidated and resolved to the empty string at runtime.)</li>
 <li>Exposed variables are only accessible in shell contexts (runtime); test-level and effect-level <code>let</code> bindings cannot reference them (purity violation — <code>let</code> is evaluated at resolve time, before effects are started)</li>
 <li>Exposed variables are read-only from the caller’s perspective</li>
 <li>For composed effects, <code>expose</code> can re-export a dependency’s shell or variable: <code>expose shell Dep.shell as public_name</code>, <code>expose var Dep.port as db_port</code></li>
+<li>An effect’s setup preamble may contain <a href="08-pure-matching.html">pure-match</a> statements alongside its <code>let</code>s; a <code>?</code> match binds <code>$n</code> into a preamble capture frame that later setup <code>let</code>s and <code>start</code> overlays read (the effect’s own <code>shell</code> blocks do not inherit it). A non-matching setup pure match fails effect instantiation, failing every test that depends on the effect</li>
 <li>Effects run before the test body; the dependency graph is resolved and executed in topological order</li>
 <li>Circular effect dependencies are a parse error</li>
 <li>If an effect fails (a match times out during setup), all tests depending on it are failed</li>
@@ -335,9 +367,14 @@
 </ul>
 </li>
 <li>Bare variable identifiers (e.g. <code>CI</code>) are valid in markers</li>
-<li>Expression evaluation uses ENV-only lookup (<code>Arc&lt;LayeredEnv&gt;</code> — the layered host-plus-<code>.env</code> environment) — no frame variables or test-scope variables exist at evaluation time</li>
+<li>Marker expression evaluation uses ENV-only lookup (<code>Arc&lt;LayeredEnv&gt;</code> — the layered host-plus-<code>.env</code> environment) — no frame variables or test-scope variables exist at marker-evaluation time (this scoping is specific to marker conditions; pure evaluation elsewhere, e.g. a <code>?</code> pure match inside a <code>pure fn</code>, does have a per-call capture frame)</li>
 <li>Truthiness: empty string or unset variable is false, any non-empty string is true</li>
-<li><code>=</code> operator: evaluates both sides, returns the LHS value if LHS equals RHS, empty string otherwise</li>
+<li><code>=</code> operator: evaluates both sides, returns the LHS value if it equals RHS exactly, empty string otherwise (unlike the shell literal-match operators <code>&lt;=</code>/<code>!=</code>, which scan accumulated output for a substring; a marker compares against a complete value)
+<ul>
+<li>An empty RHS matches only an empty or unset LHS</li>
+<li>For a substring or pattern check, use <code>?</code> (regex) instead: <code>expr ? value</code></li>
+</ul>
+</li>
 <li><code>?</code> operator: evaluates LHS, compiles the regex pattern (with <code>${var}</code> interpolation), returns the match if found, empty string otherwise</li>
 <li>Modifier semantics:
 <ul>
@@ -365,9 +402,9 @@
 <li>Test structure (in order):
 <ol>
 <li>Doc string (optional <code>"""..."""</code>)</li>
-<li><code>let</code> declarations (test-scoped variables)</li>
+<li>Preamble: <code>let</code> declarations (test-scoped variables) and <a href="08-pure-matching.html">pure-match</a> statements (<code>&lt;expr&gt; = &lt;pattern&gt;</code> / <code>&lt;expr&gt; ? &lt;pattern&gt;</code>), interleaved; a <code>?</code> match binds <code>$n</code> into a preamble capture frame the later preamble items and overlays read</li>
 <li><code>start</code> declarations (effect dependencies)</li>
-<li><code>shell</code> blocks (test body)</li>
+<li><code>shell</code> blocks (test body) — each owns its own capture frame; the preamble frame is not inherited</li>
 <li><code>cleanup</code> block (optional)</li>
 </ol>
 </li>
@@ -449,7 +486,7 @@
         <script src="book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
-        <script src="highlight-relux-93dc7aed.js"></script>
+        <script src="highlight-relux-93aa21fd.js"></script>
 
 
 

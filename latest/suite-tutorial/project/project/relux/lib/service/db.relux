@@ -4,7 +4,7 @@ effect Db {
     expose shell db
 
     shell db {
-        let db_root = "${__RELUX_TEST_ARTIFACTS}/database"
+        let db_root := "${__RELUX_TEST_ARTIFACTS}/database"
 
         > mkdir ${db_root}
         match_ok()

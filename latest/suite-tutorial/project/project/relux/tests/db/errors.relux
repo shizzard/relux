@@ -7,19 +7,19 @@ test "create duplicate database" {
     """
     Verify creating a database that already exists returns 409.
     """
-    let db_port = available_port()
+    let db_port := available_port()
 
     start Db {
-        DB_PORT = db_port
+        DB_PORT := db_port
     }
 
     shell client {
         log("create the database")
-        let response_filename = http_request(200, db_url(db_port, "/db/testdb"), "POST")
+        let response_filename := http_request(200, db_url(db_port, "/db/testdb"), "POST")
         jq_match_query(response_filename, ".created", "^testdb$")
 
         log("create it again - should fail")
-        let response_filename = http_request(409, db_url(db_port, "/db/testdb"), "POST")
+        let response_filename := http_request(409, db_url(db_port, "/db/testdb"), "POST")
         jq_match_query(response_filename, ".error", "^.*already exists.*$")
     }
 }

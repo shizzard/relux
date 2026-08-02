@@ -3,7 +3,7 @@ import service/db { url as db_url, Db }
 
 effect Auth {
     start Db {
-        DB_PORT = DB_PORT
+        DB_PORT := DB_PORT
     }
     expose shell auth
 
@@ -22,8 +22,8 @@ effect Auth {
 
 effect SeededAuth {
     start Auth as Dep {
-        DB_PORT = DB_PORT
-        AUTH_PORT = AUTH_PORT
+        DB_PORT := DB_PORT
+        AUTH_PORT := AUTH_PORT
     }
     expose shell Dep.auth as auth
 

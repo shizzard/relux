@@ -1,0 +1,13 @@
+name = "suite-tutorial"
+
+# [shell]
+# command = "/bin/sh"
+# prompt = "relux> "
+
+[timeout]
+match = "2s"
+test = "30s"
+suite = "5m"
+
+[run]
+jobs = 4
