@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.8.0](https://github.com/shizzard/relux/compare/v0.7.1...v0.8.0) (2026-08-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* **effects:** shell-body and cleanup-body interpolations are tightened -- a `${Alias.var}` reference to a start alias must now resolve to an exposed variable at compile time. events.json schema_version is bumped from 2 to 3; every `effect-setup` span now carries a `dep_sources` array. Consumers pinned to schema_version 2 must update.
+* `=` is now exact equality, not substring/containment, for both value-sourced and marker matches. `==` is a parse error (write `x = = y`, spaced, to match a pattern that literally begins with `=`). The single pure-match event is replaced by a start/done/failed trio. `$n` is no longer gated to pure context. `Failure::Runtime.span` is now a required `IrSpan` rather than `Option`.
+* **dsl:** `=` is no longer the binding operator. Existing suites must rewrite `let x = e`, `x = e`, and overlay `{ KEY = e }` to use `:=`. The parser emits a migration hint pointing at the new form for each legacy `=` it encounters.
+
+### Features
+
+* add timestamp pure BIF ([fa9376b](https://github.com/shizzard/relux/commit/fa9376b46c9c3b59a3a0de3060e75931a435dd3e))
+* **agents:** add Claude Code plugin for Relux test suites ([972212d](https://github.com/shizzard/relux/commit/972212d781d62fd81a112539eeb5b1a4db12c27c))
+* **dsl:** relocate the binding operator from = to := ([b70c45c](https://github.com/shizzard/relux/commit/b70c45ca3ee8c83b369d51ccb1798523655a266a))
+* **effects:** implicit effect dependencies via sibling overlay refs ([40d9c27](https://github.com/shizzard/relux/commit/40d9c2738ae1881e406fa3f010a14be5d58ba804))
+* implement RFC R013 pure string matching ([#38](https://github.com/shizzard/relux/issues/38)) ([954b1c5](https://github.com/shizzard/relux/commit/954b1c5f8feec0fd13b014998865ef8340838659))
+* pronounceable run ids and stable per-test __RELUX_TEST_ID ([4cde9be](https://github.com/shizzard/relux/commit/4cde9be2e95fda9a125b0f5dad72a031c7d26fe9))
+* stable hashing and mnemonic/sha1 pure BIFs ([6e1cacf](https://github.com/shizzard/relux/commit/6e1cacfbbc7af2abc3d346ac82b2d0c0525f2a04))
+* **viewer:** fold pure matches like impure matches ([e3b80e7](https://github.com/shizzard/relux/commit/e3b80e7888a4eef29123a85d3ddf267b31200f8c))
+
+
+### Bug Fixes
+
+* **parser:** tolerate trailing whitespace on statement and decl lines ([e75043f](https://github.com/shizzard/relux/commit/e75043f64774d5b2009b7e485b4e101717cc3418))
+
 ## [0.7.1](https://github.com/shizzard/relux/compare/v0.7.0...v0.7.1) (2026-07-24)
 
 
