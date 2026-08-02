@@ -23,13 +23,16 @@ fn collect_qualified_refs(expr: &IrPureExpr, out: &mut Vec<(String, String, IrSp
         } => out.push((qualifier.clone(), name.clone(), span.clone())),
         IrPureExpr::String { value, .. } => {
             for part in value.parts() {
-                if let IrStringPart::QualifiedVar {
-                    qualifier,
-                    name,
-                    span,
-                } = part
-                {
-                    out.push((qualifier.clone(), name.clone(), span.clone()));
+                match part {
+                    IrStringPart::QualifiedVar {
+                        qualifier,
+                        name,
+                        span,
+                    } => out.push((qualifier.clone(), name.clone(), span.clone())),
+                    IrStringPart::Literal { .. }
+                    | IrStringPart::Var { .. }
+                    | IrStringPart::CaptureRef { .. }
+                    | IrStringPart::EscapedDollar { .. } => {}
                 }
             }
         }
@@ -45,6 +48,14 @@ fn collect_qualified_refs(expr: &IrPureExpr, out: &mut Vec<(String, String, IrSp
 /// Validates every qualified overlay reference in `starts` against the
 /// `exposed` map (alias -> exposed var names), fills each start's wait-set
 /// (`deps`), and rejects reference cycles.
+///
+/// Contract on `exposed`: every aliased start in `starts` is expected to
+/// have an entry, even if it exposes nothing (an empty set) -- this
+/// mirrors the precedent in `effect.rs`, which always inserts an entry per
+/// aliased start when building `dep_exposed_vars`. A missing entry is not
+/// treated as a caller bug; it fails closed the same as a present-but-empty
+/// set, surfacing as `variable_not_exposed` for any qualified ref against
+/// that alias.
 pub fn enrich_start_dag(
     starts: &mut [IrEffectStart],
     exposed: &HashMap<String, HashSet<String>>,
@@ -157,6 +168,7 @@ mod tests {
 
     use crate::effect::IrOverlayEntry;
     use crate::ident::IrIdent;
+    use crate::interpolation::IrInterpolation;
 
     /// Builds an `IrEffectStart` from an alias, effect name, and overlay
     /// entries shaped `(overlay_key, qualifier, var)` -- each produces an
@@ -176,6 +188,17 @@ mod tests {
                 )
             })
             .collect();
+        start_with_entries(alias, effect_name, entries)
+    }
+
+    /// Builds an `IrEffectStart` from an alias, effect name, and pre-built
+    /// overlay entries -- used when the overlay value is not a bare
+    /// `QualifiedVar` (e.g. a `String` with interpolated qualified refs).
+    fn start_with_entries(
+        alias: &str,
+        effect_name: &str,
+        entries: Vec<IrOverlayEntry>,
+    ) -> IrEffectStart {
         IrEffectStart::new(
             EffectId {
                 module: ModulePath("test".into()),
@@ -184,6 +207,35 @@ mod tests {
             entries,
             Some(alias.to_string()),
             IrSpan::synthetic(),
+            IrSpan::synthetic(),
+        )
+    }
+
+    /// Builds an overlay entry whose value is a pure `String` interpolation
+    /// containing one or more `${Qualifier.var}` refs -- exercises the
+    /// nested-interpolation path in `collect_qualified_refs`, distinct from
+    /// the bare-`QualifiedVar` overlay entries `start()` produces.
+    fn string_overlay_entry(key: &str, qualified_refs: &[(&str, &str)]) -> IrOverlayEntry {
+        let mut parts = Vec::new();
+        for (i, (qualifier, var)) in qualified_refs.iter().enumerate() {
+            if i > 0 {
+                parts.push(IrStringPart::Literal {
+                    value: ":".to_string(),
+                    span: IrSpan::synthetic(),
+                });
+            }
+            parts.push(IrStringPart::QualifiedVar {
+                qualifier: (*qualifier).to_string(),
+                name: (*var).to_string(),
+                span: IrSpan::synthetic(),
+            });
+        }
+        IrOverlayEntry::new(
+            IrIdent::new(key, IrSpan::synthetic()),
+            IrPureExpr::String {
+                value: IrInterpolation::new(parts, IrSpan::synthetic()),
+                span: IrSpan::synthetic(),
+            },
             IrSpan::synthetic(),
         )
     }
@@ -254,6 +306,43 @@ mod tests {
         assert!(matches!(
             err.invalid_report(),
             Some(InvalidReport::VariableNotExposed { .. })
+        ));
+    }
+
+    #[test]
+    fn nested_interpolation_records_edge() {
+        // RFC R015's headline case: a `${Db.host}:${Db.port}`-shaped overlay
+        // value, not a bare `QualifiedVar` -- proves `collect_qualified_refs`
+        // walks `IrStringPart`s inside a `String` interpolation.
+        let mut starts = vec![
+            start("Db", "Db", &[]),
+            start_with_entries(
+                "Api",
+                "Api",
+                vec![string_overlay_entry(
+                    "DB_ADDR",
+                    &[("Db", "host"), ("Db", "port")],
+                )],
+            ),
+        ];
+        let exposed = exposed_map(&[("Db", &["host", "port"])]);
+
+        enrich_start_dag(&mut starts, &exposed).unwrap();
+
+        assert!(starts[0].deps().is_empty());
+        assert_eq!(starts[1].deps(), &[0]);
+    }
+
+    #[test]
+    fn self_reference_is_a_rejected_cycle() {
+        let mut starts = vec![start("A", "A", &[("X", "A", "out")])];
+        let exposed = exposed_map(&[("A", &["out"])]);
+
+        let err = enrich_start_dag(&mut starts, &exposed).unwrap_err();
+
+        assert!(matches!(
+            err.invalid_report(),
+            Some(InvalidReport::Cycle(CycleReport::Effect { .. }))
         ));
     }
 
