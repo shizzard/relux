@@ -47,6 +47,16 @@ pub fn eval_pure_expr(
             sink.record_var_read(name, &value, span);
             Ok(value)
         }
+        IrPureExpr::QualifiedVar {
+            qualifier,
+            name,
+            span,
+        } => {
+            let key = format!("{qualifier}.{name}");
+            let value = lookup_var(&[vars], env, &key).unwrap_or_default();
+            sink.record_var_read(&key, &value, span);
+            Ok(value)
+        }
         IrPureExpr::Call { call, .. } => eval_pure_call(call, vars, captures, env, fns, sink),
         IrPureExpr::Capture { index, .. } => Ok(captures
             .get(&index.to_string())
@@ -688,6 +698,46 @@ mod sink_tests {
         assert_eq!(r.result, "");
         assert_eq!(r.bindings, vec![("missing".to_string(), "".to_string())]);
         assert!(r.emitted);
+    }
+
+    #[test]
+    fn qualified_var_resolves_via_flat_key() {
+        let expr = IrPureExpr::QualifiedVar {
+            qualifier: "Db".into(),
+            name: "port".into(),
+            span: IrSpan::synthetic(),
+        };
+        let mut vars = VarScope::new();
+        vars.insert("Db.port".into(), "5432".into());
+        let out = eval_pure_expr(
+            &expr,
+            &vars,
+            &HashMap::new(),
+            &empty_env(),
+            &empty_fns(),
+            &mut NoOpSink,
+        )
+        .unwrap();
+        assert_eq!(out, "5432");
+    }
+
+    #[test]
+    fn qualified_var_missing_is_empty_string() {
+        let expr = IrPureExpr::QualifiedVar {
+            qualifier: "Db".into(),
+            name: "missing".into(),
+            span: IrSpan::synthetic(),
+        };
+        let out = eval_pure_expr(
+            &expr,
+            &VarScope::new(),
+            &HashMap::new(),
+            &empty_env(),
+            &empty_fns(),
+            &mut NoOpSink,
+        )
+        .unwrap();
+        assert_eq!(out, "");
     }
 
     #[test]

@@ -61,6 +61,11 @@ pub enum IrPureExpr {
         name: String,
         span: IrSpan,
     },
+    QualifiedVar {
+        qualifier: String,
+        name: String,
+        span: IrSpan,
+    },
     Call {
         call: IrPureCallExpr,
         span: IrSpan,
@@ -74,6 +79,7 @@ pub enum IrPureExpr {
 impl_ir_node_enum!(IrPureExpr {
     String,
     Var,
+    QualifiedVar,
     Call,
     Capture
 });

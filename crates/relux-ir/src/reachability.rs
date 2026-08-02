@@ -291,7 +291,10 @@ impl<'a> Visitor<'a> {
 
     fn visit_pure_expr(&mut self, expr: &IrPureExpr) -> Result<(), LoweringBail> {
         match expr {
-            IrPureExpr::String { .. } | IrPureExpr::Var { .. } | IrPureExpr::Capture { .. } => {}
+            IrPureExpr::String { .. }
+            | IrPureExpr::Var { .. }
+            | IrPureExpr::QualifiedVar { .. }
+            | IrPureExpr::Capture { .. } => {}
             IrPureExpr::Call { call, .. } => {
                 for arg in call.args() {
                     self.visit_pure_expr(arg)?;
