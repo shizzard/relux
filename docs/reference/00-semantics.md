@@ -115,13 +115,20 @@
 - Effect aliases (the name after `as`) must be CamelCase, matching effect naming conventions
 - `start Effect as Alias { KEY := expr }` provides an overlay that remaps the caller's environment into the dependency's environment
   - The shorthand form `KEY` (without `:= expr`) is equivalent to `KEY := KEY`
+- An overlay value may also be a qualified reference to a sibling start's exposed variable: `start Api { DB_PORT := Db.port }`. This induces an implicit dependency -- `Api` is instantiated only after `Db` is ready, and reads `Db`'s exposed value at that point; independent siblings still start in parallel, only the data-dependent edge is serialized
+  - The referenced start must be aliased (`start Effect as Alias`); an unaliased start cannot be referenced. The referenced effect must `expose var` the referenced variable -- referencing a non-exposed or internal binding is a compile error
+  - Forward references are legal: a start may reference a sibling declared later in the same start-list. A reference cycle among siblings (`A { X := B.out }` and `B { Y := A.out }` in the same start-list) is a compile error
+  - The rule applies uniformly to test-level and effect-body start-lists, and the reference works nested inside interpolation too: `URL := "${Db.host}:${Db.port}"`
+  - This is the preferred way to route a value an effect produces to a sibling effect that needs it. The older pattern -- hoist the value to a test-level `let` and feed it into both effects' overlays -- still compiles and runs unchanged
 - Effects inherit the full parent environment — overlay entries override specific keys
 - Effect instance identity is determined by `(effect-name, evaluated overlay restricted to expect-declared vars)`:
   - Same identity tuple = same instance (deduplicated, reused)
   - Different identity tuple = separate instances
 - When a test or effect starts the same effect multiple times with the same evaluated overlay, only one instance is created
+- A dependent's identity includes any value it sources from a sibling via the `Alias.var` overlay form above, exactly like any other overlay value: two dependents wired to different producers (e.g. two `Api` instances reading different `Db.port` values) get distinct instances
 - Exposed shells are accessed via dot notation: `shell Alias.shell_name { ... }`
 - Exposed variables are accessed via dot notation in interpolation: `${Alias.var_name}`
+- A qualified reference `${Alias.var}` in a `shell` body or `cleanup` body -- at effect level and at test level alike -- is validated at compile time: `Alias` must be one of the enclosing effect's or test's own `start` dependency aliases, and that dependency must `expose var` the referenced variable, or it is a compile error naming the offending qualifier and variable. (Previously this went unvalidated and resolved to the empty string at runtime.)
 - Exposed variables are only accessible in shell contexts (runtime); test-level and effect-level `let` bindings cannot reference them (purity violation — `let` is evaluated at resolve time, before effects are started)
 - Exposed variables are read-only from the caller's perspective
 - For composed effects, `expose` can re-export a dependency's shell or variable: `expose shell Dep.shell as public_name`, `expose var Dep.port as db_port`

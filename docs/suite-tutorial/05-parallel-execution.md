@@ -95,6 +95,8 @@ pure fn url(port, path) {
 
 `SeededAuth` declares the same expects and passes them through to `Auth`. Each effect in the chain declares what it requires and forwards what its dependencies need.
 
+This is the *expect-and-forward* pattern: a value chosen at the test level (`available_port()`) flows down through `expect` and the inherited overlay to every effect that needs it. It fits here because the port is decided by the test, before any of these effects exist to own it. When a value is instead computed *by* the producer effect itself, the [Effects and Dependencies](../dsl-tutorial/12-effects-and-dependencies.md#referencing-a-siblings-exposed-variable) chapter of the DSL tutorial covers a more direct alternative: `expose var` the value on the producer and read it straight off the sibling in the overlay -- `DB_PORT := Db.port` -- instead of routing it through a `let`.
+
 Update `service/tasks.relux`:
 
 ```relux
