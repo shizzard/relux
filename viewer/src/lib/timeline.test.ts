@@ -153,6 +153,35 @@ function matchDone(seq: number, ts: number, span = 1): Event {
   } as unknown as Event;
 }
 
+function pureMatchStart(seq: number, ts: number, span = 1): Event {
+  return {
+    seq: BigInt(seq),
+    ts,
+    span: BigInt(span),
+    shell: null,
+    shell_marker: null,
+    source: null,
+    kind: 'pure-match-start',
+    value: 'v1.2.3',
+    pattern: '\\d+',
+    is_regex: true,
+  } as unknown as Event;
+}
+
+function pureMatchDone(seq: number, ts: number, span = 1): Event {
+  return {
+    seq: BigInt(seq),
+    ts,
+    span: BigInt(span),
+    shell: null,
+    shell_marker: null,
+    source: null,
+    kind: 'pure-match-done',
+    matched: '1',
+    captures: {},
+  } as unknown as Event;
+}
+
 describe('spanRect', () => {
   const range = { start: 0, end: 1000, duration: 1000 };
 
@@ -204,6 +233,18 @@ describe('eventRect', () => {
     const rect = eventRect(folded, range, 3, 1000);
     expect(rect.widthPct).toBeCloseTo(0.3);
     expect(rect.leftPct).toBeCloseTo(50 - 0.15);
+  });
+
+  it('renders a folded pure-match as a slice with positive width', () => {
+    const folded: FoldedEvent = {
+      kind: 'pure-match',
+      start: pureMatchStart(1, 200),
+      outcome: pureMatchDone(2, 700),
+    };
+    const rect = eventRect(folded, range, 3, 1000);
+    expect(rect.leftPct).toBeCloseTo(20);
+    expect(rect.widthPct).toBeGreaterThan(0);
+    expect(rect.widthPct).toBeCloseTo(50);
   });
 });
 

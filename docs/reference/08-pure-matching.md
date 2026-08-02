@@ -238,3 +238,5 @@ fn `extract_id` did not match") together with the value and the failing
 `= pattern` / `? pattern`. The HTML viewer instead surfaces the context
 as a structured `context` row on the failing `pure-match-failed` event
 (e.g. `fn 'extract_id'`), alongside the same value and pattern.
+
+In the HTML viewer, a pure match appears as a single folded, outcome-colored row labeled `pure-match`, matching how impure PTY matches render.

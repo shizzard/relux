@@ -99,6 +99,9 @@
   }
 
   function buildFoldedTitle(f: FoldedEvent): string {
+    if (f.kind === 'pure-match' && f.start.kind === 'pure-match-start') {
+      return `pure-match \u00b7 ${f.start.is_regex ? 'regex' : 'literal'}`;
+    }
     if (f.kind === 'match' && f.start.kind === 'match-start') {
       return `match \u00b7 ${f.start.is_regex ? 'regex' : 'literal'}`;
     }
@@ -137,6 +140,8 @@
         return sleepFoldRows(f.start, f.done);
       case 'match':
         return matchFoldRows(f.start, f.outcome);
+      case 'pure-match':
+        return pureMatchFoldRows(f.start, f.outcome);
     }
   }
 
@@ -173,6 +178,44 @@
         value: formatTimeoutLine(start.effective),
         mono: true,
       });
+    }
+    return out;
+  }
+
+  function pureMatchFoldRows(start: Event, outcome: Event): Row[] {
+    if (start.kind !== 'pure-match-start') return [];
+    const out: Row[] = [
+      { type: 'kv', key: 'value', value: start.value, mono: true },
+      { type: 'kv', key: 'pattern', value: start.pattern, mono: true, accent: true },
+      { type: 'kv', key: 'is_regex', value: String(start.is_regex) },
+    ];
+    if (outcome.kind === 'pure-match-done') {
+      out.push({ type: 'kv', key: 'matched', value: outcome.matched, mono: true, accent: true });
+      const caps = Object.entries(outcome.captures).filter(
+        (entry): entry is [string, string] => entry[0] !== '0' && entry[1] !== undefined,
+      );
+      if (caps.length > 0) {
+        out.push({ type: 'subhead', text: 'captures' });
+        for (const [k, v] of caps) {
+          out.push({ type: 'kv', key: `$${k}`, value: v, mono: true, accent: true });
+        }
+      }
+    } else if (outcome.kind === 'pure-match-failed') {
+      out.push({ type: 'kv', key: 'result', value: '(no match)' });
+      const term = state.data.outcome;
+      if (
+        term.kind === 'fail' &&
+        term.type === 'pure-match' &&
+        n(term.event_seq) === n(outcome.seq)
+      ) {
+        out.push({
+          type: 'kv',
+          key: 'context',
+          value: formatMatchContext(term.match_context),
+          mono: true,
+          accent: true,
+        });
+      }
     }
     return out;
   }

@@ -72,8 +72,8 @@ const KIND_GLYPHS: Record<string, string> = {
   'string-eval': '\u{0024}',
   interpolation: '\u{0024}',
   'pure-match-start': '\u{003F}',
-  'pure-match-done': '\u{003F}',
-  'pure-match-failed': '\u{003F}',
+  'pure-match-done': '\u{2713}',
+  'pure-match-failed': '\u{2717}',
   'var-read': '\u{2261}',
   'bool-check': '\u{2714}',
   annotate: '\u{266B}',
@@ -110,6 +110,8 @@ const KIND_FAMILY: Partial<Record<Event['kind'], KindFamily>> = {
   'multi-match-pattern-done': 'ok',
   'multi-match-done': 'ok',
   'multi-match-timeout': 'danger',
+  'pure-match-done': 'ok',
+  'pure-match-failed': 'danger',
 };
 
 export function kindFamily(kind: Event['kind']): KindFamily {
@@ -267,6 +269,8 @@ export function foldedGlyph(f: FoldedEvent): string {
       return kindGlyph('sleep-start');
     case 'match':
       return kindGlyph(f.outcome.kind);
+    case 'pure-match':
+      return kindGlyph(f.outcome.kind);
   }
 }
 
@@ -286,6 +290,8 @@ export function foldedKindLabel(f: FoldedEvent): string {
       return 'sleep';
     case 'match':
       return 'match';
+    case 'pure-match':
+      return 'pure-match';
   }
 }
 
@@ -296,6 +302,8 @@ export function foldedFamily(f: FoldedEvent): KindFamily {
     case 'sleep':
       return 'info';
     case 'match':
+      return kindFamily(f.outcome.kind);
+    case 'pure-match':
       return kindFamily(f.outcome.kind);
   }
 }
@@ -319,6 +327,19 @@ export function foldedSummary(f: FoldedEvent): string {
         return `${truncate(start.pattern, SUMMARY_MAX)} timed out after ${formatTimeout(outcome.effective)}`;
       }
       return truncate(start.pattern, SUMMARY_MAX);
+    }
+    case 'pure-match': {
+      const start = f.start;
+      const outcome = f.outcome;
+      if (start.kind !== 'pure-match-start') return '';
+      const op = start.is_regex ? '?' : '=';
+      const value = truncate(escapeBytes(start.value), 40);
+      const pat = truncate(start.pattern, 40);
+      const head = `"${value}" ${op} ${pat}`;
+      if (outcome.kind === 'pure-match-done') {
+        return `${head} \u{2192} ${truncate(escapeBytes(outcome.matched), 40)}`;
+      }
+      return `${head} (no match)`;
     }
   }
 }

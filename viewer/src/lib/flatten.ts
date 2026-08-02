@@ -11,7 +11,8 @@ import { spanById, toNumber as n, type SpanId } from './derive';
 export type FoldedEvent =
   | { kind: 'single'; event: Event }
   | { kind: 'sleep'; start: Event; done: Event }
-  | { kind: 'match'; start: Event; outcome: Event };
+  | { kind: 'match'; start: Event; outcome: Event }
+  | { kind: 'pure-match'; start: Event; outcome: Event };
 
 export type LogLevel = 'log' | 'warning' | 'error';
 
@@ -68,6 +69,7 @@ export const ALL_EVENT_TYPE_IDS: readonly EventTypeId[] = [
 export function foldedTypeId(f: FoldedEvent): EventTypeId | null {
   if (f.kind === 'sleep') return 'sleep';
   if (f.kind === 'match') return f.outcome.kind === 'timeout' ? 'match-timeout' : 'match';
+  if (f.kind === 'pure-match') return 'pure-match';
   return singleEventTypeId(f.event.kind);
 }
 
@@ -200,6 +202,8 @@ export function leadEvent(f: FoldedEvent): Event {
       return f.start;
     case 'match':
       return f.start;
+    case 'pure-match':
+      return f.start;
   }
 }
 
@@ -210,6 +214,8 @@ export function foldedSeqs(f: FoldedEvent): number[] {
     case 'sleep':
       return [n(f.start.seq), n(f.done.seq)];
     case 'match':
+      return [n(f.start.seq), n(f.outcome.seq)];
+    case 'pure-match':
       return [n(f.start.seq), n(f.outcome.seq)];
   }
 }
@@ -242,6 +248,18 @@ export function foldCloseIndex(events: readonly Event[], startIdx: number): numb
         }
       }
       return startIdx;
+    case 'pure-match-start':
+      for (let i = startIdx + 1; i < events.length; i++) {
+        const c = events[i]!;
+        if (
+          (c.kind === 'pure-match-done' || c.kind === 'pure-match-failed') &&
+          sameSpan(e, c) &&
+          sameShell(e, c)
+        ) {
+          return i;
+        }
+      }
+      return startIdx;
     default:
       return startIdx;
   }
@@ -253,7 +271,7 @@ export function foldEvents(events: readonly Event[]): FoldedEvent[] {
   for (let i = 0; i < events.length; i++) {
     if (consumed.has(i)) continue;
     const ev = events[i]!;
-    if (ev.kind === 'sleep-start' || ev.kind === 'match-start') {
+    if (ev.kind === 'sleep-start' || ev.kind === 'match-start' || ev.kind === 'pure-match-start') {
       const closeIdx = foldCloseIndex(events, i);
       if (closeIdx !== i) {
         const close = events[closeIdx]!;
@@ -261,6 +279,8 @@ export function foldEvents(events: readonly Event[]): FoldedEvent[] {
           out.push({ kind: 'sleep', start: ev, done: close });
         } else if (ev.kind === 'match-start') {
           out.push({ kind: 'match', start: ev, outcome: close });
+        } else if (ev.kind === 'pure-match-start') {
+          out.push({ kind: 'pure-match', start: ev, outcome: close });
         }
         consumed.add(closeIdx);
         continue;

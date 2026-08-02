@@ -59,6 +59,7 @@ Row types:
 - **BIF row** — a transparent impure BIF call (e.g. `match_prompt`) shown as a single row instead of a foldable span.
 - **Gap** — a synthetic row marking a duration with no events.
 - **Per-pattern match** — inside a `<{ ... }` block, each `multi-match-pattern-done` event renders as its own selectable row, labelled `match` in the kind column (the same label used by a folded single-match `match-start` / `match-done` pair).
+- **Pure match** — pure string matches (`=` / `?`) fold into a single row, outcome-colored (green on success, red on no-match), and labeled `pure-match` (vs `match` for PTY matches) so you can distinguish an instant string check from a buffer wait.
 
 The footer below the list carries chips for filtering and bulk fold control:
 

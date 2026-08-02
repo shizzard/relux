@@ -56,6 +56,9 @@
       case 'match':
         endAbs = mode.folded.outcome.ts;
         break;
+      case 'pure-match':
+        endAbs = mode.folded.outcome.ts;
+        break;
     }
     const start = lead.ts - range.start;
     const end = endAbs - range.start;

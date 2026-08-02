@@ -94,6 +94,10 @@ export function eventRect(
       startTs = folded.start.ts;
       endTs = folded.outcome.ts;
       break;
+    case 'pure-match':
+      startTs = folded.start.ts;
+      endTs = folded.outcome.ts;
+      break;
   }
   return clampRect(
     tsToPercent(startTs, range),

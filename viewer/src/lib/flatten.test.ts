@@ -127,6 +127,38 @@ function matchDone(seq: number, span: number, shell = 's'): Event {
     buffer_seq: BigInt(seq),
   } as Event;
 }
+function pureMatchStart(seq: number, span: number, shell: string | null = null): Event {
+  return {
+    seq: BigInt(seq),
+    ts: seq,
+    span: BigInt(span),
+    shell,
+    kind: 'pure-match-start',
+    value: 'v1.2.3',
+    pattern: '\\d+',
+    is_regex: true,
+  } as Event;
+}
+function pureMatchDone(seq: number, span: number, shell: string | null = null): Event {
+  return {
+    seq: BigInt(seq),
+    ts: seq,
+    span: BigInt(span),
+    shell,
+    kind: 'pure-match-done',
+    matched: '1',
+    captures: {},
+  } as Event;
+}
+function pureMatchFailed(seq: number, span: number, shell: string | null = null): Event {
+  return {
+    seq: BigInt(seq),
+    ts: seq,
+    span: BigInt(span),
+    shell,
+    kind: 'pure-match-failed',
+  } as Event;
+}
 function shellSpawn(seq: number, span: number, shell = 's'): Event {
   return {
     seq: BigInt(seq),
@@ -805,5 +837,25 @@ describe('foldEvents leaves multimatch lifecycle events alone', () => {
     const folded = foldEvents(events);
     expect(folded.length).toBe(3);
     expect(folded.every((f) => f.kind === 'single')).toBe(true);
+  });
+});
+
+describe('foldEvents folds pure matches', () => {
+  it('folds pure-match-start + pure-match-done into a single pure-match', () => {
+    const folded = foldEvents([pureMatchStart(1, 2), pureMatchDone(2, 2)]);
+    expect(folded.length).toBe(1);
+    expect(folded[0]!.kind).toBe('pure-match');
+  });
+
+  it('folds pure-match-start + pure-match-failed into a single pure-match', () => {
+    const folded = foldEvents([pureMatchStart(1, 2), pureMatchFailed(2, 2)]);
+    expect(folded.length).toBe(1);
+    expect(folded[0]!.kind).toBe('pure-match');
+  });
+
+  it('leaves a lone pure-match-start as a single', () => {
+    const folded = foldEvents([pureMatchStart(1, 2)]);
+    expect(folded.length).toBe(1);
+    expect(folded[0]!.kind).toBe('single');
   });
 });

@@ -44,6 +44,8 @@
         return f;
       if (f.kind === 'match' && (f.start.seq === targetSeq || f.outcome.seq === targetSeq))
         return f;
+      if (f.kind === 'pure-match' && (f.start.seq === targetSeq || f.outcome.seq === targetSeq))
+        return f;
     }
     return null;
   }

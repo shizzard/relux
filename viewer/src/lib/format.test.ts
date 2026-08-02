@@ -411,6 +411,21 @@ describe('folded helpers', () => {
     start: ev('match-start', { pattern: 'p', is_regex: false, effective: tolerance() }),
     outcome: ev('timeout', { pattern: 'p', buffer_seq: null, effective: tolerance({ duration: '5s' }) }),
   };
+  const pureMatchOk: FoldedEvent = {
+    kind: 'pure-match',
+    start: ev('pure-match-start', { value: 'v1.2.3', pattern: '\\d+', is_regex: true }),
+    outcome: ev('pure-match-done', { matched: '1', captures: {} }),
+  };
+  const pureMatchFail: FoldedEvent = {
+    kind: 'pure-match',
+    start: ev('pure-match-start', { value: 'abc', pattern: '\\d+', is_regex: true }),
+    outcome: ev('pure-match-failed', {}),
+  };
+  const pureMatchLiteral: FoldedEvent = {
+    kind: 'pure-match',
+    start: ev('pure-match-start', { value: 'v1.2.3', pattern: 'v1.2.3', is_regex: false }),
+    outcome: ev('pure-match-done', { matched: 'v1.2.3', captures: {} }),
+  };
 
   it('foldedGlyph delegates to the lead kind for singles, fixed for sleep, outcome kind for match', () => {
     expect(foldedGlyph(single)).toBe(kindGlyph('send'));
@@ -446,6 +461,21 @@ describe('folded helpers', () => {
     expect(foldedSummary(sleep)).toBe('100ms');
     expect(foldedSummary(matchOk)).toBe('p \u{2192} m (5ms)');
     expect(foldedSummary(matchTimeout)).toBe('p timed out after 5s');
+  });
+
+  it('renders a pure match with pass/fail outcome glyph and family', () => {
+    expect(foldedGlyph(pureMatchOk)).toBe('\u{2713}');
+    expect(foldedGlyph(pureMatchFail)).toBe('\u{2717}');
+    expect(foldedFamily(pureMatchOk)).toBe('ok');
+    expect(foldedFamily(pureMatchFail)).toBe('danger');
+    expect(foldedKindLabel(pureMatchOk)).toBe('pure-match');
+    expect(foldedKindLabel(pureMatchFail)).toBe('pure-match');
+    expect(foldedSummary(pureMatchOk)).toBe('"v1.2.3" ? \\d+ \u{2192} 1');
+    expect(foldedSummary(pureMatchFail)).toBe('"abc" ? \\d+ (no match)');
+  });
+
+  it('renders a literal pure match with the = operator', () => {
+    expect(foldedSummary(pureMatchLiteral)).toBe('"v1.2.3" = v1.2.3 \u{2192} v1.2.3');
   });
 });
 
