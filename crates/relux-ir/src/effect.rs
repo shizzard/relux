@@ -299,7 +299,7 @@ impl IrNodeLowering for IrOverlayEntry {
         ctx: &mut LoweringContext,
     ) -> Result<Self, LoweringBail> {
         let key = IrIdent::lower(&ast.key.node, file, ctx)?;
-        let value = IrPureExpr::lower(&ast.value.node, file, ctx)?;
+        let value = IrPureExpr::lower_overlay_value(&ast.value.node, file, ctx)?;
         Ok(IrOverlayEntry::new(
             key,
             value,

@@ -611,6 +611,100 @@ effect App {
     assert!(matches!(result, Err(LoweringBail::Invalid(_))));
 }
 
+#[test]
+fn lower_overlay_accepts_top_level_qualified_var() {
+    let source = r#"effect Db {
+  shell db {
+    > start
+  }
+}
+effect Api {
+  expect DB_PORT
+  shell api {
+    > start
+  }
+}
+effect App {
+  start Db as Db
+  start Api { DB_PORT := Db.port }
+  shell app {
+    > app
+  }
+}
+"#;
+    let mut ctx = ctx_with_source(source);
+    let effect_id = EffectId {
+        module: ModulePath("tests/a".into()),
+        name: EffectName("App".into()),
+    };
+    let result = ctx.resolve_effect(&effect_id);
+    assert!(
+        result.is_ok(),
+        "expected qualified overlay value to lower cleanly, got {result:?}"
+    );
+    let eff = result.unwrap();
+    let api_start = &eff.starts()[1];
+    let overlay_value = api_start.overlay()[0].value();
+    assert!(
+        matches!(
+            overlay_value,
+            IrPureExpr::QualifiedVar { qualifier, name, .. }
+                if qualifier == "Db" && name == "port"
+        ),
+        "expected IrPureExpr::QualifiedVar, got {overlay_value:?}"
+    );
+}
+
+#[test]
+fn lower_overlay_accepts_qualified_var_nested_in_interpolation() {
+    let source = r#"effect Db {
+  shell db {
+    > start
+  }
+}
+effect Api {
+  expect URL
+  shell api {
+    > start
+  }
+}
+effect App {
+  start Db as Db
+  start Api { URL := "${Db.host}:${Db.port}" }
+  shell app {
+    > app
+  }
+}
+"#;
+    let mut ctx = ctx_with_source(source);
+    let effect_id = EffectId {
+        module: ModulePath("tests/a".into()),
+        name: EffectName("App".into()),
+    };
+    let result = ctx.resolve_effect(&effect_id);
+    assert!(
+        result.is_ok(),
+        "expected qualified ref nested in interpolation to lower cleanly, got {result:?}"
+    );
+    let eff = result.unwrap();
+    let api_start = &eff.starts()[1];
+    let overlay_value = api_start.overlay()[0].value();
+    match overlay_value {
+        IrPureExpr::String { value, .. } => {
+            let has_qualified = value
+                .parts()
+                .iter()
+                .any(|p| matches!(p, IrStringPart::QualifiedVar { qualifier, name, .. } if qualifier == "Db" && name == "port"));
+            assert!(
+                has_qualified,
+                "expected an IrStringPart::QualifiedVar for Db.port in interpolation parts, got {:?}",
+                value.parts()
+            );
+        }
+        other => panic!("expected IrPureExpr::String, got {other:?}"),
+    }
+}
+
 // --- Expose validation -----------------------------------
 
 #[test]

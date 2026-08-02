@@ -241,6 +241,42 @@ impl IrNodeLowering for IrPureExpr {
     }
 }
 
+impl IrPureExpr {
+    /// Lower a `start` overlay value. Identical to `IrPureExpr::lower`
+    /// except qualified references (`Alias.var`, top-level or nested in
+    /// interpolation) are captured as data instead of rejected. Legality
+    /// (is `Alias` a sibling? does it expose `var`?) is validated later by
+    /// `enrich_start_dag`, which owns the full sibling map. Every other pure
+    /// context keeps using `lower`, which still rejects qualified refs.
+    pub fn lower_overlay_value(
+        ast: &AstExpr,
+        file: &FileId,
+        ctx: &mut LoweringContext,
+    ) -> Result<Self, LoweringBail> {
+        match ast {
+            AstExpr::String { interp, span } => {
+                let ir_interp = IrInterpolation::lower(interp, file, ctx)?;
+                Ok(IrPureExpr::String {
+                    value: ir_interp,
+                    span: IrSpan::new(file.clone(), *span),
+                })
+            }
+            AstExpr::QualifiedVar {
+                qualifier,
+                name,
+                span,
+            } => Ok(IrPureExpr::QualifiedVar {
+                qualifier: qualifier.clone(),
+                name: name.clone(),
+                span: IrSpan::new(file.clone(), *span),
+            }),
+            AstExpr::Var { .. } | AstExpr::CaptureRef { .. } | AstExpr::Call { .. } => {
+                Self::lower(ast, file, ctx)
+            }
+        }
+    }
+}
+
 // --- IrNodeLowering: IrCallExpr --------------------------
 
 impl IrNodeLowering for IrCallExpr {
