@@ -206,6 +206,20 @@ impl IrNodeLowering for IrTest {
             body_items.push(ir_item);
         }
 
+        // R015: enrich the start DAG (validate sibling overlay refs, fill
+        // each start's wait-set, reject reference cycles), then validate
+        // every ${Alias.var} in the test's own shell/cleanup blocks
+        // against the same dependency map -- a started effect's exposed
+        // vars are injected into the test's own shell scope at runtime
+        // (see `run_test_body` in relux-runtime), so this is the
+        // test-level counterpart of `IrEffect::lower`'s shell-body
+        // validation. Breaking tightening: an unknown/non-exposed
+        // qualified ref in a test shell/cleanup body that used to resolve
+        // to "" is now a compile error.
+        let dep_exposed_vars = crate::enrich::build_dep_exposed_vars(&starts, ctx);
+        crate::enrich::enrich_start_dag(&mut starts, &dep_exposed_vars)?;
+        crate::enrich::validate_test_shell_body_refs(&body_items, &dep_exposed_vars)?;
+
         let has_nonempty_shell = body_items.iter().any(
             |item| matches!(item, IrTestItem::Shell { block, .. } if !block.body().is_empty()),
         );

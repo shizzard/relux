@@ -453,6 +453,91 @@ start Labeled as A { LABEL }   // desugars to LABEL := LABEL
 
 Overlay variables are the mechanism for reusing a single effect definition across different configurations — like the `FailTail` example from the introduction, where the trigger pattern and log path are passed in as overlays.
 
+## Referencing a sibling's exposed variable
+
+An overlay value is not limited to a literal or a `let`-bound variable — it can also be a direct, qualified reference to a sibling `start`'s exposed variable: `Alias.var`. This is the preferred way to hand a value from one effect straight to another:
+
+```relux
+effect Database {
+    let port := available_port()
+    expose shell service
+    expose var port
+
+    shell service {
+        > start-db --port ${port}
+        <? listening on ${port}
+        match_ok()
+    }
+}
+
+effect Api {
+    expect DB_PORT
+    expose shell service
+
+    shell service {
+        > start-api --db-port ${DB_PORT}
+        <? ready on ${DB_PORT}
+        match_ok()
+    }
+}
+
+test "api talks to db" {
+    start Database as Db
+    start Api {
+        DB_PORT := Db.port
+    }
+    shell client {
+        > echo checking api
+        <? ^checking api$
+    }
+}
+```
+
+`Database` picks its own port with `available_port()` and exposes it. `Api`'s overlay reads it directly as `Db.port` — no test-level `let` in between. This reference does two things at once: it supplies the overlay value, and it declares an **implicit dependency**. Relux instantiates `Api` only after `Database` is ready, then reads `Database`'s exposed `port` at that moment. From `Api`'s own point of view nothing changed — it still just requires `DB_PORT` via `expect` — the difference is entirely in how the value arrives at the `start` site.
+
+A few rules govern the reference:
+
+- The referenced start must be **aliased** (`start Database as Db`). A `start` without `as` has no name to qualify with, so it cannot be referenced.
+- The referenced effect must **`expose var`** the variable being read. Referencing a variable the effect computed but did not expose is a compile error, just like referencing a variable an effect never declared.
+- **Only variables are referenceable.** Overlay values are strings, so `Alias.var` can only name a sibling's `expose var` — a sibling's `expose shell` is not a string value and cannot be referenced this way.
+- **Forward references are legal** — a `start` may reference a sibling declared later in the same start-list. Declaration order does not constrain the dependency; only the reference itself does.
+- A **reference cycle** among siblings (`start A as X { P := Y.out }` alongside `start B as Y { Q := X.out }`) is a compile error, caught by `relux check` before any test runs.
+- The same rule applies whether the start-list belongs to a test or to another effect's body — nesting the reference inside interpolation also works: `URL := "${Db.host}:${Db.port}"`.
+
+Independent siblings still run in parallel — only the data-dependent edge is serialized. A producer with several consumers makes this concrete:
+
+```relux
+test "two consumers read the same producer" {
+    start Database as Db
+    start Api    { DB_PORT := Db.port }
+    start Worker { DB_PORT := Db.port }
+    shell client {
+        > echo fan-out ready
+        <? ^fan-out ready$
+    }
+}
+```
+
+Both `Api` and `Worker` wait for `Database` to expose `port` before they start — but neither waits on the other. They still start concurrently with each other; only their shared dependency on `Database` is ordered.
+
+Before this form existed, the only way to route a value between two effects was to compute it at test level and feed it into both overlays by hand:
+
+```relux
+test "api talks to db (the old way)" {
+    let port := available_port()
+    start Database as Db {
+        PORT := port
+    }
+    start Api {
+        DB_PORT := port
+    }
+}
+```
+
+This still compiles and runs — it is not deprecated — but it puts the value in the wrong place: `port` conceptually belongs to `Database`, not to the test. If `Database` ever needs to pick its own port internally (retry-on-collision, container-assigned), the test-level `let` cannot express that at all. Prefer `Alias.var` whenever the value is something the producer effect computes; keep the hoisted `let` for values that genuinely originate at the test level, with no single effect that owns them.
+
+The same qualified-reference form, and the same rules, apply to `${Alias.var}` used inside a `shell` or `cleanup` body — whether at effect level or test level. `Alias` must be one of the enclosing block's own `start` dependencies, and that dependency must `expose var` the name being read; a typo'd alias or an unexposed variable is a compile error there too, not a silently empty string.
+
 ## Section ordering
 
 The parser enforces a fixed ordering of sections inside an effect body:

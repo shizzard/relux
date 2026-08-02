@@ -47,6 +47,7 @@ function buildSpan(input: SpanInput): Span {
         effect: input.effect,
         overlay: [],
         alias: input.alias,
+        dep_sources: [],
         marker: 'test-marker-0000',
         is_reuse: false,
       };
@@ -162,7 +163,7 @@ function marker(seq: number, span: number, shell: string | null): Event {
 
 function makeLog(spans: Span[], events: Event[]): StructuredLog {
   return {
-    schema_version: 2,
+    schema_version: 3,
     info: { name: 't', path: 'p', duration_ms: 0n },
     outcome: { kind: 'pass' },
     env: { bootstrap: [] },

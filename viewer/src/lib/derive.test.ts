@@ -4,6 +4,7 @@ import type { StructuredLog } from '../types/StructuredLog';
 import {
   bootstrapForReuse,
   buildMultiMatchIndex,
+  effectSetupProps,
   finalCleanupForDeferred,
   firstUseShellBlockForMarker,
   liveShellsAtSpan,
@@ -21,7 +22,7 @@ import type { Span } from '../types/Span';
 // replayBufferRegionsAtMarker, so every other field is stubbed.
 function makeLog(buffer_events: BufferEvent[]): StructuredLog {
   return {
-    schema_version: 2,
+    schema_version: 3,
     info: { name: 't', path: 'p', duration_ms: 0n },
     outcome: { kind: 'pass' },
     env: { bootstrap: [] },
@@ -356,13 +357,20 @@ function spansLog(spans: SpanRecord[]): StructuredLog {
     sources: {},
   } as unknown as StructuredLog;
 }
-function setupSpan(id: bigint, marker: string, is_reuse: boolean): SpanRecord {
+function setupSpan(
+  id: bigint,
+  marker: string,
+  is_reuse: boolean,
+  overlay: Array<[string, string]> = [],
+  dep_sources: Array<[string, string]> = [],
+): SpanRecord {
   return {
     id,
     kind: 'effect-setup',
     effect: 'E0',
-    overlay: [],
+    overlay,
     alias: null,
+    dep_sources,
     marker,
     is_reuse,
     parent: 1n,
@@ -422,6 +430,41 @@ describe('finalCleanupForDeferred', () => {
 
   it('returns null when no final cleanup with that marker exists', () => {
     expect(finalCleanupForDeferred(spansLog([]), 'kind-cobra-0001')).toBeNull();
+  });
+});
+
+describe('effectSetupProps', () => {
+  it('leaves an overlay row without sources when its key has no dep_sources entry', () => {
+    const log = spansLog([setupSpan(2n, 'kind-cobra-0001', false, [['DB_PORT', '5432']], [])]);
+    const props = effectSetupProps(log, 2);
+    expect(props?.overlay).toEqual([{ key: 'DB_PORT', value: '5432', sources: [] }]);
+  });
+
+  it('attaches the sibling alias to an overlay row sourced from dep_sources', () => {
+    const log = spansLog([
+      setupSpan(2n, 'kind-cobra-0001', false, [['DB_PORT', '5432']], [['DB_PORT', 'Db']]),
+    ]);
+    const props = effectSetupProps(log, 2);
+    expect(props?.overlay).toEqual([{ key: 'DB_PORT', value: '5432', sources: ['Db'] }]);
+  });
+
+  it('exposes every alias when an overlay key has multiple dep_sources entries', () => {
+    const log = spansLog([
+      setupSpan(
+        2n,
+        'kind-cobra-0001',
+        false,
+        [['URL', 'http://db:5432/cache']],
+        [
+          ['URL', 'Db'],
+          ['URL', 'Cache'],
+        ],
+      ),
+    ]);
+    const props = effectSetupProps(log, 2);
+    expect(props?.overlay).toEqual([
+      { key: 'URL', value: 'http://db:5432/cache', sources: ['Db', 'Cache'] },
+    ]);
   });
 });
 
@@ -681,7 +724,7 @@ describe('liveShellsAtSpan', () => {
     events: Event[],
   ): StructuredLog {
     return {
-      schema_version: 2,
+      schema_version: 3,
       info: { name: 't', path: 'p', duration_ms: 0n },
       outcome: { kind: 'pass' },
       env: { bootstrap: [] },
@@ -795,7 +838,7 @@ function makeLogWithMultiMatch(
   spans: Record<string, Span>,
 ): StructuredLog {
   return {
-    schema_version: 2,
+    schema_version: 3,
     info: { name: 't', path: 'p', duration_ms: 0n },
     outcome: { kind: 'pass' },
     env: { bootstrap: [] },

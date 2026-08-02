@@ -73,10 +73,11 @@ impl std::fmt::Display for SourceLocation {
     }
 }
 
-/// `events.json` schema version. Bump on any backwards-incompatible
-/// change to the on-disk shape. External consumers should verify this
+/// `events.json` schema version. Bump on any change to the on-disk
+/// shape (fields added, removed, or renamed; new tagged-enum variants;
+/// a narrowed field meaning). External consumers should verify this
 /// matches the version they expect.
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// Top-level structured log for a single test run. Produced by
 /// `StructuredLogBuilder::build`.
@@ -298,7 +299,7 @@ mod env_provenance_tests {
     }
 
     #[test]
-    fn schema_version_is_two() {
-        assert_eq!(SCHEMA_VERSION, 2);
+    fn schema_version_is_three() {
+        assert_eq!(SCHEMA_VERSION, 3);
     }
 }

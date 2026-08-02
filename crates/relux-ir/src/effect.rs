@@ -57,6 +57,10 @@ pub struct IrEffectStart {
     /// "effect not found" / resolution-failed diagnostic.
     effect_span: IrSpan,
     span: IrSpan,
+    /// Indices (into the enclosing start-list) of the sibling starts this
+    /// start depends on - the sibling aliases its overlay references.
+    /// Populated by `enrich_start_dag`; empty until then.
+    deps: Vec<usize>,
 }
 
 impl IrEffectStart {
@@ -73,6 +77,7 @@ impl IrEffectStart {
             alias,
             effect_span,
             span,
+            deps: Vec::new(),
         }
     }
 
@@ -91,6 +96,17 @@ impl IrEffectStart {
 
     pub fn alias(&self) -> Option<&str> {
         self.alias.as_deref()
+    }
+
+    /// Indices (into the enclosing start-list) of the sibling starts this
+    /// start depends on - the sibling aliases its overlay references.
+    /// Populated by `enrich_start_dag`; empty until then.
+    pub fn deps(&self) -> &[usize] {
+        &self.deps
+    }
+
+    pub fn set_deps(&mut self, deps: Vec<usize>) {
+        self.deps = deps;
     }
 }
 
@@ -299,7 +315,7 @@ impl IrNodeLowering for IrOverlayEntry {
         ctx: &mut LoweringContext,
     ) -> Result<Self, LoweringBail> {
         let key = IrIdent::lower(&ast.key.node, file, ctx)?;
-        let value = IrPureExpr::lower(&ast.value.node, file, ctx)?;
+        let value = IrPureExpr::lower_overlay_value(&ast.value.node, file, ctx)?;
         Ok(IrOverlayEntry::new(
             key,
             value,
@@ -559,31 +575,9 @@ impl IrNodeLowering for IrEffect {
                 _ => None,
             })
             .collect();
-        // Build maps from alias -> set of shells/vars exposed by that dependency
-        let mut dep_exposed_shells: std::collections::HashMap<
-            String,
-            std::collections::HashSet<String>,
-        > = std::collections::HashMap::new();
-        let mut dep_exposed_vars: std::collections::HashMap<
-            String,
-            std::collections::HashSet<String>,
-        > = std::collections::HashMap::new();
-        for start in &starts {
-            if let Some(alias) = start.alias()
-                && let Some(Ok(eff)) = ctx.effects().get(start.effect()).map(|r| r.as_ref())
-            {
-                let shells: std::collections::HashSet<String> = eff
-                    .shell_exposes()
-                    .map(|e| e.exposed_name().to_string())
-                    .collect();
-                let vars: std::collections::HashSet<String> = eff
-                    .var_exposes()
-                    .map(|e| e.exposed_name().to_string())
-                    .collect();
-                dep_exposed_shells.insert(alias.to_string(), shells);
-                dep_exposed_vars.insert(alias.to_string(), vars);
-            }
-        }
+        // Build maps from alias -> set of shells/vars exposed by that
+        // dependency (shared with test lowering; see `enrich.rs`).
+        let (dep_exposed_shells, dep_exposed_vars) = crate::enrich::build_dep_exposed(&starts, ctx);
 
         for expose in &exposes {
             let valid = match expose.kind() {
@@ -628,6 +622,17 @@ impl IrNodeLowering for IrEffect {
             }
         }
 
+        // R015: enrich the start DAG (validate sibling overlay refs, fill
+        // each start's wait-set, reject reference cycles) using the
+        // dep_exposed_vars map already built above.
+        crate::enrich::enrich_start_dag(&mut starts, &dep_exposed_vars)?;
+
+        // R015: validate every ${Alias.var} in this effect's shell blocks
+        // against its own dependency map (all deps are in scope in shell
+        // bodies). Breaking tightening: an unknown/non-exposed qualified
+        // ref that used to resolve to "" is now a compile error.
+        crate::enrich::validate_shell_body_refs(&body_items, &dep_exposed_vars)?;
+
         Ok(IrEffect::new(
             name,
             expects,
@@ -640,3 +645,27 @@ impl IrNodeLowering for IrEffect {
 }
 
 // --- Tests -----------------------------------------------
+
+#[cfg(test)]
+mod start_deps_tests {
+    use super::*;
+    use relux_core::diagnostics::EffectName;
+    use relux_core::diagnostics::ModulePath;
+
+    #[test]
+    fn deps_default_empty_and_settable() {
+        let mut start = IrEffectStart::new(
+            DiagEffectId {
+                module: ModulePath("test".into()),
+                name: EffectName("Db".into()),
+            },
+            Vec::new(),
+            Some("Api".into()),
+            IrSpan::synthetic(),
+            IrSpan::synthetic(),
+        );
+        assert!(start.deps().is_empty());
+        start.set_deps(vec![0, 2]);
+        assert_eq!(start.deps(), &[0, 2]);
+    }
+}

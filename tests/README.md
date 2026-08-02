@@ -52,6 +52,7 @@ Assertions against already-computed values (`<expr> = <pattern>` exact equality,
 
 - `basic_setup.relux` - effect with exported shell, alias, no-alias default, state retention
 - `dependencies.relux` - `need` chains, transitive dependencies, topological execution order
+- `implicit_dependencies.relux` - `Alias.var` overlay references induce implicit ordering (R015): producer/consumer hand-off, fan-out from one producer, and effect-body-level dependency
 - `deduplication.relux` - same identity tuple reuses instance, different overlays create separate instances
 - `cleanup.relux` - effect cleanup blocks, reverse dependency order, test-level cleanup
 

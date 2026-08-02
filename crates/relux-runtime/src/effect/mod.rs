@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use tokio::sync::Mutex as TokioMutex;
+use tokio::sync::watch;
 
 use futures::future::join_all;
 
@@ -57,6 +58,39 @@ pub enum Warning {
     },
 }
 
+// --- Start scheduling -----------------------------------
+
+/// Completion signal a start publishes for its dependents. Sent over a
+/// per-start `watch` channel, which is multi-consumer and race-free: a
+/// dependent that subscribes AFTER its dependency published still
+/// observes the current value, so the publish-before-await window cannot
+/// strand a waiter. Modeled as an enum so the illegal "succeeded but no
+/// vars" / "failed but has vars" states are unrepresentable.
+#[derive(Clone)]
+enum StartSignal {
+    /// The dependency is ready; carries its exposed vars (keyed by
+    /// exposed name) for injection into dependents under `Alias.var`.
+    Ready(VarMap),
+    /// The dependency failed (or short-circuited on its own failed dep).
+    Failed,
+}
+
+/// Per-start acquire outcome. Each driver future evaluates to one of
+/// these; `join_all` collects them in input order for partitioning.
+enum StartOutcome {
+    /// The start acquired successfully.
+    Ready {
+        export: ExportedEffect,
+        guard: EffectGuard,
+    },
+    /// The start hit a real overlay-eval or acquire error.
+    Failed(ExecError),
+    /// The start short-circuited because a dependency failed; it never
+    /// evaluated its overlay. Carries no error of its own - the root
+    /// cause is a `Failed` elsewhere in the same batch.
+    DepFailed,
+}
+
 // --- EffectManager ---------------------------------------
 
 pub struct EffectManager {
@@ -86,20 +120,38 @@ impl EffectManager {
         }
     }
 
-    /// Acquire all starts. Each start recursively acquires its own
-    /// dependencies before bootstrapping itself.
+    /// Acquire all starts, honoring the wait-set edges enrichment
+    /// derived from each start's overlay (`IrEffectStart::deps()`).
     /// `caller_vars` contains the caller's accumulated variable scope,
     /// allowing overlay expressions to reference the caller's `let` bindings.
     /// `caller_env` is the layered environment visible to the caller.
-    /// Returns (key, exported-shells-map) per start declaration.
+    /// Returns one `(ExportedEffect, EffectGuard)` per start declaration,
+    /// in input order.
     ///
-    /// Acquires run concurrently. The slot lock in `acquire` (see
-    /// `registry::EffectSlot`) serialises bootstrap-vs-reuse for the
-    /// same dedup key, so parallel acquires of overlapping keys are
-    /// safe - one bootstraps, the others wait on the slot's `Notify`.
-    /// Independent effects (different keys) bootstrap truly in parallel.
-    /// Overlay evaluation stays serial - overlays are cheap and may
-    /// reference let-bindings whose ordering is observable.
+    /// Scheduling: each start runs as its own future. A start whose
+    /// `deps()` is non-empty first awaits those sibling starts' completion
+    /// signals (published over per-start `watch` channels); the ready
+    /// deps' EXPOSED VARS are injected into the start's scope under
+    /// `Alias.var` keys BEFORE its overlay is evaluated, so the overlay's
+    /// `QualifiedVar` refs resolve. Independent starts (empty `deps()`)
+    /// still bootstrap concurrently, exactly as before. Enrichment proved
+    /// the dep graph acyclic, so the wait-set awaits cannot deadlock.
+    ///
+    /// The slot lock in `acquire` (see `registry::EffectSlot`) serialises
+    /// bootstrap-vs-reuse for the same dedup key, so parallel acquires of
+    /// overlapping keys are safe - one bootstraps, the others wait on the
+    /// slot's `Notify`. Independent effects (different keys) bootstrap
+    /// truly in parallel. Overlay evaluation runs inside each start's
+    /// future (concurrently): a start's scope is fully materialized
+    /// (caller scope + resolved dep vars) BEFORE its pure overlay eval
+    /// runs, and pure eval has no cross-start side effects, so concurrent
+    /// evaluation cannot change any overlay's value or its derived dedup
+    /// key.
+    ///
+    /// Rollback stays all-or-nothing, generalized along dep edges: a
+    /// failed dep fails its dependents (recorded as `DepFailed`), and on
+    /// ANY failure every successful acquire is released concurrently
+    /// before the first root error propagates.
     #[allow(clippy::type_complexity)]
     pub fn instantiate<'a>(
         &'a self,
@@ -116,15 +168,98 @@ impl EffectManager {
         >,
     > {
         Box::pin(async move {
-            // Phase 1: evaluate every overlay and derive each start's
-            // dedup key serially.
-            let mut prepared: Vec<(&IrEffectStart, EffectInstanceKey, Env)> =
-                Vec::with_capacity(starts.len());
-            for start in starts {
-                let evaluated = self
-                    .eval_overlay(start, caller_vars, caller_env, parent_span, caller_captures)
-                    .await?;
+            let n = starts.len();
 
+            // One `watch` channel per start carries that start's
+            // completion signal to its dependents. `watch` is
+            // multi-consumer and race-free: a dependent that subscribes
+            // AFTER its dep published still sees the current value, so a
+            // publish-before-await race cannot strand a waiter.
+            let mut senders: Vec<watch::Sender<Option<StartSignal>>> = Vec::with_capacity(n);
+            let mut receivers: Vec<watch::Receiver<Option<StartSignal>>> = Vec::with_capacity(n);
+            for _ in 0..n {
+                let (tx, rx) = watch::channel(None);
+                senders.push(tx);
+                receivers.push(rx);
+            }
+
+            let senders_ref = &senders;
+            let receivers_ref = &receivers;
+
+            // One driving future per start. A start awaits its `deps()`
+            // wait-set, then evaluates its overlay against a scope
+            // augmented with the ready deps' exposed vars, then acquires.
+            // Each future EVALUATES TO its `StartOutcome`; `join_all`
+            // returns them in input order, so no side-channel collector is
+            // needed. A start that short-circuits on dep failure STILL
+            // publishes a `Failed` signal so ITS dependents unblock instead
+            // of hanging.
+            let drivers = starts.iter().enumerate().map(|(i, start)| async move {
+                // 1. Await every dependency's completion signal.
+                //    Enrichment proved the graph acyclic, so this cannot
+                //    deadlock.
+                let mut dep_failed = false;
+                let mut dep_vars: Vec<(usize, VarMap)> = Vec::with_capacity(start.deps().len());
+                for &j in start.deps() {
+                    let mut rx = receivers_ref[j].clone();
+                    match rx.wait_for(Option::is_some).await {
+                        Ok(v) => match v.clone().expect("wait_for predicate guarantees Some") {
+                            StartSignal::Ready(vars) => dep_vars.push((j, vars)),
+                            StartSignal::Failed => dep_failed = true,
+                        },
+                        // Unreachable in practice: senders live until this
+                        // batch's `join_all` returns. Treat a dropped
+                        // sender as a failed dep rather than panicking.
+                        Err(_) => dep_failed = true,
+                    }
+                }
+
+                // 2. A failed dependency means this start can never
+                //    evaluate its overlay. Publish a failure signal (so
+                //    transitive dependents short-circuit too) and yield a
+                //    `DepFailed` outcome without acquiring.
+                if dep_failed {
+                    let _ = senders_ref[i].send(Some(StartSignal::Failed));
+                    return StartOutcome::DepFailed;
+                }
+
+                // 3. Build this start's scope: the caller's scope
+                //    augmented with each ready dep's exposed vars, injected
+                //    under `Alias.var` keys - the exact flat-key shape the
+                //    overlay's `QualifiedVar` refs resolve against (and the
+                //    same shape `bootstrap_effect` injects for an effect's
+                //    own deps). Only aliased deps contribute; deps only
+                //    ever point at aliased starts by construction. With no
+                //    deps we reuse the caller's scope untouched, preserving
+                //    today's independent-start path (no clone).
+                let augmented;
+                let scope: &VarScope = if dep_vars.is_empty() {
+                    caller_vars
+                } else {
+                    let mut aug = caller_vars.clone();
+                    for (j, vars) in &dep_vars {
+                        if let Some(alias) = starts[*j].alias() {
+                            for (var_name, value) in vars {
+                                aug.insert(format!("{alias}.{var_name}"), value.clone());
+                            }
+                        }
+                    }
+                    augmented = aug;
+                    &augmented
+                };
+
+                // 4. Evaluate the overlay against the augmented scope and
+                //    derive the dedup key.
+                let evaluated = match self
+                    .eval_overlay(start, scope, caller_env, parent_span, caller_captures)
+                    .await
+                {
+                    Ok(e) => e,
+                    Err(err) => {
+                        let _ = senders_ref[i].send(Some(StartSignal::Failed));
+                        return StartOutcome::Failed(err);
+                    }
+                };
                 let expect_names: Vec<&str> = self
                     .rt_ctx
                     .tables
@@ -138,58 +273,76 @@ impl EffectManager {
                     &expect_names,
                     &evaluated,
                 );
-                prepared.push((start, key, evaluated));
-            }
 
-            // Phase 2: acquire all starts concurrently. `join_all`
-            // preserves input order and runs every future to completion
-            // even when an earlier one errors - important because
-            // dropping an in-flight `acquire` mid-bootstrap would leave
-            // its slot stuck in `Loading` and stall future acquirers.
-            let acquires = prepared
-                .into_iter()
-                .map(|(start, key, evaluated)| async move {
-                    let result = self
-                        .acquire(&key, start, caller_vars, caller_env, evaluated, parent_span)
-                        .await;
-                    (key, result)
-                });
-            let outcomes: Vec<(EffectInstanceKey, _)> = join_all(acquires).await;
-
-            // Phase 3: partition. On any failure, release every
-            // successful acquire (concurrently) and propagate the first
-            // observed failure. Cleanup spans anchor under
-            // `self.test_span`, never `parent_span` - on the recursive
-            // path `parent_span` is the caller effect's open
-            // `EffectSetup` span, and nesting cleanups inside it
-            // violates the invariant from 85eef51.
-            let mut results: Vec<(ExportedEffect, EffectGuard)> =
-                Vec::with_capacity(outcomes.len());
-            let mut first_error: Option<ExecError> = None;
-            for (key, outcome) in outcomes {
-                match outcome {
+                // 5. Acquire, then publish this start's completion signal:
+                //    its exposed vars (for dependents to inject). On failure
+                //    publish `Failed`.
+                match self
+                    .acquire(&key, start, scope, caller_env, evaluated, parent_span)
+                    .await
+                {
                     Ok((acquired, guard)) => {
-                        results.push((
-                            ExportedEffect {
+                        let _ =
+                            senders_ref[i].send(Some(StartSignal::Ready(acquired.vars.clone())));
+                        StartOutcome::Ready {
+                            export: ExportedEffect {
                                 key,
                                 shells: acquired.shells,
                                 vars: acquired.vars,
                             },
                             guard,
-                        ));
-                    }
-                    Err(failure) => {
-                        if first_error.is_none() {
-                            first_error = Some(failure);
                         }
                     }
+                    Err(err) => {
+                        let _ = senders_ref[i].send(Some(StartSignal::Failed));
+                        StartOutcome::Failed(err)
+                    }
+                }
+            });
+
+            // Drive ALL start futures to completion - never drop an
+            // in-flight `acquire`, which would strand its slot in
+            // `Loading` and stall future acquirers. `join_all` preserves
+            // input order, so `outcomes` is already position-aligned.
+            let outcomes: Vec<StartOutcome> = join_all(drivers).await;
+
+            // Partition in input order. On ANY failure, release every
+            // successful acquire (concurrently) and propagate the first
+            // root error. Cleanup spans anchor under `self.test_span`,
+            // never `parent_span` - on the recursive path `parent_span`
+            // is the caller effect's open `EffectSetup` span, and nesting
+            // cleanups inside it violates the invariant from 85eef51.
+            let mut results: Vec<(ExportedEffect, EffectGuard)> = Vec::with_capacity(n);
+            let mut first_error: Option<ExecError> = None;
+            let mut failed = false;
+            for outcome in outcomes {
+                match outcome {
+                    StartOutcome::Ready { export, guard } => results.push((export, guard)),
+                    StartOutcome::Failed(err) => {
+                        failed = true;
+                        if first_error.is_none() {
+                            first_error = Some(err);
+                        }
+                    }
+                    // A `DepFailed` start's root cause is a `Failed`
+                    // elsewhere in this same batch (a dep can only fail
+                    // because it - or transitively ITS dep - hit a real
+                    // acquire/overlay error), so `first_error` is always
+                    // populated whenever any `DepFailed` is present.
+                    StartOutcome::DepFailed => failed = true,
                 }
             }
 
-            if let Some(failure) = first_error {
+            if failed {
+                // `.expect` guards the (unreachable) case of a failed
+                // batch with no root error: panicking beats silently
+                // returning a truncated success `Vec` that a caller's
+                // `zip(starts)` would misalign.
+                let failure = first_error
+                    .expect("a failed start batch always carries a root acquire/overlay error");
                 let releases = results
                     .into_iter()
-                    .map(|(_exported, guard)| self.release_and_teardown(guard, self.test_span));
+                    .map(|(_export, guard)| self.release_and_teardown(guard, self.test_span));
                 let _ = join_all(releases).await;
                 return Err(failure);
             }
@@ -286,6 +439,7 @@ impl EffectManager {
                             effect: start.effect().name.to_string(),
                             overlay: Self::evaluated_overlay_pairs(&overlay),
                             alias: start.alias().map(String::from),
+                            dep_sources: relux_ir::overlay_dep_sources(start),
                             marker,
                             is_reuse: true,
                         },
@@ -368,6 +522,7 @@ impl EffectManager {
                 effect: start.effect().name.to_string(),
                 overlay: overlay_pairs,
                 alias: start.alias().map(String::from),
+                dep_sources: relux_ir::overlay_dep_sources(start),
                 marker: marker.clone(),
                 is_reuse: false,
             },

@@ -90,6 +90,11 @@ pub enum SpanKind {
         effect: String,
         overlay: Vec<(String, String)>,
         alias: Option<String>,
+        /// Overlay keys whose value was sourced from a sibling start's
+        /// exposed variable, each paired with that sibling's alias
+        /// (`DB_PORT` sourced from `Db`). Empty when the start has no
+        /// implicit deps. R015 provenance for the viewer.
+        dep_sources: Vec<(String, String)>,
         /// Identity marker computed from the effect-instance dedup key.
         /// Same value on every `EffectSetup` for the same instance -
         /// the bootstrap span plus every dedup'd reuse share it.
@@ -244,6 +249,22 @@ mod tests {
         let v = serde_json::to_value(&kind).unwrap();
         assert_eq!(v["kind"], serde_json::json!("multi-match"));
         assert_eq!(v["shell"], serde_json::json!("default"));
+    }
+
+    #[test]
+    fn effect_setup_span_kind_serialises_dep_sources() {
+        let kind = SpanKind::EffectSetup {
+            effect: "Api".into(),
+            overlay: vec![("DB_PORT".into(), "5432".into())],
+            alias: Some("Api".into()),
+            dep_sources: vec![("DB_PORT".into(), "Db".into())],
+            marker: "marker-1".into(),
+            is_reuse: false,
+        };
+        let json = serde_json::to_value(&kind).unwrap();
+        assert_eq!(json["kind"], "effect-setup");
+        assert_eq!(json["dep_sources"][0][0], "DB_PORT");
+        assert_eq!(json["dep_sources"][0][1], "Db");
     }
 
     #[test]

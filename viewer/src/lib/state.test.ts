@@ -427,7 +427,7 @@ describe('ViewerState constructor: multi-match failure outcome', () => {
       kind: 'multi-match', shell: 's',
     } as const;
     const log = {
-      schema_version: 2,
+      schema_version: 3,
       info: { name: 't', path: 'p', duration_ms: 100n },
       outcome: {
         kind: 'fail',

@@ -616,8 +616,17 @@ export interface EffectVarExpose {
   value: string;
 }
 
+export interface EffectOverlayRow {
+  key: string;
+  value: string;
+  // Sibling aliases this value was implicitly sourced from (R015), e.g.
+  // `["Db"]` for a `DB_PORT` overlay value read from `Db`'s exposed var.
+  // Empty when the overlay value was supplied directly (no implicit dep).
+  sources: string[];
+}
+
 export interface EffectSetupProps {
-  overlay: Array<[string, string]>;
+  overlay: EffectOverlayRow[];
   shellExposes: EffectShellExpose[];
   varExposes: EffectVarExpose[];
 }
@@ -647,7 +656,21 @@ export function effectSetupProps(
       });
     }
   }
-  return { overlay: span.overlay, shellExposes, varExposes };
+  const sourcesByKey = new Map<string, string[]>();
+  for (const [key, alias] of span.dep_sources) {
+    let bucket = sourcesByKey.get(key);
+    if (!bucket) {
+      bucket = [];
+      sourcesByKey.set(key, bucket);
+    }
+    bucket.push(alias);
+  }
+  const overlay: EffectOverlayRow[] = span.overlay.map(([key, value]) => ({
+    key,
+    value,
+    sources: sourcesByKey.get(key) ?? [],
+  }));
+  return { overlay, shellExposes, varExposes };
 }
 
 export interface ShellBlockProps {

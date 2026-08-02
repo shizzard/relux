@@ -15,6 +15,7 @@
     { "include": "#fail-operators" },
     { "include": "#op-bind" },
     { "include": "#keywords" },
+    { "include": "#qualified-ref" },
     { "include": "#dot-access" },
     { "include": "#string" },
     { "include": "#interpolation" },
@@ -313,6 +314,15 @@
       "match": "\\b([a-z_][a-zA-Z0-9_]*)(\\.)([a-z_][a-zA-Z0-9_]*)\\b",
       "captures": {
         "1": { "name": "variable.other.alias.relux" },
+        "2": { "name": "punctuation.accessor.dot.relux" },
+        "3": { "name": "variable.other.shell.relux" }
+      }
+    },
+
+    "qualified-ref": {
+      "match": "\\b([A-Z][a-zA-Z0-9_]*)(\\.)([a-z_][a-zA-Z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "entity.name.type.relux" },
         "2": { "name": "punctuation.accessor.dot.relux" },
         "3": { "name": "variable.other.shell.relux" }
       }

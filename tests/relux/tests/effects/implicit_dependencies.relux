@@ -1,0 +1,106 @@
+effect Producer {
+    let token := "R015-PRODUCER-TOKEN"
+    expose shell producer
+    expose var token
+    shell producer {
+        > export PRODUCER_STATUS=ready
+        match_ok()
+    }
+}
+
+effect Consumer {
+    expect THEVAR
+    expose shell consumer
+    shell consumer {
+        > export CONSUMER_VALUE="${THEVAR}"
+        match_ok()
+    }
+}
+
+effect Api {
+    expect THEVAR
+    expose shell svc
+    shell svc {
+        > export API_VALUE="${THEVAR}"
+        match_ok()
+    }
+}
+
+effect Worker {
+    expect THEVAR
+    expose shell svc
+    shell svc {
+        > export WORKER_VALUE="${THEVAR}"
+        match_ok()
+    }
+}
+
+effect WrapsBoth {
+    start Producer as P
+    start Consumer as C {
+        THEVAR := P.token
+    }
+    expose shell C.consumer as consumer
+    shell C.consumer {
+        > export WRAPPED_STATUS=ready
+        match_ok()
+    }
+}
+
+test "consumer observes producer's exposed value via implicit dependency" {
+    """
+    Verify an effect's overlay value that references a sibling start's
+    exposed variable (Alias.var) induces an implicit ordering dependency:
+    the consumer effect starts only after the producer is ready and
+    receives the producer's actual exposed value, not an empty string.
+    A regression that breaks the ordering or the value injection would
+    leave CONSUMER_VALUE empty and this match would fail.
+    """
+    start Producer as P
+    start Consumer as C {
+        THEVAR := P.token
+    }
+    shell C.consumer {
+        > echo $$CONSUMER_VALUE
+        <? ^R015-PRODUCER-TOKEN$
+    }
+}
+
+test "two independent consumers fan out from one producer" {
+    """
+    Verify fan-out: two different effects that each reference the same
+    producer's exposed variable both wait for the producer, but run in
+    parallel with each other - only the data-dependent edge is serialized.
+    """
+    start Producer as P
+    start Api as A {
+        THEVAR := P.token
+    }
+    start Worker as W {
+        THEVAR := P.token
+    }
+    shell A.svc {
+        > echo $$API_VALUE
+        <? ^R015-PRODUCER-TOKEN$
+    }
+    shell W.svc {
+        > echo $$WORKER_VALUE
+        <? ^R015-PRODUCER-TOKEN$
+    }
+}
+
+test "implicit dependency also holds inside an effect body" {
+    """
+    Verify the same implicit-dependency mechanism applies when the
+    producer/consumer start-list lives inside an effect body, not just
+    at test level: Consumer starts only after Producer inside WrapsBoth,
+    and the re-exposed shell reflects both effects' own setup steps.
+    """
+    start WrapsBoth as W
+    shell W.consumer {
+        > echo $$CONSUMER_VALUE
+        <? ^R015-PRODUCER-TOKEN$
+        > echo $$WRAPPED_STATUS
+        <? ^ready$
+    }
+}
