@@ -57,6 +57,10 @@ pub struct IrEffectStart {
     /// "effect not found" / resolution-failed diagnostic.
     effect_span: IrSpan,
     span: IrSpan,
+    /// Indices (into the enclosing start-list) of the sibling starts this
+    /// start depends on - the sibling aliases its overlay references.
+    /// Populated by `enrich_start_dag`; empty until then.
+    deps: Vec<usize>,
 }
 
 impl IrEffectStart {
@@ -73,6 +77,7 @@ impl IrEffectStart {
             alias,
             effect_span,
             span,
+            deps: Vec::new(),
         }
     }
 
@@ -91,6 +96,17 @@ impl IrEffectStart {
 
     pub fn alias(&self) -> Option<&str> {
         self.alias.as_deref()
+    }
+
+    /// Indices (into the enclosing start-list) of the sibling starts this
+    /// start depends on - the sibling aliases its overlay references.
+    /// Populated by `enrich_start_dag`; empty until then.
+    pub fn deps(&self) -> &[usize] {
+        &self.deps
+    }
+
+    pub fn set_deps(&mut self, deps: Vec<usize>) {
+        self.deps = deps;
     }
 }
 
@@ -640,3 +656,27 @@ impl IrNodeLowering for IrEffect {
 }
 
 // --- Tests -----------------------------------------------
+
+#[cfg(test)]
+mod start_deps_tests {
+    use super::*;
+    use relux_core::diagnostics::EffectName;
+    use relux_core::diagnostics::ModulePath;
+
+    #[test]
+    fn deps_default_empty_and_settable() {
+        let mut start = IrEffectStart::new(
+            DiagEffectId {
+                module: ModulePath("test".into()),
+                name: EffectName("Db".into()),
+            },
+            Vec::new(),
+            Some("Api".into()),
+            IrSpan::synthetic(),
+            IrSpan::synthetic(),
+        );
+        assert!(start.deps().is_empty());
+        start.set_deps(vec![0, 2]);
+        assert_eq!(start.deps(), &[0, 2]);
+    }
+}
