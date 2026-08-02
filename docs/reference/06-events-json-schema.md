@@ -35,7 +35,7 @@ machine-readable equivalent of what this page describes in prose.
 
 ```jsonc
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "info":   { ... TestInfo ... },
   "outcome": { "kind": "pass" | "fail" | "cancelled" | "skip", ... },
   "env":    { "bootstrap": [{ "key": "KEY", "value": "value", "source": { "kind": "base" } }, ...] },
@@ -50,8 +50,8 @@ machine-readable equivalent of what this page describes in prose.
 
 Field notes:
 
-- `schema_version` (`u32`) — current version is `2`. Bumped on any
-  backwards-incompatible change. Consumers should verify this matches
+- `schema_version` (`u32`) — current version is `3`. Bumped on any
+  change to the on-disk shape. Consumers should verify this matches
   the version they expect and fail loudly otherwise. The viewer
   rejects mismatched artifacts with a banner.
 - `info` — `{ name, path, duration_ms }`. `path` is the source-relative
@@ -470,13 +470,14 @@ via `mime_guess`; the browser does its own sniffing on click.
 
 ## Versioning
 
-`schema_version` is currently `2`. Version 2 changed `env.bootstrap`
-from `[name, value]` tuples to `{ key, value, source }` objects. A
-future change that adds new
-optional fields or new tagged-enum variants is *not* a breaking
-change and does not bump the version; consumers should ignore unknown
-variants gracefully. Any change that removes or renames fields, or
-narrows the meaning of an existing field, bumps the version.
+`schema_version` is currently `3`. Version 3 added the `dep_sources`
+array to `effect-setup` spans (implicit effect dependencies). Version 2
+changed `env.bootstrap` from `[name, value]` tuples to
+`{ key, value, source }` objects. The version bumps on any change to
+the on-disk shape -- fields added, removed, or renamed, new tagged-enum
+variants, or a narrowed meaning for an existing field -- because the
+viewer is bundled per artifact and reads the schema without tolerating
+version skew.
 
 To regenerate the TypeScript bindings after editing the Rust types,
 run `just viewer-build` — it runs the `ts-rs` export tests and then
