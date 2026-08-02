@@ -441,3 +441,57 @@ test "app" {
         "expected shell body to accept a valid dependency ref, got {result:?}"
     );
 }
+
+#[test]
+fn test_cleanup_body_unknown_qualifier_is_error() {
+    // Same breaking tightening as `test_shell_body_unknown_qualifier_is_error`,
+    // but for a test's own `cleanup { }` block: the runtime shares the same
+    // VarScope between a test's shell block and its cleanup block, so a
+    // ${Typo.var} naming a non-dependency alias must be rejected at compile
+    // time here too.
+    let source = r#"test "app" {
+  shell sh {
+    > start
+  }
+  cleanup {
+    > disconnect ${Typo.port}
+  }
+}
+"#;
+    let mut ctx = ctx_with_source(source);
+    let err = lower_first_test(&mut ctx, "tests/a").unwrap_err();
+    assert!(
+        matches!(
+            err.invalid_report(),
+            Some(InvalidReport::UnknownQualifier { .. })
+        ),
+        "expected UnknownQualifier, got {err:?}"
+    );
+}
+
+#[test]
+fn test_cleanup_body_valid_qualified_ref_lowers() {
+    let source = r#"effect Db {
+  let port := available_port()
+  expose var port
+  shell db {
+    > start
+  }
+}
+test "app" {
+  start Db as Db
+  shell sh {
+    > start
+  }
+  cleanup {
+    > disconnect ${Db.port}
+  }
+}
+"#;
+    let mut ctx = ctx_with_source(source);
+    let result = lower_first_test(&mut ctx, "tests/a");
+    assert!(
+        result.is_ok(),
+        "expected cleanup body to accept a valid dependency ref, got {result:?}"
+    );
+}
