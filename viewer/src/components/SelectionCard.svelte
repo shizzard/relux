@@ -670,15 +670,21 @@
         <div class="kv-row">
           <div class="k"><NameCell name={row.key} /></div>
           <div class="v" class:accent={row.accent}>
-            {#if row.mono}
+            {#if row.sources && row.sources.length > 0}
+              <span class="value-with-source">
+                {#if row.mono}
+                  <ValueCell value={row.value} {state} expandKey={key} accent={row.accent} />
+                {:else}
+                  <span class="plain">{row.value}</span>
+                {/if}
+                <span class="source-note" title={`sourced from ${row.sources.join(', ')}`}>
+                  &lt;- {row.sources.join(', ')}
+                </span>
+              </span>
+            {:else if row.mono}
               <ValueCell value={row.value} {state} expandKey={key} accent={row.accent} />
             {:else}
               <span class="plain">{row.value}</span>
-            {/if}
-            {#if row.sources && row.sources.length > 0}
-              <span class="source-note" title={`sourced from ${row.sources.join(', ')}`}>
-                &lt;- {row.sources.join(', ')}
-              </span>
             {/if}
           </div>
         </div>
@@ -777,9 +783,23 @@
     white-space: nowrap;
     max-width: 100%;
   }
+  /* Keeps the overlay value and its provenance badge on one line. Scoped
+     to this wrapper only (via :global() into ValueCell's internal .cell)
+     so plain kv-rows without a source badge are unaffected. */
+  .value-with-source {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--gap-xs);
+    min-width: 0;
+    max-width: 100%;
+  }
+  .value-with-source :global(.cell) {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
   .source-note {
     display: inline-block;
-    margin-left: var(--gap-xs);
+    flex: 0 0 auto;
     padding: 0 6px;
     border-radius: 999px;
     border: 1px solid var(--border);
