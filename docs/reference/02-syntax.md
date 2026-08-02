@@ -82,7 +82,7 @@ effect <EffectName> {
 - `start Effect as Alias` runs the dependency and makes its exposed shells/variables available via dot-access
 - Effect aliases must be CamelCase
 - `start Effect as Alias { KEY := expr }` provides an overlay; shorthand `KEY` is equivalent to `KEY := KEY`
-- An overlay value may reference a sibling start's exposed variable: `KEY := Alias.var` (`Alias` must be a sibling's alias in the same start-list and must `expose var` that name). This induces an implicit ordering dependency; see [Effects](00-semantics.md#effects) and [Effect Identity](#effect-identity) below
+- An overlay value may reference a sibling start's exposed variable: `KEY := Alias.var` (`Alias` must be a sibling's alias in the same start-list and must `expose var` that name — never `expose shell`, since overlay values are strings). This induces an implicit ordering dependency; see [Effects](00-semantics.md#effects) and [Effect Identity](#effect-identity) below
 - `expose shell` declares which shells are part of the effect's public interface
 - `expose var` declares which variables are part of the effect's public interface; these are `let`-bound values computed during setup
 - `expose shell Alias.shell as name` re-exports a dependency's shell under a new name
@@ -112,7 +112,7 @@ test "<name>" {
 }
 ```
 
-- Test-level `start` overlay rules (including the sibling-reference form `KEY := Alias.var`) are identical to an effect body's `start` -- see [Effects](#effects) above
+- Test-level `start` overlay rules (including the sibling-reference form `KEY := Alias.var`) are identical to an effect body's `start` — see [Effects](#effects) above
 - A qualified reference `${Alias.var}` in a test's `shell` or `cleanup` body is validated the same way: `Alias` must be one of the test's own `start` dependency aliases, and that dependency must `expose var` the referenced variable
 
 ## Condition Markers

@@ -499,6 +499,7 @@ A few rules govern the reference:
 
 - The referenced start must be **aliased** (`start Database as Db`). A `start` without `as` has no name to qualify with, so it cannot be referenced.
 - The referenced effect must **`expose var`** the variable being read. Referencing a variable the effect computed but did not expose is a compile error, just like referencing a variable an effect never declared.
+- **Only variables are referenceable.** Overlay values are strings, so `Alias.var` can only name a sibling's `expose var` — a sibling's `expose shell` is not a string value and cannot be referenced this way.
 - **Forward references are legal** — a `start` may reference a sibling declared later in the same start-list. Declaration order does not constrain the dependency; only the reference itself does.
 - A **reference cycle** among siblings (`start A as X { P := Y.out }` alongside `start B as Y { Q := X.out }`) is a compile error, caught by `relux check` before any test runs.
 - The same rule applies whether the start-list belongs to a test or to another effect's body — nesting the reference inside interpolation also works: `URL := "${Db.host}:${Db.port}"`.
