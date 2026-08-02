@@ -3,7 +3,8 @@ test "statement-position pure matches emit the event trio" {
     marker_events covers the pure-match trio for marker conditions; this pins it
     for statement-position pure matches. A passing `?` and a passing `=` in a
     shell body each emit a `pure-match-start` + `pure-match-done` pair (no
-    `pure-match-failed`), with is_regex distinguishing the two operators.
+    `pure-match-failed`), with is_regex distinguishing the two operators. Because
+    the matches run inside a shell block, every emitted event carries that shell.
     """
     shell s {
         > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
@@ -38,6 +39,14 @@ test "statement-position pure matches emit the event trio" {
         // Both hits carry the whole match in `matched`.
         > jq -Mc '[.events[] | select(.kind == "pure-match-done") | .matched] | sort' $events
         <? ^\["abc","abc"\]$
+        match_ok()
+
+        // Statement-position matches run inside `shell s`, so every pure-match
+        // event carries that shell (events.json invariant: shell present iff a
+        // shell was in scope at the emit site). All four here (2 start + 2 done)
+        // must be tagged with shell "s".
+        > jq -M '[.events[] | select(.kind | startswith("pure-match")) | select(.shell == "s")] | length' $events
+        <? ^4$
         match_ok()
     }
 }

@@ -508,9 +508,11 @@ impl Vm {
                 let value = self.eval_expr(lhs).await?;
                 let pat = self.render_interp(pattern, Some(&span)).await;
                 let outcome = {
-                    let mut sink = crate::observe::structured::log_sink::LogSink::new(
+                    let mut sink = crate::observe::structured::log_sink::LogSink::new_in_shell(
                         &self.log,
                         self.current_span(),
+                        self.ctx.current_name(),
+                        self.shell_marker.clone(),
                     );
                     relux_ir::eval_pure_match(&mut sink, &value, &pat, *is_regex, &span)
                 };
@@ -1073,8 +1075,12 @@ impl Vm {
             );
             self.ctx.push_span(fn_guard.id());
             self.log.push_fn_enter(&fn_name);
-            let mut sink =
-                crate::observe::structured::log_sink::LogSink::new(&self.log, fn_guard.id());
+            let mut sink = crate::observe::structured::log_sink::LogSink::new_in_shell(
+                &self.log,
+                fn_guard.id(),
+                self.ctx.current_name(),
+                self.shell_marker.clone(),
+            );
             let return_value = match relux_ir::evaluator::eval_pure_fn(
                 ir_fn,
                 evaluated_args,

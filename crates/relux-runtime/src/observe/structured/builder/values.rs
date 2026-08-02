@@ -120,11 +120,16 @@ impl StructuredLogBuilder {
         );
     }
 
-    /// Pure string-match attempt. Emitted by `LogSink` before a marker `?`/`=`
-    /// (and future pure-match statements) runs.
+    /// Pure string-match attempt. Emitted before a marker `?`/`=` or a
+    /// pure-match statement runs. Shell-bound callers (a pure-match statement
+    /// inside a `shell` block) pass `Some(shell)` / `Some(marker)`; shell-less
+    /// callers (marker replay, test/effect preambles) pass `None` / `None`.
+    #[allow(clippy::too_many_arguments)]
     pub fn emit_pure_match_start(
         &self,
         span: SpanId,
+        shell: Option<&str>,
+        marker: Option<&str>,
         value: &str,
         pattern: &str,
         is_regex: bool,
@@ -132,8 +137,8 @@ impl StructuredLogBuilder {
     ) {
         self.push_event(
             span,
-            None,
-            None,
+            shell,
+            marker,
             location,
             EventKind::PureMatchStart {
                 value: value.to_string(),
@@ -143,18 +148,21 @@ impl StructuredLogBuilder {
         );
     }
 
-    /// Pure string-match success.
+    /// Pure string-match success. Shell context is threaded the same way as
+    /// [`Self::emit_pure_match_start`].
     pub fn emit_pure_match_done(
         &self,
         span: SpanId,
+        shell: Option<&str>,
+        marker: Option<&str>,
         matched: &str,
         captures: &HashMap<String, String>,
         location: Option<&IrSpan>,
     ) {
         self.push_event(
             span,
-            None,
-            None,
+            shell,
+            marker,
             location,
             EventKind::PureMatchDone {
                 matched: matched.to_string(),
@@ -163,8 +171,15 @@ impl StructuredLogBuilder {
         );
     }
 
-    /// Pure string-match failure (no match).
-    pub fn emit_pure_match_failed(&self, span: SpanId, location: Option<&IrSpan>) {
-        self.push_event(span, None, None, location, EventKind::PureMatchFailed {});
+    /// Pure string-match failure (no match). Shell context is threaded the same
+    /// way as [`Self::emit_pure_match_start`].
+    pub fn emit_pure_match_failed(
+        &self,
+        span: SpanId,
+        shell: Option<&str>,
+        marker: Option<&str>,
+        location: Option<&IrSpan>,
+    ) {
+        self.push_event(span, shell, marker, location, EventKind::PureMatchFailed {});
     }
 }
