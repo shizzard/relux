@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/shizzard/relux/compare/v0.8.0...v0.8.1) (2026-08-02)
+
+
+### Bug Fixes
+
+* **runtime:** package vendored bundles inside the crate ([a6073c9](https://github.com/shizzard/relux/commit/a6073c91ad9da164ce3c57e2836a4d7d6352c221))
+
 ## [0.8.0](https://github.com/shizzard/relux/compare/v0.7.1...v0.8.0) (2026-08-02)
 
 
