@@ -925,9 +925,21 @@ test "t" {
 
 #[test]
 fn pure_match_pattern_qualified_var_in_shell_is_runnable() {
+    // R015: a shell-body qualified var is only valid when it names a real
+    // dependency alias exposing that var (unlike the preamble cases above,
+    // which are invalid for a purity reason unrelated to R015). `App` must
+    // therefore be a genuine `start ... as App` exposing `field`.
     let suite = resolve_source_no_env(&[(
         "tests/a",
-        r#"test "t" {
+        r#"effect App {
+  let field := "y"
+  expose var field
+  shell app {
+    > start
+  }
+}
+test "t" {
+  start App as App
   shell sh {
     let name := "x"
     name ? ${App.field}

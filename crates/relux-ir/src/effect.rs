@@ -575,31 +575,9 @@ impl IrNodeLowering for IrEffect {
                 _ => None,
             })
             .collect();
-        // Build maps from alias -> set of shells/vars exposed by that dependency
-        let mut dep_exposed_shells: std::collections::HashMap<
-            String,
-            std::collections::HashSet<String>,
-        > = std::collections::HashMap::new();
-        let mut dep_exposed_vars: std::collections::HashMap<
-            String,
-            std::collections::HashSet<String>,
-        > = std::collections::HashMap::new();
-        for start in &starts {
-            if let Some(alias) = start.alias()
-                && let Some(Ok(eff)) = ctx.effects().get(start.effect()).map(|r| r.as_ref())
-            {
-                let shells: std::collections::HashSet<String> = eff
-                    .shell_exposes()
-                    .map(|e| e.exposed_name().to_string())
-                    .collect();
-                let vars: std::collections::HashSet<String> = eff
-                    .var_exposes()
-                    .map(|e| e.exposed_name().to_string())
-                    .collect();
-                dep_exposed_shells.insert(alias.to_string(), shells);
-                dep_exposed_vars.insert(alias.to_string(), vars);
-            }
-        }
+        // Build maps from alias -> set of shells/vars exposed by that
+        // dependency (shared with test lowering; see `enrich.rs`).
+        let (dep_exposed_shells, dep_exposed_vars) = crate::enrich::build_dep_exposed(&starts, ctx);
 
         for expose in &exposes {
             let valid = match expose.kind() {

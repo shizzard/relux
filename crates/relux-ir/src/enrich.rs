@@ -16,6 +16,8 @@ use crate::IrNode;
 use crate::IrPureExpr;
 use crate::IrShellStmt;
 use crate::IrStringPart;
+use crate::IrTestItem;
+use crate::LoweringContext;
 use crate::effect::IrEffectStart;
 
 /// Collects every `${Alias.var}`-shaped ref out of an `IrInterpolation`'s
@@ -142,6 +144,56 @@ fn validate_body_refs(
     Ok(())
 }
 
+/// Builds the `alias -> exposed surface` maps for a start-list: for every
+/// aliased start whose effect resolved successfully, one entry per map
+/// keyed by the alias, holding the set of shell names (first) and var
+/// names (second) that effect exposes. Shared by effect lowering (which
+/// needs both maps, for expose-reference validation) and test lowering
+/// (which needs only the vars map, for `enrich_start_dag` and
+/// `validate_test_shell_body_refs`) so the alias -> exposed-surface
+/// construction is written once.
+///
+/// An unaliased start or one whose effect failed to resolve contributes no
+/// entry to either map -- matching the precedent this replaces: only
+/// aliased, successfully-resolved starts can be referenced by a qualified
+/// `${Alias.var}` in the first place.
+pub fn build_dep_exposed(
+    starts: &[IrEffectStart],
+    ctx: &LoweringContext,
+) -> (
+    HashMap<String, HashSet<String>>,
+    HashMap<String, HashSet<String>>,
+) {
+    let mut shells_map: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut vars_map: HashMap<String, HashSet<String>> = HashMap::new();
+    for start in starts {
+        if let Some(alias) = start.alias()
+            && let Some(Ok(eff)) = ctx.effects().get(start.effect()).map(|r| r.as_ref())
+        {
+            let shells: HashSet<String> = eff
+                .shell_exposes()
+                .map(|e| e.exposed_name().to_string())
+                .collect();
+            let vars: HashSet<String> = eff
+                .var_exposes()
+                .map(|e| e.exposed_name().to_string())
+                .collect();
+            shells_map.insert(alias.to_string(), shells);
+            vars_map.insert(alias.to_string(), vars);
+        }
+    }
+    (shells_map, vars_map)
+}
+
+/// Vars-only convenience wrapper around `build_dep_exposed`, for callers
+/// (test lowering) that have no use for the exposed-shells map.
+pub fn build_dep_exposed_vars(
+    starts: &[IrEffectStart],
+    ctx: &LoweringContext,
+) -> HashMap<String, HashSet<String>> {
+    build_dep_exposed(starts, ctx).1
+}
+
 /// Validates every `${Alias.var}` reference in `body_items`'s shell and
 /// cleanup blocks against `exposed` (alias -> exposed var names) -- the
 /// same dependency map `enrich_start_dag` validates overlay refs against.
@@ -170,6 +222,36 @@ pub fn validate_shell_body_refs(
             | IrEffectItem::Let { .. }
             | IrEffectItem::PureMatch { .. }
             | IrEffectItem::Expose { .. } => continue,
+        };
+        validate_body_refs(body, exposed)?;
+    }
+    Ok(())
+}
+
+/// Test-level counterpart of `validate_shell_body_refs`. `IrTestItem` is a
+/// distinct enum from `IrEffectItem` (no `Start`/`Expect`/`Expose`
+/// variants; a `DocString` variant instead), so the match arms differ, but
+/// the underlying per-statement walk is the same `validate_body_refs`.
+///
+/// This exists because a started effect's exposed vars are injected into
+/// the *test's own* shell/cleanup scope at runtime (mirroring the
+/// dep-var injection into an effect's own scope that
+/// `validate_shell_body_refs` guards) -- so a `${Alias.var}` in a test's
+/// `shell { }` or `cleanup { }` body is subject to the same
+/// unknown-qualifier / non-exposed-var footgun as inside an effect body.
+pub fn validate_test_shell_body_refs(
+    body_items: &[IrTestItem],
+    exposed: &HashMap<String, HashSet<String>>,
+) -> Result<(), LoweringBail> {
+    for item in body_items {
+        let body: &[IrShellStmt] = match item {
+            IrTestItem::Shell { block, .. } => block.body(),
+            IrTestItem::Cleanup { block, .. } => block.body(),
+            IrTestItem::Comment { .. }
+            | IrTestItem::DocString { .. }
+            | IrTestItem::Start { .. }
+            | IrTestItem::Let { .. }
+            | IrTestItem::PureMatch { .. } => continue,
         };
         validate_body_refs(body, exposed)?;
     }
