@@ -19,6 +19,7 @@ use super::punctuation::punctuation_brace_open;
 use super::stmt::stmt_let_standalone;
 use super::stmt::stmt_pure_match_standalone;
 use super::token::keyword;
+use super::ws::eol;
 use super::ws::leading_ws;
 use super::ws::newline;
 use super::ws::ws;
@@ -85,7 +86,7 @@ pub fn def_effect<'a>()
                 .at_least(1)
                 .collect::<Vec<_>>(),
         )
-        .then_ignore(newline())
+        .then_ignore(eol())
         .map_with(|vars, e| {
             let span = crate::span_from_chumsky(e.span());
             AstEffectItem::Expect {
@@ -207,7 +208,7 @@ pub fn def_effect<'a>()
                 .ignore_then(ident_fn())
                 .or_not(),
         )
-        .then_ignore(newline())
+        .then_ignore(eol())
         .map_with(|((kind, (qualifier, target)), alias), e| {
             let span = crate::span_from_chumsky(e.span());
             AstEffectItem::Expose {
@@ -244,7 +245,7 @@ pub fn def_effect<'a>()
                 .ignore_then(ident_var())
                 .or_not(),
         )
-        .then_ignore(newline())
+        .then_ignore(eol())
         .map_with(|((kind, (qualifier, target)), alias), e| {
             let span = crate::span_from_chumsky(e.span());
             AstEffectItem::Expose {
@@ -768,6 +769,40 @@ effect Db {
         assert_eq!(expect.vars[0].node.name, "DB_PORT");
         assert_eq!(expect.vars[1].node.name, "DB_HOST");
         assert_eq!(expect.vars[2].node.name, "DB_NAME");
+    }
+
+    // Regression: a trailing space on an `expect` line (after the var list,
+    // before the newline) must be tolerated - it previously broke the whole
+    // effect body parse.
+    #[test]
+    fn effect_expect_tolerates_trailing_space() {
+        let e = parse_effect(
+            "effect Db {\n  expect DB_PORT, DB_HOST \n  shell db {\n    > echo start\n  }\n}\n",
+        );
+        let expect = e
+            .body
+            .iter()
+            .find_map(|item| match &item.node {
+                AstEffectItem::Expect { decl, .. } => Some(decl),
+                _ => None,
+            })
+            .expect("should have expect");
+        assert_eq!(expect.vars.len(), 2);
+    }
+
+    // Regression: a trailing space on an `expose` line (after the target/alias)
+    // must be tolerated on both the shell and var forms.
+    #[test]
+    fn effect_expose_tolerates_trailing_space() {
+        let e = parse_effect(
+            "effect Db {\n  expose shell db as database \n  shell db {\n    > echo start\n  }\n}\n",
+        );
+        let exposes: Vec<_> = e
+            .body
+            .iter()
+            .filter(|item| matches!(&item.node, AstEffectItem::Expose { .. }))
+            .collect();
+        assert_eq!(exposes.len(), 1);
     }
 
     #[test]

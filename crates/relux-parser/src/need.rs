@@ -6,7 +6,7 @@ use relux_lexer::Token;
 use super::ParserInput;
 use super::ident::ident_aliased_effect;
 use super::overlay::overlay;
-use super::ws::newline;
+use super::ws::eol;
 use super::ws::ws;
 use relux_ast::AstStartDecl;
 
@@ -32,7 +32,7 @@ pub fn start_decl<'a>()
                 span,
             )
         })
-        .then_ignore(newline())
+        .then_ignore(eol())
         .labelled("start declaration")
         .boxed()
 }
@@ -122,6 +122,40 @@ mod tests {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
         assert!(start_decl().parse(input).into_result().is_err());
+    }
+
+    // Regression: trailing whitespace before the newline must be tolerated on
+    // every form of the start declaration. `start Foo as Bar ` previously
+    // failed with a misleading "expected overlay" error because `ws()` consumed
+    // the space and the optional `overlay()` then failed at the newline.
+    #[test]
+    fn start_with_alias_tolerates_trailing_space() {
+        let n = parse_start("start Db as MyDb \n");
+        assert_eq!(n.effect.node.name, "Db");
+        assert_eq!(n.alias.as_ref().unwrap().node.name, "MyDb");
+        assert!(n.overlay.is_empty());
+    }
+
+    #[test]
+    fn bare_start_tolerates_trailing_space() {
+        let n = parse_start("start Db  \n");
+        assert_eq!(n.effect.node.name, "Db");
+        assert!(n.alias.is_none());
+        assert!(n.overlay.is_empty());
+    }
+
+    #[test]
+    fn start_with_overlay_tolerates_trailing_space() {
+        let n = parse_start("start Db { PORT := \"5433\" } \n");
+        assert_eq!(n.effect.node.name, "Db");
+        assert_eq!(n.overlay.len(), 1);
+    }
+
+    #[test]
+    fn start_tolerates_trailing_tab() {
+        let n = parse_start("start Db as MyDb\t\n");
+        assert_eq!(n.effect.node.name, "Db");
+        assert_eq!(n.alias.as_ref().unwrap().node.name, "MyDb");
     }
 
     #[test]

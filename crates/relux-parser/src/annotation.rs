@@ -9,6 +9,7 @@ use super::interpolation::interp_regex;
 use super::prefix::prefix_comment;
 use super::prefix::prefix_marker;
 use super::token::text;
+use super::ws::eol;
 use super::ws::newline;
 use super::ws::ws;
 use relux_ast::AstCondModifier;
@@ -165,7 +166,7 @@ pub fn marker<'a>()
                 span,
             )
         })
-        .then_ignore(newline())
+        .then_ignore(eol())
         .labelled("marker (# skip/run/flaky)")
         .boxed()
 }
@@ -431,5 +432,25 @@ line two
         let m = parse_marker("# flaky\n");
         assert!(matches!(m.kind, AstMarkerKind::Flaky { .. }));
         assert!(m.condition.is_none());
+    }
+
+    // Regression: trailing whitespace before the newline must be tolerated on
+    // markers, both bare and with a condition.
+    #[test]
+    fn marker_bare_tolerates_trailing_space() {
+        let m = parse_marker("# skip  \n");
+        assert!(matches!(m.kind, AstMarkerKind::Skip { .. }));
+        assert!(m.condition.is_none());
+    }
+
+    #[test]
+    fn marker_condition_tolerates_trailing_space() {
+        let m = parse_marker("# skip if MY_VAR \n");
+        assert!(matches!(m.kind, AstMarkerKind::Skip { .. }));
+        let cond = m.condition.unwrap();
+        assert!(matches!(cond.modifier, AstCondModifier::If { .. }));
+        assert!(
+            matches!(cond.body, AstMarkerCondBody::Bare { expr: AstExpr::Var { ref name, .. }, .. } if name == "MY_VAR")
+        );
     }
 }

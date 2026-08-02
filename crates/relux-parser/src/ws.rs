@@ -27,6 +27,15 @@ pub fn newline<'a>() -> impl Parser<'a, ParserInput<'a>, (), extra::Err<Rich<'a,
     just(Token::Newline).ignored().labelled("newline")
 }
 
+/// Optional trailing `Space`/`Tab` then a `Newline` - the terminator for
+/// statement and declaration lines. Use in place of a bare `newline()` so
+/// trailing whitespace before the line break is tolerated (`start Db as Foo \n`
+/// parses like `start Db as Foo\n`). Payload-bearing statements (send/match)
+/// need no change: their payload already consumes through the newline.
+pub fn eol<'a>() -> impl Parser<'a, ParserInput<'a>, (), extra::Err<Rich<'a, Token<'a>>>> + Clone {
+    ws().ignore_then(newline())
+}
+
 /// Zero or more `Space`/`Tab`/`Newline` tokens, returns `()`.
 /// Use inside blocks where newlines are non-significant (e.g. overlays).
 pub fn flex_ws<'a>() -> impl Parser<'a, ParserInput<'a>, (), extra::Err<Rich<'a, Token<'a>>>> + Clone
@@ -135,5 +144,37 @@ mod tests {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
         assert!(docstring_delim().parse(input).into_result().is_err());
+    }
+
+    #[test]
+    fn eol_matches_bare_newline() {
+        let source = "\n";
+        let pairs = lex_to_pairs(source);
+        let input = make_input(&pairs, source.len());
+        assert!(eol().parse(input).into_result().is_ok());
+    }
+
+    #[test]
+    fn eol_tolerates_trailing_spaces_before_newline() {
+        let source = "   \n";
+        let pairs = lex_to_pairs(source);
+        let input = make_input(&pairs, source.len());
+        assert!(eol().parse(input).into_result().is_ok());
+    }
+
+    #[test]
+    fn eol_tolerates_trailing_tabs_before_newline() {
+        let source = "\t\t\n";
+        let pairs = lex_to_pairs(source);
+        let input = make_input(&pairs, source.len());
+        assert!(eol().parse(input).into_result().is_ok());
+    }
+
+    #[test]
+    fn eol_rejects_trailing_space_without_newline() {
+        let source = "   ";
+        let pairs = lex_to_pairs(source);
+        let input = make_input(&pairs, source.len());
+        assert!(eol().parse(input).into_result().is_err());
     }
 }

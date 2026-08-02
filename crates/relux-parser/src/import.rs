@@ -9,8 +9,8 @@ use super::ident::ident_aliased_fn;
 use super::punctuation::punctuation_brace_close;
 use super::punctuation::punctuation_brace_open;
 use super::token::text;
+use super::ws::eol;
 use super::ws::flex_ws;
-use super::ws::newline;
 use super::ws::ws;
 use relux_ast::AstImport;
 use relux_ast::AstImportName;
@@ -86,7 +86,7 @@ pub fn import<'a>()
             let span = crate::span_from_chumsky(e.span());
             Spanned::new(AstImport { path, names, span }, span)
         })
-        .then_ignore(newline())
+        .then_ignore(eol())
         .labelled("import declaration")
         .boxed()
 }
@@ -215,5 +215,20 @@ mod tests {
         let imp = parse_import("import lib/greeter {}\n");
         let names = imp.names.unwrap();
         assert!(names.is_empty());
+    }
+
+    // Regression: trailing whitespace before the newline must be tolerated.
+    #[test]
+    fn wildcard_import_tolerates_trailing_space() {
+        let imp = parse_import("import lib/greeter  \n");
+        assert_eq!(imp.path.node, "lib/greeter");
+        assert!(imp.names.is_none());
+    }
+
+    #[test]
+    fn selective_import_tolerates_trailing_space() {
+        let imp = parse_import("import lib/greeter { greet, hello } \n");
+        assert_eq!(imp.path.node, "lib/greeter");
+        assert_eq!(imp.names.unwrap().len(), 2);
     }
 }

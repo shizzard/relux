@@ -302,6 +302,53 @@ test "basic" {
         );
     }
 
+    // Regression: trailing whitespace before the newline is tolerated on every
+    // line kind - imports, markers, effect items (expect/expose/start), test
+    // preamble lets, and statements inside shell blocks. Each `<sp>` below marks
+    // an intentional trailing space that previously broke the parse.
+    #[test]
+    fn module_tolerates_trailing_spaces_everywhere() {
+        let source = concat!(
+            "import lib/greeter { greet } \n",
+            "\n",
+            "effect Db { \n",
+            "  expect DB_PORT \n",
+            "  expose shell db as database \n",
+            "  shell db { \n",
+            "    > echo start\n",
+            "  }\n",
+            "}\n",
+            "\n",
+            "# skip if CI \n",
+            "test \"basic\" { \n",
+            "  let greeting := \"hi\" \n",
+            "  start Db as MyDb \n",
+            "  shell main { \n",
+            "    let x := \"y\" \n",
+            "    x := \"z\" \n",
+            "    ~5s \n",
+            "    foo() \n",
+            "  }\n",
+            "}\n",
+        );
+        let m = parse_module(source);
+        assert!(
+            m.items
+                .iter()
+                .any(|i| matches!(&i.node, AstItem::Import { .. }))
+        );
+        assert!(
+            m.items
+                .iter()
+                .any(|i| matches!(&i.node, AstItem::Effect { .. }))
+        );
+        assert!(
+            m.items
+                .iter()
+                .any(|i| matches!(&i.node, AstItem::Test { .. }))
+        );
+    }
+
     #[test]
     fn module_multiple_tests() {
         let source = r#"test "first" {

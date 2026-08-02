@@ -24,6 +24,7 @@ use super::operator::op_timed_multimatch_open;
 use super::punctuation::punctuation_brace_close;
 use super::timeout::timeout;
 use super::token::keyword;
+use super::ws::eol;
 use super::ws::leading_ws;
 use super::ws::newline;
 use super::ws::ws;
@@ -191,7 +192,7 @@ fn stmt_expr_or_pure_match<'a>()
             };
             Spanned::new(stmt, span)
         })
-        .then_ignore(newline())
+        .then_ignore(eol())
 }
 
 /// `!? payload` -> `AstStmt::FailRegex`, or `!?` alone -> `AstStmt::ClearFailPattern`
@@ -368,6 +369,7 @@ fn stmt_multimatch<'a>()
                 ))
             }
         })
+        .then_ignore(ws())
         .then_ignore(newline().or_not())
         .labelled("multimatch statement (<{ ... } or <~Ns{ ... } or <@Ns{ ... })")
 }
@@ -386,7 +388,7 @@ fn stmt_timeout<'a>()
                 span,
             )
         })
-        .then_ignore(newline())
+        .then_ignore(eol())
 }
 
 /// `let name [:= expr]` -> `AstStmt::Let`
@@ -417,7 +419,7 @@ fn stmt_let<'a>()
                 span,
             )
         })
-        .then_ignore(newline())
+        .then_ignore(eol())
 }
 
 /// `name := expr` -> `AstStmt::Assign`. Reassignment binds only via `:=`; a
@@ -442,7 +444,7 @@ fn stmt_assign<'a>()
                 span,
             )
         })
-        .then_ignore(newline())
+        .then_ignore(eol())
 }
 
 /// Full statement combinator: `leading_ws()` then ordered choice.
@@ -503,7 +505,7 @@ pub fn stmt_pure_match_standalone<'a>()
             };
             Spanned::new(stmt, span)
         })
-        .then_ignore(newline())
+        .then_ignore(eol())
 }
 
 // --- Helpers ---------------------------------------------
@@ -1045,6 +1047,82 @@ mod tests {
         match s {
             AstStmt::Comment { text, .. } => assert_eq!(text, "my comment"),
             _ => panic!("expected Comment, got {s:?}"),
+        }
+    }
+
+    // --- Trailing-whitespace tolerance -----------------------
+    //
+    // Statements that end with a structured token / bare expression (not a
+    // free-text payload) previously rejected a trailing space before the
+    // newline. `eol()` now consumes it. Payload statements (send/match/fail)
+    // are unaffected: their payload already runs up to the newline.
+
+    #[test]
+    fn timeout_tolerates_trailing_space() {
+        let s = parse_stmt("~10s \n");
+        assert!(matches!(s, AstStmt::Timeout { .. }));
+    }
+
+    #[test]
+    fn let_without_value_tolerates_trailing_space() {
+        let s = parse_stmt("let x \n");
+        match s {
+            AstStmt::Let { stmt: l, .. } => {
+                assert_eq!(l.name.node.name, "x");
+                assert!(l.value.is_none());
+            }
+            _ => panic!("expected Let, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn let_with_value_tolerates_trailing_space() {
+        let s = parse_stmt("let x := my_var  \n");
+        match s {
+            AstStmt::Let { stmt: l, .. } => {
+                assert_eq!(l.name.node.name, "x");
+                assert!(l.value.is_some());
+            }
+            _ => panic!("expected Let, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn assign_tolerates_trailing_space() {
+        let s = parse_stmt("x := my_var \n");
+        assert!(matches!(s, AstStmt::Assign { .. }));
+    }
+
+    #[test]
+    fn bare_expr_tolerates_trailing_space() {
+        let s = parse_stmt("foo() \n");
+        match s {
+            AstStmt::Expr {
+                expr: AstExpr::Call { .. },
+                ..
+            } => {}
+            _ => panic!("expected Expr(Call), got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn bare_var_expr_tolerates_trailing_tab() {
+        let s = parse_stmt("somevar\t\n");
+        assert!(matches!(
+            s,
+            AstStmt::Expr {
+                expr: AstExpr::Var { .. },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn multimatch_tolerates_trailing_space_after_brace() {
+        let s = parse_stmt("<{\n  ? ^a$\n  ? ^b$\n} \n");
+        match s {
+            AstStmt::MultiMatch { patterns, .. } => assert_eq!(patterns.len(), 2),
+            _ => panic!("expected MultiMatch, got {s:?}"),
         }
     }
 
