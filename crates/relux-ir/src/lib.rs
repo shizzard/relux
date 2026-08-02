@@ -64,6 +64,7 @@ pub use effect::*;
 pub use enrich::build_dep_exposed;
 pub use enrich::build_dep_exposed_vars;
 pub use enrich::enrich_start_dag;
+pub use enrich::overlay_dep_sources;
 pub use enrich::validate_shell_body_refs;
 pub use enrich::validate_test_shell_body_refs;
 pub use expr::*;

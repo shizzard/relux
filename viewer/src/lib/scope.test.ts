@@ -47,6 +47,7 @@ function buildSpan(input: SpanInput): Span {
         effect: input.effect,
         overlay: [],
         alias: input.alias,
+        dep_sources: [],
         marker: 'test-marker-0000',
         is_reuse: false,
       };

@@ -489,6 +489,7 @@ describe('spanTitle', () => {
       effect: 'Db',
       overlay: [],
       alias: null,
+      dep_sources: [],
       marker: 'M',
       is_reuse: false,
     } as Span;

@@ -317,6 +317,28 @@ pub fn enrich_start_dag(
     Ok(())
 }
 
+/// Provenance of a start's overlay values: for each overlay entry whose
+/// value references a sibling alias via a qualified ref, one
+/// `(overlay_key, source_alias)` pair. An overlay value referencing
+/// several aliases yields several pairs; an overlay value referencing the
+/// same alias more than once (e.g. `${Db.host}:${Db.port}`) yields it only
+/// once, deduplicated per overlay entry. Empty when the start has no
+/// implicit deps. Used for structured-log provenance (viewer, R015 Task D2).
+pub fn overlay_dep_sources(start: &IrEffectStart) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for entry in start.overlay() {
+        let mut refs = Vec::new();
+        collect_pure_expr_refs(entry.value(), &mut refs);
+        let mut seen = HashSet::new();
+        for (qualifier, _var, _span) in refs {
+            if seen.insert(qualifier.clone()) {
+                out.push((entry.key().name().to_string(), qualifier));
+            }
+        }
+    }
+    out
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum Color {
     White,
@@ -651,5 +673,57 @@ mod tests {
             err.invalid_report(),
             Some(InvalidReport::VariableNotExposed { .. })
         ));
+    }
+
+    #[test]
+    fn overlay_dep_sources_records_one_pair_per_qualified_overlay_entry() {
+        let s = start("Api", "Api", &[("DB_PORT", "Db", "port")]);
+
+        assert_eq!(
+            overlay_dep_sources(&s),
+            vec![("DB_PORT".to_string(), "Db".to_string())]
+        );
+    }
+
+    #[test]
+    fn overlay_dep_sources_is_empty_for_plain_value() {
+        let entries = vec![IrOverlayEntry::new(
+            IrIdent::new("PLAIN", IrSpan::synthetic()),
+            IrPureExpr::String {
+                value: IrInterpolation::new(
+                    vec![IrStringPart::Literal {
+                        value: "static".to_string(),
+                        span: IrSpan::synthetic(),
+                    }],
+                    IrSpan::synthetic(),
+                ),
+                span: IrSpan::synthetic(),
+            },
+            IrSpan::synthetic(),
+        )];
+        let s = start_with_entries("Api", "Api", entries);
+
+        assert!(overlay_dep_sources(&s).is_empty());
+    }
+
+    #[test]
+    fn overlay_dep_sources_dedups_repeated_alias_in_one_entry_but_keeps_distinct_aliases() {
+        let s = start_with_entries(
+            "Api",
+            "Api",
+            vec![
+                string_overlay_entry("DB_ADDR", &[("Db", "host"), ("Db", "port")]),
+                string_overlay_entry("URL", &[("Db", "host"), ("Cache", "port")]),
+            ],
+        );
+
+        assert_eq!(
+            overlay_dep_sources(&s),
+            vec![
+                ("DB_ADDR".to_string(), "Db".to_string()),
+                ("URL".to_string(), "Db".to_string()),
+                ("URL".to_string(), "Cache".to_string()),
+            ]
+        );
     }
 }
