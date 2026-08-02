@@ -201,7 +201,7 @@ A span represents one bracketed region of execution. Spans nest via
 | `kind`             | Purpose                                                              |
 | ------------------ | -------------------------------------------------------------------- |
 | `"test"`           | Root span for the test body. `name`.                                 |
-| `"effect-setup"`   | An effect being acquired. `effect`, `overlay`, `alias`, `marker`, `is_reuse`. The bootstrap span has `is_reuse: false`; dedup'd reuse spans have `is_reuse: true` and zero duration. |
+| `"effect-setup"`   | An effect being acquired. `effect`, `overlay`, `alias`, `dep_sources`, `marker`, `is_reuse`. The bootstrap span has `is_reuse: false`; dedup'd reuse spans have `is_reuse: true` and zero duration. `dep_sources` is an array of `[overlay_key, source_alias]` pairs recording which overlay values were sourced from a sibling start's exposed variable (implicit dependencies); empty when the start has no implicit deps. |
 | `"effect-cleanup"` | An effect being released. `effect`, `alias`, `setup_span`, `marker`, `is_deferred`. Parented under the test, not the long-closed setup; `setup_span` back-references its pair. |
 | `"shell-block"`    | A `shell <name>` block. `shell`.                                     |
 | `"cleanup-block"`  | A `cleanup` block. No payload.                                       |
