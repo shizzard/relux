@@ -2,7 +2,7 @@
 //
 // Embedded into `event.html` by the Rust runtime via `include_str!`
 // in `crates/relux-runtime/src/report/hljs_init.rs`. Copied into each
-// mdBook directory by the `just books` target.
+// mdBook directory by the `just build-books` target.
 //
 // Emitted hljs classes (CSS lives in viewer/src/components/sections/
 // SourceView.svelte for the runtime, and in each mdBook's bundled

@@ -480,5 +480,5 @@ viewer is bundled per artifact and reads the schema without tolerating
 version skew.
 
 To regenerate the TypeScript bindings after editing the Rust types,
-run `just viewer-build` — it runs the `ts-rs` export tests and then
+run `just build-viewer` — it runs the `ts-rs` export tests and then
 rebuilds the viewer bundle.

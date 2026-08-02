@@ -8,7 +8,7 @@
 //!
 //! TypeScript bindings are produced by enabling the `ts-export` cargo
 //! feature on this crate and running the auto-injected
-//! `export_bindings_*` tests; `just viewer-types` drives both.
+//! `export_bindings_*` tests; `just build-viewer` drives both.
 
 pub mod artifact;
 pub mod buffer;

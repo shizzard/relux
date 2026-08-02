@@ -6,7 +6,7 @@ Relux tests itself using its own DSL. This directory is a standalone Relux proje
 ## Running
 
 ```bash
-just e2e              # run all e2e tests
+just test-e2e         # run all e2e tests
 ```
 
 ## Implemented Test Groups

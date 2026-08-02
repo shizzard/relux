@@ -47,7 +47,7 @@ The binary will be at `target/release/relux`. You can copy it somewhere on your 
 If you have [just](https://github.com/casey/just) installed, you can also build with:
 
 ```text
-just release
+just build-release
 ```
 
 ## Verifying the installation

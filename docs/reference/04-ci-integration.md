@@ -100,7 +100,7 @@ disabled when the test wrote no artifacts.
 
 The viewer bundle is committed at
 `crates/relux-runtime/vendor/relux-viewer.js.gz`; regenerate it (and the
-TypeScript schema bindings) with `just viewer-build`.
+TypeScript schema bindings) with `just build-viewer`.
 
 ---
 

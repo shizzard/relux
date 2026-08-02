@@ -26,7 +26,7 @@ Syntax highlighting and editor support for the [Relux](https://github.com/shizza
 
 1. Build the plugin (from the project root):
    ```bash
-   just intellij
+   just build-intellij
    ```
    > **Note:** The first build downloads the full IntelliJ IDEA SDK (~1.5 GB). Subsequent builds use the Gradle cache.
 
