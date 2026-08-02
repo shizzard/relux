@@ -60,32 +60,23 @@ pub enum Warning {
 
 // --- Start scheduling -----------------------------------
 
-/// Completion signal a start publishes for its dependents. Carries the
-/// exposed vars a dependent must inject under `Alias.var` keys before
-/// evaluating its own overlay, plus whether the start succeeded. Sent
-/// over a per-start `watch` channel, which is multi-consumer and
-/// race-free: a dependent that subscribes AFTER its dependency published
-/// still observes the current value, so the publish-before-await window
-/// cannot strand a waiter.
+/// Completion signal a start publishes for its dependents. Sent over a
+/// per-start `watch` channel, which is multi-consumer and race-free: a
+/// dependent that subscribes AFTER its dependency published still
+/// observes the current value, so the publish-before-await window cannot
+/// strand a waiter. Modeled as an enum so the illegal "succeeded but no
+/// vars" / "failed but has vars" states are unrepresentable.
 #[derive(Clone)]
-struct StartSignal {
-    /// Exposed vars of a `Ready` dependency (keyed by exposed name).
-    /// Empty on failure - a failed dep contributes no vars.
-    vars: VarMap,
-    ok: bool,
+enum StartSignal {
+    /// The dependency is ready; carries its exposed vars (keyed by
+    /// exposed name) for injection into dependents under `Alias.var`.
+    Ready(VarMap),
+    /// The dependency failed (or short-circuited on its own failed dep).
+    Failed,
 }
 
-impl StartSignal {
-    fn failed() -> Self {
-        Self {
-            vars: VarMap::new(),
-            ok: false,
-        }
-    }
-}
-
-/// Per-start acquire outcome, collected position-indexed so the batch
-/// can be partitioned in input order after every future has run.
+/// Per-start acquire outcome. Each driver future evaluates to one of
+/// these; `join_all` collects them in input order for partitioning.
 enum StartOutcome {
     /// The start acquired successfully.
     Ready {
@@ -151,8 +142,11 @@ impl EffectManager {
     /// overlapping keys are safe - one bootstraps, the others wait on the
     /// slot's `Notify`. Independent effects (different keys) bootstrap
     /// truly in parallel. Overlay evaluation runs inside each start's
-    /// future (concurrently); each overlay value is independent, so dedup
-    /// keys are unaffected and the sync-mutex log builder stays consistent.
+    /// future (concurrently): a start's scope is fully materialized
+    /// (caller scope + resolved dep vars) BEFORE its pure overlay eval
+    /// runs, and pure eval has no cross-start side effects, so concurrent
+    /// evaluation cannot change any overlay's value or its derived dedup
+    /// key.
     ///
     /// Rollback stays all-or-nothing, generalized along dep edges: a
     /// failed dep fails its dependents (recorded as `DepFailed`), and on
@@ -189,54 +183,44 @@ impl EffectManager {
                 receivers.push(rx);
             }
 
-            // Acquire outcomes land here, position-indexed; each start's
-            // future writes its own slot exactly once. A sync mutex
-            // suffices - the critical section is a single slot write with
-            // no `.await` under the guard.
-            let collector: std::sync::Mutex<Vec<Option<StartOutcome>>> =
-                std::sync::Mutex::new((0..n).map(|_| None).collect());
-
             let senders_ref = &senders;
             let receivers_ref = &receivers;
-            let collector_ref = &collector;
 
             // One driving future per start. A start awaits its `deps()`
             // wait-set, then evaluates its overlay against a scope
             // augmented with the ready deps' exposed vars, then acquires.
-            // A start that short-circuits on dep failure STILL publishes
-            // an `ok = false` signal so ITS dependents unblock instead of
-            // hanging.
+            // Each future EVALUATES TO its `StartOutcome`; `join_all`
+            // returns them in input order, so no side-channel collector is
+            // needed. A start that short-circuits on dep failure STILL
+            // publishes a `Failed` signal so ITS dependents unblock instead
+            // of hanging.
             let drivers = starts.iter().enumerate().map(|(i, start)| async move {
                 // 1. Await every dependency's completion signal.
                 //    Enrichment proved the graph acyclic, so this cannot
                 //    deadlock.
                 let mut dep_failed = false;
-                let mut dep_signals: Vec<(usize, StartSignal)> =
-                    Vec::with_capacity(start.deps().len());
+                let mut dep_vars: Vec<(usize, VarMap)> = Vec::with_capacity(start.deps().len());
                 for &j in start.deps() {
                     let mut rx = receivers_ref[j].clone();
-                    let signal = match rx.wait_for(Option::is_some).await {
-                        Ok(v) => v.clone().expect("wait_for predicate guarantees Some"),
+                    match rx.wait_for(Option::is_some).await {
+                        Ok(v) => match v.clone().expect("wait_for predicate guarantees Some") {
+                            StartSignal::Ready(vars) => dep_vars.push((j, vars)),
+                            StartSignal::Failed => dep_failed = true,
+                        },
                         // Unreachable in practice: senders live until this
                         // batch's `join_all` returns. Treat a dropped
                         // sender as a failed dep rather than panicking.
-                        Err(_) => StartSignal::failed(),
-                    };
-                    if !signal.ok {
-                        dep_failed = true;
+                        Err(_) => dep_failed = true,
                     }
-                    dep_signals.push((j, signal));
                 }
 
                 // 2. A failed dependency means this start can never
                 //    evaluate its overlay. Publish a failure signal (so
-                //    transitive dependents short-circuit too) and record a
+                //    transitive dependents short-circuit too) and yield a
                 //    `DepFailed` outcome without acquiring.
                 if dep_failed {
-                    let _ = senders_ref[i].send(Some(StartSignal::failed()));
-                    collector_ref.lock().expect("collector mutex poisoned")[i] =
-                        Some(StartOutcome::DepFailed);
-                    return;
+                    let _ = senders_ref[i].send(Some(StartSignal::Failed));
+                    return StartOutcome::DepFailed;
                 }
 
                 // 3. Build this start's scope: the caller's scope
@@ -249,13 +233,13 @@ impl EffectManager {
                 //    deps we reuse the caller's scope untouched, preserving
                 //    today's independent-start path (no clone).
                 let augmented;
-                let scope: &VarScope = if dep_signals.is_empty() {
+                let scope: &VarScope = if dep_vars.is_empty() {
                     caller_vars
                 } else {
                     let mut aug = caller_vars.clone();
-                    for (j, signal) in &dep_signals {
+                    for (j, vars) in &dep_vars {
                         if let Some(alias) = starts[*j].alias() {
-                            for (var_name, value) in &signal.vars {
+                            for (var_name, value) in vars {
                                 aug.insert(format!("{alias}.{var_name}"), value.clone());
                             }
                         }
@@ -272,10 +256,8 @@ impl EffectManager {
                 {
                     Ok(e) => e,
                     Err(err) => {
-                        let _ = senders_ref[i].send(Some(StartSignal::failed()));
-                        collector_ref.lock().expect("collector mutex poisoned")[i] =
-                            Some(StartOutcome::Failed(err));
-                        return;
+                        let _ = senders_ref[i].send(Some(StartSignal::Failed));
+                        return StartOutcome::Failed(err);
                     }
                 };
                 let expect_names: Vec<&str> = self
@@ -293,41 +275,36 @@ impl EffectManager {
                 );
 
                 // 5. Acquire, then publish this start's completion signal:
-                //    its exposed vars (for dependents to inject) plus
-                //    success. On failure publish `ok = false`.
+                //    its exposed vars (for dependents to inject). On failure
+                //    publish `Failed`.
                 match self
                     .acquire(&key, start, scope, caller_env, evaluated, parent_span)
                     .await
                 {
                     Ok((acquired, guard)) => {
-                        let _ = senders_ref[i].send(Some(StartSignal {
-                            vars: acquired.vars.clone(),
-                            ok: true,
-                        }));
-                        collector_ref.lock().expect("collector mutex poisoned")[i] =
-                            Some(StartOutcome::Ready {
-                                export: ExportedEffect {
-                                    key,
-                                    shells: acquired.shells,
-                                    vars: acquired.vars,
-                                },
-                                guard,
-                            });
+                        let _ =
+                            senders_ref[i].send(Some(StartSignal::Ready(acquired.vars.clone())));
+                        StartOutcome::Ready {
+                            export: ExportedEffect {
+                                key,
+                                shells: acquired.shells,
+                                vars: acquired.vars,
+                            },
+                            guard,
+                        }
                     }
                     Err(err) => {
-                        let _ = senders_ref[i].send(Some(StartSignal::failed()));
-                        collector_ref.lock().expect("collector mutex poisoned")[i] =
-                            Some(StartOutcome::Failed(err));
+                        let _ = senders_ref[i].send(Some(StartSignal::Failed));
+                        StartOutcome::Failed(err)
                     }
                 }
             });
 
             // Drive ALL start futures to completion - never drop an
             // in-flight `acquire`, which would strand its slot in
-            // `Loading` and stall future acquirers. Order is recovered
-            // from the position-indexed collector below, not from
-            // `join_all`.
-            join_all(drivers).await;
+            // `Loading` and stall future acquirers. `join_all` preserves
+            // input order, so `outcomes` is already position-aligned.
+            let outcomes: Vec<StartOutcome> = join_all(drivers).await;
 
             // Partition in input order. On ANY failure, release every
             // successful acquire (concurrently) and propagate the first
@@ -335,15 +312,13 @@ impl EffectManager {
             // never `parent_span` - on the recursive path `parent_span`
             // is the caller effect's open `EffectSetup` span, and nesting
             // cleanups inside it violates the invariant from 85eef51.
-            let outcomes =
-                std::mem::take(&mut *collector_ref.lock().expect("collector mutex poisoned"));
             let mut results: Vec<(ExportedEffect, EffectGuard)> = Vec::with_capacity(n);
             let mut first_error: Option<ExecError> = None;
             let mut failed = false;
             for outcome in outcomes {
                 match outcome {
-                    Some(StartOutcome::Ready { export, guard }) => results.push((export, guard)),
-                    Some(StartOutcome::Failed(err)) => {
+                    StartOutcome::Ready { export, guard } => results.push((export, guard)),
+                    StartOutcome::Failed(err) => {
                         failed = true;
                         if first_error.is_none() {
                             first_error = Some(err);
@@ -354,10 +329,7 @@ impl EffectManager {
                     // because it - or transitively ITS dep - hit a real
                     // acquire/overlay error), so `first_error` is always
                     // populated whenever any `DepFailed` is present.
-                    Some(StartOutcome::DepFailed) => failed = true,
-                    // Unreachable: `join_all` drove every future to
-                    // completion and each writes its own slot once.
-                    None => failed = true,
+                    StartOutcome::DepFailed => failed = true,
                 }
             }
 
