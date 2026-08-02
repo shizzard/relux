@@ -37,7 +37,7 @@ fn collect_interp_refs(interp: &IrInterpolation, out: &mut Vec<(String, String, 
     }
 }
 
-fn collect_qualified_refs(expr: &IrPureExpr, out: &mut Vec<(String, String, IrSpan)>) {
+fn collect_pure_expr_refs(expr: &IrPureExpr, out: &mut Vec<(String, String, IrSpan)>) {
     match expr {
         IrPureExpr::QualifiedVar {
             qualifier,
@@ -47,7 +47,7 @@ fn collect_qualified_refs(expr: &IrPureExpr, out: &mut Vec<(String, String, IrSp
         IrPureExpr::String { value, .. } => collect_interp_refs(value, out),
         IrPureExpr::Call { call, .. } => {
             for arg in call.args() {
-                collect_qualified_refs(arg, out);
+                collect_pure_expr_refs(arg, out);
             }
         }
         IrPureExpr::Var { .. } | IrPureExpr::Capture { .. } => {}
@@ -116,41 +116,62 @@ fn collect_shell_stmt_refs(stmt: &IrShellStmt, out: &mut Vec<(String, String, Ir
     }
 }
 
-/// Validates every `${Alias.var}` reference in `body_items`'s shell blocks
-/// against `exposed` (alias -> exposed var names) -- the same dependency
-/// map `enrich_start_dag` validates overlay refs against. All of an
-/// effect's dependencies are in scope in its shell bodies regardless of
-/// which shell block does the referencing (a qualified `Alias.shell { }`
-/// block re-entering a dep's own shell can still interpolate a *different*
-/// dep's exposed var), so every `IrEffectItem::Shell` block's body is
-/// walked uniformly. Unlike overlay refs, shell-body refs need no
-/// wait-set entry: by the time any shell block runs, every start in the
-/// effect's start-list has already completed (shells run after `starts`
+/// Validates every `${Alias.var}` reference in one shell-statement body
+/// (either a `shell { }` block's body or a `cleanup { }` block's body)
+/// against `exposed`.
+fn validate_body_refs(
+    body: &[IrShellStmt],
+    exposed: &HashMap<String, HashSet<String>>,
+) -> Result<(), LoweringBail> {
+    for stmt in body {
+        let mut refs = Vec::new();
+        collect_shell_stmt_refs(stmt, &mut refs);
+        for (qualifier, var, span) in refs {
+            let Some(vars) = exposed.get(qualifier.as_str()) else {
+                return Err(LoweringBail::invalid(InvalidReport::unknown_qualifier(
+                    qualifier, span,
+                )));
+            };
+            if !vars.contains(&var) {
+                return Err(LoweringBail::invalid(InvalidReport::variable_not_exposed(
+                    qualifier, var, span,
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Validates every `${Alias.var}` reference in `body_items`'s shell and
+/// cleanup blocks against `exposed` (alias -> exposed var names) -- the
+/// same dependency map `enrich_start_dag` validates overlay refs against.
+/// All of an effect's dependencies are in scope in both its shell bodies
+/// and its cleanup body regardless of which block does the referencing (a
+/// qualified `Alias.shell { }` block re-entering a dep's own shell can
+/// still interpolate a *different* dep's exposed var, and the runtime
+/// shares the same `VarScope` between a `shell { }` block and the effect's
+/// `cleanup { }` block -- see `EffectManager` step 5c), so every
+/// `IrEffectItem::Shell` and `IrEffectItem::Cleanup` body is walked
+/// uniformly. Unlike overlay refs, these refs need no wait-set entry: by
+/// the time any shell or cleanup block runs, every start in the effect's
+/// start-list has already completed (shells and cleanup run after `starts`
 /// enrichment, not interleaved with it).
 pub fn validate_shell_body_refs(
     body_items: &[IrEffectItem],
     exposed: &HashMap<String, HashSet<String>>,
 ) -> Result<(), LoweringBail> {
     for item in body_items {
-        let IrEffectItem::Shell { block, .. } = item else {
-            continue;
+        let body: &[IrShellStmt] = match item {
+            IrEffectItem::Shell { block, .. } => block.body(),
+            IrEffectItem::Cleanup { block, .. } => block.body(),
+            IrEffectItem::Comment { .. }
+            | IrEffectItem::Expect { .. }
+            | IrEffectItem::Start { .. }
+            | IrEffectItem::Let { .. }
+            | IrEffectItem::PureMatch { .. }
+            | IrEffectItem::Expose { .. } => continue,
         };
-        for stmt in block.body() {
-            let mut refs = Vec::new();
-            collect_shell_stmt_refs(stmt, &mut refs);
-            for (qualifier, var, span) in refs {
-                let Some(vars) = exposed.get(qualifier.as_str()) else {
-                    return Err(LoweringBail::invalid(InvalidReport::unknown_qualifier(
-                        qualifier, span,
-                    )));
-                };
-                if !vars.contains(&var) {
-                    return Err(LoweringBail::invalid(InvalidReport::variable_not_exposed(
-                        qualifier, var, span,
-                    )));
-                }
-            }
-        }
+        validate_body_refs(body, exposed)?;
     }
     Ok(())
 }
@@ -180,7 +201,7 @@ pub fn enrich_start_dag(
     for start in starts.iter() {
         let mut refs = Vec::new();
         for entry in start.overlay() {
-            collect_qualified_refs(entry.value(), &mut refs);
+            collect_pure_expr_refs(entry.value(), &mut refs);
         }
         let mut deps: HashSet<usize> = HashSet::new();
         for (qualifier, var, span) in refs {
@@ -324,7 +345,7 @@ mod tests {
 
     /// Builds an overlay entry whose value is a pure `String` interpolation
     /// containing one or more `${Qualifier.var}` refs -- exercises the
-    /// nested-interpolation path in `collect_qualified_refs`, distinct from
+    /// nested-interpolation path in `collect_pure_expr_refs`, distinct from
     /// the bare-`QualifiedVar` overlay entries `start()` produces.
     fn string_overlay_entry(key: &str, qualified_refs: &[(&str, &str)]) -> IrOverlayEntry {
         let mut parts = Vec::new();
@@ -423,7 +444,7 @@ mod tests {
     #[test]
     fn nested_interpolation_records_edge() {
         // RFC R015's headline case: a `${Db.host}:${Db.port}`-shaped overlay
-        // value, not a bare `QualifiedVar` -- proves `collect_qualified_refs`
+        // value, not a bare `QualifiedVar` -- proves `collect_pure_expr_refs`
         // walks `IrStringPart`s inside a `String` interpolation.
         let mut starts = vec![
             start("Db", "Db", &[]),

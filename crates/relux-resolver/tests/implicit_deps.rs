@@ -167,3 +167,56 @@ effect App {
         "expected shell body to accept a valid dependency ref, got {result:?}"
     );
 }
+
+#[test]
+fn cleanup_body_unknown_qualifier_is_error() {
+    // Same breaking tightening as shell bodies, but for an effect's own
+    // `cleanup { }` block: the runtime shares the same VarScope between a
+    // shell block and the cleanup block, so a `${Typo.var}` naming a
+    // non-dependency alias must be rejected at compile time here too.
+    let source = r#"effect App {
+  shell app {
+    > start
+  }
+  cleanup {
+    > disconnect ${Typo.port}
+  }
+}
+"#;
+    let mut ctx = ctx_with_source(source);
+    let err = ctx.resolve_effect(&app_effect_id()).unwrap_err();
+    assert!(
+        matches!(
+            err.invalid_report(),
+            Some(InvalidReport::UnknownQualifier { .. })
+        ),
+        "expected UnknownQualifier, got {err:?}"
+    );
+}
+
+#[test]
+fn cleanup_body_valid_qualified_ref_lowers() {
+    let source = r#"effect Db {
+  let port := available_port()
+  expose var port
+  shell db {
+    > start
+  }
+}
+effect App {
+  start Db as Db
+  shell app {
+    > start
+  }
+  cleanup {
+    > disconnect ${Db.port}
+  }
+}
+"#;
+    let mut ctx = ctx_with_source(source);
+    let result = ctx.resolve_effect(&app_effect_id());
+    assert!(
+        result.is_ok(),
+        "expected cleanup body to accept a valid dependency ref, got {result:?}"
+    );
+}
