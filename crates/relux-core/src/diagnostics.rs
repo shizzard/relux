@@ -316,6 +316,16 @@ impl LoweringBail {
             LoweringBail::Invalid(invalid) => invalid.cause_id(),
         }
     }
+
+    /// The inner `InvalidReport`, if this bail is an `Invalid` variant.
+    /// `None` for `Skip`. Mainly useful for tests asserting which report a
+    /// bail carries.
+    pub fn invalid_report(&self) -> Option<&InvalidReport> {
+        match self {
+            LoweringBail::Invalid(invalid) => Some(invalid),
+            LoweringBail::Skip(_) => None,
+        }
+    }
 }
 
 impl std::error::Error for LoweringBail {}

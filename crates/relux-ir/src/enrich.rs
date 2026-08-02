@@ -1,0 +1,290 @@
+//! DAG enrichment for effect start-lists. (See RFC R015.)
+
+use std::collections::HashMap;
+use std::collections::HashSet;
+
+use relux_core::diagnostics::CycleReport;
+use relux_core::diagnostics::EffectCycleEntry;
+use relux_core::diagnostics::InvalidReport;
+use relux_core::diagnostics::IrSpan;
+use relux_core::diagnostics::LoweringBail;
+
+use crate::IrNode;
+use crate::IrPureExpr;
+use crate::IrStringPart;
+use crate::effect::IrEffectStart;
+
+fn collect_qualified_refs(expr: &IrPureExpr, out: &mut Vec<(String, String, IrSpan)>) {
+    match expr {
+        IrPureExpr::QualifiedVar {
+            qualifier,
+            name,
+            span,
+        } => out.push((qualifier.clone(), name.clone(), span.clone())),
+        IrPureExpr::String { value, .. } => {
+            for part in value.parts() {
+                if let IrStringPart::QualifiedVar {
+                    qualifier,
+                    name,
+                    span,
+                } = part
+                {
+                    out.push((qualifier.clone(), name.clone(), span.clone()));
+                }
+            }
+        }
+        IrPureExpr::Call { call, .. } => {
+            for arg in call.args() {
+                collect_qualified_refs(arg, out);
+            }
+        }
+        IrPureExpr::Var { .. } | IrPureExpr::Capture { .. } => {}
+    }
+}
+
+/// Validates every qualified overlay reference in `starts` against the
+/// `exposed` map (alias -> exposed var names), fills each start's wait-set
+/// (`deps`), and rejects reference cycles.
+pub fn enrich_start_dag(
+    starts: &mut [IrEffectStart],
+    exposed: &HashMap<String, HashSet<String>>,
+) -> Result<(), LoweringBail> {
+    let alias_index: HashMap<&str, usize> = starts
+        .iter()
+        .enumerate()
+        .filter_map(|(i, s)| s.alias().map(|a| (a, i)))
+        .collect();
+
+    let mut all_deps: Vec<Vec<usize>> = Vec::with_capacity(starts.len());
+    for start in starts.iter() {
+        let mut refs = Vec::new();
+        for entry in start.overlay() {
+            collect_qualified_refs(entry.value(), &mut refs);
+        }
+        let mut deps: HashSet<usize> = HashSet::new();
+        for (qualifier, var, span) in refs {
+            let &idx = alias_index.get(qualifier.as_str()).ok_or_else(|| {
+                LoweringBail::invalid(InvalidReport::unknown_qualifier(
+                    qualifier.clone(),
+                    span.clone(),
+                ))
+            })?;
+            let exposes_var = exposed
+                .get(qualifier.as_str())
+                .is_some_and(|vars| vars.contains(&var));
+            if !exposes_var {
+                return Err(LoweringBail::invalid(InvalidReport::variable_not_exposed(
+                    qualifier.clone(),
+                    var.clone(),
+                    span,
+                )));
+            }
+            deps.insert(idx);
+        }
+        let mut deps: Vec<usize> = deps.into_iter().collect();
+        deps.sort_unstable();
+        all_deps.push(deps);
+    }
+
+    detect_cycle(starts, &all_deps)?;
+    for (start, deps) in starts.iter_mut().zip(all_deps) {
+        start.set_deps(deps);
+    }
+    Ok(())
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Color {
+    White,
+    Gray,
+    Black,
+}
+
+fn visit(
+    u: usize,
+    deps: &[Vec<usize>],
+    color: &mut [Color],
+    stack: &mut Vec<usize>,
+    starts: &[IrEffectStart],
+) -> Result<(), LoweringBail> {
+    color[u] = Color::Gray;
+    stack.push(u);
+    for &v in &deps[u] {
+        match color[v] {
+            Color::Gray => {
+                let pos = stack.iter().position(|&x| x == v).unwrap();
+                let chain = stack[pos..]
+                    .iter()
+                    .map(|&i| EffectCycleEntry {
+                        id: starts[i].effect().clone(),
+                        start_span: starts[i].span().clone(),
+                    })
+                    .collect();
+                return Err(LoweringBail::invalid(InvalidReport::cycle(
+                    CycleReport::Effect { chain },
+                )));
+            }
+            Color::White => visit(v, deps, color, stack, starts)?,
+            Color::Black => {}
+        }
+    }
+    stack.pop();
+    color[u] = Color::Black;
+    Ok(())
+}
+
+fn detect_cycle(starts: &[IrEffectStart], deps: &[Vec<usize>]) -> Result<(), LoweringBail> {
+    let n = starts.len();
+    let mut color = vec![Color::White; n];
+    let mut stack: Vec<usize> = Vec::new();
+
+    for u in 0..n {
+        if color[u] == Color::White {
+            visit(u, deps, &mut color, &mut stack, starts)?;
+        }
+    }
+    Ok(())
+}
+
+// --- Tests -------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use relux_core::diagnostics::EffectId;
+    use relux_core::diagnostics::EffectName;
+    use relux_core::diagnostics::ModulePath;
+
+    use crate::effect::IrOverlayEntry;
+    use crate::ident::IrIdent;
+
+    /// Builds an `IrEffectStart` from an alias, effect name, and overlay
+    /// entries shaped `(overlay_key, qualifier, var)` -- each produces an
+    /// `IrPureExpr::QualifiedVar` overlay value.
+    fn start(alias: &str, effect_name: &str, overlay: &[(&str, &str, &str)]) -> IrEffectStart {
+        let entries = overlay
+            .iter()
+            .map(|(key, qualifier, var)| {
+                IrOverlayEntry::new(
+                    IrIdent::new(*key, IrSpan::synthetic()),
+                    IrPureExpr::QualifiedVar {
+                        qualifier: (*qualifier).to_string(),
+                        name: (*var).to_string(),
+                        span: IrSpan::synthetic(),
+                    },
+                    IrSpan::synthetic(),
+                )
+            })
+            .collect();
+        IrEffectStart::new(
+            EffectId {
+                module: ModulePath("test".into()),
+                name: EffectName(effect_name.into()),
+            },
+            entries,
+            Some(alias.to_string()),
+            IrSpan::synthetic(),
+            IrSpan::synthetic(),
+        )
+    }
+
+    fn exposed_map(entries: &[(&str, &[&str])]) -> HashMap<String, HashSet<String>> {
+        entries
+            .iter()
+            .map(|(alias, vars)| {
+                (
+                    (*alias).to_string(),
+                    vars.iter().map(|v| (*v).to_string()).collect(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn records_edge_for_valid_sibling_ref() {
+        let mut starts = vec![
+            start("Db", "Db", &[]),
+            start("Api", "Api", &[("DB_PORT", "Db", "port")]),
+        ];
+        let exposed = exposed_map(&[("Db", &["port"])]);
+
+        enrich_start_dag(&mut starts, &exposed).unwrap();
+
+        assert!(starts[0].deps().is_empty());
+        assert_eq!(starts[1].deps(), &[0]);
+    }
+
+    #[test]
+    fn forward_reference_is_legal() {
+        let mut starts = vec![
+            start("Api", "Api", &[("DB_PORT", "Db", "port")]),
+            start("Db", "Db", &[]),
+        ];
+        let exposed = exposed_map(&[("Db", &["port"])]);
+
+        enrich_start_dag(&mut starts, &exposed).unwrap();
+
+        assert_eq!(starts[0].deps(), &[1]);
+        assert!(starts[1].deps().is_empty());
+    }
+
+    #[test]
+    fn unknown_qualifier_is_rejected() {
+        let mut starts = vec![start("Api", "Api", &[("X", "Nope", "port")])];
+        let exposed = exposed_map(&[]);
+
+        let err = enrich_start_dag(&mut starts, &exposed).unwrap_err();
+
+        assert!(matches!(
+            err.invalid_report(),
+            Some(InvalidReport::UnknownQualifier { .. })
+        ));
+    }
+
+    #[test]
+    fn non_exposed_variable_is_rejected() {
+        let mut starts = vec![
+            start("Db", "Db", &[]),
+            start("Api", "Api", &[("X", "Db", "secret")]),
+        ];
+        let exposed = exposed_map(&[("Db", &["port"])]);
+
+        let err = enrich_start_dag(&mut starts, &exposed).unwrap_err();
+
+        assert!(matches!(
+            err.invalid_report(),
+            Some(InvalidReport::VariableNotExposed { .. })
+        ));
+    }
+
+    #[test]
+    fn sibling_cycle_is_rejected() {
+        let mut starts = vec![
+            start("A", "A", &[("X", "B", "out")]),
+            start("B", "B", &[("Y", "A", "out")]),
+        ];
+        let exposed = exposed_map(&[("A", &["out"]), ("B", &["out"])]);
+
+        let err = enrich_start_dag(&mut starts, &exposed).unwrap_err();
+
+        assert!(matches!(
+            err.invalid_report(),
+            Some(InvalidReport::Cycle(CycleReport::Effect { .. }))
+        ));
+    }
+
+    #[test]
+    fn fan_out_records_two_independent_edges() {
+        let mut starts = vec![
+            start("Db", "Db", &[]),
+            start("Api", "Api", &[("DB_PORT", "Db", "port")]),
+            start("Worker", "Worker", &[("DB_PORT", "Db", "port")]),
+        ];
+        let exposed = exposed_map(&[("Db", &["port"])]);
+
+        enrich_start_dag(&mut starts, &exposed).unwrap();
+
+        assert_eq!(starts[1].deps(), &[0]);
+        assert_eq!(starts[2].deps(), &[0]);
+    }
+}

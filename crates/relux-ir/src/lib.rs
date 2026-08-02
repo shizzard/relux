@@ -37,6 +37,7 @@ macro_rules! impl_ir_node_enum {
 mod block;
 mod comment;
 mod effect;
+mod enrich;
 pub mod evaluator;
 mod expr;
 mod func;
@@ -60,6 +61,7 @@ mod timeout;
 pub use block::*;
 pub use comment::*;
 pub use effect::*;
+pub use enrich::enrich_start_dag;
 pub use expr::*;
 pub use func::*;
 pub use ident::*;
