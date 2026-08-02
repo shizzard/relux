@@ -46,7 +46,14 @@
   } = $props();
 
   type Row =
-    | { type: 'kv'; key: string; value: string; mono?: boolean; accent?: boolean }
+    | {
+        type: 'kv';
+        key: string;
+        value: string;
+        mono?: boolean;
+        accent?: boolean;
+        sources?: string[];
+      }
     | { type: 'subhead'; text: string };
 
   const family = $derived(mode.kind === 'event' ? foldedFamily(mode.folded) : 'event');
@@ -516,8 +523,14 @@
       if (props !== null) {
         if (props.overlay.length > 0) {
           out.push({ type: 'subhead', text: 'expects' });
-          for (const [k, v] of props.overlay) {
-            out.push({ type: 'kv', key: k, value: v, mono: true });
+          for (const row of props.overlay) {
+            out.push({
+              type: 'kv',
+              key: row.key,
+              value: row.value,
+              mono: true,
+              sources: row.sources.length > 0 ? row.sources : undefined,
+            });
           }
         }
         if (props.shellExposes.length > 0) {
@@ -662,6 +675,11 @@
             {:else}
               <span class="plain">{row.value}</span>
             {/if}
+            {#if row.sources && row.sources.length > 0}
+              <span class="source-note" title={`sourced from ${row.sources.join(', ')}`}>
+                &lt;- {row.sources.join(', ')}
+              </span>
+            {/if}
           </div>
         </div>
       {/if}
@@ -758,6 +776,18 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 100%;
+  }
+  .source-note {
+    display: inline-block;
+    margin-left: var(--gap-xs);
+    padding: 0 6px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--ink) 8%, transparent);
+    color: var(--ink-faint);
+    font-size: 0.68rem;
+    line-height: 1.4;
+    white-space: nowrap;
   }
   .muted {
     grid-column: 1 / -1;
