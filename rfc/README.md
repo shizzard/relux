@@ -36,4 +36,4 @@ Substantial changes to Relux are proposed and discussed through RFCs (Requests f
 | R012 | Interactive Debugger      | rejected (superseded by structured logging) |
 | R013 | Pure String Match         | implemented                   |
 | R014 | Multimatch                | implemented                   |
-| R015 | Implicit Effect Dependencies | accepted                   |
+| R015 | Implicit Effect Dependencies | implemented                   |

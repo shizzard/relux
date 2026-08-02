@@ -1,6 +1,6 @@
 # R015: Implicit Effect Dependencies
 
-- **Status**: accepted
+- **Status**: implemented
 - **Created**: 2026-08-02
 
 ## Abstract
