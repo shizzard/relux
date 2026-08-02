@@ -227,3 +227,63 @@ jobs:
           fi
         env:
           JETBRAINS_PLUGIN_RELEASE_TOKEN: ${{ secrets.JETBRAINS_PLUGIN_RELEASE_TOKEN }}
+
+  install-check:
+    name: Install check (${{ matrix.target }})
+    needs: [publish]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
+    steps:
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # The x86_64-apple-darwin binary is built on an Apple Silicon runner,
+      # so running `relux --version` executes an x86 binary through Rosetta 2.
+      - name: Install Rosetta 2
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: softwareupdate --install-rosetta --agree-to-license
+
+      - name: Install published crate and verify version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Verifying: cargo install relux@$VERSION for ${{ matrix.target }}"
+
+          # Retry to absorb crates.io index propagation lag after `publish`.
+          installed=false
+          for attempt in 1 2 3 4 5; do
+            echo "cargo install attempt $attempt..."
+            if cargo install relux --version "$VERSION" --target ${{ matrix.target }}; then
+              installed=true
+              break
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              echo "Install failed; crates.io index may still be propagating. Retrying in 30s..."
+              sleep 30
+            fi
+          done
+          if [ "$installed" != "true" ]; then
+            echo "::error::Failed to cargo install relux@$VERSION for ${{ matrix.target }} after 5 attempts"
+            exit 1
+          fi
+
+          reported="$(relux --version)"
+          echo "relux --version -> $reported"
+          case "$reported" in
+            *"$VERSION"*)
+              echo "Installed binary reports expected version $VERSION."
+              ;;
+            *)
+              echo "::error::relux --version output '$reported' does not contain expected version $VERSION"
+              exit 1
+              ;;
+          esac
