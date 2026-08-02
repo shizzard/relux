@@ -392,6 +392,15 @@ pub enum InvalidReport {
         var_name: String,
         span: IrSpan,
     },
+    UnknownQualifier {
+        qualifier: String,
+        span: IrSpan,
+    },
+    VariableNotExposed {
+        qualifier: String,
+        variable: String,
+        span: IrSpan,
+    },
 }
 
 impl fmt::Display for InvalidReport {
@@ -463,6 +472,19 @@ impl fmt::Display for InvalidReport {
                     f,
                     "effect `{effect_name}` exposes var `{var_name}` which does not exist"
                 )
+            }
+            InvalidReport::UnknownQualifier { qualifier, .. } => {
+                write!(
+                    f,
+                    "unknown qualifier `{qualifier}`: not a sibling effect alias in this start list"
+                )
+            }
+            InvalidReport::VariableNotExposed {
+                qualifier,
+                variable,
+                ..
+            } => {
+                write!(f, "`{qualifier}` does not expose variable `{variable}`")
             }
         }
     }
@@ -569,6 +591,18 @@ impl InvalidReport {
         }
     }
 
+    pub fn unknown_qualifier(qualifier: String, span: IrSpan) -> Self {
+        Self::UnknownQualifier { qualifier, span }
+    }
+
+    pub fn variable_not_exposed(qualifier: String, variable: String, span: IrSpan) -> Self {
+        Self::VariableNotExposed {
+            qualifier,
+            variable,
+            span,
+        }
+    }
+
     // --- Queries -----------------------------------------
 
     pub fn cause_id(&self) -> CauseId {
@@ -629,6 +663,14 @@ impl InvalidReport {
                 var_name,
                 ..
             } => CauseId::generate(effect_name, var_name, 0, "invalid_var_expose"),
+            InvalidReport::UnknownQualifier { qualifier, .. } => {
+                CauseId::generate("", qualifier, 0, "unknown_qualifier")
+            }
+            InvalidReport::VariableNotExposed {
+                qualifier,
+                variable,
+                ..
+            } => CauseId::generate(qualifier, variable, 0, "variable_not_exposed"),
         }
     }
 }
@@ -1024,6 +1066,22 @@ impl From<&InvalidReport> for Diagnostic {
                 format!("effect `{effect_name}` exposes var `{var_name}` which does not exist"),
             )
             .with_label(span.clone(), "no such variable"),
+            InvalidReport::UnknownQualifier { qualifier, span } => Diagnostic::new(
+                Severity::Error,
+                format!(
+                    "unknown qualifier `{qualifier}`: not a sibling effect alias in this start list"
+                ),
+            )
+            .with_label(span.clone(), "unknown qualifier"),
+            InvalidReport::VariableNotExposed {
+                qualifier,
+                variable,
+                span,
+            } => Diagnostic::new(
+                Severity::Error,
+                format!("`{qualifier}` does not expose variable `{variable}`"),
+            )
+            .with_label(span.clone(), "not exposed"),
         }
     }
 }
@@ -1781,6 +1839,40 @@ mod tests {
         };
         let d = Diagnostic::from(&r);
         assert!(d.message.contains("Missing"));
+    }
+
+    #[test]
+    fn unknown_qualifier_builds_invalid_report() {
+        let r = InvalidReport::unknown_qualifier("Db".into(), IrSpan::synthetic());
+        let _ = r.cause_id();
+    }
+
+    #[test]
+    fn variable_not_exposed_builds_invalid_report() {
+        let r =
+            InvalidReport::variable_not_exposed("Db".into(), "secret".into(), IrSpan::synthetic());
+        let _ = r.cause_id();
+    }
+
+    #[test]
+    fn diagnostic_from_unknown_qualifier() {
+        let r = InvalidReport::unknown_qualifier("Db".into(), test_span());
+        let d = Diagnostic::from(&r);
+        assert_eq!(d.severity, Severity::Error);
+        assert_eq!(
+            d.message,
+            "unknown qualifier `Db`: not a sibling effect alias in this start list"
+        );
+        assert_eq!(d.labels.len(), 1);
+    }
+
+    #[test]
+    fn diagnostic_from_variable_not_exposed() {
+        let r = InvalidReport::variable_not_exposed("Db".into(), "secret".into(), test_span());
+        let d = Diagnostic::from(&r);
+        assert_eq!(d.severity, Severity::Error);
+        assert_eq!(d.message, "`Db` does not expose variable `secret`");
+        assert_eq!(d.labels.len(), 1);
     }
 
     // --- Diagnostic from SkipReport ----------------------
