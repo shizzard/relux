@@ -1,6 +1,6 @@
 # R002: Best-Effort Cleanup
 
-- **Status**: accepted
+- **Status**: implemented
 - **Created**: 2026-03-10
 
 ## Motivation

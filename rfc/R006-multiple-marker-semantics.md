@@ -1,6 +1,6 @@
 # R006: Multiple Marker Semantics
 
-- **Status**: accepted
+- **Status**: implemented
 - **Created**: 2026-03-27
 
 ## Motivation

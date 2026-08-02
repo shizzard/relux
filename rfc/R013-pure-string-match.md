@@ -1,6 +1,6 @@
 # R013: Pure String Match
 
-- **Status**: accepted
+- **Status**: implemented
 - **Created**: 2026-05-21
 - **Revised**: 2026-07-28
 - **Supersedes**: the original R013 draft (the `|?` / `|=` pipe-operator design); R009 (Variable Match Operator)

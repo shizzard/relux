@@ -23,16 +23,17 @@ Substantial changes to Relux are proposed and discussed through RFCs (Requests f
 | RFC  | Title                     | Status                        |
 |------|---------------------------|-------------------------------|
 | R001 | Pure Functions            | implemented                   |
-| R002 | Best-Effort Cleanup       | accepted                      |
+| R002 | Best-Effort Cleanup       | implemented                   |
 | R003 | Lexer/Parser Rework       | implemented                   |
 | R004 | Resolver Rework           | implemented                   |
 | R005 | Runtime Rework            | implemented                   |
-| R006 | Multiple Marker Semantics | accepted                      |
+| R006 | Multiple Marker Semantics | implemented                   |
 | R007 | Overlay Identity          | rejected (superseded by R008) |
 | R008 | Effects Rework            | implemented                   |
 | R009 | Variable Match Operator   | rejected (superseded by R013) |
 | R010 | TUI Debugger              | rejected (superseded by R012) |
 | R011 | Expose Variables and Naming Conventions | implemented       |
 | R012 | Interactive Debugger      | rejected (superseded by structured logging) |
-| R013 | Pure String Match         | accepted                      |
+| R013 | Pure String Match         | implemented                   |
 | R014 | Multimatch                | implemented                   |
+| R015 | Implicit Effect Dependencies | accepted                   |
