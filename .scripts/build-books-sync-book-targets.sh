@@ -10,7 +10,7 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-hljs_gz=vendor/highlight-11.11.1.min.js.gz
+hljs_gz=crates/relux-runtime/vendor/highlight-11.11.1.min.js.gz
 grammar=crates/relux-runtime/src/report/highlight-relux.js
 css=docs/_theme/relux.css
 for book in docs/dsl-tutorial docs/reference docs/suite-tutorial; do

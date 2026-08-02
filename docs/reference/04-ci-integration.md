@@ -98,8 +98,9 @@ that opens in a new browser tab; this works whether `event.html` is opened
 directly via `file://` or served over HTTP. The chip is rendered as
 disabled when the test wrote no artifacts.
 
-The viewer bundle is committed at `vendor/relux-viewer.js.gz`; regenerate it
-(and the TypeScript schema bindings) with `just viewer-build`.
+The viewer bundle is committed at
+`crates/relux-runtime/vendor/relux-viewer.js.gz`; regenerate it (and the
+TypeScript schema bindings) with `just viewer-build`.
 
 ---
 

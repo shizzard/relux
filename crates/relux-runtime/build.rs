@@ -1,7 +1,7 @@
 use std::path::Path;
 
 fn main() {
-    let bundle = "../../vendor/relux-viewer.js.gz";
+    let bundle = "vendor/relux-viewer.js.gz";
     let bundle_path = Path::new(bundle);
 
     // Re-run if the bundle changes so a rebuild after `just viewer-build`

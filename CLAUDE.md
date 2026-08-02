@@ -18,7 +18,7 @@ just build-cargo                # Build cargo workspace only
 just build-release              # Build binary in release mode (with viewer bundle)
 just build-intellij             # Build IntelliJ plugin
 just build-vscode               # Build VS Code extension (.vsix)
-just build-viewer               # Rebuild vendored Svelte viewer bundle (vendor/relux-viewer.js.gz)
+just build-viewer               # Rebuild vendored Svelte viewer bundle (crates/relux-runtime/vendor/relux-viewer.js.gz)
 just build-books                # Build tutorial/reference mdbooks
 just install-hooks              # Point git at .githooks/ (runs check/clippy/fmt/books on commit)
 ```
@@ -55,7 +55,7 @@ just clean-logs                 # Remove e2e test output logs
 
 ## Architecture
 
-Cargo workspace with 8 crates under `crates/`, plus a sibling Svelte project under `viewer/` and vendored bundles under `vendor/`. Classic compiler pipeline feeding a per-test structured log: **Lexer → Parser → Resolver → Runtime (records `StructuredLog`) → Reporter (emits `events.json` + `event.html`)**
+Cargo workspace with 8 crates under `crates/`, plus a sibling Svelte project under `viewer/` and vendored bundles under `crates/relux-runtime/vendor/`. Classic compiler pipeline feeding a per-test structured log: **Lexer → Parser → Resolver → Runtime (records `StructuredLog`) → Reporter (emits `events.json` + `event.html`)**
 
 ### `relux-core` (`crates/relux-core/`)
 
@@ -111,7 +111,7 @@ Resolver orchestration: module discovery, source loading, and the `resolve()` en
 - **cancel.rs**: `CancelToken` + `CancelReason` — wraps `tokio_util::sync::CancellationToken` with a typed reason (`TestTimeout`, `SuiteTimeout`, `FailFast`, `Sigint`) so cancelled tests can report *why* they were stopped without a side channel. Child tokens inherit the parent's reason.
 - **marker_walk.rs**: `collect_marker_recordings()` — pre-order traversal of a test's IR that collects every reachable fn/effect's marker recordings into a single deterministic list, replayed under a synthetic `markers` root span before test execution begins.
 - **scan.rs**: `scan_artifacts()` — best-effort recursive walk of a test's artifact directory, producing the `Vec<ArtifactEntry>` stored on the structured log. Symlinks skipped, per-entry I/O errors silently dropped.
-- **viewer.rs**: Compile-time-embedded gzip blobs (`bundle_gz`, `hljs_gz`, `hljs_grammar`) baked into the binary from `vendor/`. The pre-commit hook + CI verify these stay in sync with the `viewer/` sources.
+- **viewer.rs**: Compile-time-embedded gzip blobs (`bundle_gz`, `hljs_gz`, `hljs_grammar`) baked into the binary from `crates/relux-runtime/vendor/`. The pre-commit hook + CI verify these stay in sync with the `viewer/` sources.
 - **vm/**:
   - **mod.rs**: Per-shell virtual machine. PTY child process, send/match operations with timeouts, fail pattern checking, statement execution, function calls. Send events emit *before* the PTY write awaits so the reader's `Grew` events cannot get a lower seq than the `Send` that triggered them.
   - **bifs.rs**: Impure built-in functions (`Bif` trait): `sleep`, `annotate`, `log`, `match_prompt`, `match_exit_code`, `match_ok`, `match_not_ok`, `ctrl_c`, `ctrl_d`, `ctrl_z`, `ctrl_l`, `ctrl_backslash`.
@@ -159,11 +159,11 @@ Svelte 5 + TypeScript SPA bundled by Vite into a single IIFE that the runtime in
 - **`viewer/src/lib/`**: Logic modules — `state.svelte.ts` (root reactive state), `derive.ts` (selection-derived projections), `flatten.ts` (timeline flattening), `scope.ts` (variable scope resolution), `timeline.ts` (timeline layout), `format.ts` (display formatting), `source_highlight.ts` (hljs integration), `bif.ts`, `artifacts.ts`, `theme.ts`, `clipboard.ts`, `actions.ts`. Each has a colocated `*.test.ts` (Vitest).
 - **`viewer/src/components/`**: Svelte 5 components — `EventsList`, `DetailPanel`, `TimelineBar`, `LogBar`, modals (`ShellsModal`, `EnvModal`, `ArtifactsModal`), rows (`EventRow`, `BifRow`, `SpanEntryRow`, `GapRow`), atoms (`Chip`, `Panel`, `ValueCell`, `MarkerPill`), plus `sections/` for the main detail tabs.
 - **`viewer/src/styles/`**: CSS tokens shared with the docs theme (`docs/_theme/relux.css`) for product cohesion.
-- **`viewer/scripts/gzip-bundle.mjs`**: Post-build step that gzips the IIFE; the output drops into `viewer/dist/relux-viewer.js.gz` and `just build-viewer` copies it to `vendor/relux-viewer.js.gz`.
+- **`viewer/scripts/gzip-bundle.mjs`**: Post-build step that gzips the IIFE; the output drops into `viewer/dist/relux-viewer.js.gz` and `just build-viewer` copies it to `crates/relux-runtime/vendor/relux-viewer.js.gz`.
 
-### Vendored bundles (`vendor/`)
+### Vendored bundles (`crates/relux-runtime/vendor/`)
 
-Pre-built gzip blobs baked into the runtime binary by `relux-runtime::viewer`:
+Pre-built gzip blobs baked into the runtime binary by `relux-runtime::viewer`. They live inside the crate (not the workspace root) so `cargo publish` includes them and `cargo install relux` works from a clean machine:
 - **`relux-viewer.js.gz`**: The Svelte IIFE bundle. Rebuilt by `just build-viewer`.
 - **`highlight-11.11.1.min.js.gz`**: Vendored highlight.js v11 (shared between the viewer and the mdbooks).
 
@@ -202,7 +202,7 @@ In-repo Claude Code plugin packaging composable skills for authoring, running, a
 - Documentation as mdbooks in `docs/` — `reference/` (semantics, syntax, BIFs, CI integration, test-log viewer, events.json schema), `dsl-tutorial/`, `suite-tutorial/`
 - **Every code change must be accompanied by updates to the relevant documentation** — review `docs/reference/` (semantics, syntax, BIFs, CI, test-log viewer, events.json schema), `docs/dsl-tutorial/`, and `docs/suite-tutorial/` and update any articles affected by the change
 - **Changes to user-facing DSL syntax** (new keywords, operators, interpolation forms, etc.) **must be reflected in the editor plugins** — update `editors/vscode/syntaxes/relux.tmLanguage.json` and `editors/intellij/src/main/java/eu/spawnlink/relux/ReluxLexer.flex` (plus related token/highlighter files) — and in the canonical hljs grammar at `crates/relux-runtime/src/report/highlight-relux.js` (shared by the viewer and the mdbooks)
-- **Changes to structured-log types** (`crates/relux-runtime/src/observe/structured/`) require regenerating viewer TypeScript bindings via `just build-viewer`; the vendored `vendor/relux-viewer.js.gz` must be committed in the same change. The pre-commit hook + CI verify the vendored bytes stay in sync.
+- **Changes to structured-log types** (`crates/relux-runtime/src/observe/structured/`) require regenerating viewer TypeScript bindings via `just build-viewer`; the vendored `crates/relux-runtime/vendor/relux-viewer.js.gz` must be committed in the same change. The pre-commit hook + CI verify the vendored bytes stay in sync.
 - **PRs are squash-merged** — the final squash commit message must be a single conventional commit (type, optional scope, description, and body)
 
 ## RFCs

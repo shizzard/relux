@@ -1,6 +1,7 @@
 //! Embedded Svelte viewer bundle.
 //!
-//! The gzipped IIFE bundle is committed at `vendor/relux-viewer.js.gz`
+//! The gzipped IIFE bundle is committed at
+//! `crates/relux-runtime/vendor/relux-viewer.js.gz`
 //! and baked into the binary at compile time. The per-test `event.html`
 //! emitter at `report::event_html` decompresses these bytes and inlines
 //! them into a `<script>` tag alongside the test's `window.RELUX_DATA`
@@ -11,16 +12,16 @@
 //! `viewer/` sources.
 
 /// Gzipped IIFE bundle bytes; identical to the file on disk at
-/// `vendor/relux-viewer.js.gz` at compile time.
+/// `crates/relux-runtime/vendor/relux-viewer.js.gz` at compile time.
 pub fn bundle_gz() -> &'static [u8] {
-    include_bytes!("../../../vendor/relux-viewer.js.gz")
+    include_bytes!("../vendor/relux-viewer.js.gz")
 }
 
 /// Gzipped highlight.js core bundle. Inlined into `event.html`
 /// alongside the viewer bundle so the source pane can syntax-highlight
 /// Relux code without a separate served asset.
 pub fn hljs_gz() -> &'static [u8] {
-    include_bytes!("../../../vendor/highlight-11.11.1.min.js.gz")
+    include_bytes!("../vendor/highlight-11.11.1.min.js.gz")
 }
 
 /// Gzipped bytes of `HLJS_RELUX_INIT` (the Relux hljs grammar). Computed

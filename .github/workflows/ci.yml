@@ -51,10 +51,10 @@ jobs:
         run: |
           docker run --rm -v "$PWD/viewer":/src -w /src node:lts-slim \
               sh -c 'npm ci && npm run build'
-          cp viewer/dist/relux-viewer.js.gz vendor/relux-viewer.js.gz
+          cp viewer/dist/relux-viewer.js.gz crates/relux-runtime/vendor/relux-viewer.js.gz
 
       - name: Verify vendored bundle is in sync
-        run: git diff --exit-code -- vendor/relux-viewer.js.gz
+        run: git diff --exit-code -- crates/relux-runtime/vendor/relux-viewer.js.gz
 
       - name: Check VS Code extension packages cleanly
         run: |

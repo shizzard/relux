@@ -14,7 +14,7 @@ The runtime inlines the gzipped bundle into per-test `event.html` files alongsid
 
 ## Build
 
-The vendored, gzipped IIFE bundle lives at `vendor/relux-viewer.js.gz` (committed at the repo root). It is embedded into the `relux-runtime` binary via `include_bytes!`, so a fresh `cargo build` does not require any JS toolchain.
+The vendored, gzipped IIFE bundle lives at `crates/relux-runtime/vendor/relux-viewer.js.gz` (committed inside the `relux-runtime` crate). It is embedded into the `relux-runtime` binary via `include_bytes!`, so a fresh `cargo build` does not require any JS toolchain.
 
 To regenerate the vendored bundle after editing anything under `viewer/`:
 
@@ -22,7 +22,7 @@ To regenerate the vendored bundle after editing anything under `viewer/`:
 just viewer-build
 ```
 
-That recipe (a) regenerates the TS schema from the Rust types via `ts-rs` (under `src/types/`), (b) runs `npm ci && npm run build` inside the `node:lts-slim` Docker image, and (c) copies the gzipped bundle to `vendor/relux-viewer.js.gz`.
+That recipe (a) regenerates the TS schema from the Rust types via `ts-rs` (under `src/types/`), (b) runs `npm ci && npm run build` inside the `node:lts-slim` Docker image, and (c) copies the gzipped bundle to `crates/relux-runtime/vendor/relux-viewer.js.gz`.
 
 A pre-commit hook (installed once via `just install-hooks`) and a CI step both verify that the vendored bundle stays in sync with `viewer/` sources.
 

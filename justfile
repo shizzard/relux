@@ -38,15 +38,17 @@ build: build-cargo build-viewer build-intellij build-vscode build-agents build-b
 build-cargo:
     cargo build
 
-# Regenerate the vendored Svelte viewer bundle (vendor/relux-viewer.js.gz).
-# Drives ts-rs schema export -> docker npm build -> copy to vendor/. The
-# pre-commit hook (.githooks/pre-commit) and CI verify the vendored bytes
-# stay in sync with viewer/ sources.
+# Regenerate the vendored Svelte viewer bundle
+# (crates/relux-runtime/vendor/relux-viewer.js.gz).
+# Drives ts-rs schema export -> docker npm build -> copy to
+# crates/relux-runtime/vendor/. The pre-commit hook
+# (.githooks/pre-commit) and CI verify the vendored bytes stay in sync
+# with viewer/ sources.
 build-viewer:
     cargo test -p relux-runtime --features ts-export 'export_bindings_'
     docker run --rm -v {{justfile_directory()}}/viewer:/src -w /src node:lts-slim \
         sh -c 'npm ci && npm run build'
-    cp viewer/dist/relux-viewer.js.gz vendor/relux-viewer.js.gz
+    cp viewer/dist/relux-viewer.js.gz crates/relux-runtime/vendor/relux-viewer.js.gz
 
 # Build the IntelliJ plugin
 build-intellij:

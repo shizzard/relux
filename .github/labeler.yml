@@ -30,7 +30,7 @@ viewer:
   - changed-files:
       - any-glob-to-any-file:
           - viewer/**
-          - vendor/relux-viewer.js.gz
+          - crates/relux-runtime/vendor/relux-viewer.js.gz
 
 cli:
   - changed-files:

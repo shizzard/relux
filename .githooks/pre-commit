@@ -29,13 +29,13 @@ validate_plugin() {
     ./.scripts/build-agents.sh
 }
 
-# Verify vendor/relux-viewer.js.gz is in sync with viewer/ sources, but
-# only when the commit actually touches them - Rust-only commits skip
-# the (slow) docker build entirely.
+# Verify crates/relux-runtime/vendor/relux-viewer.js.gz is in sync with
+# viewer/ sources, but only when the commit actually touches them -
+# Rust-only commits skip the (slow) docker build entirely.
 verify_viewer_bundle() {
     local staged
     staged=$(git diff --cached --name-only --diff-filter=ACMR)
-    if ! printf '%s\n' "$staged" | grep -qE '^(viewer/|vendor/relux-viewer\.js\.gz$)'; then
+    if ! printf '%s\n' "$staged" | grep -qE '^(viewer/|crates/relux-runtime/vendor/relux-viewer\.js\.gz$)'; then
         return 0
     fi
 
@@ -44,14 +44,14 @@ verify_viewer_bundle() {
         cargo test -p relux-runtime --features ts-export 'export_bindings_'
         docker run --rm -v "$PWD/viewer":/src -w /src node:lts-slim \
             sh -c 'npm ci && npm run build'
-        cp viewer/dist/relux-viewer.js.gz vendor/relux-viewer.js.gz
+        cp viewer/dist/relux-viewer.js.gz crates/relux-runtime/vendor/relux-viewer.js.gz
     } >/dev/null
 
-    if ! git diff --quiet -- vendor/relux-viewer.js.gz; then
+    if ! git diff --quiet -- crates/relux-runtime/vendor/relux-viewer.js.gz; then
         echo
-        echo "ERROR: vendor/relux-viewer.js.gz is out of sync with viewer/ sources."
+        echo "ERROR: crates/relux-runtime/vendor/relux-viewer.js.gz is out of sync with viewer/ sources."
         echo "Stage the rebuilt bundle and re-commit:"
-        echo "    git add vendor/relux-viewer.js.gz"
+        echo "    git add crates/relux-runtime/vendor/relux-viewer.js.gz"
         exit 1
     fi
 }

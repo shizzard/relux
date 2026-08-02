@@ -103,8 +103,8 @@ aarch64 only.
 
 **From source.** Use when developing on relux itself, or when neither cargo
 nor a pre-built target fits. The vendored viewer bundle at
-`vendor/relux-viewer.js.gz` is committed and embedded at compile time, so a
-bare cargo build produces a fully functional binary.
+`crates/relux-runtime/vendor/relux-viewer.js.gz` is committed and embedded
+at compile time, so a bare cargo build produces a fully functional binary.
 
 ```bash
 git clone git@github.com:shizzard/relux.git
