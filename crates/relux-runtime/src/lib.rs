@@ -23,6 +23,7 @@ use crate::observe::structured::MarkerEvalDecision;
 use crate::observe::structured::MarkerEvalDetail;
 use crate::observe::structured::MarkerEvalKind;
 use crate::observe::structured::MarkerEvalModifier;
+use crate::observe::structured::MatchContext;
 use crate::observe::structured::SpanId;
 use crate::observe::structured::SpanKind;
 use crate::observe::structured::StructuredLogBuilder;
@@ -59,6 +60,7 @@ pub mod cancel;
 pub mod effect;
 pub(crate) mod marker_walk;
 pub mod observe;
+pub(crate) mod preamble;
 pub mod report;
 pub mod runtime_context;
 pub(crate) mod scan;
@@ -977,36 +979,66 @@ async fn run_test_body(
         timeout: meta.timeout().cloned(),
     };
 
-    // 2. Evaluate test-level lets into scope (parser enforces lets come before starts)
+    // 2. Evaluate test-level preamble (lets + pure-matches) into scope.
+    //    The parser enforces these come before starts. `body_captures`
+    //    is hoisted across the whole preamble so a regex pure-match's
+    //    `$n` captures are visible to later lets and pure-matches, and
+    //    ultimately to effect overlays (see the instantiate call below).
+    let mut body_captures: HashMap<String, String> = HashMap::new();
+    let tc = MatchContext::TestPreamble {
+        name: test.name().to_string(),
+    };
     for item in test.body() {
-        if let IrTestItem::Let { stmt, span } = item {
-            let mut vars = scope.vars().lock().await;
-            let mut sink = LogSink::new(&rt_ctx.log, test_span);
-            let value = if let Some(expr) = stmt.value() {
-                relux_ir::evaluator::eval_pure_expr(
-                    expr,
-                    &vars,
+        match item {
+            IrTestItem::Let { stmt, span } => {
+                crate::preamble::eval_preamble_let(
+                    &rt_ctx.log,
                     &rt_ctx.env,
                     &rt_ctx.tables.pure_fns,
-                    &mut sink,
+                    &scope,
+                    test_span,
+                    &tc,
+                    stmt,
+                    span,
+                    &body_captures,
                 )
-            } else {
-                String::new()
-            };
-            let name = stmt.name().name();
-            vars.insert(name.to_string(), value.clone());
-            drop(vars);
-            rt_ctx
-                .log
-                .emit_var_let(test_span, None, None, name, &value, Some(span));
+                .await?;
+            }
+            IrTestItem::PureMatch {
+                lhs,
+                pattern,
+                is_regex,
+                span,
+            } => {
+                crate::preamble::eval_preamble_pure_match(
+                    &rt_ctx.log,
+                    &rt_ctx.env,
+                    &rt_ctx.tables.pure_fns,
+                    &scope,
+                    test_span,
+                    &tc,
+                    lhs,
+                    pattern,
+                    *is_regex,
+                    span,
+                    &mut body_captures,
+                )
+                .await?;
+            }
+            // Non-preamble items run in the body walk below.
+            IrTestItem::Comment { .. }
+            | IrTestItem::DocString { .. }
+            | IrTestItem::Start { .. }
+            | IrTestItem::Shell { .. }
+            | IrTestItem::Cleanup { .. } => {}
         }
     }
 
-    // 3. Instantiate effects (overlays can now see test-level vars)
+    // 3. Instantiate effects (overlays can now see test-level vars + captures)
     let caller_vars = scope.vars().lock().await.clone();
     let root_env = rt_ctx.env.clone();
     let exported = manager
-        .instantiate_top_level(test.starts(), &caller_vars, &root_env)
+        .instantiate_top_level(test.starts(), &caller_vars, &root_env, &body_captures)
         .await?;
 
     // 4. Build shell map from exposed effect shells
@@ -1066,6 +1098,7 @@ async fn run_test_body(
                 IrTestItem::Comment { .. } | IrTestItem::DocString { .. } => continue,
                 IrTestItem::Start { .. } => continue,
                 IrTestItem::Let { .. } => continue,
+                IrTestItem::PureMatch { .. } => continue,
                 IrTestItem::Shell { block, .. } => {
                     let switch_span = block.name().span();
                     if let Some(qualifier) = block.qualifier() {
@@ -1083,7 +1116,7 @@ async fn run_test_body(
                         let block_span_id = block_span.id();
                         let dep = effect_shells.get(alias).ok_or_else(|| Failure::Runtime {
                             message: format!("unknown effect alias `{alias}`"),
-                            span: None,
+                            span: qualifier.span().clone(),
                             shell: None,
                             context: FailureContext::pre_vm_with_span(block_span_id),
                         })?;
@@ -1091,7 +1124,7 @@ async fn run_test_body(
                             message: format!(
                                 "effect alias `{alias}` does not expose shell `{shell_name}`"
                             ),
-                            span: None,
+                            span: switch_span.clone(),
                             shell: None,
                             context: FailureContext::pre_vm_with_span(block_span_id),
                         })?;
@@ -1127,7 +1160,14 @@ async fn run_test_body(
                             let shell_key = ShellInstanceKey::Test {
                                 shell_name: name.clone(),
                             };
-                            let vm = Vm::new(name.clone(), shell_key.marker(), ctx, rt_ctx).await?;
+                            let vm = Vm::new(
+                                name.clone(),
+                                shell_key.marker(),
+                                ctx,
+                                rt_ctx,
+                                block.span().clone(),
+                            )
+                            .await?;
                             shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
                         }
                         let vm_arc = shells.get(&name).expect("shell just inserted above");
@@ -1188,6 +1228,7 @@ async fn run_test_body(
             cleanup_marker.clone(),
             ctx,
             &cleanup_rt_ctx,
+            cleanup_span.clone(),
         )
         .await
         {
@@ -1219,7 +1260,7 @@ async fn run_test_body(
                     source: CleanupSource::Test,
                     failure: Failure::Runtime {
                         message: format!("failed to spawn cleanup shell: {e:?}"),
-                        span: None,
+                        span: cleanup_span.clone(),
                         shell: None,
                         context: FailureContext::pre_vm_with_span(cleanup_block_span_id),
                     }
@@ -1271,18 +1312,15 @@ pub(crate) fn marker_detail_from_evaluation(
             value: value.clone(),
             met: *met,
         },
-        Eq { lhs, rhs, met } => MarkerEvalDetail::Eq {
-            lhs: lhs.clone(),
-            rhs: rhs.clone(),
-            met: *met,
-        },
-        Regex {
+        PureMatch {
             value,
             pattern,
+            is_regex,
             met,
-        } => MarkerEvalDetail::Regex {
+        } => MarkerEvalDetail::PureMatch {
             value: value.clone(),
             pattern: pattern.clone(),
+            is_regex: *is_regex,
             met: *met,
         },
     }

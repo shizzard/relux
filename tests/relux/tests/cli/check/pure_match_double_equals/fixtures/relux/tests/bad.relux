@@ -1,0 +1,6 @@
+test "double equals is a parse error" {
+    shell s {
+        let x := "a"
+        x == a
+    }
+}

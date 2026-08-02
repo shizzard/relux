@@ -1,0 +1,20 @@
+effect Svc {
+    expose shell worker
+    shell worker {
+        > echo up
+        <? up
+    }
+}
+
+test "switches into an unexposed shell" {
+    """
+    Start Svc as S, then switch into a shell Svc does not expose. The
+    missing shell is only knowable once Svc has been instantiated, so this
+    surfaces at runtime, not at check.
+    """
+    start Svc as S
+    shell S.missing {
+        > echo hi
+        <? hi
+    }
+}

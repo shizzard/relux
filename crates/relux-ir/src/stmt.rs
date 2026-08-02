@@ -131,6 +131,12 @@ pub enum IrShellStmt {
         pattern: IrInterpolation,
         span: IrSpan,
     },
+    PureMatch {
+        lhs: IrExpr,
+        pattern: IrInterpolation,
+        is_regex: bool,
+        span: IrSpan,
+    },
     TimedMatchRegex {
         timeout: IrTimeout,
         pattern: IrInterpolation,
@@ -175,6 +181,7 @@ impl_ir_node_enum!(IrShellStmt {
     SendRaw,
     MatchRegex,
     MatchLiteral,
+    PureMatch,
     TimedMatchRegex,
     TimedMatchLiteral,
     Timeout,
@@ -255,13 +262,20 @@ pub enum IrPureStmt {
         expr: IrPureExpr,
         span: IrSpan,
     },
+    PureMatch {
+        lhs: IrPureExpr,
+        pattern: IrInterpolation,
+        is_regex: bool,
+        span: IrSpan,
+    },
 }
 
 impl_ir_node_enum!(IrPureStmt {
     Comment,
     Let,
     Assign,
-    Expr
+    Expr,
+    PureMatch
 });
 
 // ===============================================================
@@ -410,6 +424,27 @@ impl IrNodeLowering for IrShellStmt {
                     span: s(span),
                 })
             }
+            AstStmt::PureMatchLiteral { lhs, pattern, span } => {
+                let ir_lhs = IrExpr::lower(&lhs.node, file, ctx)?;
+                let ir_pattern = IrInterpolation::lower(pattern, file, ctx)?;
+                Ok(IrShellStmt::PureMatch {
+                    lhs: ir_lhs,
+                    pattern: ir_pattern,
+                    is_regex: false,
+                    span: s(span),
+                })
+            }
+            AstStmt::PureMatchRegex { lhs, pattern, span } => {
+                let ir_lhs = IrExpr::lower(&lhs.node, file, ctx)?;
+                let ir_pattern = IrInterpolation::lower(pattern, file, ctx)?;
+                super::regex_validate::validate_static_regex(pattern, file)?;
+                Ok(IrShellStmt::PureMatch {
+                    lhs: ir_lhs,
+                    pattern: ir_pattern,
+                    is_regex: true,
+                    span: s(span),
+                })
+            }
             AstStmt::TimedMatchRegex {
                 timeout,
                 pattern,
@@ -534,6 +569,27 @@ impl IrNodeLowering for IrPureStmt {
                 let ir = IrPureExpr::lower(expr, file, ctx)?;
                 Ok(IrPureStmt::Expr {
                     expr: ir,
+                    span: s(span),
+                })
+            }
+            AstStmt::PureMatchLiteral { lhs, pattern, span } => {
+                let ir_lhs = IrPureExpr::lower(&lhs.node, file, ctx)?;
+                let ir_pattern = IrInterpolation::lower_pure(pattern, file, ctx)?;
+                Ok(IrPureStmt::PureMatch {
+                    lhs: ir_lhs,
+                    pattern: ir_pattern,
+                    is_regex: false,
+                    span: s(span),
+                })
+            }
+            AstStmt::PureMatchRegex { lhs, pattern, span } => {
+                let ir_lhs = IrPureExpr::lower(&lhs.node, file, ctx)?;
+                let ir_pattern = IrInterpolation::lower_pure(pattern, file, ctx)?;
+                super::regex_validate::validate_static_regex(pattern, file)?;
+                Ok(IrPureStmt::PureMatch {
+                    lhs: ir_lhs,
+                    pattern: ir_pattern,
+                    is_regex: true,
                     span: s(span),
                 })
             }

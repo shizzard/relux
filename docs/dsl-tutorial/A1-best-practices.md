@@ -1,6 +1,6 @@
 # Appendix A1: Best Practices
 
-[Previous: The CLI](17-the-cli.md)
+[Previous: The CLI](18-the-cli.md)
 
 This appendix collects every best-practices guideline from the tutorial series into a single reference, grouped by topic. Each item links back to the article where it was originally introduced.
 
@@ -401,7 +401,7 @@ start MyEffect as B { INSTANCE := "2" }
 
 ## Cleanup
 
-*From [Cleanup](14-cleanup.md):*
+*From [Cleanup](15-cleanup.md):*
 
 ### Do not use cleanup to stop services
 
@@ -427,7 +427,7 @@ Write cleanup commands defensively. Assume nothing about what actually happened 
 
 ## Condition markers
 
-*From [Condition Markers](16-condition-markers.md):*
+*From [Condition Markers](17-condition-markers.md):*
 
 ### Markers assert, effects provision
 
@@ -450,7 +450,7 @@ Putting a marker on an effect skips every test that depends on it. This is power
 
 ## The CLI
 
-*From [The CLI](17-the-cli.md):*
+*From [The CLI](18-the-cli.md):*
 
 ### Use `--rerun` after fixing a failure
 

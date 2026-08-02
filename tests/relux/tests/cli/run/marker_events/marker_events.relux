@@ -3,7 +3,10 @@ test "marker events: markers root with two marker-eval children" {
     Verifies that test-level marker evaluations (skip/flaky/run) are
     replayed under a synthetic `markers` root span at runtime:
       - two `marker-eval` spans (skip + flaky)
-      - one `pure-match` event from the regex marker
+      - both markers evaluate through the same pure matcher, so both emit
+        a `pure-match-start`: the skip's containment check on
+        trim("  hi  ") = "no-match" fails (`pure-match-failed`), and the
+        flaky's regex check on "abc" ? ^a.c$ matches (`pure-match-done`)
       - the test-level `let greeting := trim(...)` emits a pure FnCall
         span under the test root
     """
@@ -26,14 +29,30 @@ test "marker events: markers root with two marker-eval children" {
         <? ^2$
         match_ok()
 
-        // One pure-match event for the regex marker.
-        > jq -M '[.events[] | select(.kind == "pure-match")] | length' $events
+        // Both markers route through the pure matcher: two starts, one
+        // done (the regex matches) and one failed (the containment check
+        // does not).
+        > jq -M '[.events[] | select(.kind == "pure-match-start")] | length' $events
+        <? ^2$
+        match_ok()
+        > jq -M '[.events[] | select(.kind == "pure-match-done")] | length' $events
+        <? ^1$
+        match_ok()
+        > jq -M '[.events[] | select(.kind == "pure-match-failed")] | length' $events
         <? ^1$
         match_ok()
 
-        // The pure-match payload reflects the regex marker on "abc" ? ^a.c$.
-        > jq -Mc '[.events[] | select(.kind == "pure-match")][0] | {value, pattern, result}' $events
-        <? ^\{"value":"abc","pattern":"\^a\.c\$","result":"abc"\}$
+        // The failed containment check is the skip marker: trim("  hi  ") = "no-match".
+        > jq -Mc '[.events[] | select(.kind == "pure-match-start" and .is_regex == false)][0] | {value, pattern, is_regex}' $events
+        <? ^\{"value":"hi","pattern":"no-match","is_regex":false\}$
+        match_ok()
+
+        // The matched regex check is the flaky marker: "abc" ? ^a.c$.
+        > jq -Mc '[.events[] | select(.kind == "pure-match-start" and .is_regex == true)][0] | {value, pattern, is_regex}' $events
+        <? ^\{"value":"abc","pattern":"\^a\.c\$","is_regex":true\}$
+        match_ok()
+        > jq -Mc '[.events[] | select(.kind == "pure-match-done")][0] | {matched}' $events
+        <? ^\{"matched":"abc"\}$
         match_ok()
 
         // trim/1 FnCall span exists with is_pure=true, callee_kind=bif.

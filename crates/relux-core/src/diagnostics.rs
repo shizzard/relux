@@ -41,7 +41,12 @@ pub struct IrSpan {
 }
 
 impl IrSpan {
-    /// Sentinel span for config-derived or synthetic values not tied to source.
+    /// A span with no source location. Use this ONLY for values that
+    /// genuinely have no place in any `.relux` source -- for example the
+    /// suite-default timeout built from `Relux.toml` (`IrTimeout::tolerance_scaled`).
+    /// A `Failure` must never use this: every failure has a real source
+    /// construct to point at, and `Failure`'s `span: IrSpan` fields are
+    /// non-optional precisely to enforce that.
     pub fn synthetic() -> Self {
         Self {
             file: FileId::new(std::path::PathBuf::from("<synthetic>")),
@@ -709,14 +714,10 @@ pub enum SkipEvaluation {
         value: String,
         met: bool,
     },
-    Eq {
-        lhs: String,
-        rhs: String,
-        met: bool,
-    },
-    Regex {
+    PureMatch {
         value: String,
         pattern: String,
+        is_regex: bool,
         met: bool,
     },
 }
@@ -732,22 +733,18 @@ impl fmt::Display for SkipEvaluation {
                     write!(f, "evaluated to non-empty: {value:?}")
                 }
             }
-            SkipEvaluation::Eq { lhs, rhs, .. } => {
-                if lhs == rhs {
-                    write!(f, "{lhs:?} == {rhs:?}")
-                } else {
-                    write!(f, "{lhs:?} != {rhs:?}")
-                }
-            }
-            SkipEvaluation::Regex {
+            SkipEvaluation::PureMatch {
                 value,
                 pattern,
+                is_regex,
                 met,
             } => {
-                if *met {
-                    write!(f, "{value:?} matched /{pattern}/")
+                if *is_regex {
+                    let verb = if *met { "matched" } else { "did not match" };
+                    write!(f, "{value:?} {verb} {pattern:?}")
                 } else {
-                    write!(f, "{value:?} did not match /{pattern}/")
+                    let op = if *met { "==" } else { "!=" };
+                    write!(f, "{value:?} {op} {pattern:?}")
                 }
             }
         }
@@ -1822,20 +1819,22 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_from_skip_eq_match() {
-        let d = Diagnostic::from(&make_skip(SkipEvaluation::Eq {
-            lhs: "a".into(),
-            rhs: "a".into(),
+    fn diagnostic_from_skip_literal_match() {
+        let d = Diagnostic::from(&make_skip(SkipEvaluation::PureMatch {
+            value: "linux".into(),
+            pattern: "linux".into(),
+            is_regex: false,
             met: true,
         }));
         assert!(d.labels[0].message.contains("=="));
     }
 
     #[test]
-    fn diagnostic_from_skip_eq_no_match() {
-        let d = Diagnostic::from(&make_skip(SkipEvaluation::Eq {
-            lhs: "a".into(),
-            rhs: "b".into(),
+    fn diagnostic_from_skip_literal_no_match() {
+        let d = Diagnostic::from(&make_skip(SkipEvaluation::PureMatch {
+            value: "a".into(),
+            pattern: "b".into(),
+            is_regex: false,
             met: false,
         }));
         assert!(d.labels[0].message.contains("!="));
@@ -1843,9 +1842,10 @@ mod tests {
 
     #[test]
     fn diagnostic_from_skip_regex_match() {
-        let d = Diagnostic::from(&make_skip(SkipEvaluation::Regex {
+        let d = Diagnostic::from(&make_skip(SkipEvaluation::PureMatch {
             value: "hello".into(),
             pattern: "h.*".into(),
+            is_regex: true,
             met: true,
         }));
         assert!(d.labels[0].message.contains("matched"));
@@ -1853,9 +1853,10 @@ mod tests {
 
     #[test]
     fn diagnostic_from_skip_regex_no_match() {
-        let d = Diagnostic::from(&make_skip(SkipEvaluation::Regex {
+        let d = Diagnostic::from(&make_skip(SkipEvaluation::PureMatch {
             value: "hello".into(),
             pattern: "^x".into(),
+            is_regex: true,
             met: false,
         }));
         assert!(d.labels[0].message.contains("did not match"));

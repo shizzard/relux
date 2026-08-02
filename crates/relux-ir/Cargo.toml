@@ -10,4 +10,5 @@ description = "Internal: IR types and lowering for Relux. No semver guarantees."
 relux-core = { workspace = true }
 relux-ast  = { workspace = true }
 regex      = { workspace = true }
+thiserror  = { workspace = true }
 

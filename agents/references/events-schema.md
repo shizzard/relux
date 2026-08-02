@@ -75,7 +75,7 @@ Kind-specific fields:
 - Multimatch: `multi-match-start`, `multi-match-pattern-done`, `multi-match-done`, `multi-match-timeout`.
 - Fail patterns: `fail-pattern-set`, `fail-pattern-cleared`, `fail-pattern-triggered`.
 - Control: `sleep-start`, `sleep-done`, `timeout-set`.
-- Values: `var-let`, `var-assign`, `var-read`, `interpolation`, `string-eval`, `pure-match`.
+- Values: `var-let`, `var-assign`, `var-read`, `interpolation`, `string-eval`, `pure-match-start`, `pure-match-done`, `pure-match-failed`.
 - Markers: `bool-check` (final truthy/falsy of a marker condition).
 - Diagnostics: `annotate`, `log`, `warning`, `error`.
 - Cancellation: `cancelled` (carries `reason`).

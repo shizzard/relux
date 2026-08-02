@@ -259,6 +259,8 @@ fn render(
 
 #[cfg(test)]
 mod tests {
+    use relux_core::diagnostics::IrSpan;
+
     use crate::report::result::Failure;
     use crate::report::result::FailureContext;
     use crate::report::result::Outcome;
@@ -283,7 +285,7 @@ mod tests {
         let mut r = pass(name);
         r.outcome = Outcome::Fail(Failure::Runtime {
             message: "boom".into(),
-            span: None,
+            span: IrSpan::synthetic(),
             shell: Some("default".into()),
             context: FailureContext::pre_vm(),
         });

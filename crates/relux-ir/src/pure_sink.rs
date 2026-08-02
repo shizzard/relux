@@ -2,12 +2,6 @@ use std::collections::HashMap;
 
 use relux_core::diagnostics::IrSpan;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MatchKind {
-    Regex,
-    Literal,
-}
-
 pub trait PureEvalSink {
     fn enter_pure_fn(
         &mut self,
@@ -24,15 +18,20 @@ pub trait PureEvalSink {
         bindings: &[(String, String)],
         span: &IrSpan,
     );
-    fn record_match(
+    fn record_pure_match_start(
         &mut self,
-        kind: MatchKind,
         value: &str,
         pattern: &str,
-        result: &str,
+        is_regex: bool,
+        span: &IrSpan,
+    );
+    fn record_pure_match_done(
+        &mut self,
+        matched: &str,
         captures: &HashMap<String, String>,
         span: &IrSpan,
     );
+    fn record_pure_match_failed(&mut self, span: &IrSpan);
     /// Top-level bare variable read: the name being resolved and the
     /// final string value (`""` when the var is undefined). Only fired
     /// when the var is the *whole* expression; bindings already inside
@@ -47,16 +46,9 @@ impl PureEvalSink for NoOpSink {
     fn enter_pure_fn(&mut self, _: &str, _: &[(String, String)], _: bool, _: &IrSpan) {}
     fn leave_pure_fn(&mut self, _: &str) {}
     fn record_interpolation(&mut self, _: &str, _: &str, _: &[(String, String)], _: &IrSpan) {}
-    fn record_match(
-        &mut self,
-        _: MatchKind,
-        _: &str,
-        _: &str,
-        _: &str,
-        _: &HashMap<String, String>,
-        _: &IrSpan,
-    ) {
-    }
+    fn record_pure_match_start(&mut self, _: &str, _: &str, _: bool, _: &IrSpan) {}
+    fn record_pure_match_done(&mut self, _: &str, _: &HashMap<String, String>, _: &IrSpan) {}
+    fn record_pure_match_failed(&mut self, _: &IrSpan) {}
     fn record_var_read(&mut self, _: &str, _: &str, _: &IrSpan) {}
 }
 
@@ -77,12 +69,18 @@ pub enum SinkOp {
         bindings: Vec<(String, String)>,
         span: IrSpan,
     },
-    Match {
-        kind: MatchKind,
+    PureMatchStart {
         value: String,
         pattern: String,
-        result: String,
+        is_regex: bool,
+        span: IrSpan,
+    },
+    PureMatchDone {
+        matched: String,
         captures: HashMap<String, String>,
+        span: IrSpan,
+    },
+    PureMatchFailed {
         span: IrSpan,
     },
     VarRead {
@@ -134,23 +132,37 @@ impl PureEvalSink for RecordingSink {
         });
     }
 
-    fn record_match(
+    fn record_pure_match_start(
         &mut self,
-        kind: MatchKind,
         value: &str,
         pattern: &str,
-        result: &str,
+        is_regex: bool,
+        span: &IrSpan,
+    ) {
+        self.ops.push(SinkOp::PureMatchStart {
+            value: value.to_string(),
+            pattern: pattern.to_string(),
+            is_regex,
+            span: span.clone(),
+        });
+    }
+
+    fn record_pure_match_done(
+        &mut self,
+        matched: &str,
         captures: &HashMap<String, String>,
         span: &IrSpan,
     ) {
-        self.ops.push(SinkOp::Match {
-            kind,
-            value: value.to_string(),
-            pattern: pattern.to_string(),
-            result: result.to_string(),
+        self.ops.push(SinkOp::PureMatchDone {
+            matched: matched.to_string(),
             captures: captures.clone(),
             span: span.clone(),
         });
+    }
+
+    fn record_pure_match_failed(&mut self, span: &IrSpan) {
+        self.ops
+            .push(SinkOp::PureMatchFailed { span: span.clone() });
     }
 
     fn record_var_read(&mut self, name: &str, value: &str, span: &IrSpan) {
@@ -184,25 +196,17 @@ mod tests {
         );
         let mut caps = HashMap::new();
         caps.insert("0".to_string(), "matched".to_string());
-        sink.record_match(
-            MatchKind::Regex,
-            "the value",
-            "^the .*$",
-            "the value",
-            &caps,
-            &IrSpan::synthetic(),
-        );
-        assert_eq!(sink.ops.len(), 4);
+        sink.record_pure_match_start("the value", "^the .*$", true, &IrSpan::synthetic());
+        sink.record_pure_match_done("the value", &caps, &IrSpan::synthetic());
+        assert_eq!(sink.ops.len(), 5);
         assert!(matches!(sink.ops[0], SinkOp::EnterPureFn { .. }));
         assert!(matches!(sink.ops[1], SinkOp::LeavePureFn { .. }));
         assert!(matches!(sink.ops[2], SinkOp::RecordInterpolation { .. }));
         assert!(matches!(
             sink.ops[3],
-            SinkOp::Match {
-                kind: MatchKind::Regex,
-                ..
-            }
+            SinkOp::PureMatchStart { is_regex: true, .. }
         ));
+        assert!(matches!(sink.ops[4], SinkOp::PureMatchDone { .. }));
     }
 
     #[test]
@@ -211,14 +215,9 @@ mod tests {
         sink.enter_pure_fn("trim", &[], true, &IrSpan::synthetic());
         sink.leave_pure_fn("");
         sink.record_interpolation("x", "x", &[], &IrSpan::synthetic());
-        sink.record_match(
-            MatchKind::Regex,
-            "",
-            "",
-            "",
-            &HashMap::new(),
-            &IrSpan::synthetic(),
-        );
+        sink.record_pure_match_start("", "", true, &IrSpan::synthetic());
+        sink.record_pure_match_done("", &HashMap::new(), &IrSpan::synthetic());
+        sink.record_pure_match_failed(&IrSpan::synthetic());
         sink.record_var_read("x", "", &IrSpan::synthetic());
     }
 

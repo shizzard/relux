@@ -1,0 +1,12 @@
+test "pure match runs in a cleanup block" {
+    let token := "ready"
+    shell s {
+        > echo hi
+        <? ^hi$
+        match_ok()
+    }
+    cleanup {
+        token ? ^rea
+        token = ready
+    }
+}

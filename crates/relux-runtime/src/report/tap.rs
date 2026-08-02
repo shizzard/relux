@@ -1,6 +1,7 @@
 use std::fmt::Write;
 use std::path::Path;
 
+use crate::observe::structured::MatchContext;
 use crate::report::result::Failure;
 use crate::report::result::Outcome;
 use crate::report::result::TestResult;
@@ -23,14 +24,15 @@ fn yaml_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-/// Extract the span from a Failure, if present.
-fn failure_span(failure: &Failure) -> Option<&IrSpan> {
+/// Extract the source span from a Failure. Every failure carries one.
+fn failure_span(failure: &Failure) -> &IrSpan {
     match failure {
         Failure::MatchTimeout { span, .. }
         | Failure::FailPatternMatched { span, .. }
         | Failure::ShellExited { span, .. }
-        | Failure::MultiMatch { span, .. } => Some(span),
-        Failure::Runtime { span, .. } => span.as_ref(),
+        | Failure::PureMatch { span, .. }
+        | Failure::MultiMatch { span, .. }
+        | Failure::Runtime { span, .. } => span,
     }
 }
 
@@ -41,16 +43,33 @@ fn failure_shell(failure: &Failure) -> Option<&str> {
         | Failure::FailPatternMatched { shell, .. }
         | Failure::ShellExited { shell, .. }
         | Failure::MultiMatch { shell, .. } => Some(shell),
+        Failure::PureMatch { match_context, .. } => match_context.shell_name_ref(),
         Failure::Runtime { shell, .. } => shell.as_deref(),
+    }
+}
+
+/// Human-readable match context for a pure-match failure, so a non-shell
+/// context (fn / test-preamble / effect-preamble) is not dropped from TAP
+/// output the way the `shell:` line drops it. A `Shell` context already has
+/// its name on the `shell:` line via `failure_shell`, so this returns
+/// `None` for it to avoid printing the same shell twice.
+fn failure_match_context(failure: &Failure) -> Option<String> {
+    match failure {
+        Failure::PureMatch {
+            match_context: MatchContext::Shell { .. },
+            ..
+        } => None,
+        Failure::PureMatch { match_context, .. } => Some(match_context.to_string()),
+        _ => None,
     }
 }
 
 /// Extract the pattern from a Failure, if present.
 fn failure_pattern(failure: &Failure) -> Option<&str> {
     match failure {
-        Failure::MatchTimeout { pattern, .. } | Failure::FailPatternMatched { pattern, .. } => {
-            Some(pattern)
-        }
+        Failure::MatchTimeout { pattern, .. }
+        | Failure::FailPatternMatched { pattern, .. }
+        | Failure::PureMatch { pattern, .. } => Some(pattern),
         _ => None,
     }
 }
@@ -91,12 +110,14 @@ fn render_tap(
                 if let Some(shell) = failure_shell(failure) {
                     writeln!(out, "  shell: {shell}").unwrap();
                 }
+                if let Some(ctx) = failure_match_context(failure) {
+                    writeln!(out, "  context: {ctx}").unwrap();
+                }
                 if let Some(pattern) = failure_pattern(failure) {
                     writeln!(out, "  pattern: {pattern}").unwrap();
                 }
-                if let Some(span) = failure_span(failure)
-                    && let Some(sf) = source_table.get(span.file())
-                {
+                let span = failure_span(failure);
+                if let Some(sf) = source_table.get(span.file()) {
                     writeln!(out, "  file: {}", sf.path.display()).unwrap();
                     writeln!(
                         out,
@@ -312,11 +333,11 @@ mod tests {
     }
 
     #[test]
-    fn failed_runtime_error_without_span() {
+    fn failed_runtime_error_with_source_less_span() {
         let st = test_source_table();
         let failure = Failure::Runtime {
             message: "something broke".into(),
-            span: None,
+            span: IrSpan::synthetic(),
             shell: None,
             context: FailureContext::pre_vm(),
         };
@@ -377,6 +398,44 @@ mod tests {
         let tap = render_tap(run_dir(), "suite", &results, &st);
         // Inner quotes should be escaped
         assert!(tap.contains("\\\"error\\\""));
+    }
+
+    #[test]
+    fn pure_match_shell_context_has_shell_line_no_context_line() {
+        let st = test_source_table();
+        let failure = Failure::PureMatch {
+            value: "actual".into(),
+            pattern: "expected".into(),
+            is_regex: false,
+            span: test_span(0, 5),
+            match_context: MatchContext::Shell {
+                name: "default".into(),
+            },
+            context: FailureContext::pre_vm(),
+        };
+        let results = vec![fail_result("shell-pure-match", 100, failure, None)];
+        let tap = render_tap(run_dir(), "suite", &results, &st);
+        assert!(tap.contains("shell: default"), "tap: {tap}");
+        assert!(!tap.contains("context:"), "tap: {tap}");
+    }
+
+    #[test]
+    fn pure_match_non_shell_context_has_context_line_no_shell_line() {
+        let st = test_source_table();
+        let failure = Failure::PureMatch {
+            value: "actual".into(),
+            pattern: "expected".into(),
+            is_regex: false,
+            span: test_span(0, 5),
+            match_context: MatchContext::TestPreamble {
+                name: "login".into(),
+            },
+            context: FailureContext::pre_vm(),
+        };
+        let results = vec![fail_result("preamble-pure-match", 100, failure, None)];
+        let tap = render_tap(run_dir(), "suite", &results, &st);
+        assert!(tap.contains("context:"), "tap: {tap}");
+        assert!(!tap.contains("shell:"), "tap: {tap}");
     }
 
     #[test]

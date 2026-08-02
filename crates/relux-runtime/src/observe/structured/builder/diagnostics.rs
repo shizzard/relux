@@ -199,6 +199,27 @@ impl StructuredLogBuilder {
                 call_stack: context.call_stack().to_vec(),
                 vars_in_scope: context.vars_in_scope().to_vec(),
             },
+            Failure::PureMatch {
+                value,
+                pattern,
+                is_regex,
+                match_context,
+                context,
+                ..
+            } => FailureRecord::PureMatch {
+                span: context
+                    .span()
+                    .expect("pure-match failure always carries a span"),
+                event_seq: context
+                    .event_seq()
+                    .expect("pure-match failure always carries an event seq"),
+                match_context: match_context.clone(),
+                value: value.clone(),
+                pattern: pattern.clone(),
+                is_regex: *is_regex,
+                call_stack: context.call_stack().to_vec(),
+                vars_in_scope: context.vars_in_scope().to_vec(),
+            },
             Failure::MultiMatch {
                 shell,
                 patterns,
@@ -232,6 +253,74 @@ impl StructuredLogBuilder {
             event_seq: ctx.event_seq(),
             shell: None,
             call_stack: ctx.call_stack().to_vec(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    use super::StructuredLogBuilder;
+    use crate::observe::progress;
+    use crate::observe::structured::MatchContext;
+    use crate::observe::structured::failure::FailureRecord;
+    use crate::report::result::Failure;
+    use crate::report::result::FailureContext;
+    use relux_core::diagnostics::IrSpan;
+
+    fn make_builder() -> StructuredLogBuilder {
+        let (tx, _rx) = progress::channel();
+        let sources = relux_core::table::SharedTable::new();
+        StructuredLogBuilder::new(
+            tx,
+            Instant::now(),
+            sources,
+            Arc::from(PathBuf::from("/project").as_path()),
+        )
+    }
+
+    #[test]
+    fn pure_match_record_carries_real_seq_and_vars() {
+        // A pure-match failure travels via `FailureContext::Pure` with a real
+        // seq (3, not 0) and a scope-var snapshot; the on-disk record must
+        // preserve both, plus the typed match context.
+        let builder = make_builder();
+        let f = Failure::PureMatch {
+            value: "abc".into(),
+            pattern: "xyz".into(),
+            is_regex: false,
+            span: IrSpan::synthetic(),
+            match_context: MatchContext::TestPreamble {
+                name: "login".into(),
+            },
+            context: FailureContext::pure(7, 3, vec![], vec![("v".into(), "abc".into())]),
+        };
+        match builder.failure_record(&f) {
+            FailureRecord::PureMatch {
+                span,
+                event_seq,
+                match_context,
+                vars_in_scope,
+                value,
+                pattern,
+                ..
+            } => {
+                assert_eq!(span, 7);
+                assert_eq!(event_seq, 3, "real seq is threaded through, not 0");
+                assert_eq!(
+                    match_context,
+                    MatchContext::TestPreamble {
+                        name: "login".into()
+                    }
+                );
+                assert_eq!(vars_in_scope, vec![("v".to_string(), "abc".to_string())]);
+                assert_eq!(value, "abc");
+                assert_eq!(pattern, "xyz");
+            }
+            other => panic!("expected PureMatch, got {other:?}"),
         }
     }
 }

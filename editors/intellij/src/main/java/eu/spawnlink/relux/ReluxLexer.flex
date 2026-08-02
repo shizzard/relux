@@ -176,9 +176,16 @@ CONDITION_OP = [=?]
 }
 
 // Other operators
+//
+// Bare `=` / `?` are the pure-match infix operators: `<expr> = <pattern>`
+// (literal, exact equality) and `<expr> ? <pattern>` (regex, binds $n). They
+// enter the same payload states as the shell `<=` / `<?` forms so the pattern
+// after the operator highlights as a literal / regex payload. Reassignment
+// binds only via `:=`, matched first above.
 <YYINITIAL> {
     ":="                        { return ReluxTokenTypes.OP_ASSIGN; }
-    "="                         { return ReluxTokenTypes.OP_MATCH_LITERAL; }
+    "="                         { yybegin(IN_OPERATOR_PAYLOAD); return ReluxTokenTypes.OP_MATCH_LITERAL; }
+    "?"                         { yybegin(IN_REGEX_PAYLOAD); return ReluxTokenTypes.OP_MATCH_REGEX; }
 }
 
 // Punctuation

@@ -29,6 +29,47 @@ Statements that live inside `shell` blocks, `fn` bodies, and `cleanup` blocks.
 - The right-hand side may be a literal, an interpolation, a function call, a capture (`$1`, `$2`), or a match expression (`<? regex` returns the matched text).
 - See [interpolation](interpolation.md) for `${name}`, `${1}`, `${Alias.var}`, and `$$` escaping.
 
+## Pure match (value assertions)
+
+Assert that a value you already have satisfies a pattern -- no shell I/O. Distinct from `<?` / `<=`, which scan the output buffer (see [matching](matching.md)); a pure match compares a complete value.
+
+| Form | Behavior |
+|---|---|
+| `<expr> = <pattern>` | Assert `<expr>` equals `<pattern>` exactly (byte-for-byte literal equality; a superstring or partial overlap fails). |
+| `<expr> ? <pattern>` | Assert `<expr>` matches the regex `<pattern>` (unanchored, like `<?`). Binds numeric captures `$0`..`$n`. |
+
+- Same `=` / `?` semantics as [markers](markers.md): `=` is exact equality, `?` is an unanchored regex.
+- `<expr>` is any pure expression (identifier, quoted/interpolated string, function call, `Alias.var`, `$n`, number). `<pattern>` is an interpolated string to end of line, same shape as the `<=` / `<?` payload.
+- A no-match FAILS the test immediately -- a pure match is an assertion and cannot time out (the value is already in hand). There is no negated form.
+- A `?` hit binds `$0`..`$n` in the current shell exactly like `<?`; bind with `let` before the next regex match clobbers them. The `=` form binds nothing.
+- Allowed in `shell` blocks, `fn` bodies, `pure fn` bodies, and test/effect preambles (alongside `let`, before the first `shell`). Inside a `pure fn` a no-match propagates and fails the test through the calling site; a marker condition is the one exception -- a pure-eval failure there makes the condition falsy rather than failing the test.
+- Statement-only: never a `let` right-hand side, an overlay value, or a cleanup value.
+- On failure the outcome is a `pure-match` FailureRecord (`value`, `pattern`, `is_regex`; no `buffer_tail`). See [events-failures](events-failures.md).
+
+```relux
+os = linux                    // passes only if os is exactly "linux"
+"${HOST}:${PORT}" ? ^db:\d+$
+pair ? ^(\w+)=(.+)$           // on a hit: $1 key, $2 value
+```
+
+### `:=` binds, `=` asserts
+
+`x := e` binds/reassigns; `x = e` asserts that `x` equals `e`. They are different statements. `let x = e` is an error -- declarations require `:=`.
+
+There is no `==` operator: `x == y` (adjacent `=`, no space between them) is a parse error. Use `x = y` to assert equality, `x := y` to bind. A space is not an error -- `x = = y` matches the literal pattern `= y` (leading `= `).
+
+Don't (meant to bind, actually asserts and fails when unequal):
+
+```relux
+port = 8080
+```
+
+Do (bind with `:=`):
+
+```relux
+port := 8080
+```
+
 ## Logging and annotation
 
 - `log("...")` -- emit a message to the structured event log. Returns the message.
@@ -99,4 +140,5 @@ let port := $1
 
 - [interpolation](interpolation.md) -- read if you need `${name}`, captures, or the `$$` escape
 - [matching](matching.md) -- read if you need `<?` and `<=` semantics
+- [markers](markers.md) -- read if you need the shared `=` / `?` matcher rules markers also use
 - [bifs](bifs.md) -- read if you need `log`, `annotate`, `sleep`, or control characters

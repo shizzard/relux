@@ -1,0 +1,13 @@
+test "run: a literal pure-match preserves prior regex captures" {
+    """
+    Verify a literal `=` pure-match does not clear the capture frame set by a
+    preceding `?` regex pure-match. apply_pure_match writes captures only on a
+    regex hit, so ${1}/${2} must still read the values `pair ? ...` bound after
+    a literal `=` runs between the capture and its use.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <= 1 passed
+        match_ok()
+    }
+}

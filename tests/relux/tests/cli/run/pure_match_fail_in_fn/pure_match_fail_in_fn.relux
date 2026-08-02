@@ -1,0 +1,43 @@
+test "run reports a pure match failure inside a pure fn with typed match context" {
+    """
+    Verify relux run's events.json failure record for a pure-match that
+    fails inside a `pure fn` body carries a typed match_context of kind
+    "fn" naming the failing function, a real non-zero event_seq, and a
+    populated vars_in_scope snapshot from the calling scope. Regression
+    guard for the pre-VM pure-match failure path, which used to serialize
+    event_seq 0 and an empty vars_in_scope for failures reached through a
+    pure fn call.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml > ${__RELUX_TEST_ARTIFACTS}/out.log 2>&1
+        match_not_ok(1)
+
+        > grep -c 'did not match' ${__RELUX_TEST_ARTIFACTS}/out.log
+        <? ^[1-9]
+        match_ok()
+
+        // No panic escaped the pre-VM pure-match failure path.
+        > grep -c 'panicked at' ${__RELUX_TEST_ARTIFACTS}/out.log
+        <? ^0$
+        match_not_ok(1)
+
+        > events=$(ls -dt ${__RELUX_TEST_ROOT}/fixtures/relux/out/*/logs/relux/tests/bad/pure-match-fails-in-fn/events.json 2>/dev/null | head -1); echo FOUND=$events
+        <? ^FOUND=/
+        match_ok()
+
+        // match_context names the failing pure fn, not the enclosing test.
+        > jq -Mc '.outcome | {kind, type, match_context}' $events
+        <? ^\{"kind":"fail","type":"pure-match","match_context":\{"type":"fn","name":"boom"\}\}$
+        match_ok()
+
+        // event_seq is the real pure-match-failed event seq, not zero.
+        > jq -M '.outcome.event_seq' $events
+        <? ^[1-9][0-9]*$
+        match_ok()
+
+        // vars_in_scope carries the test-preamble let bound before the call.
+        > jq -Mc '.outcome.vars_in_scope' $events
+        <? ^\[\["v","abc"\]\]$
+        match_ok()
+    }
+}

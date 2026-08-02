@@ -1,0 +1,17 @@
+test "run reports a pure match failure reached through nested pure fns" {
+    """
+    Verify relux run reports a pure-match assertion failure when the
+    failing `?` match lives inside a pure fn reached through another pure
+    fn. The failure's call stack must render the pure-fn-call frame chain
+    for both `outer` and `inner`, proving the nested pure call path is
+    reconstructed top-down in the failure report.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? did not match
+        <? Call stack
+        <? call inner
+        <? call outer
+        match_not_ok(1)
+    }
+}

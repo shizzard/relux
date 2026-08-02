@@ -1008,6 +1008,7 @@ dependencies = [
  "regex",
  "relux-ast",
  "relux-core",
+ "thiserror",
 ]
 
 [[package]]

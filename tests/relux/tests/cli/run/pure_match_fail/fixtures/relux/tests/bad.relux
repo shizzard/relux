@@ -1,0 +1,6 @@
+test "pure match fails" {
+    shell s {
+        let v := "abc"
+        v = xyz
+    }
+}

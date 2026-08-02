@@ -8,6 +8,7 @@ use std::sync::Arc;
 use crate::hash::StableHasher;
 
 pub mod bifs;
+pub mod matching;
 
 // --- VarScope --------------------------------------------
 
@@ -50,6 +51,35 @@ impl VarScope {
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
         self.vars.iter().map(|(k, v)| (k.as_str(), v.as_str()))
     }
+
+    /// Snapshot the bindings as an owned, sorted `(name, value)` list for
+    /// failure diagnostics. Sorted by key for stable output - matches
+    /// `ExecutionContext::snapshot_user_vars` so preamble and shell-body
+    /// failures serialize vars the same way.
+    pub fn snapshot(&self) -> Vec<(String, String)> {
+        let mut out: Vec<(String, String)> = self
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        out.sort();
+        out
+    }
+}
+
+// --- Variable resolution ---------------------------------
+
+/// Resolve `key` against an ordered scope chain (first hit wins), then
+/// fall back to `env`. This is the single resolution rule shared by the
+/// interpolation renderer and `ExecutionContext::lookup`, so the two
+/// cannot drift. Returns an owned `String` because callers span crates
+/// and lifetimes.
+pub fn lookup_var(scopes: &[&VarScope], env: &LayeredEnv, key: &str) -> Option<String> {
+    for scope in scopes {
+        if let Some(v) = scope.get(key) {
+            return Some(v.to_string());
+        }
+    }
+    env.get(key).map(str::to_string)
 }
 
 // --- Env -------------------------------------------------
@@ -302,6 +332,48 @@ impl LayeredEnvBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lookup_var_first_scope_hit_then_env() {
+        let mut a = VarScope::new();
+        a.insert("x".into(), "from_a".into());
+        let mut b = VarScope::new();
+        b.insert("x".into(), "from_b".into());
+        b.insert("y".into(), "only_b".into());
+        let env = LayeredEnv::root(Env::from_map(
+            [("z".to_string(), "from_env".to_string())]
+                .into_iter()
+                .collect(),
+        ));
+        // first scope wins
+        assert_eq!(lookup_var(&[&a, &b], &env, "x"), Some("from_a".to_string()));
+        // later scope consulted when earlier misses
+        assert_eq!(lookup_var(&[&a, &b], &env, "y"), Some("only_b".to_string()));
+        // env is the final fallback
+        assert_eq!(
+            lookup_var(&[&a, &b], &env, "z"),
+            Some("from_env".to_string())
+        );
+        // total miss is None
+        assert_eq!(lookup_var(&[&a, &b], &env, "nope"), None);
+        // empty scope slice still falls back to env
+        assert_eq!(lookup_var(&[], &env, "z"), Some("from_env".to_string()));
+    }
+
+    #[test]
+    fn lookup_var_scope_shadows_env() {
+        let mut scope = VarScope::new();
+        scope.insert("k".into(), "from_scope".into());
+        let env = LayeredEnv::root(Env::from_map(
+            [("k".to_string(), "from_env".to_string())]
+                .into_iter()
+                .collect(),
+        ));
+        assert_eq!(
+            lookup_var(&[&scope], &env, "k"),
+            Some("from_scope".to_string())
+        );
+    }
 
     #[test]
     fn var_scope_insert_and_get() {

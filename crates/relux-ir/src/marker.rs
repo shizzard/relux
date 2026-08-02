@@ -15,6 +15,7 @@ use relux_core::table::FileId;
 
 use super::IrNodeLowering;
 use super::LoweringContext;
+use super::PureEvalError;
 use super::expr::IrPureExpr;
 use super::interpolation::IrInterpolation;
 
@@ -63,8 +64,15 @@ pub enum IrMarkerCond {
     Unconditional,
     /// `<expr>` - truthy if the evaluated value is non-empty.
     Bare { expr: IrPureExpr },
-    /// `<lhs> == <rhs>`.
-    Eq { lhs: IrPureExpr, rhs: IrPureExpr },
+    /// `<lhs> = <rhs>` - literal match: met when `lhs` equals `rhs`
+    /// exactly. For a substring or pattern check, use `?` (regex).
+    /// `cond_span` locates the `lhs = rhs` body for diagnostics, mirroring
+    /// `Regex`'s `pattern_span`.
+    Eq {
+        lhs: IrPureExpr,
+        rhs: IrPureExpr,
+        cond_span: IrSpan,
+    },
     /// `<expr> =~ /<pattern>/`. `pattern` is the interpolation lowered into an
     /// `IrPureExpr::String`; `pattern_span` locates the `/.../` for diagnostics.
     Regex {
@@ -132,9 +140,10 @@ pub fn lower_markers(
             AstMarkerCondBody::Bare { expr, .. } => IrMarkerCond::Bare {
                 expr: IrPureExpr::lower(expr, file_id, ctx)?,
             },
-            AstMarkerCondBody::Eq { lhs, rhs, .. } => IrMarkerCond::Eq {
+            AstMarkerCondBody::Eq { lhs, rhs, span } => IrMarkerCond::Eq {
                 lhs: IrPureExpr::lower(lhs, file_id, ctx)?,
                 rhs: IrPureExpr::lower(rhs, file_id, ctx)?,
+                cond_span: IrSpan::new(file_id.clone(), *span),
             },
             AstMarkerCondBody::Regex {
                 expr,
@@ -142,7 +151,7 @@ pub fn lower_markers(
                 span,
             } => {
                 let expr = IrPureExpr::lower(expr, file_id, ctx)?;
-                let ir_interp = IrInterpolation::lower(pattern, file_id, ctx)?;
+                let ir_interp = IrInterpolation::lower_pure(pattern, file_id, ctx)?;
                 let pattern = IrPureExpr::String {
                     value: ir_interp,
                     span: IrSpan::new(file_id.clone(), pattern.span),
@@ -163,6 +172,31 @@ pub fn lower_markers(
         });
     }
     Ok(lowered)
+}
+
+/// Resolve one marker-condition operand from a pure evaluation.
+///
+/// A pure evaluation can fail two ways, and a marker condition treats them
+/// differently. A `PureMatchFailed` - a `?`/`=` reached through a called
+/// `pure fn` that did not match - folds to a falsy condition (`Ok(None)`): a
+/// condition that "does not match" is simply not met. A `MalformedPattern` is a
+/// hard error in every pure context, so it bails the whole decision as
+/// `LoweringBail::Invalid`, identical to a malformed pattern written directly on
+/// the marker's own `?` arm. The two must never be conflated.
+fn resolve_cond_operand(
+    res: Result<String, PureEvalError>,
+) -> Result<Option<String>, LoweringBail> {
+    match res {
+        Ok(value) => Ok(Some(value)),
+        Err(PureEvalError::PureMatchFailed { .. }) => Ok(None),
+        Err(PureEvalError::MalformedPattern {
+            pattern,
+            reason,
+            span,
+        }) => Err(LoweringBail::invalid(InvalidReport::invalid_regex(
+            pattern, reason, span,
+        ))),
+    }
 }
 
 /// Decide a definition's lowered markers against `env`. Produces the recordings
@@ -197,34 +231,93 @@ pub fn decide_markers(
             let negate = matches!(marker.modifier, MarkerEvalModifier::Unless);
 
             let mut recording = crate::pure_sink::RecordingSink::default();
+            let captures: std::collections::HashMap<String, String> =
+                std::collections::HashMap::new();
             let (mut met, evaluation) = match &marker.cond {
                 IrMarkerCond::Unconditional => unreachable!(),
                 IrMarkerCond::Bare { expr } => {
-                    let value = crate::evaluator::eval_pure_expr(
+                    match resolve_cond_operand(crate::evaluator::eval_pure_expr(
                         expr,
                         &relux_core::pure::VarScope::new(),
+                        &captures,
                         env,
                         fns,
                         &mut recording,
-                    );
-                    let met = !value.is_empty();
-                    (met, SkipEvaluation::Bare { value, met })
+                    ))? {
+                        Some(value) => {
+                            let met = !value.is_empty();
+                            (met, SkipEvaluation::Bare { value, met })
+                        }
+                        // A failed pure match (not a malformed pattern, which
+                        // `resolve_cond_operand` has already bailed on) makes
+                        // the condition falsy.
+                        None => (
+                            false,
+                            SkipEvaluation::Bare {
+                                value: String::new(),
+                                met: false,
+                            },
+                        ),
+                    }
                 }
-                IrMarkerCond::Eq { lhs, rhs } => {
+                IrMarkerCond::Eq {
+                    lhs,
+                    rhs,
+                    cond_span,
+                } => {
                     let vars = relux_core::pure::VarScope::new();
-                    let lhs_val =
-                        crate::evaluator::eval_pure_expr(lhs, &vars, env, fns, &mut recording);
-                    let rhs_val =
-                        crate::evaluator::eval_pure_expr(rhs, &vars, env, fns, &mut recording);
-                    let met = lhs_val == rhs_val;
-                    (
-                        met,
-                        SkipEvaluation::Eq {
-                            lhs: lhs_val,
-                            rhs: rhs_val,
-                            met,
-                        },
-                    )
+                    let lhs_val = resolve_cond_operand(crate::evaluator::eval_pure_expr(
+                        lhs,
+                        &vars,
+                        &captures,
+                        env,
+                        fns,
+                        &mut recording,
+                    ))?;
+                    let rhs_val = resolve_cond_operand(crate::evaluator::eval_pure_expr(
+                        rhs,
+                        &vars,
+                        &captures,
+                        env,
+                        fns,
+                        &mut recording,
+                    ))?;
+                    match (lhs_val, rhs_val) {
+                        (Some(lhs_val), Some(rhs_val)) => {
+                            // Literal mode never errors, so the Result/Option
+                            // unwraps cleanly.
+                            let met = crate::eval_pure_match(
+                                &mut recording,
+                                &lhs_val,
+                                &rhs_val,
+                                false,
+                                cond_span,
+                            )
+                            .expect("literal pure_match cannot fail")
+                            .is_some();
+                            (
+                                met,
+                                SkipEvaluation::PureMatch {
+                                    value: lhs_val,
+                                    pattern: rhs_val,
+                                    is_regex: false,
+                                    met,
+                                },
+                            )
+                        }
+                        // A failed pure match on either side (malformed patterns
+                        // already bailed in `resolve_cond_operand`) makes the
+                        // condition falsy.
+                        _ => (
+                            false,
+                            SkipEvaluation::PureMatch {
+                                value: String::new(),
+                                pattern: String::new(),
+                                is_regex: false,
+                                met: false,
+                            },
+                        ),
+                    }
                 }
                 IrMarkerCond::Regex {
                     expr,
@@ -232,58 +325,63 @@ pub fn decide_markers(
                     pattern_span,
                 } => {
                     let vars = relux_core::pure::VarScope::new();
-                    let value =
-                        crate::evaluator::eval_pure_expr(expr, &vars, env, fns, &mut recording);
-                    let pattern_str =
-                        crate::evaluator::eval_pure_expr(pattern, &vars, env, fns, &mut recording);
-
-                    let regex = regex::Regex::new(&pattern_str).map_err(|e| {
-                        LoweringBail::invalid(InvalidReport::invalid_regex(
-                            pattern_str.clone(),
-                            e.to_string(),
-                            pattern_span.clone(),
-                        ))
-                    })?;
-
-                    let (met, result_str, captures): (
-                        bool,
-                        String,
-                        std::collections::HashMap<String, String>,
-                    ) = if let Some(cap) = regex.captures(&value) {
-                        let mut caps = std::collections::HashMap::new();
-                        for i in 0..cap.len() {
-                            if let Some(m) = cap.get(i) {
-                                caps.insert(i.to_string(), m.as_str().to_string());
-                            }
-                        }
-                        (
-                            true,
-                            cap.get(0)
-                                .map(|m| m.as_str().to_string())
-                                .unwrap_or_default(),
-                            caps,
-                        )
-                    } else {
-                        (false, String::new(), std::collections::HashMap::new())
-                    };
-
-                    use crate::pure_sink::PureEvalSink;
-                    recording.record_match(
-                        crate::pure_sink::MatchKind::Regex,
-                        &value,
-                        &pattern_str,
-                        &result_str,
+                    let value = resolve_cond_operand(crate::evaluator::eval_pure_expr(
+                        expr,
+                        &vars,
                         &captures,
-                        pattern_span,
-                    );
-                    (
-                        met,
-                        SkipEvaluation::Regex {
-                            value,
-                            pattern: pattern_str,
-                            met,
-                        },
-                    )
+                        env,
+                        fns,
+                        &mut recording,
+                    ))?;
+                    let pattern_str = resolve_cond_operand(crate::evaluator::eval_pure_expr(
+                        pattern,
+                        &vars,
+                        &captures,
+                        env,
+                        fns,
+                        &mut recording,
+                    ))?;
+                    match (value, pattern_str) {
+                        (Some(value), Some(pattern_str)) => {
+                            let hit = crate::eval_pure_match(
+                                &mut recording,
+                                &value,
+                                &pattern_str,
+                                true,
+                                pattern_span,
+                            )
+                            .map_err(|e| {
+                                LoweringBail::invalid(InvalidReport::invalid_regex(
+                                    e.pattern,
+                                    e.reason,
+                                    pattern_span.clone(),
+                                ))
+                            })?;
+                            let met = hit.is_some();
+
+                            (
+                                met,
+                                SkipEvaluation::PureMatch {
+                                    value,
+                                    pattern: pattern_str,
+                                    is_regex: true,
+                                    met,
+                                },
+                            )
+                        }
+                        // A failed pure match on either side (malformed patterns
+                        // already bailed in `resolve_cond_operand`) makes the
+                        // condition falsy.
+                        _ => (
+                            false,
+                            SkipEvaluation::PureMatch {
+                                value: String::new(),
+                                pattern: String::new(),
+                                is_regex: true,
+                                met: false,
+                            },
+                        ),
+                    }
                 }
             };
 

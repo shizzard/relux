@@ -1,0 +1,31 @@
+test "run --junit and --tap render a pure-match failure" {
+    """
+    The junit.rs and tap.rs `Failure::PureMatch` arms had no e2e coverage. Run a
+    failing pure match with both reporters and assert each artifact renders the
+    PureMatch failure -- the JUnit failure type plus the shared message, and the
+    TAP not-ok line with the same message.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --junit --tap --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <= 1 failed
+        match_not_ok(1)
+
+        > run=$(ls -dt ${__RELUX_TEST_ROOT}/fixtures/relux/out/run-* | head -1); echo RUN=$run
+        <? ^RUN=/
+        match_ok()
+
+        > grep -c 'type="PureMatch"' $run/junit.xml
+        <? ^1$
+        match_ok()
+        > grep -F 'did not satisfy pattern xyz' $run/junit.xml
+        <? did not satisfy pattern xyz
+        match_ok()
+
+        > grep -F 'not ok 1 - pure match fails' $run/results.tap
+        <? not ok 1
+        match_ok()
+        > grep -F 'pure match in shell' $run/results.tap
+        <? pure match in shell
+        match_ok()
+    }
+}

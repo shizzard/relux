@@ -1,0 +1,36 @@
+test "run reports a preamble pure match failure" {
+    """
+    Verify relux run reports a pure-match assertion failure when the
+    failing match lives in a test preamble (before any shell block), so
+    the test fails and the process exits nonzero before any shell spawns.
+    Also verifies events.json's failure record carries a typed
+    match_context of kind "test-preamble" naming the test, a real
+    non-zero event_seq, and a populated vars_in_scope snapshot -
+    regression guard for the pre-VM pure-match failure path, which used
+    to serialize event_seq 0 and an empty vars_in_scope.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? did not match
+        match_not_ok(1)
+
+        > events=$(ls -dt ${__RELUX_TEST_ROOT}/fixtures/relux/out/*/logs/relux/tests/bad/preamble-pure-match-fails/events.json 2>/dev/null | head -1); echo FOUND=$events
+        <? ^FOUND=/
+        match_ok()
+
+        // match_context names the test's preamble, not a bare/empty shell string.
+        > jq -Mc '.outcome | {kind, type, match_context}' $events
+        <? ^\{"kind":"fail","type":"pure-match","match_context":\{"type":"test-preamble","name":"preamble pure match fails"\}\}$
+        match_ok()
+
+        // event_seq is the real pure-match-failed event seq, not zero.
+        > jq -M '.outcome.event_seq' $events
+        <? ^[1-9][0-9]*$
+        match_ok()
+
+        // vars_in_scope carries the let bound before the failing match.
+        > jq -Mc '.outcome.vars_in_scope' $events
+        <? ^\[\["v","abc"\]\]$
+        match_ok()
+    }
+}

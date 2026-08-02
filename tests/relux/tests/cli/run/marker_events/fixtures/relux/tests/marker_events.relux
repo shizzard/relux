@@ -6,7 +6,7 @@ test "marker events fixture" {
     inspect the recorded marker-eval payloads and the replayed
     sink ops:
       - skip if Eq (with trim/1 BIF pure-call)
-      - flaky if Regex (records a pure-match event)
+      - flaky if Regex (records a pure-match-start/pure-match-done event pair)
     """
     let greeting := trim("  hi  ")
     shell s {

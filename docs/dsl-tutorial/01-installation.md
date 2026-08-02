@@ -74,7 +74,7 @@ This autodetects your shell and writes the completion script to the standard loc
 relux completions --shell zsh --install --path ~/.zsh/completions
 ```
 
-See [The CLI](17-the-cli.md) for details.
+See [The CLI](18-the-cli.md) for details.
 
 ---
 

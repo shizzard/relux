@@ -14,10 +14,11 @@
 - [Fail Patterns](11-fail-patterns.md)
 - [Effects and Dependencies](12-effects-and-dependencies.md)
 - [Pure Functions](13-pure-functions.md)
-- [Cleanup](14-cleanup.md)
-- [Modules and Imports](15-modules-and-imports.md)
-- [Condition Markers](16-condition-markers.md)
-- [The CLI](17-the-cli.md)
+- [Pure Matching](14-pure-matching.md)
+- [Cleanup](15-cleanup.md)
+- [Modules and Imports](16-modules-and-imports.md)
+- [Condition Markers](17-condition-markers.md)
+- [The CLI](18-the-cli.md)
 
 ---
 

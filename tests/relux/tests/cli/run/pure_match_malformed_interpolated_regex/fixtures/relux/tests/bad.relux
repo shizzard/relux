@@ -1,0 +1,9 @@
+test "malformed interpolated regex is a runtime failure" {
+    shell s {
+        let bad := "["
+        // interpolation produces `[abc`, an unterminated character class;
+        // literal patterns are caught at check time, but an interpolated one
+        // only fails here, at run time.
+        "x" ? ${bad}abc
+    }
+}

@@ -1,0 +1,17 @@
+pure fn extract() {
+    let p := "[invalid"
+    p ? ${p}
+}
+
+# skip if extract()
+test "uses a marker condition that malforms a pattern" {
+    """
+    A malformed interpolated pure-match pattern reached through a pure fn in a
+    marker condition must be a hard error, not silently folded into a falsy
+    condition. check must report the invalid regex and point at the pure fn.
+    """
+    shell s {
+        > echo done
+        <? ^done$
+    }
+}

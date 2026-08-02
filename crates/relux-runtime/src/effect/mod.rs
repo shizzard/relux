@@ -21,16 +21,17 @@ use crate::effect::registry::ReleaseOutcome;
 use crate::effect::registry::ShellInstanceKey;
 use crate::effect::registry::ShellMap;
 use crate::effect::registry::VarMap;
+use crate::observe::structured::MatchContext;
 use crate::observe::structured::SpanId;
 use crate::observe::structured::SpanKind;
 use crate::report::result::ExecError;
 use crate::report::result::Failure;
 use crate::report::result::FailureContext;
+use crate::report::result::pure_eval_failure;
 use crate::vm::Vm;
 use crate::vm::context::ExecutionContext;
 use crate::vm::context::Scope;
 use crate::vm::context::ShellState;
-use relux_core::diagnostics::IrSpan;
 use relux_core::pure::Env;
 use relux_core::pure::LayeredEnv;
 use relux_core::pure::LayeredEnvSource;
@@ -39,7 +40,6 @@ use relux_ir::IrCleanupBlock;
 use relux_ir::IrEffectItem;
 use relux_ir::IrEffectStart;
 use relux_ir::IrNode;
-use relux_ir::IrPureLetStmt;
 
 // --- Warning / CleanupSource -----------------------------
 
@@ -107,6 +107,7 @@ impl EffectManager {
         caller_vars: &'a VarScope,
         caller_env: &'a Arc<LayeredEnv>,
         parent_span: SpanId,
+        caller_captures: &'a std::collections::HashMap<String, String>,
     ) -> std::pin::Pin<
         Box<
             dyn std::future::Future<Output = Result<Vec<(ExportedEffect, EffectGuard)>, ExecError>>
@@ -121,7 +122,7 @@ impl EffectManager {
                 Vec::with_capacity(starts.len());
             for start in starts {
                 let evaluated = self
-                    .eval_overlay(start, caller_vars, caller_env, parent_span)
+                    .eval_overlay(start, caller_vars, caller_env, parent_span, caller_captures)
                     .await?;
 
                 let expect_names: Vec<&str> = self
@@ -206,9 +207,16 @@ impl EffectManager {
         starts: &[IrEffectStart],
         caller_vars: &VarScope,
         caller_env: &Arc<LayeredEnv>,
+        caller_captures: &std::collections::HashMap<String, String>,
     ) -> Result<Vec<ExportedEffect>, ExecError> {
         let pairs = self
-            .instantiate(starts, caller_vars, caller_env, self.test_span)
+            .instantiate(
+                starts,
+                caller_vars,
+                caller_env,
+                self.test_span,
+                caller_captures,
+            )
             .await?;
         let mut top = self.top_level_guards.lock().await;
         let mut exported = Vec::with_capacity(pairs.len());
@@ -375,13 +383,13 @@ impl EffectManager {
             .get(start.effect())
             .ok_or_else(|| Failure::Runtime {
                 message: format!("effect {:?} not found in table", start.effect()),
-                span: None,
+                span: start.effect_span().clone(),
                 shell: None,
                 context: FailureContext::pre_vm_with_span(setup_span.id()),
             })?;
         let effect = effect_result.as_ref().map_err(|e| Failure::Runtime {
             message: format!("effect resolution failed: {e:?}"),
-            span: None,
+            span: start.effect_span().clone(),
             shell: None,
             context: FailureContext::pre_vm_with_span(setup_span.id()),
         })?;
@@ -402,11 +410,59 @@ impl EffectManager {
             env: effect_env.clone(),
         };
 
-        // 3. Evaluate effect-level lets into scope (parser enforces lets before starts)
+        // 3. Evaluate effect-level preamble (lets + pure-matches) into scope
+        //    (parser enforces these come before starts). `body_captures`
+        //    is hoisted across the whole preamble so a regex pure-match's
+        //    `$n` captures flow into later lets, pure-matches, and the
+        //    sub-dependency overlays instantiated in step 4.
+        let mut body_captures: HashMap<String, String> = HashMap::new();
+        let ec = MatchContext::EffectPreamble {
+            name: start.effect().name.to_string(),
+        };
         for item in effect.body() {
-            if let IrEffectItem::Let { stmt, span } = item {
-                self.eval_effect_let(stmt, span, &scope, &effect_env, setup_span_id)
-                    .await;
+            match item {
+                IrEffectItem::Let { stmt, span } => {
+                    crate::preamble::eval_preamble_let(
+                        &self.rt_ctx.log,
+                        &effect_env,
+                        &self.rt_ctx.tables.pure_fns,
+                        &scope,
+                        setup_span_id,
+                        &ec,
+                        stmt,
+                        span,
+                        &body_captures,
+                    )
+                    .await?;
+                }
+                IrEffectItem::PureMatch {
+                    lhs,
+                    pattern,
+                    is_regex,
+                    span,
+                } => {
+                    crate::preamble::eval_preamble_pure_match(
+                        &self.rt_ctx.log,
+                        &effect_env,
+                        &self.rt_ctx.tables.pure_fns,
+                        &scope,
+                        setup_span_id,
+                        &ec,
+                        lhs,
+                        pattern,
+                        *is_regex,
+                        span,
+                        &mut body_captures,
+                    )
+                    .await?;
+                }
+                // Non-preamble items run in the body walk below.
+                IrEffectItem::Comment { .. }
+                | IrEffectItem::Expect { .. }
+                | IrEffectItem::Start { .. }
+                | IrEffectItem::Expose { .. }
+                | IrEffectItem::Shell { .. }
+                | IrEffectItem::Cleanup { .. } => {}
             }
         }
 
@@ -419,7 +475,13 @@ impl EffectManager {
         //    so there is nothing for cleanup to act on.
         let effect_vars = scope.vars().lock().await.clone();
         let exported_deps = self
-            .instantiate(effect.starts(), &effect_vars, &effect_env, setup_span_id)
+            .instantiate(
+                effect.starts(),
+                &effect_vars,
+                &effect_env,
+                setup_span_id,
+                &body_captures,
+            )
             .await?;
 
         // From here on, `dep_guards` accumulates the guards for the
@@ -551,6 +613,7 @@ impl EffectManager {
                 | IrEffectItem::Start { .. }
                 | IrEffectItem::Expose { .. }
                 | IrEffectItem::Let { .. }
+                | IrEffectItem::PureMatch { .. }
                 | IrEffectItem::Cleanup { .. } => continue,
                 IrEffectItem::Shell { block, .. } => {
                     let switch_span = block.name().span();
@@ -570,7 +633,7 @@ impl EffectManager {
                         let dep =
                             try_guards!(dep_shells.get(alias).ok_or_else(|| Failure::Runtime {
                                 message: format!("unknown effect alias `{alias}`"),
-                                span: None,
+                                span: qualifier.span().clone(),
                                 shell: None,
                                 context: FailureContext::pre_vm_with_span(block_span_id),
                             }));
@@ -579,7 +642,7 @@ impl EffectManager {
                                 message: format!(
                                     "effect alias `{alias}` does not expose shell `{shell_name}`"
                                 ),
-                                span: None,
+                                span: block.name().span().clone(),
                                 shell: None,
                                 context: FailureContext::pre_vm_with_span(block_span_id),
                             }));
@@ -634,7 +697,14 @@ impl EffectManager {
                                 shell_name: name.clone(),
                             };
                             let vm = try_guards!(
-                                Vm::new(name.clone(), shell_key.marker(), ctx, &self.rt_ctx).await
+                                Vm::new(
+                                    name.clone(),
+                                    shell_key.marker(),
+                                    ctx,
+                                    &self.rt_ctx,
+                                    block.span().clone(),
+                                )
+                                .await
                             );
                             shells.insert(name.clone(), Arc::new(TokioMutex::new(vm)));
                         }
@@ -682,7 +752,10 @@ impl EffectManager {
                                     effect.name().name(),
                                     qualifier,
                                 ),
-                                span: None,
+                                span: expose
+                                    .qualifier_span()
+                                    .expect("qualified expose has a qualifier span")
+                                    .clone(),
                                 shell: None,
                                 context: FailureContext::pre_vm_with_span(setup_span_id),
                             }
@@ -695,7 +768,7 @@ impl EffectManager {
                                     expose.target(),
                                     qualifier,
                                 ),
-                                span: None,
+                                span: expose.target_span().clone(),
                                 shell: None,
                                 context: FailureContext::pre_vm_with_span(setup_span_id),
                             }
@@ -710,7 +783,7 @@ impl EffectManager {
                                     effect.name().name(),
                                     expose.target(),
                                 ),
-                                span: None,
+                                span: expose.target_span().clone(),
                                 shell: None,
                                 context: FailureContext::pre_vm_with_span(setup_span_id),
                             }));
@@ -740,7 +813,10 @@ impl EffectManager {
                                         effect.name().name(),
                                         qualifier,
                                     ),
-                                    span: None,
+                                    span: expose
+                                        .qualifier_span()
+                                        .expect("qualified expose has a qualifier span")
+                                        .clone(),
                                     shell: None,
                                     context: FailureContext::pre_vm_with_span(setup_span_id),
                                 }
@@ -753,7 +829,7 @@ impl EffectManager {
                                     expose.target(),
                                     qualifier,
                                 ),
-                                span: None,
+                                span: expose.target_span().clone(),
                                 shell: None,
                                 context: FailureContext::pre_vm_with_span(setup_span_id),
                             }
@@ -833,51 +909,38 @@ impl EffectManager {
         caller_vars: &VarScope,
         caller_env: &Arc<LayeredEnv>,
         caller_span: SpanId,
+        caller_captures: &std::collections::HashMap<String, String>,
     ) -> Result<Env, ExecError> {
         let mut overlay = Env::new();
         let mut sink =
             crate::observe::structured::log_sink::LogSink::new(&self.rt_ctx.log, caller_span);
         for entry in start.overlay() {
-            let value = relux_ir::evaluator::eval_pure_expr(
+            let value = match relux_ir::evaluator::eval_pure_expr(
                 entry.value(),
                 caller_vars,
+                caller_captures,
                 caller_env,
                 &self.rt_ctx.tables.pure_fns,
                 &mut sink,
-            );
+            ) {
+                Ok(v) => v,
+                Err(err) => {
+                    let vars_in_scope = caller_vars.snapshot();
+                    return Err(pure_eval_failure(
+                        err,
+                        caller_span,
+                        MatchContext::EffectPreamble {
+                            name: start.effect().name.to_string(),
+                        },
+                        vars_in_scope,
+                        &sink,
+                        &self.rt_ctx.log,
+                    ));
+                }
+            };
             overlay.insert(entry.key().name().to_string(), value);
         }
         Ok(overlay)
-    }
-
-    async fn eval_effect_let(
-        &self,
-        stmt: &IrPureLetStmt,
-        span: &IrSpan,
-        scope: &Scope,
-        effect_env: &Arc<LayeredEnv>,
-        setup_span: SpanId,
-    ) {
-        let mut vars = scope.vars().lock().await;
-        let mut sink =
-            crate::observe::structured::log_sink::LogSink::new(&self.rt_ctx.log, setup_span);
-        let value = if let Some(expr) = stmt.value() {
-            relux_ir::evaluator::eval_pure_expr(
-                expr,
-                &vars,
-                effect_env,
-                &self.rt_ctx.tables.pure_fns,
-                &mut sink,
-            )
-        } else {
-            String::new()
-        };
-        let name = stmt.name().name();
-        vars.insert(name.to_string(), value.clone());
-        drop(vars);
-        self.rt_ctx
-            .log
-            .emit_var_let(setup_span, None, None, name, &value, Some(span));
     }
 
     /// Glue: release one guard, then either run its cleanup body (when
@@ -1078,6 +1141,7 @@ impl EffectManager {
             cleanup_marker.to_string(),
             ctx,
             &cleanup_rt_ctx,
+            cleanup_block.span().clone(),
         )
         .await?;
         vm.exec_stmts(cleanup_block.body()).await?;

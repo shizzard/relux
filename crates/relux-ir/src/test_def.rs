@@ -12,18 +12,44 @@ use super::block::IrCleanupBlock;
 use super::block::IrShellBlock;
 use super::comment::IrComment;
 use super::effect::IrEffectStart;
+use super::expr::IrPureExpr;
+use super::interpolation::IrInterpolation;
 use super::stmt::IrPureLetStmt;
 
 // --- IrTestItem ------------------------------------------
 
 #[derive(Debug, Clone)]
 pub enum IrTestItem {
-    Comment { comment: IrComment, span: IrSpan },
-    DocString { text: String, span: IrSpan },
-    Start { start: IrEffectStart, span: IrSpan },
-    Let { stmt: IrPureLetStmt, span: IrSpan },
-    Shell { block: IrShellBlock, span: IrSpan },
-    Cleanup { block: IrCleanupBlock, span: IrSpan },
+    Comment {
+        comment: IrComment,
+        span: IrSpan,
+    },
+    DocString {
+        text: String,
+        span: IrSpan,
+    },
+    Start {
+        start: IrEffectStart,
+        span: IrSpan,
+    },
+    Let {
+        stmt: IrPureLetStmt,
+        span: IrSpan,
+    },
+    PureMatch {
+        lhs: IrPureExpr,
+        pattern: IrInterpolation,
+        is_regex: bool,
+        span: IrSpan,
+    },
+    Shell {
+        block: IrShellBlock,
+        span: IrSpan,
+    },
+    Cleanup {
+        block: IrCleanupBlock,
+        span: IrSpan,
+    },
 }
 
 impl_ir_node_enum!(IrTestItem {
@@ -31,6 +57,7 @@ impl_ir_node_enum!(IrTestItem {
     DocString,
     Start,
     Let,
+    PureMatch,
     Shell,
     Cleanup
 });
@@ -110,6 +137,24 @@ impl IrNodeLowering for IrTestItem {
                 let ir = IrPureLetStmt::lower(stmt, file, ctx)?;
                 Ok(IrTestItem::Let {
                     stmt: ir,
+                    span: s(span),
+                })
+            }
+            AstTestItem::PureMatch {
+                lhs,
+                pattern,
+                is_regex,
+                span,
+            } => {
+                let ir_lhs = IrPureExpr::lower(&lhs.node, file, ctx)?;
+                let ir_pattern = IrInterpolation::lower_pure(pattern, file, ctx)?;
+                if *is_regex {
+                    super::regex_validate::validate_static_regex(pattern, file)?;
+                }
+                Ok(IrTestItem::PureMatch {
+                    lhs: ir_lhs,
+                    pattern: ir_pattern,
+                    is_regex: *is_regex,
                     span: s(span),
                 })
             }

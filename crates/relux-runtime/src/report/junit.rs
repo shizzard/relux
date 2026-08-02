@@ -135,11 +135,20 @@ fn format_failure_detail(failure: &Failure, source_table: &SourceTable) -> Strin
                 Some(s) => format!("shell: {s}\n"),
                 None => String::new(),
             };
-            let loc_line = match span {
-                Some(s) => format!("\n{}", source_location(s, source_table)),
-                None => String::new(),
-            };
+            let loc_line = format!("\n{}", source_location(span, source_table));
             format!("{shell_line}message: {message}{loc_line}")
+        }
+        Failure::PureMatch {
+            value,
+            pattern,
+            is_regex,
+            span,
+            match_context,
+            ..
+        } => {
+            let loc = source_location(span, source_table);
+            let op = if *is_regex { "?" } else { "=" };
+            format!("context: {match_context}\npattern: {op} {pattern}\nvalue: {value}\n{loc}")
         }
         Failure::MultiMatch {
             shell,

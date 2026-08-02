@@ -89,8 +89,8 @@ IR types and AST→IR lowering.
 - **Type definitions**: `plan.rs`, `test_def.rs`, `effect.rs`, `func.rs`, `stmt.rs`, `expr.rs`, `block.rs`, `interpolation.rs`, `ident.rs`, `timeout.rs`, `comment.rs`, `tables.rs`. Each file defines IR types and their `IrNodeLowering` impl.
 - **lowering_context.rs**: `LoweringContext` — orchestrates caching, cycle detection, scope stacks, BIF registration, import resolution, and diagnostic collection during AST→IR lowering.
 - **lowering_trait.rs**: `IrNodeLowering` trait — cached, cycle-detecting AST→IR conversion.
-- **evaluator.rs**: `eval_pure_expr()` — infallible pure expression evaluator (all failure modes caught at lowering time). Emits structured events into a `PureEvalSink` so the runtime can record interpolations and pure-fn calls.
-- **pure_sink.rs**: `PureEvalSink` trait + `MatchKind` — the interface the IR evaluator uses to record pure-evaluation events. The runtime implements this against the `StructuredLogBuilder`; a null impl is used when no log is being captured.
+- **evaluator.rs**: `eval_pure_expr()` — fallible pure expression evaluator returning `Result<String, PureEvalError>` (a failed pure match or a malformed interpolated regex surfaces as an error; undefined-fn/arity/cycle are still caught at lowering time). Emits structured events into a `PureEvalSink` so the runtime can record interpolations and pure-fn calls.
+- **pure_sink.rs**: `PureEvalSink` trait — the interface the IR evaluator uses to record pure-evaluation events, including the `pure-match-start`/`pure-match-done`/`pure-match-failed` trio (`is_regex: bool` distinguishes `=`/`?`). The runtime implements this against the `StructuredLogBuilder`; a null impl is used when no log is being captured.
 - **shallow_env.rs**: `ShallowLayeredEnv` — name-only layered env for resolve-time `expect` satisfiability checks.
 - **marker.rs**: Marker/annotation evaluation (`@skip`, `@flaky`, conditional markers). Returns recordings that the runtime replays under the synthetic `markers` span.
 - **regex_validate.rs**: Compile-time regex validation for match patterns.

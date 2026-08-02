@@ -99,7 +99,9 @@ export function singleEventTypeId(k: Event['kind']): EventTypeId | null {
       return 'var-read';
     case 'interpolation':
       return 'interpolation';
-    case 'pure-match':
+    case 'pure-match-start':
+    case 'pure-match-done':
+    case 'pure-match-failed':
       return 'pure-match';
     case 'bool-check':
       return 'bool-check';

@@ -190,6 +190,7 @@ impl<'a> Visitor<'a> {
                     self.visit_pure_expr(expr)?;
                 }
             }
+            IrTestItem::PureMatch { lhs, .. } => self.visit_pure_expr(lhs)?,
             IrTestItem::Shell { block, .. } => {
                 for stmt in block.body() {
                     self.visit_shell_stmt(stmt)?;
@@ -215,6 +216,7 @@ impl<'a> Visitor<'a> {
                     self.visit_pure_expr(expr)?;
                 }
             }
+            IrEffectItem::PureMatch { lhs, .. } => self.visit_pure_expr(lhs)?,
             IrEffectItem::Shell { block, .. } => {
                 for stmt in block.body() {
                     self.visit_shell_stmt(stmt)?;
@@ -251,6 +253,7 @@ impl<'a> Visitor<'a> {
             }
             IrShellStmt::Assign { stmt, .. } => self.visit_expr(stmt.value())?,
             IrShellStmt::Expr { expr, .. } => self.visit_expr(expr)?,
+            IrShellStmt::PureMatch { lhs, .. } => self.visit_expr(lhs)?,
         }
         Ok(())
     }
@@ -265,6 +268,7 @@ impl<'a> Visitor<'a> {
             }
             IrPureStmt::Assign { stmt, .. } => self.visit_pure_expr(stmt.value())?,
             IrPureStmt::Expr { expr, .. } => self.visit_pure_expr(expr)?,
+            IrPureStmt::PureMatch { lhs, .. } => self.visit_pure_expr(lhs)?,
         }
         Ok(())
     }
@@ -287,7 +291,7 @@ impl<'a> Visitor<'a> {
 
     fn visit_pure_expr(&mut self, expr: &IrPureExpr) -> Result<(), LoweringBail> {
         match expr {
-            IrPureExpr::String { .. } | IrPureExpr::Var { .. } => {}
+            IrPureExpr::String { .. } | IrPureExpr::Var { .. } | IrPureExpr::Capture { .. } => {}
             IrPureExpr::Call { call, .. } => {
                 for arg in call.args() {
                     self.visit_pure_expr(arg)?;

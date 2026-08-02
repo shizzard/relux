@@ -1,6 +1,6 @@
 # Condition Markers
 
-[Previous: Modules and Imports](15-modules-and-imports.md)
+[Previous: Modules and Imports](16-modules-and-imports.md)
 
 Integration tests exercise real systems, and real systems have prerequisites. Some tests only make sense on a particular operating system. Some require a tool like `docker` or `psql` to be installed. Some are too slow to run locally on every test run, and belong exclusively to CI.
 
@@ -146,9 +146,9 @@ test "runs when MY_VAR is not set" {
 
 Note that `# run if "${X}"` and `# skip unless "${X}"` are logically equivalent — both skip the test when `X` is unset. The choice between them is about readability, which the best practices section below discusses.
 
-### Equality comparisons
+### Exact-equality comparisons
 
-When truthiness is not enough, you can compare a variable against a specific value using `=`:
+When truthiness is not enough, you can check whether a variable's value is exactly a given string using `=`:
 
 ```relux
 # skip if "${MY_VAR}" = "yes"
@@ -160,7 +160,19 @@ test "skipped when MY_VAR is exactly yes" {
 }
 ```
 
-Both sides of the `=` support [variable interpolation](06-variables.md#string-interpolation). You can build compound values:
+`=` tests **exact equality**, not containment: the condition is truthy only when the two sides are the same string. This is unlike the shell literal-match operators `<=` and `!=`, which scan a streaming buffer for a substring — a marker compares against a complete, bounded value, so equality is the natural test. For a substring or pattern check, use `?` (regex):
+
+```relux
+# skip if "${PATH}" ? bin
+test "skipped when PATH contains bin" {
+    shell s {
+        > echo hello
+        <? ^hello$
+    }
+}
+```
+
+Both sides of the `=` support [variable interpolation](06-variables.md#string-interpolation). You can build compound values, compared as one exact string:
 
 ```relux
 # run if "${HOST}:${PORT}" = "localhost:8080"
@@ -211,7 +223,7 @@ test "only on 64-bit architectures" {
 }
 ```
 
-Each marker on a test produces a **marker-eval span** in the [test log viewer](03-send-match-and-logs.md) — the detail panel shows the marker kind (`@skip`, `@run`, or `@flaky`), the modifier (`if` or `unless`), and the decision (`pass` to let the test run or `mark` to mark it skipped or flaky). Inside that span is a **bool-check event** carrying the actual condition that was tested. The event's content varies by shape: a truthiness check (`# skip if "${X}"`) shows the value and a `met: true/false` flag; an equality check shows `lhs`, `rhs`, and `met`; a regex check shows `value`, `pattern`, and `met`. One row tells you the marker's verdict; the next tells you exactly what was compared to reach it.
+Each marker on a test produces a **marker-eval span** in the [test log viewer](03-send-match-and-logs.md) — the detail panel shows the marker kind (`@skip`, `@run`, or `@flaky`), the modifier (`if` or `unless`), and the decision (`pass` to let the test run or `mark` to mark it skipped or flaky). Inside that span is a **bool-check event** carrying the actual condition that was tested. The event's content varies by shape: a truthiness check (`# skip if "${X}"`) shows the value and a `met: true/false` flag; an equality or regex check (`=` or `?`) shares one shape, showing `value`, `pattern`, `is_regex` (`false` for `=`, `true` for `?`), and `met`. One row tells you the marker's verdict; the next tells you exactly what was compared to reach it.
 
 ## Pure function calls in markers
 
@@ -390,4 +402,4 @@ Putting a marker on an effect skips every test that depends on it. This is power
 
 ---
 
-Next: [The CLI](17-the-cli.md) — complete coverage of `relux init`, `new`, `check`, `run`, and `history`
+Next: [The CLI](18-the-cli.md) — complete coverage of `relux init`, `new`, `check`, `run`, and `history`

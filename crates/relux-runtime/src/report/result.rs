@@ -10,8 +10,11 @@ use relux_ir::IrTimeout;
 
 use crate::cancel::CancelReason;
 use crate::observe::structured::EventSeq;
+use crate::observe::structured::MatchContext;
 use crate::observe::structured::SpanId;
 use crate::observe::structured::StackFrame;
+use crate::observe::structured::StructuredLogBuilder;
+use crate::observe::structured::log_sink::LogSink;
 
 /// Diagnostic context captured at failure-construction time. Travels with
 /// every `Failure` so that downstream consumers (structured-log artifact,
@@ -35,33 +38,78 @@ pub enum FailureContext {
         buffer_tail: String,
         vars_in_scope: Vec<(String, String)>,
     },
+    /// Failure raised from pure evaluation at a pre-VM boundary (test/effect
+    /// preamble, overlay, or a pure-fn body reached from one). Unlike
+    /// `PreVm`, a pure-match failure always emitted its event trio and knows
+    /// its scope vars, so `event_seq` and `vars_in_scope` are non-optional
+    /// and real. No buffer (a pure match reads no shell).
+    Pure {
+        span: SpanId,
+        event_seq: EventSeq,
+        call_stack: Vec<StackFrame>,
+        vars_in_scope: Vec<(String, String)>,
+    },
     /// Failure raised before/around any VM. `span` points at the
     /// surrounding span when one is known (effect-setup span,
-    /// shell-block span, cleanup-block span), `None` otherwise.
-    PreVm { span: Option<SpanId> },
+    /// shell-block span, cleanup-block span), `None` otherwise. The
+    /// `call_stack` carries pure-fn frames when the failure came out of
+    /// pure evaluation; empty for every other pre-VM failure.
+    PreVm {
+        span: Option<SpanId>,
+        call_stack: Vec<StackFrame>,
+    },
 }
 
 impl FailureContext {
     /// Construct a `PreVm` context with no surrounding span.
     pub fn pre_vm() -> Self {
-        Self::PreVm { span: None }
+        Self::PreVm {
+            span: None,
+            call_stack: vec![],
+        }
     }
 
     /// Construct a `PreVm` context tied to a known surrounding span.
     pub fn pre_vm_with_span(span: SpanId) -> Self {
-        Self::PreVm { span: Some(span) }
+        Self::PreVm {
+            span: Some(span),
+            call_stack: vec![],
+        }
+    }
+
+    /// Construct a `PreVm` context tied to a known surrounding span and a
+    /// resolved call stack (pure-fn frames).
+    pub fn pre_vm_with_frames(span: Option<SpanId>, call_stack: Vec<StackFrame>) -> Self {
+        Self::PreVm { span, call_stack }
+    }
+
+    /// Construct a `Pure` context for a pre-VM pure-evaluation failure.
+    pub fn pure(
+        span: SpanId,
+        event_seq: EventSeq,
+        call_stack: Vec<StackFrame>,
+        vars_in_scope: Vec<(String, String)>,
+    ) -> Self {
+        Self::Pure {
+            span,
+            event_seq,
+            call_stack,
+            vars_in_scope,
+        }
     }
 
     pub fn span(&self) -> Option<SpanId> {
         match self {
             Self::Vm { span, .. } => Some(*span),
-            Self::PreVm { span } => *span,
+            Self::Pure { span, .. } => Some(*span),
+            Self::PreVm { span, .. } => *span,
         }
     }
 
     pub fn event_seq(&self) -> Option<EventSeq> {
         match self {
             Self::Vm { event_seq, .. } => Some(*event_seq),
+            Self::Pure { event_seq, .. } => Some(*event_seq),
             Self::PreVm { .. } => None,
         }
     }
@@ -69,20 +117,22 @@ impl FailureContext {
     pub fn call_stack(&self) -> &[StackFrame] {
         match self {
             Self::Vm { call_stack, .. } => call_stack,
-            Self::PreVm { .. } => &[],
+            Self::Pure { call_stack, .. } => call_stack,
+            Self::PreVm { call_stack, .. } => call_stack,
         }
     }
 
     pub fn buffer_tail(&self) -> &str {
         match self {
             Self::Vm { buffer_tail, .. } => buffer_tail,
-            Self::PreVm { .. } => "",
+            Self::Pure { .. } | Self::PreVm { .. } => "",
         }
     }
 
     pub fn vars_in_scope(&self) -> &[(String, String)] {
         match self {
             Self::Vm { vars_in_scope, .. } => vars_in_scope,
+            Self::Pure { vars_in_scope, .. } => vars_in_scope,
             Self::PreVm { .. } => &[],
         }
     }
@@ -132,8 +182,19 @@ pub enum Failure {
     )]
     Runtime {
         message: String,
-        span: Option<IrSpan>,
+        span: IrSpan,
         shell: Option<String>,
+        context: FailureContext,
+    },
+    #[error(
+        "pure match in {match_context} did not satisfy pattern {pattern}: value {value:?} did not match"
+    )]
+    PureMatch {
+        value: String,
+        pattern: String,
+        is_regex: bool,
+        span: IrSpan,
+        match_context: MatchContext,
         context: FailureContext,
     },
     #[error(
@@ -155,7 +216,93 @@ pub enum Failure {
     },
 }
 
+/// Resolve the pure-fn call chain from the innermost still-open pure-fn
+/// span. On the pure-eval error path `leave_pure_fn` is skipped by `?`
+/// propagation, so those spans stay open and carry the chain. Empty when
+/// no pure fn is on the stack (a direct pure-match failure).
+pub fn resolve_pure_stack(sink: &LogSink, log: &StructuredLogBuilder) -> Vec<StackFrame> {
+    sink.deepest_open_span()
+        .map(|leaf| log.resolve_stack(leaf))
+        .unwrap_or_default()
+}
+
+/// Build the `ExecError` for a pure-eval failure at a pre-VM boundary
+/// (test-level / effect-level `let` or pure-match, overlay). Resolves the
+/// pure-fn chain and wraps it in a `Pure` failure context carrying the
+/// real current seq and a snapshot of the scope vars. When the failure
+/// surfaced from a pure-fn frame, the match context names that fn;
+/// otherwise it is the caller-supplied enclosing context (test/effect
+/// preamble or overlay).
+pub fn pure_eval_failure(
+    err: relux_ir::PureEvalError,
+    span: SpanId,
+    enclosing_context: MatchContext,
+    vars_in_scope: Vec<(String, String)>,
+    sink: &LogSink,
+    log: &StructuredLogBuilder,
+) -> ExecError {
+    let call_stack = resolve_pure_stack(sink, log);
+    let match_context = match call_stack.last() {
+        Some(f) if f.is_fn_call() => MatchContext::Fn {
+            name: f.name.clone().unwrap_or_default(),
+        },
+        _ => enclosing_context,
+    };
+    let event_seq = log.current_seq();
+    Failure::from_pure_eval(
+        err,
+        match_context,
+        FailureContext::pure(span, event_seq, call_stack, vars_in_scope),
+    )
+    .into()
+}
+
+/// The single authority for the malformed-pure-regex failure wording,
+/// shared by the shell-body pure-match path (`vm`) and the pre-VM
+/// `from_pure_eval` path.
+pub(crate) fn invalid_regex_message(reason: &str) -> String {
+    format!("invalid regex: {reason}")
+}
+
 impl Failure {
+    /// Build a `Failure` from a pure-evaluation error. A failed pure match
+    /// inside a `pure fn` body becomes `Failure::PureMatch`; a malformed
+    /// interpolated regex becomes a runtime error naming the bad pattern.
+    /// `match_context` names where the pure match ran (fn, test/effect
+    /// preamble, overlay, or shell); a non-shell context carries no shell
+    /// on the derived `Runtime` failure.
+    pub fn from_pure_eval(
+        err: relux_ir::PureEvalError,
+        match_context: MatchContext,
+        context: FailureContext,
+    ) -> Self {
+        match err {
+            relux_ir::PureEvalError::PureMatchFailed {
+                value,
+                pattern,
+                is_regex,
+                span,
+            } => Failure::PureMatch {
+                value,
+                pattern,
+                is_regex,
+                span,
+                match_context,
+                context,
+            },
+            relux_ir::PureEvalError::MalformedPattern {
+                pattern: _,
+                reason,
+                span,
+            } => Failure::Runtime {
+                message: invalid_regex_message(&reason),
+                span,
+                shell: match_context.shell_name_ref().map(str::to_string),
+                context,
+            },
+        }
+    }
+
     pub fn summary(&self) -> String {
         self.to_string()
     }
@@ -166,6 +313,7 @@ impl Failure {
             Failure::FailPatternMatched { .. } => "FailPatternMatched",
             Failure::ShellExited { .. } => "ShellExited",
             Failure::Runtime { .. } => "Runtime",
+            Failure::PureMatch { .. } => "PureMatch",
             Failure::MultiMatch { .. } => "MultiMatch",
         }
     }
@@ -176,6 +324,7 @@ impl Failure {
             | Failure::FailPatternMatched { context, .. }
             | Failure::ShellExited { context, .. }
             | Failure::Runtime { context, .. }
+            | Failure::PureMatch { context, .. }
             | Failure::MultiMatch { context, .. } => context,
         }
     }
@@ -241,29 +390,42 @@ impl From<&Failure> for relux_core::error::DiagnosticReport {
                 };
                 let first_line = message.lines().next().unwrap_or(message);
                 let has_detail = message.contains('\n');
-                match span {
-                    Some(span) => DiagnosticReport {
-                        severity: Severity::Error,
-                        message: msg,
-                        labels: vec![(span.clone(), first_line.to_string()).into()],
-                        help: None,
-                        note: if has_detail {
-                            Some(message.clone())
-                        } else {
-                            None
-                        },
+                DiagnosticReport {
+                    severity: Severity::Error,
+                    message: msg,
+                    labels: vec![(span.clone(), first_line.to_string()).into()],
+                    help: None,
+                    note: if has_detail {
+                        Some(message.clone())
+                    } else {
+                        None
                     },
-                    None => DiagnosticReport {
-                        severity: Severity::Error,
-                        message: format!("{msg}: {first_line}"),
-                        labels: vec![],
-                        help: None,
-                        note: if has_detail {
-                            Some(message.clone())
-                        } else {
-                            None
-                        },
-                    },
+                }
+            }
+            Failure::PureMatch {
+                value,
+                pattern,
+                is_regex,
+                span,
+                match_context,
+                ..
+            } => {
+                let op = if *is_regex { "?" } else { "=" };
+                DiagnosticReport {
+                    severity: Severity::Error,
+                    message: format!(
+                        "pure match in {} did not match",
+                        match_context.backtick_label()
+                    ),
+                    labels: vec![
+                        (
+                            span.clone(),
+                            format!("value did not satisfy `{op} {pattern}`"),
+                        )
+                            .into(),
+                    ],
+                    help: None,
+                    note: Some(format!("value: {value}")),
                 }
             }
             Failure::MultiMatch {
@@ -544,6 +706,14 @@ mod tests {
     }
 
     #[test]
+    fn invalid_regex_message_wording() {
+        assert_eq!(
+            super::invalid_regex_message("unclosed group"),
+            "invalid regex: unclosed group"
+        );
+    }
+
+    #[test]
     fn summary_match_timeout() {
         let f = Failure::MatchTimeout {
             pattern: "/ready/".into(),
@@ -602,11 +772,41 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_report_runtime_renders_source_span_label() {
+        use relux_core::error::DiagnosticReport;
+        use relux_core::table::FileId;
+        // A real (non-synthetic) source span pointing at the offending
+        // identifier. Every `Failure::Runtime` now carries one, so the
+        // rendered report must surface it as exactly one diagnostic label.
+        let file = FileId::new(std::path::PathBuf::from("tests/auth/login.relux"));
+        let span = IrSpan::new(file.clone(), relux_core::Span::new(12, 24));
+        let f = Failure::Runtime {
+            message: "effect alias `db` does not expose shell `psql`".into(),
+            shell: None,
+            span: span.clone(),
+            context: FailureContext::pre_vm(),
+        };
+        let rep: DiagnosticReport = (&f).into();
+        assert_eq!(
+            rep.labels.len(),
+            1,
+            "a Runtime failure must render exactly one source label"
+        );
+        let label = &rep.labels[0];
+        assert_eq!(label.span.file(), &file, "label points at the source file");
+        assert_eq!(
+            label.span.span(),
+            span.span(),
+            "label carries the exact byte span passed on the failure"
+        );
+    }
+
+    #[test]
     fn summary_runtime_with_shell() {
         let f = Failure::Runtime {
             message: "something broke".into(),
             shell: Some("default".into()),
-            span: None,
+            span: IrSpan::synthetic(),
             context: FailureContext::pre_vm(),
         };
         assert_eq!(
@@ -620,7 +820,7 @@ mod tests {
         let f = Failure::Runtime {
             message: "something broke".into(),
             shell: None,
-            span: None,
+            span: IrSpan::synthetic(),
             context: FailureContext::pre_vm(),
         };
         assert_eq!(f.summary(), "runtime error: something broke");
@@ -711,6 +911,120 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_report_pure_match_carries_value_and_pattern() {
+        use relux_core::error::DiagnosticReport;
+        for (is_regex, op) in [(false, "="), (true, "?")] {
+            let f = Failure::PureMatch {
+                value: "hello world".into(),
+                pattern: "goodbye".into(),
+                is_regex,
+                match_context: MatchContext::Shell {
+                    name: "default".into(),
+                },
+                span: dummy_span(),
+                context: FailureContext::pre_vm(),
+            };
+            let rep: DiagnosticReport = (&f).into();
+            assert!(
+                rep.message.contains("pure match"),
+                "message names the failure: {}",
+                rep.message
+            );
+            assert!(
+                rep.message.contains("shell `default`"),
+                "message names the match context: {}",
+                rep.message
+            );
+            let label_text = rep
+                .labels
+                .first()
+                .map(|l| l.message.clone())
+                .expect("pure-match DiagnosticReport must carry a label");
+            assert!(
+                label_text.contains("goodbye"),
+                "label carries the pattern: {label_text}"
+            );
+            assert!(
+                label_text.contains(op),
+                "label carries the `{op}` operator: {label_text}"
+            );
+            let note = rep
+                .note
+                .expect("pure-match DiagnosticReport must carry a value note");
+            assert!(
+                note.contains("hello world"),
+                "note carries the value: {note}"
+            );
+            // A pure match has no shell buffer; the report must not fabricate
+            // a buffer-tail section (DiagnosticReport has no buffer field, and
+            // nothing should smuggle one into the note).
+            assert!(
+                !note.to_lowercase().contains("buffer"),
+                "pure-match report must not carry a buffer tail: {note}"
+            );
+        }
+    }
+
+    #[test]
+    fn from_pure_eval_malformed_pattern_non_shell_carries_no_shell() {
+        // A malformed interpolated regex in a non-shell context (here a test
+        // preamble) must produce a `Runtime` failure with `shell: None`:
+        // the old empty-string special-case is gone, and only a real shell
+        // context contributes a shell name.
+        let err = relux_ir::PureEvalError::MalformedPattern {
+            pattern: "(".into(),
+            reason: "unclosed group".into(),
+            span: dummy_span(),
+        };
+        let f = Failure::from_pure_eval(
+            err,
+            MatchContext::TestPreamble {
+                name: "login".into(),
+            },
+            FailureContext::pure(1, 2, vec![], vec![]),
+        );
+        match f {
+            Failure::Runtime { shell, message, .. } => {
+                assert_eq!(shell, None, "non-shell context carries no shell");
+                assert!(message.contains("invalid regex"), "message: {message}");
+            }
+            other => panic!("expected Runtime, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn from_pure_eval_malformed_pattern_shell_carries_shell() {
+        // The shell context is the only one that surfaces a shell name.
+        let err = relux_ir::PureEvalError::MalformedPattern {
+            pattern: "(".into(),
+            reason: "unclosed group".into(),
+            span: dummy_span(),
+        };
+        let f = Failure::from_pure_eval(
+            err,
+            MatchContext::Shell {
+                name: "default".into(),
+            },
+            FailureContext::pure(1, 2, vec![], vec![]),
+        );
+        match f {
+            Failure::Runtime { shell, .. } => {
+                assert_eq!(shell, Some("default".to_string()));
+            }
+            other => panic!("expected Runtime, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pure_context_exposes_real_seq_and_vars() {
+        let ctx = FailureContext::pure(7, 42, vec![], vec![("v".into(), "abc".into())]);
+        assert_eq!(ctx.span(), Some(7));
+        assert_eq!(ctx.event_seq(), Some(42));
+        assert_eq!(ctx.buffer_tail(), "");
+        assert_eq!(ctx.vars_in_scope(), &[("v".to_string(), "abc".to_string())]);
+    }
+
+    #[test]
     fn log_link_with_log_dir() {
         let run_dir = Path::new("/tmp/runs/run-001");
         let result = TestResult {
@@ -758,7 +1072,7 @@ mod tests {
     fn exec_error_from_conversions() {
         let f = Failure::Runtime {
             message: "x".into(),
-            span: None,
+            span: IrSpan::synthetic(),
             shell: None,
             context: FailureContext::pre_vm(),
         };

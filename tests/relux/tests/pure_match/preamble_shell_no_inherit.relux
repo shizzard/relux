@@ -1,0 +1,27 @@
+test "a preamble capture does not leak into a shell frame" {
+    """
+    Load-bearing guard for the shell/preamble capture-frame boundary.
+
+    A `?` pure match in the test preamble binds $1 into the preamble
+    capture frame, and a preamble `let` proves the capture is really set.
+    But a `shell` block owns its OWN capture frame, populated only by its
+    own `<?` matches, and must NOT inherit the preamble's frame. The shell
+    echoes ${1} BEFORE running any regex of its own, so the only correct
+    render is empty.
+
+    If a future change leaks the preamble frame into shells, THIS FIXTURE
+    FAILS LOUDLY: the echo would print `cap=[leaked-value]` and the
+    `<? ^cap=\[\]$` assertion would never hit. The `proof = leaked-value`
+    line keeps the preamble match honest -- if the regex stopped binding
+    $1, `proof` would be empty and that assertion would fail instead, so
+    the fixture cannot pass vacuously.
+    """
+    let subject := "token=leaked-value"
+    subject ? ^token=(\S+)$
+    let proof := "${1}"
+    shell s {
+        proof = leaked-value
+        > echo "cap=[${1}]"
+        <? ^cap=\[\]$
+    }
+}

@@ -309,7 +309,9 @@ fn lower_pure_expr_call() {
 }
 
 #[test]
-fn lower_pure_expr_rejects_capture_ref() {
+fn lower_pure_expr_capture_ref_lowers_to_capture() {
+    // `$n` reads the ambient capture frame (empty -> "") exactly like the
+    // shell path; it lowers unconditionally in any pure context.
     let mut ctx = ctx_with_source("fn dummy() {}");
     push_test_scope(&mut ctx, "tests/a");
     let file = file_id_for(&ctx, "tests/a");
@@ -319,16 +321,11 @@ fn lower_pure_expr_rejects_capture_ref() {
         span: Span::new(0, 2),
     };
     let result = IrPureExpr::lower(&ast, &file, &mut ctx);
-    assert!(result.is_err());
-    if let Err(LoweringBail::Invalid(_)) = result {
-        // OK
-    } else {
-        panic!("expected PurityViolation, got {:?}", result);
-    }
+    assert!(matches!(result, Ok(IrPureExpr::Capture { index: 1, .. })));
 }
 
 #[test]
-fn lower_pure_expr_string_rejects_capture_ref_in_parts() {
+fn lower_pure_expr_string_capture_ref_in_parts_lowers() {
     let mut ctx = ctx_with_source("fn dummy() {}");
     push_test_scope(&mut ctx, "tests/a");
     let file = file_id_for(&ctx, "tests/a");
@@ -337,6 +334,27 @@ fn lower_pure_expr_string_rejects_capture_ref_in_parts() {
         interp: AstInterpolation {
             parts: vec![AstStringPart::CaptureRef {
                 index: 1,
+                span: Span::new(1, 5),
+            }],
+            span: Span::new(0, 6),
+        },
+        span: Span::new(0, 6),
+    };
+    let result = IrPureExpr::lower(&ast, &file, &mut ctx);
+    assert!(matches!(result, Ok(IrPureExpr::String { .. })));
+}
+
+#[test]
+fn lower_pure_expr_string_still_rejects_qualified_var() {
+    let mut ctx = ctx_with_source("fn dummy() {}");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+
+    let ast = AstExpr::String {
+        interp: AstInterpolation {
+            parts: vec![AstStringPart::QualifiedVarRef {
+                qualifier: "sh".into(),
+                name: "x".into(),
                 span: Span::new(1, 5),
             }],
             span: Span::new(0, 6),

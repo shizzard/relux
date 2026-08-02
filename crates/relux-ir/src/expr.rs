@@ -1,6 +1,5 @@
 use relux_ast::AstCallExpr;
 use relux_ast::AstExpr;
-use relux_ast::AstStringPart;
 use relux_core::diagnostics::FnId;
 use relux_core::diagnostics::InvalidReport;
 use relux_core::diagnostics::IrSpan;
@@ -66,9 +65,18 @@ pub enum IrPureExpr {
         call: IrPureCallExpr,
         span: IrSpan,
     },
+    Capture {
+        index: usize,
+        span: IrSpan,
+    },
 }
 
-impl_ir_node_enum!(IrPureExpr { String, Var, Call });
+impl_ir_node_enum!(IrPureExpr {
+    String,
+    Var,
+    Call,
+    Capture
+});
 
 // --- IrCallExpr ------------------------------------------
 
@@ -196,19 +204,10 @@ impl IrNodeLowering for IrPureExpr {
     ) -> Result<Self, LoweringBail> {
         match ast {
             AstExpr::String { interp, span } => {
-                // Check for impure constructs in interpolation parts
-                for part in &interp.parts {
-                    match part {
-                        AstStringPart::CaptureRef { span: s, .. }
-                        | AstStringPart::QualifiedVarRef { span: s, .. } => {
-                            return Err(LoweringBail::invalid(InvalidReport::purity_violation(
-                                IrSpan::new(file.clone(), *s),
-                            )));
-                        }
-                        _ => {}
-                    }
-                }
-                let ir_interp = IrInterpolation::lower(interp, file, ctx)?;
+                // A `CaptureRef` reads the ambient capture frame (empty -> "")
+                // exactly like the shell path, so it is uniformly legal; a
+                // `QualifiedVarRef` is never pure. `lower_pure` enforces this.
+                let ir_interp = IrInterpolation::lower_pure(interp, file, ctx)?;
                 Ok(IrPureExpr::String {
                     value: ir_interp,
                     span: IrSpan::new(file.clone(), *span),
@@ -221,9 +220,10 @@ impl IrNodeLowering for IrPureExpr {
             AstExpr::QualifiedVar { span, .. } => Err(LoweringBail::invalid(
                 InvalidReport::purity_violation(IrSpan::new(file.clone(), *span)),
             )),
-            AstExpr::CaptureRef { span, .. } => Err(LoweringBail::invalid(
-                InvalidReport::purity_violation(IrSpan::new(file.clone(), *span)),
-            )),
+            AstExpr::CaptureRef { index, span } => Ok(IrPureExpr::Capture {
+                index: *index,
+                span: IrSpan::new(file.clone(), *span),
+            }),
             AstExpr::Call { call, span } => {
                 let ir_call = IrPureCallExpr::lower(call, file, ctx)?;
                 Ok(IrPureExpr::Call {

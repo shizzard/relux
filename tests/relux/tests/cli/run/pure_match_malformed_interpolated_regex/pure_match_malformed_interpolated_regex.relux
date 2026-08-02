@@ -1,0 +1,16 @@
+test "run reports a malformed interpolated pure-match regex as a runtime failure" {
+    """
+    A `?` pure-match pattern built by interpolation can only be validated at run
+    time. A malformed one (here `[abc`, an unterminated character class) passes
+    check and surfaces as a runtime failure, not a plain no-match.
+    """
+    shell s {
+        > ${__RELUX} check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <= check passed
+        match_ok()
+
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <= invalid regex
+        match_not_ok(1)
+    }
+}

@@ -13,6 +13,7 @@ use regex::RegexBuilder;
 use crate::RuntimeContext;
 use crate::observe::structured::EventSeq;
 use crate::observe::structured::FnCallKind;
+use crate::observe::structured::MatchContext;
 use crate::observe::structured::SpanId;
 use crate::observe::structured::SpanKind;
 use crate::observe::structured::StructuredLogBuilder;
@@ -41,7 +42,6 @@ use relux_ir::IrInterpolation;
 use relux_ir::IrMultiMatchPattern;
 use relux_ir::IrPureFn;
 use relux_ir::IrShellStmt;
-use relux_ir::IrStringPart;
 use relux_ir::IrTimeout;
 use relux_ir::Tables;
 
@@ -60,63 +60,6 @@ struct MultiSlot {
     /// Set when the per-pattern `Matched` buffer event has been pushed -
     /// referenced by `MultiMatchPatternDone.buffer_seq`.
     buffer_seq: Option<EventSeq>,
-}
-
-// --- Interpolation helpers -------------------------------
-
-fn has_interpolation(expr: &IrInterpolation) -> bool {
-    expr.parts().iter().any(|p| {
-        matches!(
-            p,
-            IrStringPart::Var { .. }
-                | IrStringPart::QualifiedVar { .. }
-                | IrStringPart::CaptureRef { .. }
-        )
-    })
-}
-
-fn interpolation_template(expr: &IrInterpolation) -> String {
-    expr.parts()
-        .iter()
-        .map(|p| match p {
-            IrStringPart::Literal { value, .. } => value.clone(),
-            IrStringPart::Var { name, .. } => format!("${{{name}}}"),
-            IrStringPart::QualifiedVar {
-                qualifier, name, ..
-            } => format!("${{{qualifier}.{name}}}"),
-            IrStringPart::EscapedDollar { .. } => "$".to_string(),
-            IrStringPart::CaptureRef { index, .. } => format!("${{{index}}}"),
-        })
-        .collect()
-}
-
-async fn interpolate_ir(expr: &IrInterpolation, ctx: &ExecutionContext) -> String {
-    let mut out = String::new();
-    for part in expr.parts() {
-        match part {
-            IrStringPart::Literal { value, .. } => out.push_str(value),
-            IrStringPart::Var { name, .. } => {
-                if let Some(v) = ctx.lookup(name).await {
-                    out.push_str(&v);
-                }
-            }
-            IrStringPart::QualifiedVar {
-                qualifier, name, ..
-            } => {
-                let qualified = format!("{qualifier}.{name}");
-                if let Some(v) = ctx.lookup(&qualified).await {
-                    out.push_str(&v);
-                }
-            }
-            IrStringPart::EscapedDollar { .. } => out.push('$'),
-            IrStringPart::CaptureRef { index, .. } => {
-                if let Some(v) = ctx.capture(*index) {
-                    out.push_str(&v);
-                }
-            }
-        }
-    }
-    out
 }
 
 // --- Vm --------------------------------------------------
@@ -142,6 +85,7 @@ impl Vm {
         shell_marker: String,
         ctx: ExecutionContext,
         rt_ctx: &RuntimeContext,
+        block_span: IrSpan,
     ) -> Result<Self, ExecError> {
         let shell_command = rt_ctx.shell.command.to_string();
         let shell_prompt = rt_ctx.shell.prompt.to_string();
@@ -156,7 +100,7 @@ impl Vm {
         )
         .map_err(|e| Failure::Runtime {
             message: format!("failed to spawn shell: {e}"),
-            span: None,
+            span: block_span.clone(),
             shell: Some(shell_name.clone()),
             context: FailureContext::pre_vm_with_span(ctx.current_span()),
         })?;
@@ -188,7 +132,7 @@ impl Vm {
             .await
             .map_err(|_| Failure::Runtime {
                 message: "shell did not produce prompt during init".to_string(),
-                span: None,
+                span: block_span.clone(),
                 shell: Some(shell_name),
                 context: FailureContext::pre_vm_with_span(vm.ctx.current_span()),
             })?;
@@ -277,56 +221,52 @@ impl Vm {
     /// Must be called *at* the failure construction site - once the VM is
     /// dropped the buffer is gone.
     pub(crate) async fn capture_failure_context(&self) -> FailureContext {
-        let span = self.ctx.current_span();
+        let call_stack = self.log.resolve_stack(self.ctx.current_span());
+        self.capture_failure_context_with_stack(call_stack).await
+    }
+
+    /// Like `capture_failure_context`, but with a pre-resolved call stack.
+    /// The pure-fn-call error path resolves the stack from the innermost
+    /// still-open pure-fn span (see `LogSink::deepest_open_span`) so the
+    /// nested pure-fn frames appear; those frames are descendants of the
+    /// enclosing `FnCall` span and would be missed by resolving from
+    /// `current_span`.
+    pub(crate) async fn capture_failure_context_with_stack(
+        &self,
+        call_stack: Vec<crate::observe::structured::failure::StackFrame>,
+    ) -> FailureContext {
         FailureContext::Vm {
-            span,
+            span: self.ctx.current_span(),
             event_seq: self.log.current_seq(),
-            call_stack: self.log.resolve_stack(span),
+            call_stack,
             buffer_tail: self.pty.output_buf.snapshot_tail(BUFFER_TAIL_BYTES).await,
             vars_in_scope: self.ctx.snapshot_user_vars().await,
         }
     }
 
-    async fn emit_interpolation(
-        &mut self,
-        expr: &IrInterpolation,
-        result: &str,
-        span: Option<&IrSpan>,
-    ) {
-        if has_interpolation(expr) {
-            let mut bindings = Vec::new();
-            for part in expr.parts() {
-                match part {
-                    IrStringPart::Var { name, .. } => {
-                        let value = self.ctx.lookup(name).await.unwrap_or_default();
-                        bindings.push((name.clone(), value));
-                    }
-                    IrStringPart::QualifiedVar {
-                        qualifier, name, ..
-                    } => {
-                        let qualified = format!("{qualifier}.{name}");
-                        let value = self.ctx.lookup(&qualified).await.unwrap_or_default();
-                        bindings.push((qualified, value));
-                    }
-                    IrStringPart::CaptureRef { index, .. } => {
-                        let name = index.to_string();
-                        let value = self.ctx.capture(*index).unwrap_or_default();
-                        bindings.push((name, value));
-                    }
-                    _ => {}
-                }
-            }
+    /// Resolve an interpolation and emit its event in one walk. Locks the
+    /// (uncontended) scope vars, hands the shared renderer this shell's live
+    /// resolution chain, emits the Interpolation event when a value-bearing
+    /// part was present, and returns the substituted string.
+    async fn render_interp(&mut self, expr: &IrInterpolation, location: Option<&IrSpan>) -> String {
+        let guard = self.ctx.scope.vars().lock().await;
+        let (scopes, env) = self.ctx.interp_chain(&guard);
+        let captures = self.ctx.current_captures_map();
+        let rendered = relux_ir::evaluator::render_interpolation(expr, &scopes, env, captures);
+        drop(guard);
+        if rendered.emitted {
             let shell = self.ctx.current_name();
             self.log.emit_interpolation(
                 self.current_span(),
-                &shell,
-                &self.shell_marker,
-                &interpolation_template(expr),
-                result,
-                &bindings,
-                span,
+                Some(&shell),
+                Some(&self.shell_marker),
+                &rendered.template,
+                &rendered.result,
+                &rendered.bindings,
+                location,
             );
         }
+        rendered.result
     }
 
     pub async fn exec_stmt(&mut self, stmt: &IrShellStmt) -> Result<String, ExecError> {
@@ -339,8 +279,7 @@ impl Vm {
                 pattern,
                 span: ir_span,
             } => {
-                let pat = interpolate_ir(pattern, &self.ctx).await;
-                self.emit_interpolation(pattern, &pat, Some(&span)).await;
+                let pat = self.render_interp(pattern, Some(&span)).await;
                 let shell = self.ctx.current_name();
                 self.log.emit_fail_pattern_set(
                     self.current_span(),
@@ -356,7 +295,7 @@ impl Vm {
                         let context = self.capture_failure_context().await;
                         return Err(Failure::Runtime {
                             message: format!("invalid fail regex: {}", regex_error_summary(&e)),
-                            span: Some(ir_span.clone()),
+                            span: ir_span.clone(),
                             shell: Some(self.ctx.current_name().to_string()),
                             context,
                         }
@@ -369,8 +308,7 @@ impl Vm {
                 Ok(String::new())
             }
             IrShellStmt::FailLiteral { pattern, .. } => {
-                let pat = interpolate_ir(pattern, &self.ctx).await;
-                self.emit_interpolation(pattern, &pat, Some(&span)).await;
+                let pat = self.render_interp(pattern, Some(&span)).await;
                 let shell = self.ctx.current_name();
                 self.log.emit_fail_pattern_set(
                     self.current_span(),
@@ -439,7 +377,7 @@ impl Vm {
                             "assignment to undeclared variable `{}`",
                             assign.name().name()
                         ),
-                        span: Some(assign.name().span().clone()),
+                        span: assign.name().span().clone(),
                         shell: Some(self.ctx.current_name().to_string()),
                         context,
                     }
@@ -459,8 +397,7 @@ impl Vm {
             }
             IrShellStmt::Expr { expr, .. } => self.eval_expr(expr).await,
             IrShellStmt::Send { payload, .. } => {
-                let data = interpolate_ir(payload, &self.ctx).await;
-                self.emit_interpolation(payload, &data, Some(&span)).await;
+                let data = self.render_interp(payload, Some(&span)).await;
                 let shell = self.ctx.current_name();
                 self.log.emit_send(
                     self.current_span(),
@@ -474,8 +411,7 @@ impl Vm {
                 Ok(data)
             }
             IrShellStmt::SendRaw { payload, .. } => {
-                let data = interpolate_ir(payload, &self.ctx).await;
-                self.emit_interpolation(payload, &data, Some(&span)).await;
+                let data = self.render_interp(payload, Some(&span)).await;
                 let shell = self.ctx.current_name();
                 self.log.emit_send(
                     self.current_span(),
@@ -489,8 +425,7 @@ impl Vm {
             }
             IrShellStmt::MatchLiteral { pattern, .. } => {
                 let timeout = self.ctx.timeout().clone();
-                let pat = interpolate_ir(pattern, &self.ctx).await;
-                self.emit_interpolation(pattern, &pat, Some(&span)).await;
+                let pat = self.render_interp(pattern, Some(&span)).await;
                 let shell = self.ctx.current_name();
                 self.log.emit_match_start(
                     self.current_span(),
@@ -520,15 +455,14 @@ impl Vm {
             }
             IrShellStmt::MatchRegex { pattern, .. } => {
                 let timeout = self.ctx.timeout().clone();
-                let pat = interpolate_ir(pattern, &self.ctx).await;
-                self.emit_interpolation(pattern, &pat, Some(&span)).await;
+                let pat = self.render_interp(pattern, Some(&span)).await;
                 let re = match RegexBuilder::new(&pat).multi_line(true).crlf(true).build() {
                     Ok(re) => re,
                     Err(e) => {
                         let context = self.capture_failure_context().await;
                         return Err(Failure::Runtime {
                             message: format!("invalid regex: {}", regex_error_summary(&e)),
-                            span: Some(pattern.span().clone()),
+                            span: pattern.span().clone(),
                             shell: Some(self.ctx.current_name().to_string()),
                             context,
                         }
@@ -565,11 +499,67 @@ impl Vm {
                 self.set_captures_from_map(captures);
                 Ok(full)
             }
+            IrShellStmt::PureMatch {
+                lhs,
+                pattern,
+                is_regex,
+                ..
+            } => {
+                let value = self.eval_expr(lhs).await?;
+                let pat = self.render_interp(pattern, Some(&span)).await;
+                let outcome = {
+                    let mut sink = crate::observe::structured::log_sink::LogSink::new_in_shell(
+                        &self.log,
+                        self.current_span(),
+                        self.ctx.current_name(),
+                        self.shell_marker.clone(),
+                    );
+                    relux_ir::eval_pure_match(&mut sink, &value, &pat, *is_regex, &span)
+                };
+                match outcome {
+                    Ok(Some(hit)) => {
+                        let matched = hit.matched_text;
+                        if *is_regex {
+                            self.set_captures_from_map(hit.captures);
+                        }
+                        Ok(matched)
+                    }
+                    Ok(None) => {
+                        let context = self.capture_failure_context().await;
+                        let match_context = match self.ctx.current_fn_name() {
+                            Some(name) => MatchContext::Fn {
+                                name: name.to_string(),
+                            },
+                            None => MatchContext::Shell {
+                                name: self.ctx.current_name(),
+                            },
+                        };
+                        Err(Failure::PureMatch {
+                            value,
+                            pattern: pat,
+                            is_regex: *is_regex,
+                            span: span.clone(),
+                            match_context,
+                            context,
+                        }
+                        .into())
+                    }
+                    Err(e) => {
+                        let context = self.capture_failure_context().await;
+                        Err(Failure::Runtime {
+                            message: crate::report::result::invalid_regex_message(&e.reason),
+                            span: span.clone(),
+                            shell: Some(self.ctx.current_name().to_string()),
+                            context,
+                        }
+                        .into())
+                    }
+                }
+            }
             IrShellStmt::TimedMatchLiteral {
                 timeout, pattern, ..
             } => {
-                let pat = interpolate_ir(pattern, &self.ctx).await;
-                self.emit_interpolation(pattern, &pat, Some(&span)).await;
+                let pat = self.render_interp(pattern, Some(&span)).await;
                 let shell = self.ctx.current_name();
                 self.log.emit_match_start(
                     self.current_span(),
@@ -600,15 +590,14 @@ impl Vm {
             IrShellStmt::TimedMatchRegex {
                 timeout, pattern, ..
             } => {
-                let pat = interpolate_ir(pattern, &self.ctx).await;
-                self.emit_interpolation(pattern, &pat, Some(&span)).await;
+                let pat = self.render_interp(pattern, Some(&span)).await;
                 let re = match RegexBuilder::new(&pat).multi_line(true).crlf(true).build() {
                     Ok(re) => re,
                     Err(e) => {
                         let context = self.capture_failure_context().await;
                         return Err(Failure::Runtime {
                             message: format!("invalid regex: {}", regex_error_summary(&e)),
-                            span: Some(pattern.span().clone()),
+                            span: pattern.span().clone(),
                             shell: Some(self.ctx.current_name().to_string()),
                             context,
                         }
@@ -671,9 +660,7 @@ impl Vm {
         // 1. Interpolate patterns + emit per-pattern interpolation events.
         let mut compiled: Vec<MultiSlot> = Vec::with_capacity(patterns.len());
         for ir_pat in patterns {
-            let resolved = interpolate_ir(ir_pat.pattern(), &self.ctx).await;
-            self.emit_interpolation(ir_pat.pattern(), &resolved, Some(&span))
-                .await;
+            let resolved = self.render_interp(ir_pat.pattern(), Some(&span)).await;
             let slot = if ir_pat.is_regex() {
                 let re = match RegexBuilder::new(&resolved)
                     .multi_line(true)
@@ -685,7 +672,7 @@ impl Vm {
                         let context = self.capture_failure_context().await;
                         return Err(Failure::Runtime {
                             message: format!("invalid regex: {}", regex_error_summary(&e)),
-                            span: Some(ir_pat.pattern().span().clone()),
+                            span: ir_pat.pattern().span().clone(),
                             shell: Some(self.ctx.current_name().to_string()),
                             context,
                         }
@@ -918,8 +905,7 @@ impl Vm {
         self.check_fail(span.clone()).await?;
         match expr {
             IrExpr::String { value, .. } => {
-                let result = interpolate_ir(value, &self.ctx).await;
-                self.emit_interpolation(value, &result, Some(&span)).await;
+                let result = self.render_interp(value, Some(&span)).await;
                 let shell = self.ctx.current_name();
                 self.log.emit_string_eval(
                     self.current_span(),
@@ -960,7 +946,7 @@ impl Vm {
                     let context = self.capture_failure_context().await;
                     return Err(Failure::Runtime {
                         message: format!("function resolution failed: {e:?}"),
-                        span: Some(span.clone()),
+                        span: span.clone(),
                         shell: Some(self.ctx.current_name().to_string()),
                         context,
                     }
@@ -1052,7 +1038,7 @@ impl Vm {
                     let context = self.capture_failure_context().await;
                     return Err(Failure::Runtime {
                         message: format!("pure function resolution failed: {e:?}"),
-                        span: Some(span.clone()),
+                        span: span.clone(),
                         shell: Some(self.ctx.current_name().to_string()),
                         context,
                     }
@@ -1089,15 +1075,50 @@ impl Vm {
             );
             self.ctx.push_span(fn_guard.id());
             self.log.push_fn_enter(&fn_name);
-            let mut sink =
-                crate::observe::structured::log_sink::LogSink::new(&self.log, fn_guard.id());
-            let return_value = relux_ir::evaluator::eval_pure_fn(
+            let mut sink = crate::observe::structured::log_sink::LogSink::new_in_shell(
+                &self.log,
+                fn_guard.id(),
+                self.ctx.current_name(),
+                self.shell_marker.clone(),
+            );
+            let return_value = match relux_ir::evaluator::eval_pure_fn(
                 ir_fn,
                 evaluated_args,
                 &self.ctx.env,
                 &self.tables.pure_fns,
                 &mut sink,
-            );
+            ) {
+                Ok(v) => v,
+                Err(err) => {
+                    // Resolve the call chain from the innermost still-open
+                    // pure-fn span so nested pure-fn frames (descendants of
+                    // this shell-fn span) render in the failure. When no pure
+                    // fn is open - a direct match in this fn's own body -
+                    // resolve from the enclosing `FnCall` span instead, so the
+                    // frame is not lost. Branching on the span source directly
+                    // avoids re-deriving `None` from an empty stack.
+                    let call_stack = match sink.deepest_open_span() {
+                        Some(leaf) => self.log.resolve_stack(leaf),
+                        None => self.log.resolve_stack(self.current_span()),
+                    };
+                    // Build the match context from the innermost frame before
+                    // `capture_failure_context_with_stack` consumes `call_stack`.
+                    let match_context = MatchContext::Fn {
+                        name: call_stack
+                            .last()
+                            .and_then(|f| f.name.clone())
+                            .unwrap_or_else(|| self.ctx.current_name()),
+                    };
+                    // Dropping the sink closes those spans (tighter `end_ts`)
+                    // before the context snapshots the current seq; the spans
+                    // stay in the map, so the resolution above still holds.
+                    drop(sink);
+                    let context = self.capture_failure_context_with_stack(call_stack).await;
+                    self.ctx.pop_span();
+                    self.log.push_fn_exit();
+                    return Err(Failure::from_pure_eval(err, match_context, context).into());
+                }
+            };
             self.ctx.pop_span();
             self.log.set_fn_call_result(fn_guard.id(), &return_value);
             self.log.push_fn_exit();
@@ -1111,7 +1132,7 @@ impl Vm {
                 fn_name,
                 call.args().len()
             ),
-            span: Some(span.clone()),
+            span: span.clone(),
             shell: Some(self.ctx.current_name().to_string()),
             context,
         }

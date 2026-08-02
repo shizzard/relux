@@ -52,6 +52,12 @@ impl Captures {
     pub fn clear(&mut self) {
         self.map.clear();
     }
+
+    /// Borrow the underlying map, for the shared interpolation renderer
+    /// which resolves `${n}` against a `&HashMap<String, String>`.
+    pub fn as_map(&self) -> &HashMap<String, String> {
+        &self.map
+    }
 }
 
 // --- Scope -----------------------------------------------
@@ -191,30 +197,31 @@ impl ExecutionContext {
         self.span_stack = vec![span];
     }
 
+    /// The scope chain + env that reproduce `lookup` precedence for the
+    /// current state, for the shared interpolation renderer. `scope_guard`
+    /// is the already-locked `scope.vars()`. Inside a `fn` call the barrier
+    /// hides shell/scope vars and the env fallback is the base env; outside
+    /// a call, shell vars shadow scope vars and an effect scope consults its
+    /// own (chained) env first.
+    pub fn interp_chain<'a>(
+        &'a self,
+        scope_guard: &'a VarScope,
+    ) -> (Vec<&'a VarScope>, &'a LayeredEnv) {
+        if let Some(frame) = self.call_stack.last() {
+            return (vec![&frame.vars], &self.env);
+        }
+        let env: &LayeredEnv = match &self.scope {
+            Scope::Effect { env, .. } => env,
+            Scope::Test { .. } => &self.env,
+        };
+        (vec![&self.shell.vars, scope_guard], env)
+    }
+
     /// Look up a variable by name. Follows the lookup chain per RFC R005.
     pub async fn lookup(&self, key: &str) -> Option<String> {
-        if let Some(frame) = self.call_stack.last() {
-            // Inside a function call - hard barrier
-            if let Some(v) = frame.vars.get(key) {
-                return Some(v.to_string());
-            }
-            return self.env.get(key).map(str::to_string);
-        }
-
-        // Direct shell execution
-        if let Some(v) = self.shell.vars.get(key) {
-            return Some(v.to_string());
-        }
-        if let Some(v) = self.scope.vars().lock().await.get(key) {
-            return Some(v.to_string());
-        }
-        // Effect scope env walks the layered chain (overlays -> base)
-        if let Scope::Effect { env, .. } = &self.scope
-            && let Some(v) = env.get(key)
-        {
-            return Some(v.to_string());
-        }
-        self.env.get(key).map(str::to_string)
+        let guard = self.scope.vars().lock().await;
+        let (scopes, env) = self.interp_chain(&guard);
+        relux_core::pure::lookup_var(&scopes, env, key)
     }
 
     /// Look up a capture reference (e.g. ${1}).
@@ -224,6 +231,16 @@ impl ExecutionContext {
             return frame.captures.get(&key).map(str::to_string);
         }
         self.shell.captures.get(&key).map(str::to_string)
+    }
+
+    /// The current capture frame as a raw map, for the interpolation
+    /// renderer. Inside a `fn` call this is the call frame's captures;
+    /// otherwise the shell's.
+    pub fn current_captures_map(&self) -> &HashMap<String, String> {
+        match self.call_stack.last() {
+            Some(frame) => frame.captures.as_map(),
+            None => self.shell.captures.as_map(),
+        }
     }
 
     /// Insert a `let` variable into the current context.
@@ -363,6 +380,11 @@ impl ExecutionContext {
         !self.call_stack.is_empty()
     }
 
+    /// The name of the innermost `fn` call frame, if we are inside one.
+    pub fn current_fn_name(&self) -> Option<&str> {
+        self.call_stack.last().map(|f| f.name.as_str())
+    }
+
     /// Snapshot user-visible variables at the current point of execution,
     /// for failure diagnostics. Excludes the layered process env (already in
     /// `events.json :: env.bootstrap`) and matcher captures. Sorted by key
@@ -485,6 +507,104 @@ mod tests {
         assert_eq!(ctx.lookup("x").await, Some("shell".into()));
     }
 
+    #[tokio::test]
+    async fn interp_chain_resolves_shell_scope_and_call_frame() {
+        let mut ctx = test_ctx();
+        ctx.shell.vars.insert("s".into(), "shell_val".into());
+        ctx.scope
+            .vars()
+            .lock()
+            .await
+            .insert("g".into(), "scope_val".into());
+
+        // Non-call: shell var, scope var, base env, absent - all via interp_chain.
+        {
+            let guard = ctx.scope.vars().lock().await;
+            let (scopes, env) = ctx.interp_chain(&guard);
+            assert_eq!(
+                relux_core::pure::lookup_var(&scopes, env, "s"),
+                Some("shell_val".to_string())
+            );
+            assert_eq!(
+                relux_core::pure::lookup_var(&scopes, env, "g"),
+                Some("scope_val".to_string())
+            );
+            assert_eq!(
+                relux_core::pure::lookup_var(&scopes, env, "PATH"),
+                Some("/usr/bin".to_string())
+            );
+            assert_eq!(relux_core::pure::lookup_var(&scopes, env, "absent"), None);
+        }
+
+        // In-call: the barrier hides shell/scope vars; the frame arg and base env remain.
+        ctx.push_call("fn".into(), vec![("arg".into(), "argval".into())]);
+        {
+            let guard = ctx.scope.vars().lock().await;
+            let (scopes, env) = ctx.interp_chain(&guard);
+            assert_eq!(
+                relux_core::pure::lookup_var(&scopes, env, "arg"),
+                Some("argval".to_string())
+            );
+            assert_eq!(
+                relux_core::pure::lookup_var(&scopes, env, "s"),
+                None,
+                "barrier hides shell var"
+            );
+            assert_eq!(
+                relux_core::pure::lookup_var(&scopes, env, "g"),
+                None,
+                "barrier hides scope var"
+            );
+            assert_eq!(
+                relux_core::pure::lookup_var(&scopes, env, "PATH"),
+                Some("/usr/bin".to_string())
+            );
+            assert_eq!(relux_core::pure::lookup_var(&scopes, env, "absent"), None);
+        }
+        ctx.pop_call();
+    }
+
+    #[tokio::test]
+    async fn interp_chain_resolves_effect_overlay_and_base() {
+        // Effect env chains overlay -> base (as in production), so interp_chain's
+        // single effect env resolves both the overlay var and the base env.
+        let mut base = Env::new();
+        base.insert("PATH".into(), "/usr/bin".into());
+        let root = Arc::new(LayeredEnv::root(base));
+        let mut overlay = Env::new();
+        overlay.insert("PORT".into(), "5432".into());
+        let effect_env = Arc::new(LayeredEnv::child(root, overlay));
+
+        let scope = Scope::Effect {
+            name: "Db".into(),
+            vars: Arc::new(Mutex::new(VarScope::new())),
+            _timeout: None,
+            env: effect_env,
+        };
+        let shell = ShellState::new("db".into());
+        let ctx = ExecutionContext::new(
+            scope,
+            shell,
+            IrTimeout::tolerance(Duration::from_secs(5)),
+            test_env(),
+            0,
+        );
+
+        let guard = ctx.scope.vars().lock().await;
+        let (scopes, env) = ctx.interp_chain(&guard);
+        assert_eq!(
+            relux_core::pure::lookup_var(&scopes, env, "PORT"),
+            Some("5432".to_string()),
+            "overlay var resolves"
+        );
+        assert_eq!(
+            relux_core::pure::lookup_var(&scopes, env, "PATH"),
+            Some("/usr/bin".to_string()),
+            "base env resolves through the effect env's parent chain"
+        );
+        assert_eq!(relux_core::pure::lookup_var(&scopes, env, "absent"), None);
+    }
+
     // --- Call stack barrier ------------------------------
 
     #[tokio::test]
@@ -513,6 +633,23 @@ mod tests {
         ctx.pop_call();
         assert_eq!(ctx.lookup("a").await, Some("1".into()));
         ctx.pop_call();
+    }
+
+    // --- current_fn_name -----------------------------------
+
+    #[test]
+    fn current_fn_name_none_outside_call() {
+        let ctx = test_ctx();
+        assert_eq!(ctx.current_fn_name(), None);
+    }
+
+    #[test]
+    fn current_fn_name_inside_call() {
+        let mut ctx = test_ctx();
+        ctx.push_call("helper".into(), vec![]);
+        assert_eq!(ctx.current_fn_name(), Some("helper"));
+        ctx.pop_call();
+        assert_eq!(ctx.current_fn_name(), None);
     }
 
     // --- Let insert --------------------------------------

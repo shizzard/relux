@@ -113,7 +113,9 @@
         { "include": "#op-timed-match-literal" },
         { "include": "#op-match-regex" },
         { "include": "#op-match-literal" },
-        { "include": "#op-multimatch-literal" }
+        { "include": "#op-multimatch-literal" },
+        { "include": "#op-pure-match-regex" },
+        { "include": "#op-pure-match-literal" }
       ]
     },
 
@@ -191,6 +193,30 @@
       "captures": {
         "1": { "name": "keyword.operator.match-literal.relux" }
       }
+    },
+
+    "op-pure-match-regex": {
+      "begin": "(?<![<!?])(\\?)(?=\\s|$)",
+      "end": "$",
+      "beginCaptures": {
+        "1": { "name": "keyword.operator.pure-match-regex.relux" }
+      },
+      "contentName": "string.regexp.relux",
+      "patterns": [
+        { "include": "#payload-interpolation" }
+      ]
+    },
+
+    "op-pure-match-literal": {
+      "begin": "(?<![:<!=>])(=)(?=\\s|$)",
+      "end": "$",
+      "beginCaptures": {
+        "1": { "name": "keyword.operator.pure-match-literal.relux" }
+      },
+      "contentName": "string.unquoted.payload.relux",
+      "patterns": [
+        { "include": "#payload-interpolation" }
+      ]
     },
 
     "op-timed-match-regex": {

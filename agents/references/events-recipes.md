@@ -35,7 +35,7 @@ Subcommands:
 | `buffer SHELL [--at-seq N]` | Cumulative buffer for a shell up to a seq (default: end of run). `SHELL` accepts either the `shell_marker` (stable across renames) or the display `shell` name. |
 | `timeline SHELL` | Per-shell chronological merge of events and buffer events. Same `SHELL` resolution as `buffer`. |
 | `dedup` | Effect-setup spans grouped by identity hash (`marker`); `is_reuse: false` is the bootstrap acquire. |
-| `pure-trace SPAN_ID` | Value events under a span subtree (interpolation / var-let / var-read / var-assign / pure-match / string-eval). |
+| `pure-trace SPAN_ID` | Value events under a span subtree (interpolation / var-let / var-read / var-assign / pure-match-start / pure-match-done / pure-match-failed / string-eval). |
 | `diff OTHER_EVENTS_JSON` | First event index where two runs disagree on `(kind, shell_marker, source)`. Ignores `seq` and `buffer_events` (PTY chunking noise). |
 
 Output is JSON on stdout for structured subcommands; raw text for `buffer`. Compose with `jq` when narrowing further.
@@ -147,7 +147,7 @@ Returns one group per identity hash (`marker`) with all acquires under it. The a
 python3 <plugin>/tools/events.py pure-trace "$SPAN_ID"
 ```
 
-Collects every value event (`interpolation`, `var-let`, `var-read`, `var-assign`, `pure-match`, `string-eval`) under the span subtree. Use the `stack` output to pick the span you care about.
+Collects every value event (`interpolation`, `var-let`, `var-read`, `var-assign`, `pure-match-start`, `pure-match-done`, `pure-match-failed`, `string-eval`) under the span subtree. Use the `stack` output to pick the span you care about.
 
 ### 10. Capture values from a match
 

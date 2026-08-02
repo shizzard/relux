@@ -1,0 +1,38 @@
+pure fn extract_id(payload) {
+    payload ? ^id=(\d+)$
+    $1
+}
+
+test "pure fn extracts a capture and returns it through a test-level let" {
+    """
+    Verify a `?` pure match inside a `pure fn` body binds the numeric
+    capture into the function's own per-call frame, so the pure fn can
+    return `$1` to extract a value. The extraction runs at a test-level
+    `let id := extract_id(payload)`, and the extracted value flows into
+    the shell for assertion.
+    """
+    let payload := "id=42"
+    let id := extract_id(payload)
+    shell s {
+        > echo "id=${id}"
+        <? ^id=42$
+    }
+}
+
+test "pure fn captures are discarded on return" {
+    """
+    Verify the numeric captures bound by a `?` pure match inside a
+    `pure fn` are local to that call: after the pure fn returns, the
+    caller's shell frame has no `$1` from the function's match, exactly
+    like shell-frame captures do not leak out of a called fn. The shell
+    reads `${1}` before running any match of its own -- the caller never
+    set a capture, so an empty `${1}` here is the only correct result; a
+    leak from the pure fn's internal `$1` would echo `7` instead.
+    """
+    let value := extract_id("id=7")
+    shell s {
+        value = 7
+        > echo "caller-cap=[${1}]"
+        <? ^caller-cap=\[\]$
+    }
+}

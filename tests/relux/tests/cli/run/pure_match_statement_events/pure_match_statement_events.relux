@@ -1,0 +1,52 @@
+test "statement-position pure matches emit the event trio" {
+    """
+    marker_events covers the pure-match trio for marker conditions; this pins it
+    for statement-position pure matches. A passing `?` and a passing `=` in a
+    shell body each emit a `pure-match-start` + `pure-match-done` pair (no
+    `pure-match-failed`), with is_regex distinguishing the two operators. Because
+    the matches run inside a shell block, every emitted event carries that shell.
+    """
+    shell s {
+        > ${__RELUX} run --progress plain --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <= 1 passed
+        match_ok()
+
+        > events=$(ls -dt ${__RELUX_TEST_ROOT}/fixtures/relux/out/*/logs/relux/tests/events/statement-pure-match-emits-the-event-trio/events.json 2>/dev/null | head -1); echo FOUND=$events
+        <? ^FOUND=/
+        match_ok()
+
+        // Two starts, two dones, no failures.
+        > jq -M '[.events[] | select(.kind == "pure-match-start")] | length' $events
+        <? ^2$
+        match_ok()
+        > jq -M '[.events[] | select(.kind == "pure-match-done")] | length' $events
+        <? ^2$
+        match_ok()
+        > jq -M '[.events[] | select(.kind == "pure-match-failed")] | length' $events
+        <? ^0$
+        match_ok()
+
+        // The regex operator: v ? ^a.c$ (is_regex true).
+        > jq -Mc '[.events[] | select(.kind == "pure-match-start" and .is_regex == true)][0] | {value, pattern, is_regex}' $events
+        <? ^\{"value":"abc","pattern":"\^a\.c\$","is_regex":true\}$
+        match_ok()
+
+        // The exact-equality operator: v = abc (is_regex false).
+        > jq -Mc '[.events[] | select(.kind == "pure-match-start" and .is_regex == false)][0] | {value, pattern, is_regex}' $events
+        <? ^\{"value":"abc","pattern":"abc","is_regex":false\}$
+        match_ok()
+
+        // Both hits carry the whole match in `matched`.
+        > jq -Mc '[.events[] | select(.kind == "pure-match-done") | .matched] | sort' $events
+        <? ^\["abc","abc"\]$
+        match_ok()
+
+        // Statement-position matches run inside `shell s`, so every pure-match
+        // event carries that shell (events.json invariant: shell present iff a
+        // shell was in scope at the emit site). All four here (2 start + 2 done)
+        // must be tagged with shell "s".
+        > jq -M '[.events[] | select(.kind | startswith("pure-match")) | select(.shell == "s")] | length' $events
+        <? ^4$
+        match_ok()
+    }
+}

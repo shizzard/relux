@@ -64,6 +64,8 @@ effect <EffectName> {
     start <EffectName> as <Alias>
     start <EffectName> as <Alias> { KEY := expr, KEY }
     let <name> := <expr>
+    <expr> = <pattern>                       // setup pure match (asserts)
+    <expr> ? <pattern>                        // setup pure match (binds $n)
     expose shell <shell_name>
     expose shell <Alias>.<shell_name> as <public_name>
     expose var <var_name>
@@ -98,6 +100,8 @@ test "<name>" {
     <doc string>
     """
     let <name>
+    <expr> = <pattern>                  // preamble pure match (asserts)
+    <expr> ? <pattern>                  // preamble pure match (binds $n)
     start <EffectName>
     start <EffectName> as <Alias>
     start <EffectName> as <Alias> { KEY := expr, KEY }
@@ -112,8 +116,8 @@ test "<name>" {
 ```relux
 # kind                                  // unconditional
 # kind modifier expr                    // truthiness check
-# kind modifier expr = expr             // equality comparison
-# kind modifier expr ? regex            // regex match
+# kind modifier expr = expr             // exact-equality comparison
+# kind modifier expr ? regex            // regex match (unanchored)
 ```
 
 Where:
@@ -121,6 +125,7 @@ Where:
 - `modifier`: `if` | `unless`
 - `expr`: quoted string with interpolation (`"${VAR}"`, `"literal"`, `"${A}:${B}"`) or bare number (`42`)
 - `regex`: regex pattern with `${var}` interpolation, to end of line
+- `=` tests exact equality (LHS equals RHS); for a substring or pattern check use `?` (regex). Unlike the shell literal-match operators `<=`/`!=`, which scan a streaming buffer for a substring, a marker compares against a complete value.
 
 Examples:
 ```relux
@@ -132,6 +137,7 @@ Examples:
 # flaky if "${CI}" = "true"
 # run if "${HOST}:${PORT}" = "localhost:8080"
 # skip unless "${VER}" ? ^${MAJOR}\..*$
+# skip unless "${PATH}" ? bin           // substring / pattern match via regex
 ```
 
 - A bare marker (kind only, no modifier) is unconditional
@@ -158,7 +164,7 @@ Examples:
 
 - Empty string or unset variable = false
 - Any non-empty string = true
-- `=` returns the LHS value if LHS equals RHS, empty string otherwise
+- `=` returns the LHS value if it equals RHS exactly, empty string otherwise (use `?` for a substring or pattern check)
 - `?` returns the regex match if matched, empty string otherwise
 
 ## Shell Blocks
@@ -185,7 +191,7 @@ let <name> := <expression>   # declare from expression
 <name> := <expression>       # reassign existing variable
 ```
 
-- Binding uses `:=` — declaration (`let x := e`), reassignment (`x := e`), and overlay entries (`{ KEY := e }`) all use it. Bare `=` is no longer a binding operator; it serves as the literal-match arm inside a multimatch block (`= <literal>`, see below).
+- Binding uses `:=` — declaration (`let x := e`), reassignment (`x := e`), and overlay entries (`{ KEY := e }`) all use it. Bare `=` is no longer a binding operator; it is the exact-equality [pure-match](08-pure-matching.md) assertion at statement level (`x = e` asserts `x` equals `e`) and the literal-match arm inside a multimatch block (`= <literal>`, see below). `let x = e` is an error — use `let x := e`.
 - Quoted values required for `let` assignments
 - Interpolation inside strings: `"${name}"`, `"${1}"`, `"${2}"`, etc.
 - Bare variable reference: `name`, `$1`, `$2`
@@ -218,6 +224,32 @@ All operators are followed by a space, then payload to end of line.
 - `<?` matches regex against shell output; sets `$1`, `$2`, etc. for capture groups
 - `<=` matches literal with variable substitution
 - Both block until match or timeout
+
+### Pure Match
+
+Statement forms that assert a computed value against a pattern (see
+[Pure Matching](08-pure-matching.md)). Distinct from `<?` / `<=`, which
+scan a shell's output buffer; a pure match compares a complete value and
+reads nothing from the PTY.
+
+| Statement           | Meaning                                                        |
+| ------------------- | -------------------------------------------------------------- |
+| `<expr> = <pattern>`| assert `<expr>` equals `<pattern>` exactly (literal equality)  |
+| `<expr> ? <pattern>`| assert `<expr>` matches the regex `<pattern>`; binds `$0`..`$n`|
+
+- `<expr>` is any pure expression (identifier, quoted/interpolated string, function call, `Alias.var`, `$n`, number).
+- `<pattern>` is an interpolated string to end of line (same shape as the `<=` / `<?` payload).
+- `=` is exact equality (not a substring test); use `?` for a substring or pattern check.
+- A no-match fails the test immediately — a pure match is an assertion and cannot time out. There is no negated form.
+- Valid in `shell` blocks, `fn` bodies, `pure fn` bodies, and **test / effect preambles** (alongside `let`). Inside a `pure fn`, a `?` match binds captures into the function's own per-call frame, so `$1` can be returned to extract a value.
+- In a preamble, a `?` match binds `$n` into a preamble capture frame that later preamble `let`s and `start` overlays read; a `shell` block does **not** inherit it (a shell owns its own frame). `$n` reads the ambient frame, `""` when unset. See [Pure Matching](08-pure-matching.md#preamble-captures-and-the-shell-boundary).
+- Statement-only: cannot be a `let` right-hand side, an overlay value, or a cleanup value.
+
+```relux
+os = linux                 // passes only if os is exactly "linux"
+"${HOST}:${PORT}" ? ^db\.local:\d+$
+greeting ? (hello) (world) // on a hit: $1="hello", $2="world"
+```
 
 ### Multi-Pattern Match
 

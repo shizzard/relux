@@ -20,6 +20,7 @@ import {
   foldedSummary,
   formatBytes,
   formatDuration,
+  formatMatchContext,
   formatMultiMatchPatternLabel,
   formatTimeout,
   formatTimeoutLine,
@@ -310,11 +311,12 @@ describe('eventSummary', () => {
     expect(eventSummary(ev('var-read', { name: 'x', value: 'v' }))).toBe('x = v');
   });
 
-  it('summarises pure-match with arrow and `no match` when result is empty', () => {
-    const a = ev('pure-match', { match_kind: 'regex', value: 'abc', pattern: '.', result: '', captures: {} });
-    expect(eventSummary(a)).toBe('. \u{2192} (no match)');
-    const b = ev('pure-match', { match_kind: 'regex', value: 'abc', pattern: '.', result: 'a', captures: {} });
-    expect(eventSummary(b)).toBe('. \u{2192} a');
+  it('summarises the pure-match trio', () => {
+    expect(
+      eventSummary(ev('pure-match-start', { value: 'abc', pattern: '.', is_regex: true })),
+    ).toContain('.');
+    expect(eventSummary(ev('pure-match-done', { matched: 'a', captures: {} }))).toContain('a');
+    expect(eventSummary(ev('pure-match-failed', {}))).toBe('(no match)');
   });
 
   it('summarises bool-check across all four shapes', () => {
@@ -325,11 +327,17 @@ describe('eventSummary', () => {
       eventSummary(ev('bool-check', { evaluation: { shape: 'bare', value: 'v', met: true } })),
     ).toBe('"v" \u{2192} true');
     expect(
-      eventSummary(ev('bool-check', { evaluation: { shape: 'eq', lhs: 'L', rhs: 'R', met: false } })),
-    ).toBe('"L" = "R" \u{2192} false');
+      eventSummary(
+        ev('bool-check', {
+          evaluation: { shape: 'pure-match', value: 'L', pattern: 'R', is_regex: false, met: false },
+        }),
+      ),
+    ).toBe('"L" = R \u{2192} false');
     expect(
       eventSummary(
-        ev('bool-check', { evaluation: { shape: 'regex', value: 'abc', pattern: '.', met: true } }),
+        ev('bool-check', {
+          evaluation: { shape: 'pure-match', value: 'abc', pattern: '.', is_regex: true, met: true },
+        }),
       ),
     ).toBe('"abc" ? . \u{2192} true');
   });
@@ -623,5 +631,18 @@ describe('formatMultiMatchPatternLabel', () => {
   it('uses ? for regex and = for literal', () => {
     expect(formatMultiMatchPatternLabel({ pattern: '^job-a$', is_regex: true })).toBe('? ^job-a$');
     expect(formatMultiMatchPatternLabel({ pattern: 'batch complete', is_regex: false })).toBe('= batch complete');
+  });
+});
+
+describe('formatMatchContext', () => {
+  it('labels every match-context kind by its human name, quoting the site name', () => {
+    expect(formatMatchContext({ type: 'fn', name: 'build_url' })).toBe("fn 'build_url'");
+    expect(formatMatchContext({ type: 'test-preamble', name: 'login' })).toBe(
+      "test preamble 'login'",
+    );
+    expect(formatMatchContext({ type: 'effect-preamble', name: 'Db' })).toBe(
+      "effect preamble 'Db'",
+    );
+    expect(formatMatchContext({ type: 'shell', name: 'default' })).toBe("shell 'default'");
   });
 });

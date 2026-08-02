@@ -128,10 +128,12 @@ fn eval_string_literal() {
         eval_pure_expr(
             &expr,
             &VarScope::new(),
+            &HashMap::new(),
             &test_env(),
             &empty_fns(),
             &mut NoOpSink
-        ),
+        )
+        .unwrap(),
         "hello"
     );
 }
@@ -143,10 +145,12 @@ fn eval_string_empty() {
         eval_pure_expr(
             &expr,
             &VarScope::new(),
+            &HashMap::new(),
             &test_env(),
             &empty_fns(),
             &mut NoOpSink
-        ),
+        )
+        .unwrap(),
         ""
     );
 }
@@ -157,7 +161,15 @@ fn eval_string_with_var() {
     let mut vars = VarScope::new();
     vars.insert("name".into(), "world".into());
     assert_eq!(
-        eval_pure_expr(&expr, &vars, &test_env(), &empty_fns(), &mut NoOpSink),
+        eval_pure_expr(
+            &expr,
+            &vars,
+            &HashMap::new(),
+            &test_env(),
+            &empty_fns(),
+            &mut NoOpSink
+        )
+        .unwrap(),
         "hello world"
     );
 }
@@ -169,10 +181,12 @@ fn eval_string_missing_var() {
         eval_pure_expr(
             &expr,
             &VarScope::new(),
+            &HashMap::new(),
             &test_env(),
             &empty_fns(),
             &mut NoOpSink
-        ),
+        )
+        .unwrap(),
         "hello "
     );
 }
@@ -185,7 +199,15 @@ fn eval_string_with_env_var() {
         "from_env".into(),
     )])));
     assert_eq!(
-        eval_pure_expr(&expr, &VarScope::new(), &env, &empty_fns(), &mut NoOpSink),
+        eval_pure_expr(
+            &expr,
+            &VarScope::new(),
+            &HashMap::new(),
+            &env,
+            &empty_fns(),
+            &mut NoOpSink
+        )
+        .unwrap(),
         "from_env"
     );
 }
@@ -197,7 +219,15 @@ fn eval_string_var_shadows_env() {
     vars.insert("X".into(), "local".into());
     let env = LayeredEnv::from(Env::from_map(HashMap::from([("X".into(), "env".into())])));
     assert_eq!(
-        eval_pure_expr(&expr, &vars, &env, &empty_fns(), &mut NoOpSink),
+        eval_pure_expr(
+            &expr,
+            &vars,
+            &HashMap::new(),
+            &env,
+            &empty_fns(),
+            &mut NoOpSink
+        )
+        .unwrap(),
         "local"
     );
 }
@@ -209,10 +239,12 @@ fn eval_string_concatenation() {
         eval_pure_expr(
             &expr,
             &VarScope::new(),
+            &HashMap::new(),
             &test_env(),
             &empty_fns(),
             &mut NoOpSink
-        ),
+        )
+        .unwrap(),
         "abc"
     );
 }
@@ -224,10 +256,12 @@ fn eval_string_escaped_dollar() {
         eval_pure_expr(
             &expr,
             &VarScope::new(),
+            &HashMap::new(),
             &test_env(),
             &empty_fns(),
             &mut NoOpSink
-        ),
+        )
+        .unwrap(),
         "cost: $5"
     );
 }
@@ -238,7 +272,15 @@ fn eval_string_only_var() {
     let mut vars = VarScope::new();
     vars.insert("x".into(), "val".into());
     assert_eq!(
-        eval_pure_expr(&expr, &vars, &test_env(), &empty_fns(), &mut NoOpSink),
+        eval_pure_expr(
+            &expr,
+            &vars,
+            &HashMap::new(),
+            &test_env(),
+            &empty_fns(),
+            &mut NoOpSink
+        )
+        .unwrap(),
         "val"
     );
 }
@@ -250,7 +292,15 @@ fn eval_string_adjacent_vars() {
     vars.insert("a".into(), "1".into());
     vars.insert("b".into(), "2".into());
     assert_eq!(
-        eval_pure_expr(&expr, &vars, &test_env(), &empty_fns(), &mut NoOpSink),
+        eval_pure_expr(
+            &expr,
+            &vars,
+            &HashMap::new(),
+            &test_env(),
+            &empty_fns(),
+            &mut NoOpSink
+        )
+        .unwrap(),
         "12"
     );
 }
@@ -261,7 +311,15 @@ fn eval_var_present() {
     let mut vars = VarScope::new();
     vars.insert("x".into(), "val".into());
     assert_eq!(
-        eval_pure_expr(&expr, &vars, &test_env(), &empty_fns(), &mut NoOpSink),
+        eval_pure_expr(
+            &expr,
+            &vars,
+            &HashMap::new(),
+            &test_env(),
+            &empty_fns(),
+            &mut NoOpSink
+        )
+        .unwrap(),
         "val"
     );
 }
@@ -273,10 +331,12 @@ fn eval_var_missing() {
         eval_pure_expr(
             &expr,
             &VarScope::new(),
+            &HashMap::new(),
             &test_env(),
             &empty_fns(),
             &mut NoOpSink
-        ),
+        )
+        .unwrap(),
         ""
     );
 }
@@ -287,7 +347,15 @@ fn eval_var_empty_value() {
     let mut vars = VarScope::new();
     vars.insert("x".into(), String::new());
     assert_eq!(
-        eval_pure_expr(&expr, &vars, &test_env(), &empty_fns(), &mut NoOpSink),
+        eval_pure_expr(
+            &expr,
+            &vars,
+            &HashMap::new(),
+            &test_env(),
+            &empty_fns(),
+            &mut NoOpSink
+        )
+        .unwrap(),
         ""
     );
 }
@@ -298,7 +366,15 @@ fn eval_call_builtin() {
     let arg = str_expr(vec![lit("  hi  ")]);
     let expr = call_expr("trim", builtin_id("trim", 1), vec![arg]);
     assert_eq!(
-        eval_pure_expr(&expr, &VarScope::new(), &test_env(), &fns, &mut NoOpSink),
+        eval_pure_expr(
+            &expr,
+            &VarScope::new(),
+            &HashMap::new(),
+            &test_env(),
+            &fns,
+            &mut NoOpSink
+        )
+        .unwrap(),
         "hi"
     );
 }
@@ -326,7 +402,15 @@ fn eval_call_user_defined() {
     let arg = str_expr(vec![lit("world")]);
     let expr = call_expr("greet", fn_id, vec![arg]);
     assert_eq!(
-        eval_pure_expr(&expr, &VarScope::new(), &test_env(), &fns, &mut NoOpSink),
+        eval_pure_expr(
+            &expr,
+            &VarScope::new(),
+            &HashMap::new(),
+            &test_env(),
+            &fns,
+            &mut NoOpSink
+        )
+        .unwrap(),
         "hello world"
     );
 }
@@ -339,7 +423,15 @@ fn eval_call_nested() {
     let inner = call_expr("upper", builtin_id("upper", 1), vec![inner_arg]);
     let expr = call_expr("lower", builtin_id("lower", 1), vec![inner]);
     assert_eq!(
-        eval_pure_expr(&expr, &VarScope::new(), &test_env(), &fns, &mut NoOpSink),
+        eval_pure_expr(
+            &expr,
+            &VarScope::new(),
+            &HashMap::new(),
+            &test_env(),
+            &fns,
+            &mut NoOpSink
+        )
+        .unwrap(),
         "ab"
     );
 }
@@ -364,7 +456,8 @@ fn eval_fn_identity() {
             &test_env(),
             &empty_fns(),
             &mut NoOpSink
-        ),
+        )
+        .unwrap(),
         "hello"
     );
 }
@@ -387,7 +480,7 @@ fn eval_fn_with_let() {
         span: test_span(),
     };
     assert_eq!(
-        eval_pure_fn(&func, vec![], &test_env(), &empty_fns(), &mut NoOpSink),
+        eval_pure_fn(&func, vec![], &test_env(), &empty_fns(), &mut NoOpSink).unwrap(),
         "v"
     );
 }
@@ -414,7 +507,7 @@ fn eval_fn_with_assign() {
         span: test_span(),
     };
     assert_eq!(
-        eval_pure_fn(&func, vec![], &test_env(), &empty_fns(), &mut NoOpSink),
+        eval_pure_fn(&func, vec![], &test_env(), &empty_fns(), &mut NoOpSink).unwrap(),
         "b"
     );
 }
@@ -441,7 +534,7 @@ fn eval_fn_with_multiple_lets() {
         span: test_span(),
     };
     assert_eq!(
-        eval_pure_fn(&func, vec![], &test_env(), &empty_fns(), &mut NoOpSink),
+        eval_pure_fn(&func, vec![], &test_env(), &empty_fns(), &mut NoOpSink).unwrap(),
         "12"
     );
 }
@@ -476,7 +569,7 @@ fn eval_fn_nested_call() {
         span: test_span(),
     };
     assert_eq!(
-        eval_pure_fn(&outer, vec![], &test_env(), &fns, &mut NoOpSink),
+        eval_pure_fn(&outer, vec![], &test_env(), &fns, &mut NoOpSink).unwrap(),
         "result"
     );
 }
@@ -528,7 +621,7 @@ fn eval_fn_deeply_nested_call() {
         span: test_span(),
     };
     assert_eq!(
-        eval_pure_fn(&a, vec![], &test_env(), &fns, &mut NoOpSink),
+        eval_pure_fn(&a, vec![], &test_env(), &fns, &mut NoOpSink).unwrap(),
         "deep"
     );
 }
@@ -554,7 +647,8 @@ fn eval_fn_params_shadow_outer() {
             &test_env(),
             &empty_fns(),
             &mut NoOpSink
-        ),
+        )
+        .unwrap(),
         "inner"
     );
 }
@@ -585,7 +679,15 @@ fn eval_fn_params_not_visible_after_return() {
     let call_arg = str_expr(vec![lit("inner")]);
     let expr = call_expr("f", fn_id, vec![call_arg]);
     assert_eq!(
-        eval_pure_expr(&expr, &vars, &test_env(), &fns, &mut NoOpSink),
+        eval_pure_expr(
+            &expr,
+            &vars,
+            &HashMap::new(),
+            &test_env(),
+            &fns,
+            &mut NoOpSink
+        )
+        .unwrap(),
         "inner"
     );
     assert_eq!(vars.get("x"), Some("before"));
@@ -600,7 +702,7 @@ fn eval_fn_empty_body() {
         span: test_span(),
     };
     assert_eq!(
-        eval_pure_fn(&func, vec![], &test_env(), &empty_fns(), &mut NoOpSink),
+        eval_pure_fn(&func, vec![], &test_env(), &empty_fns(), &mut NoOpSink).unwrap(),
         ""
     );
 }
@@ -623,7 +725,7 @@ fn eval_fn_last_expr_is_return() {
         span: test_span(),
     };
     assert_eq!(
-        eval_pure_fn(&func, vec![], &test_env(), &empty_fns(), &mut NoOpSink),
+        eval_pure_fn(&func, vec![], &test_env(), &empty_fns(), &mut NoOpSink).unwrap(),
         "returned"
     );
 }
@@ -647,7 +749,8 @@ fn eval_fn_multiple_params() {
             &test_env(),
             &fns,
             &mut NoOpSink,
-        ),
+        )
+        .unwrap(),
         "helloworld"
     );
 }
@@ -670,7 +773,8 @@ fn eval_fn_param_overrides_outer_var() {
             &test_env(),
             &empty_fns(),
             &mut NoOpSink
-        ),
+        )
+        .unwrap(),
         "2"
     );
 }
@@ -687,7 +791,7 @@ fn eval_fn_last_stmt_is_let_returns_value() {
         span: test_span(),
     };
     assert_eq!(
-        eval_pure_fn(&func, vec![], &test_env(), &empty_fns(), &mut NoOpSink),
+        eval_pure_fn(&func, vec![], &test_env(), &empty_fns(), &mut NoOpSink).unwrap(),
         "val"
     );
 }
@@ -710,7 +814,7 @@ fn eval_fn_last_stmt_is_assign_returns_value() {
         span: test_span(),
     };
     assert_eq!(
-        eval_pure_fn(&func, vec![], &test_env(), &empty_fns(), &mut NoOpSink),
+        eval_pure_fn(&func, vec![], &test_env(), &empty_fns(), &mut NoOpSink).unwrap(),
         "new"
     );
 }
@@ -733,7 +837,7 @@ fn eval_fn_let_without_value() {
         span: test_span(),
     };
     assert_eq!(
-        eval_pure_fn(&func, vec![], &test_env(), &empty_fns(), &mut NoOpSink),
+        eval_pure_fn(&func, vec![], &test_env(), &empty_fns(), &mut NoOpSink).unwrap(),
         ""
     );
 }
@@ -744,7 +848,15 @@ fn eval_var_from_env_layer() {
     let overlay = Env::from_map(HashMap::from([("DB_PORT".into(), "5432".into())]));
     let env = LayeredEnv::child(Arc::new(test_env()), overlay);
     assert_eq!(
-        eval_pure_expr(&expr, &VarScope::new(), &env, &empty_fns(), &mut NoOpSink),
+        eval_pure_expr(
+            &expr,
+            &VarScope::new(),
+            &HashMap::new(),
+            &env,
+            &empty_fns(),
+            &mut NoOpSink
+        )
+        .unwrap(),
         "5432"
     );
 }
@@ -757,9 +869,82 @@ fn eval_var_vars_shadow_env_layer() {
     let overlay = Env::from_map(HashMap::from([("X".into(), "from_overlay".into())]));
     let env = LayeredEnv::child(Arc::new(test_env()), overlay);
     assert_eq!(
-        eval_pure_expr(&expr, &vars, &env, &empty_fns(), &mut NoOpSink),
+        eval_pure_expr(
+            &expr,
+            &vars,
+            &HashMap::new(),
+            &env,
+            &empty_fns(),
+            &mut NoOpSink
+        )
+        .unwrap(),
         "from_vars"
     );
+}
+
+// --- Pure match inside a pure-fn body --------------------
+
+// A `pure fn` whose body runs `s ? ^id=(\d+)$` then yields `$1`: the
+// capture is bound on a hit and the whole evaluation fails on a miss.
+fn extract_id_fn() -> IrPureFn {
+    IrPureFn::UserDefined {
+        name: test_ident("extract_id"),
+        params: vec![test_ident("s")],
+        body: vec![
+            IrPureStmt::PureMatch {
+                lhs: var_expr("s"),
+                pattern: IrInterpolation::new(vec![lit("^id=(\\d+)$")], test_span()),
+                is_regex: true,
+                span: test_span(),
+            },
+            IrPureStmt::Expr {
+                expr: IrPureExpr::Capture {
+                    index: 1,
+                    span: test_span(),
+                },
+                span: test_span(),
+            },
+        ],
+        span: test_span(),
+    }
+}
+
+#[test]
+fn eval_pure_fn_pure_match_binds_capture_on_hit() {
+    let func = extract_id_fn();
+    assert_eq!(
+        eval_pure_fn(
+            &func,
+            vec!["id=42".into()],
+            &test_env(),
+            &empty_fns(),
+            &mut NoOpSink
+        )
+        .unwrap(),
+        "42"
+    );
+}
+
+#[test]
+fn eval_pure_fn_pure_match_fails_on_no_match() {
+    let func = extract_id_fn();
+    let err = eval_pure_fn(
+        &func,
+        vec!["nope".into()],
+        &test_env(),
+        &empty_fns(),
+        &mut NoOpSink,
+    )
+    .unwrap_err();
+    match err {
+        PureEvalError::PureMatchFailed {
+            value, is_regex, ..
+        } => {
+            assert_eq!(value, "nope");
+            assert!(is_regex);
+        }
+        other => panic!("expected PureMatchFailed, got {other:?}"),
+    }
 }
 
 #[test]
@@ -769,7 +954,15 @@ fn eval_var_child_layer_shadows_parent() {
     let overlay = Env::from_map(HashMap::from([("MY_VAR".into(), "from_overlay".into())]));
     let env = LayeredEnv::child(Arc::new(LayeredEnv::from(base)), overlay);
     assert_eq!(
-        eval_pure_expr(&expr, &VarScope::new(), &env, &empty_fns(), &mut NoOpSink),
+        eval_pure_expr(
+            &expr,
+            &VarScope::new(),
+            &HashMap::new(),
+            &env,
+            &empty_fns(),
+            &mut NoOpSink
+        )
+        .unwrap(),
         "from_overlay"
     );
 }
@@ -780,7 +973,15 @@ fn eval_interpolation_with_env_layer() {
     let overlay = Env::from_map(HashMap::from([("PORT".into(), "8080".into())]));
     let env = LayeredEnv::child(Arc::new(test_env()), overlay);
     assert_eq!(
-        eval_pure_expr(&expr, &VarScope::new(), &env, &empty_fns(), &mut NoOpSink),
+        eval_pure_expr(
+            &expr,
+            &VarScope::new(),
+            &HashMap::new(),
+            &env,
+            &empty_fns(),
+            &mut NoOpSink
+        )
+        .unwrap(),
         "port=8080"
     );
 }
@@ -793,7 +994,15 @@ fn eval_var_falls_through_to_base_env() {
         "from_env".into(),
     )])));
     assert_eq!(
-        eval_pure_expr(&expr, &VarScope::new(), &env, &empty_fns(), &mut NoOpSink),
+        eval_pure_expr(
+            &expr,
+            &VarScope::new(),
+            &HashMap::new(),
+            &env,
+            &empty_fns(),
+            &mut NoOpSink
+        )
+        .unwrap(),
         "from_env"
     );
 }

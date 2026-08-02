@@ -28,7 +28,7 @@
 - Reassignment (`x := expr`) mutates an existing variable from an outer scope
 - Environment variables from the host process are available as pre-set variables in all scopes (read-only — `let` creates a shadow, not a modification of the process environment)
 - Hierarchical `.env` files, when present, layer over the host process environment and take precedence over it; their values feed interpolation, marker evaluation, and the shell under test
-- Regex capture groups (`$1`, `$2`, ...) are set after a `<?` match and remain in scope until overwritten by the next `<?`
+- Regex capture groups (`$1`, `$2`, ...) are set after a `<?` match or a `?` [pure match](08-pure-matching.md) and remain in scope until overwritten by the next regex match. Inside a `pure fn` body a `?` pure match binds `$1..$n` into the function's own per-call frame, discarded when the function returns (they do not leak to the caller, just as a called `fn`'s captures do not leak out)
 
 ## Functions
 
@@ -48,7 +48,8 @@
 - Cannot contain shell operators (`>`, `=>`, `<?`, `<=`, `!?`, `!=`, timeouts)
 - Cannot call impure built-in functions (e.g., `match_prompt()`, `ctrl_c()`)
 - Cannot call regular `fn` functions — only other pure functions and pure built-in functions
-- Can only contain: `let` declarations, variable reassignment, and expressions
+- Can only contain: `let` declarations, variable reassignment, expressions, and [pure-match](08-pure-matching.md) statements (`<expr> = <pattern>` / `<expr> ? <pattern>`)
+- A `?` pure match inside the body binds `$1..$n` into the call's own capture frame, so a `pure fn` can extract a value and return it; a non-matching pure match fails the test through the runtime site that called the function (a marker condition is the exception — a pure-eval failure there is falsy, not a test failure)
 - Can be called from condition markers, overlay expressions, and regular shell blocks
 - "Pure" means shell-independent, not side-effect-free — pure BIFs like `sleep()` and `log()` are allowed
 
@@ -85,6 +86,21 @@
   - Fail patterns remain active during the block; a fail-pattern hit aborts the block exactly as it would abort a single `<?` / `<=`
   - The inline-timeout prefix shape `<~Ns{ ... }` / `<@Ns{ ... }` carries the standard tolerance/assertion semantics, applied to the whole block
 
+## Pure Matching
+
+- A **pure match** asserts that a computed value satisfies a pattern; it reads nothing from a shell (contrast the `<?` / `<=` operators, which scan the output buffer)
+- Two statement forms, valid in `shell` blocks, `fn` bodies, `pure fn` bodies, and **test / effect preambles** (alongside `let`, before the first `shell` block):
+  - `<expr> = <pattern>` — asserts `<expr>` equals `<pattern>` exactly (byte-for-byte literal equality; a superstring or partial overlap fails). This is the same exact-equality semantics as the marker `=` operator
+  - `<expr> ? <pattern>` — asserts `<expr>` matches the regex `<pattern>` (unanchored, like `<?`)
+- `<pattern>` is an interpolated string (`${var}` resolved before comparison); `<expr>` is any pure expression
+- A pure match is an assertion: a no-match is an immediate test failure (Relux has no error handling), the same as a `<?` that never matches. There is no negated form and no timeout — the value is already in hand, so the match either succeeds or fails at once
+- A successful `?` binds the numeric capture groups `$0`, `$1`, ..., `$n` in the current shell, exactly like `<?`; they persist until the next regex match overwrites them. The `=` form binds no captures
+- A `?` pattern that fails to compile (only reachable when interpolation produces malformed regex) is a runtime failure, not a no-match
+- Inside a `pure fn` body, a `?` pure match binds numeric captures into the function's own per-call capture frame (each call starts empty), so a `pure fn` can match `$1` out of a value and return it. A no-match inside a `pure fn` fails the test through the runtime site that called it (`let`, overlay, shell-block call); inside a marker condition, a pure-eval failure instead makes the condition falsy rather than failing the test
+- In a test or effect **preamble**, a `?` pure match binds `$n` into a single capture frame hoisted across the whole preamble: later preamble `let`s, later preamble pure matches, and a `start` overlay's expressions all read it. A non-matching preamble pure match fails the test (test-level) or fails effect instantiation (effect-level). `$n` reads the ambient frame uniformly, rendering `""` when no regex has run, so a `$n` with no preceding match is not an error
+- **Shells do not inherit the preamble capture frame.** A `shell` block owns its own frame, populated only by its own `<?` matches, starting empty; `$n` inside a shell reads the shell's frame, never the preamble's. Carry a preamble capture into a shell by binding it to a `let`. Markers run before the preamble, so a marker condition sees an empty frame
+- Statement-only: a pure match cannot be a `let` right-hand side, an overlay value, or a cleanup value. `x = e` asserts; binding still requires `x := e` (and `let x = e` remains an error)
+
 ## Effects
 
 - Effect names must start with an uppercase letter (`CamelCase`) — this is enforced at the syntactic level, disambiguating effects from functions in imports
@@ -109,6 +125,7 @@
 - Exposed variables are only accessible in shell contexts (runtime); test-level and effect-level `let` bindings cannot reference them (purity violation — `let` is evaluated at resolve time, before effects are started)
 - Exposed variables are read-only from the caller's perspective
 - For composed effects, `expose` can re-export a dependency's shell or variable: `expose shell Dep.shell as public_name`, `expose var Dep.port as db_port`
+- An effect's setup preamble may contain [pure-match](08-pure-matching.md) statements alongside its `let`s; a `?` match binds `$n` into a preamble capture frame that later setup `let`s and `start` overlays read (the effect's own `shell` blocks do not inherit it). A non-matching setup pure match fails effect instantiation, failing every test that depends on the effect
 - Effects run before the test body; the dependency graph is resolved and executed in topological order
 - Circular effect dependencies are a parse error
 - If an effect fails (a match times out during setup), all tests depending on it are failed
@@ -130,9 +147,11 @@
   - `"${HOST}:${PORT}"` — compound interpolation
   - `42` — bare number (compared as string)
 - Bare variable identifiers (e.g. `CI`) are valid in markers
-- Expression evaluation uses ENV-only lookup (`Arc<LayeredEnv>` — the layered host-plus-`.env` environment) — no frame variables or test-scope variables exist at evaluation time
+- Marker expression evaluation uses ENV-only lookup (`Arc<LayeredEnv>` — the layered host-plus-`.env` environment) — no frame variables or test-scope variables exist at marker-evaluation time (this scoping is specific to marker conditions; pure evaluation elsewhere, e.g. a `?` pure match inside a `pure fn`, does have a per-call capture frame)
 - Truthiness: empty string or unset variable is false, any non-empty string is true
-- `=` operator: evaluates both sides, returns the LHS value if LHS equals RHS, empty string otherwise
+- `=` operator: evaluates both sides, returns the LHS value if it equals RHS exactly, empty string otherwise (unlike the shell literal-match operators `<=`/`!=`, which scan accumulated output for a substring; a marker compares against a complete value)
+  - An empty RHS matches only an empty or unset LHS
+  - For a substring or pattern check, use `?` (regex) instead: `expr ? value`
 - `?` operator: evaluates LHS, compiles the regex pattern (with `${var}` interpolation), returns the match if found, empty string otherwise
 - Modifier semantics:
   - `if` acts when the result is truthy
@@ -153,9 +172,9 @@
 - Condition markers (`# skip/run/flaky ...`) are placed immediately before the `test` declaration
 - Test structure (in order):
   1. Doc string (optional `"""..."""`)
-  2. `let` declarations (test-scoped variables)
+  2. Preamble: `let` declarations (test-scoped variables) and [pure-match](08-pure-matching.md) statements (`<expr> = <pattern>` / `<expr> ? <pattern>`), interleaved; a `?` match binds `$n` into a preamble capture frame the later preamble items and overlays read
   3. `start` declarations (effect dependencies)
-  4. `shell` blocks (test body)
+  4. `shell` blocks (test body) — each owns its own capture frame; the preamble frame is not inherited
   5. `cleanup` block (optional)
 - Effects are instantiated and their shells are available before the test body runs
 - A test succeeds if all match operations in all shell blocks pass

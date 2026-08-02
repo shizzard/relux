@@ -17,6 +17,7 @@ use super::block::IrShellBlock;
 use super::comment::IrComment;
 use super::expr::IrPureExpr;
 use super::ident::IrIdent;
+use super::interpolation::IrInterpolation;
 use super::stmt::IrPureLetStmt;
 use super::tables::LocalEffectKey;
 
@@ -52,6 +53,9 @@ pub struct IrEffectStart {
     effect: DiagEffectId,
     overlay: Vec<IrOverlayEntry>,
     alias: Option<String>,
+    /// Source span of the effect name (`Db` in `start Db`), for a
+    /// "effect not found" / resolution-failed diagnostic.
+    effect_span: IrSpan,
     span: IrSpan,
 }
 
@@ -60,18 +64,25 @@ impl IrEffectStart {
         effect: DiagEffectId,
         overlay: Vec<IrOverlayEntry>,
         alias: Option<String>,
+        effect_span: IrSpan,
         span: IrSpan,
     ) -> Self {
         Self {
             effect,
             overlay,
             alias,
+            effect_span,
             span,
         }
     }
 
     pub fn effect(&self) -> &DiagEffectId {
         &self.effect
+    }
+
+    /// Source span of the effect name in the `start` statement.
+    pub fn effect_span(&self) -> &IrSpan {
+        &self.effect_span
     }
 
     pub fn overlay(&self) -> &[IrOverlayEntry] {
@@ -97,6 +108,10 @@ pub enum IrExposeKind {
 pub struct IrExposeDecl {
     kind: IrExposeKind,
     qualifier: Option<String>,
+    /// Source span of the qualifier (dependency alias), when present.
+    /// `None` for an unqualified expose, which has no alias to point at and
+    /// never triggers an "unknown alias" diagnostic.
+    qualifier_span: Option<IrSpan>,
     target: String,
     alias: Option<String>,
     target_span: IrSpan,
@@ -107,6 +122,7 @@ impl IrExposeDecl {
     pub fn new(
         kind: IrExposeKind,
         qualifier: Option<String>,
+        qualifier_span: Option<IrSpan>,
         target: String,
         alias: Option<String>,
         target_span: IrSpan,
@@ -115,6 +131,7 @@ impl IrExposeDecl {
         Self {
             kind,
             qualifier,
+            qualifier_span,
             target,
             alias,
             target_span,
@@ -124,6 +141,12 @@ impl IrExposeDecl {
 
     pub fn target_span(&self) -> &IrSpan {
         &self.target_span
+    }
+
+    /// Source span of the qualifier (dependency alias), when this expose is
+    /// qualified. Points at the alias for an "unknown alias" diagnostic.
+    pub fn qualifier_span(&self) -> Option<&IrSpan> {
+        self.qualifier_span.as_ref()
     }
 
     pub fn kind(&self) -> &IrExposeKind {
@@ -151,13 +174,40 @@ impl_ir_node_struct!(IrExposeDecl);
 
 #[derive(Debug, Clone)]
 pub enum IrEffectItem {
-    Comment { comment: IrComment, span: IrSpan },
-    Expect { vars: Vec<IrIdent>, span: IrSpan },
-    Start { start: IrEffectStart, span: IrSpan },
-    Let { stmt: IrPureLetStmt, span: IrSpan },
-    Expose { decl: IrExposeDecl, span: IrSpan },
-    Shell { block: IrShellBlock, span: IrSpan },
-    Cleanup { block: IrCleanupBlock, span: IrSpan },
+    Comment {
+        comment: IrComment,
+        span: IrSpan,
+    },
+    Expect {
+        vars: Vec<IrIdent>,
+        span: IrSpan,
+    },
+    Start {
+        start: IrEffectStart,
+        span: IrSpan,
+    },
+    Let {
+        stmt: IrPureLetStmt,
+        span: IrSpan,
+    },
+    PureMatch {
+        lhs: IrPureExpr,
+        pattern: IrInterpolation,
+        is_regex: bool,
+        span: IrSpan,
+    },
+    Expose {
+        decl: IrExposeDecl,
+        span: IrSpan,
+    },
+    Shell {
+        block: IrShellBlock,
+        span: IrSpan,
+    },
+    Cleanup {
+        block: IrCleanupBlock,
+        span: IrSpan,
+    },
 }
 
 impl_ir_node_enum!(IrEffectItem {
@@ -165,6 +215,7 @@ impl_ir_node_enum!(IrEffectItem {
     Expect,
     Start,
     Let,
+    PureMatch,
     Expose,
     Shell,
     Cleanup
@@ -335,6 +386,7 @@ impl IrNodeLowering for IrEffectStart {
             global_key,
             overlay,
             alias,
+            IrSpan::new(file.clone(), ast.effect.node.span),
             IrSpan::new(file.clone(), ast.span),
         ))
     }
@@ -370,6 +422,24 @@ impl IrNodeLowering for IrEffectItem {
                     span: s(span),
                 })
             }
+            AstEffectItem::PureMatch {
+                lhs,
+                pattern,
+                is_regex,
+                span,
+            } => {
+                let ir_lhs = IrPureExpr::lower(&lhs.node, file, ctx)?;
+                let ir_pattern = IrInterpolation::lower_pure(pattern, file, ctx)?;
+                if *is_regex {
+                    super::regex_validate::validate_static_regex(pattern, file)?;
+                }
+                Ok(IrEffectItem::PureMatch {
+                    lhs: ir_lhs,
+                    pattern: ir_pattern,
+                    is_regex: *is_regex,
+                    span: s(span),
+                })
+            }
             AstEffectItem::Shell { block, span } => {
                 let ir = IrShellBlock::lower(block, file, ctx)?;
                 Ok(IrEffectItem::Shell {
@@ -401,10 +471,19 @@ impl IrNodeLowering for IrEffectItem {
                     relux_ast::AstExposeKind::Var { .. } => IrExposeKind::Var,
                 };
                 let qualifier = decl.qualifier.as_ref().map(|q| q.node.name.clone());
+                let qualifier_span = decl.qualifier.as_ref().map(|q| s(&q.span));
                 let target = decl.target.node.name.clone();
                 let target_span = s(&decl.target.span);
                 let alias = decl.alias.as_ref().map(|a| a.node.name.clone());
-                let ir = IrExposeDecl::new(kind, qualifier, target, alias, target_span, s(span));
+                let ir = IrExposeDecl::new(
+                    kind,
+                    qualifier,
+                    qualifier_span,
+                    target,
+                    alias,
+                    target_span,
+                    s(span),
+                );
                 Ok(IrEffectItem::Expose {
                     decl: ir,
                     span: s(span),

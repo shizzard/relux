@@ -468,6 +468,8 @@ Each section is optional, but they must appear in this order. Writing a `start` 
 
 This ordering reflects the data flow: expects declare what is available, lets compute derived values, starts wire those values into sub-dependencies, and exposes declare the public interface after all shells and dependencies are established.
 
+Everything before the first `shell` block — the `expect`, `let`, `start`, and `expose` sections — is the effect's **preamble**: setup that runs once, in this order, before any shell spawns. It mirrors a test's preamble, the test-scope `let`s at the top of a test, but has more sections because an effect declares a richer interface.
+
 ## Best practices
 
 ### Set fail patterns early in effects

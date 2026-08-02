@@ -1,0 +1,13 @@
+pure fn boom(s) {
+    s = ok
+    s
+}
+
+test "pure match fails in fn" {
+    let v := "abc"
+    let x := boom(v)
+    shell s {
+        > echo hi
+        <? ^hi$
+    }
+}

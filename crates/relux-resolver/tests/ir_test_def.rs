@@ -207,6 +207,69 @@ fn lower_test_let_accepts_pure_fn_call() {
 }
 
 #[test]
+fn lower_test_item_pure_match_regex() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let item = pure_match_test_item(true, "^id=(\\d+)$");
+    let ir = IrTestItem::lower(&item, &file, &mut ctx).unwrap();
+    assert!(matches!(ir, IrTestItem::PureMatch { is_regex: true, .. }));
+}
+
+#[test]
+fn lower_test_item_pure_match_literal() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let item = pure_match_test_item(false, "expected");
+    let ir = IrTestItem::lower(&item, &file, &mut ctx).unwrap();
+    assert!(matches!(
+        ir,
+        IrTestItem::PureMatch {
+            is_regex: false,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn lower_test_item_pure_match_regex_invalid_diagnoses() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let item = pure_match_test_item(true, "(unclosed");
+    let result = IrTestItem::lower(&item, &file, &mut ctx);
+    assert!(
+        result.is_err(),
+        "invalid static regex in a test pure-match must surface at lowering"
+    );
+}
+
+// The parser does not yet emit `AstTestItem::PureMatch`, so the tests
+// above hand-build the AST item and lower it directly.
+fn pure_match_test_item(is_regex: bool, pattern: &str) -> AstTestItem {
+    let span = Span::new(0, 10);
+    AstTestItem::PureMatch {
+        lhs: Spanned::new(
+            AstExpr::Var {
+                name: "x".into(),
+                span,
+            },
+            span,
+        ),
+        pattern: AstInterpolation {
+            parts: vec![AstStringPart::Literal {
+                value: pattern.into(),
+                span,
+            }],
+            span,
+        },
+        is_regex,
+        span,
+    }
+}
+
+#[test]
 fn lower_test_let_accepts_string_literal() {
     let source = r#"test "t" {
   let x := "hello"

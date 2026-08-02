@@ -17,6 +17,7 @@ use super::need::start_decl;
 use super::punctuation::punctuation_brace_close;
 use super::punctuation::punctuation_brace_open;
 use super::stmt::stmt_let_standalone;
+use super::stmt::stmt_pure_match_standalone;
 use super::token::keyword;
 use super::ws::leading_ws;
 use super::ws::newline;
@@ -139,12 +140,33 @@ pub fn def_effect<'a>()
             AstStmt::Let { stmt, span } => AstEffectItem::Let { stmt, span },
             _ => unreachable!(),
         });
+    // A pure-match assertion in the setup preamble: `<expr> = pat` /
+    // `<expr> ? pat`. Placed after `let_item` (which is keyword-led and
+    // unambiguous); this starts with a bare `expr()`.
+    let pure_match_item = leading_ws()
+        .ignore_then(stmt_pure_match_standalone())
+        .map(|s| match s.node {
+            AstStmt::PureMatchLiteral { lhs, pattern, span } => AstEffectItem::PureMatch {
+                lhs,
+                pattern,
+                is_regex: false,
+                span,
+            },
+            AstStmt::PureMatchRegex { lhs, pattern, span } => AstEffectItem::PureMatch {
+                lhs,
+                pattern,
+                is_regex: true,
+                span,
+            },
+            _ => unreachable!(),
+        });
     let let_comment = leading_ws().ignore_then(comment()).map_with(|c, e| {
         let span = crate::span_from_chumsky(e.span());
         AstEffectItem::Comment { text: c, span }
     });
     let let_section = choice((
         let_item,
+        pure_match_item,
         let_comment,
         // Fragile: SENTINEL comment must be filtered by is_sentinel_comment - edit with caution.
         ws().ignore_then(newline()).to(AstEffectItem::Comment {
@@ -531,6 +553,45 @@ effect Db {
             e.body
                 .iter()
                 .any(|item| matches!(&item.node, AstEffectItem::Cleanup { .. }))
+        );
+    }
+
+    #[test]
+    fn effect_with_pure_match_in_preamble() {
+        let e =
+            parse_effect("effect E {\n  let u := \"x\"\n  u ? ^x$\n  shell m {\n    > :\n  }\n}\n");
+        assert!(
+            e.body
+                .iter()
+                .any(|item| matches!(&item.node, AstEffectItem::PureMatch { is_regex: true, .. }))
+        );
+    }
+
+    #[test]
+    fn effect_with_pure_match_literal_in_preamble() {
+        let e =
+            parse_effect("effect E {\n  let u := \"x\"\n  u = x\n  shell m {\n    > :\n  }\n}\n");
+        assert!(e.body.iter().any(|item| matches!(
+            &item.node,
+            AstEffectItem::PureMatch {
+                is_regex: false,
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn effect_bare_expr_in_preamble_is_rejected() {
+        let source = "effect E {\n  foo(x)\n  shell m {\n> :\n}\n}\n";
+        let pairs = crate::lex_to_pairs(source);
+        let input = crate::make_input(&pairs, source.len());
+        let result = def_effect()
+            .then_ignore(any().repeated())
+            .parse(input)
+            .into_result();
+        assert!(
+            result.is_err(),
+            "a bare expression in the effect preamble must be rejected"
         );
     }
 

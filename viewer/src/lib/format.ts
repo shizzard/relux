@@ -1,5 +1,6 @@
 import type { CancelReasonRecord } from '../types/CancelReasonRecord';
 import type { Event } from '../types/Event';
+import type { MatchContext } from '../types/MatchContext';
 import type { MultiMatchPattern } from '../types/MultiMatchPattern';
 import type { Span } from '../types/Span';
 import type { TimeoutValue } from '../types/TimeoutValue';
@@ -70,7 +71,9 @@ const KIND_GLYPHS: Record<string, string> = {
   'var-assign': '\u{003D}',
   'string-eval': '\u{0024}',
   interpolation: '\u{0024}',
-  'pure-match': '\u{003F}',
+  'pure-match-start': '\u{003F}',
+  'pure-match-done': '\u{003F}',
+  'pure-match-failed': '\u{003F}',
   'var-read': '\u{2261}',
   'bool-check': '\u{2714}',
   annotate: '\u{266B}',
@@ -186,10 +189,12 @@ export function eventSummary(event: Event): string {
       return truncate(escapeBytes(event.result), SUMMARY_MAX);
     case 'interpolation':
       return truncate(escapeBytes(event.result), SUMMARY_MAX);
-    case 'pure-match':
-      return event.result === ''
-        ? `${truncate(event.pattern, SUMMARY_MAX)} \u{2192} (no match)`
-        : `${truncate(event.pattern, SUMMARY_MAX)} \u{2192} ${truncate(escapeBytes(event.result), SUMMARY_MAX)}`;
+    case 'pure-match-start':
+      return `${truncate(event.pattern, SUMMARY_MAX)}`;
+    case 'pure-match-done':
+      return `${truncate(escapeBytes(event.matched), SUMMARY_MAX)}`;
+    case 'pure-match-failed':
+      return '(no match)';
     case 'var-read':
       return `${event.name} = ${truncate(escapeBytes(event.value), SUMMARY_MAX)}`;
     case 'bool-check': {
@@ -199,10 +204,10 @@ export function eventSummary(event: Event): string {
           return 'unconditional';
         case 'bare':
           return `"${truncate(escapeBytes(ev.value), SUMMARY_MAX)}" \u{2192} ${ev.met}`;
-        case 'eq':
-          return `"${truncate(escapeBytes(ev.lhs), 32)}" = "${truncate(escapeBytes(ev.rhs), 32)}" \u{2192} ${ev.met}`;
-        case 'regex':
-          return `"${truncate(escapeBytes(ev.value), 32)}" ? ${truncate(ev.pattern, 32)} \u{2192} ${ev.met}`;
+        case 'pure-match':
+          return ev.is_regex
+            ? `"${truncate(escapeBytes(ev.value), 32)}" ? ${truncate(ev.pattern, 32)} \u{2192} ${ev.met}`
+            : `"${truncate(escapeBytes(ev.value), 32)}" = ${truncate(ev.pattern, 32)} \u{2192} ${ev.met}`;
       }
     }
     case 'annotate':
@@ -391,4 +396,20 @@ export function displayMarkerDecision(d: 'pass' | 'mark'): string {
 export function formatMultiMatchPatternLabel(p: MultiMatchPattern): string {
   const op = p.is_regex ? '?' : '=';
   return `${op} ${p.pattern}`;
+}
+
+// Human label for where a pure match ran (fn / test preamble / effect
+// preamble / shell), used on the `pure-match-failed` detail row when that
+// event is the test's recorded failure. Mirrors the Rust
+// `MatchContext::Display` impl ("<kind> '<name>'") so the viewer and the
+// CLI/TAP reporters agree on wording.
+const MATCH_CONTEXT_KIND_LABELS: Record<MatchContext['type'], string> = {
+  fn: 'fn',
+  'test-preamble': 'test preamble',
+  'effect-preamble': 'effect preamble',
+  shell: 'shell',
+};
+
+export function formatMatchContext(mc: MatchContext): string {
+  return `${MATCH_CONTEXT_KIND_LABELS[mc.type]} '${mc.name}'`;
 }

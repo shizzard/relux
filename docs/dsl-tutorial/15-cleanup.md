@@ -1,6 +1,6 @@
 # Cleanup
 
-[Previous: Pure Functions](13-pure-functions.md)
+[Previous: Pure Matching](14-pure-matching.md)
 
 The [effects article](12-effects-and-dependencies.md) introduced effects as reusable infrastructure — start a database, launch a service, tail a log file. Relux handles the lifecycle of those services automatically: when a test ends, it terminates all effect shells, which kills any processes running in them. You do not need to stop services yourself.
 
@@ -239,4 +239,4 @@ Take the two-effect dependency chain from the [previous article's challenge](12-
 
 ---
 
-Next: [Modules and Imports](15-modules-and-imports.md) — organizing a multi-file test suite with shared effects and functions
+Next: [Modules and Imports](16-modules-and-imports.md) — organizing a multi-file test suite with shared effects and functions

@@ -72,7 +72,7 @@ fn format_frame(frame: &StackFrame) -> String {
 fn format_frame_body(frame: &StackFrame) -> String {
     let kind = frame.kind.as_str();
     match (kind, &frame.name) {
-        ("fn-call", Some(name)) => {
+        ("fn-call" | "pure-fn-call", Some(name)) => {
             if frame.args.is_empty() {
                 format!("call {name}")
             } else {

@@ -1,0 +1,11 @@
+test "check rejects a qualified var in a pure-match pattern" {
+    """
+    Verify relux check reports a purity violation (and does not panic) when a
+    pure-context pure-match pattern interpolates a qualified var.
+    """
+    shell s {
+        > ${__RELUX} check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <? shell operation in pure context
+        match_not_ok(1)
+    }
+}

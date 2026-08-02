@@ -14,7 +14,7 @@ test "name" {
 ```
 
 - Top-level form. Name is a string literal.
-- Body sections in fixed order: optional `"""doc"""`, `let` bindings, `start` declarations, `shell` blocks, optional `cleanup`.
+- Body sections in fixed order: optional `"""doc"""`, `let` bindings, `start` declarations, `shell` blocks, optional `cleanup`. The `let` preamble may interleave pure-match assertions (`=` / `?`) with the bindings (see [statements](statements.md) > Pure match).
 - Must contain at least one `shell` block (or be entirely skipped by a marker).
 - Tests are not exported across modules.
 - Multiple `shell <name> { ... }` blocks with the same name re-enter the same shell process: the first occurrence spawns it, subsequent occurrences resume in its existing buffer/cursor/state. Use this when the test body is easier to read as several distinct phases against the same shell.
@@ -36,7 +36,7 @@ effect Name {
 - Name is CamelCase (parse-enforced).
 - Section order is fixed and enforced by the parser:
   1. `expect`
-  2. `let`
+  2. `let` (may interleave pure-match assertions `=` / `?`)
   3. `start`
   4. `expose`
   5. `shell` blocks

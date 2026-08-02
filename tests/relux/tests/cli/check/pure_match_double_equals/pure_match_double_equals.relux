@@ -1,0 +1,12 @@
+test "check rejects the == typo in a pure match" {
+    """
+    Verify relux check reports a clear parse error for the `==` typo (two
+    adjacent `=` with no space), steering to `=` for an assertion or `:=` to
+    bind, rather than accepting or panicking on it.
+    """
+    shell s {
+        > ${__RELUX} check --manifest ${__RELUX_TEST_ROOT}/fixtures/Relux.toml 2>&1
+        <= there is no `==` operator
+        match_not_ok(1)
+    }
+}

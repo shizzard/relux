@@ -320,4 +320,4 @@ Write a pure function `format_config(app, env, port)` that returns a structured 
 
 ---
 
-Next: [Cleanup](14-cleanup.md) — teardown blocks for effects and tests
+Next: [Pure Matching](14-pure-matching.md) — assert on and destructure a value your test already holds

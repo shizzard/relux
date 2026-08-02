@@ -31,8 +31,9 @@ pure fn compose_url(host, port) {
 ```
 
 - Snake_case name.
-- May contain: `let`, reassignment, expressions, pure BIF calls, calls to other pure functions.
+- May contain: `let`, reassignment, expressions, pure BIF calls, calls to other pure functions, and pure-match assertions (`=` / `?`, see [statements](statements.md) > Pure match).
 - Cannot contain: shell operators, timeouts, impure BIFs, calls to `fn`.
+- A `?` pure match inside the body binds `$1`..`$n` in the function's own capture frame (return `$1` to extract a value); a no-match FAILS the test through the calling site. This makes `pure fn` evaluation fallible even though it has no shell.
 - Callable from: condition markers, overlay expressions, `let` RHS, shell-block expressions.
 - "Pure" means shell-independent, not deterministic -- `uuid()`, `rand()`, `sleep()`, `which()` are all allowed.
 
@@ -41,7 +42,7 @@ pure fn compose_url(host, port) {
 - All arguments are strings.
 - No type annotations.
 - Return is the value of the last expression in the body.
-- Captures (`$1`, `$2`) do NOT carry into a `fn`. The function opens its own capture frame -- `$1` is empty inside the body until the function's own `<?` populates it. Captures the function produces are likewise not visible to the caller after the call returns. To pass a captured value across the boundary, pass it as a function argument or return it from a function.
+- Captures (`$1`, `$2`) do NOT carry into a function. It opens its own capture frame -- `$1` is empty inside the body until the function's own capture-binding match populates it (a `<?` in a `fn`, a `?` pure match in a `pure fn`). Captures the function produces are likewise not visible to the caller after the call returns. To pass a captured value across the boundary, pass it as a function argument or return it from a function.
 
 ## Arity-based dispatch
 

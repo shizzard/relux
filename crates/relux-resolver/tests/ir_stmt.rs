@@ -692,6 +692,84 @@ fn lower_pure_stmt_rejects_clear_fail() {
 }
 
 #[test]
+fn lower_pure_match_literal_stmt() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let stmt = extract_first_stmt("fn t() {\n  name = expected\n}\n");
+    let ir = IrShellStmt::lower(&stmt, &file, &mut ctx).unwrap();
+    assert!(matches!(
+        ir,
+        IrShellStmt::PureMatch {
+            is_regex: false,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn lower_pure_match_regex_stmt() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let stmt = extract_first_stmt("fn t() {\n  name ? ^id=(\\d+)$\n}\n");
+    let ir = IrShellStmt::lower(&stmt, &file, &mut ctx).unwrap();
+    assert!(matches!(ir, IrShellStmt::PureMatch { is_regex: true, .. }));
+}
+
+#[test]
+fn lower_pure_match_regex_invalid_regex_diagnoses() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let stmt = extract_first_stmt("fn t() {\n  name ? (unclosed\n}\n");
+    let result = IrShellStmt::lower(&stmt, &file, &mut ctx);
+    assert!(
+        result.is_err(),
+        "invalid static regex in a pure match must surface at lowering"
+    );
+}
+
+#[test]
+fn lower_pure_match_literal_in_pure_fn() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let stmt = extract_first_stmt("fn t() {\n  name = expected\n}\n");
+    let ir = IrPureStmt::lower(&stmt, &file, &mut ctx).unwrap();
+    assert!(matches!(
+        ir,
+        IrPureStmt::PureMatch {
+            is_regex: false,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn lower_pure_match_regex_in_pure_fn() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let stmt = extract_first_stmt("fn t() {\n  name ? ^id=(\\d+)$\n}\n");
+    let ir = IrPureStmt::lower(&stmt, &file, &mut ctx).unwrap();
+    assert!(matches!(ir, IrPureStmt::PureMatch { is_regex: true, .. }));
+}
+
+#[test]
+fn lower_pure_match_regex_in_pure_fn_invalid_regex_diagnoses() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let stmt = extract_first_stmt("fn t() {\n  name ? (unclosed\n}\n");
+    let result = IrPureStmt::lower(&stmt, &file, &mut ctx);
+    assert!(
+        result.is_err(),
+        "invalid static regex in a pure-fn pure match must surface at lowering"
+    );
+}
+
+#[test]
 fn ir_shell_stmt_multimatch_node_span() {
     let s = test_span();
     let pat = IrMultiMatchPattern::new(IrInterpolation::new(vec![], s.clone()), true, s.clone());
@@ -756,4 +834,28 @@ fn lower_multimatch_invalid_regex_diagnoses() {
         result.is_err(),
         "invalid regex inside multimatch must surface at lowering"
     );
+}
+
+#[test]
+fn pure_match_pattern_rejects_qualified_var_in_pure_fn() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let stmt = extract_first_stmt("fn t() {\n  name ? ${App.field}\n}\n");
+    let result = IrPureStmt::lower(&stmt, &file, &mut ctx);
+    assert!(
+        matches!(result, Err(LoweringBail::Invalid(_))),
+        "a qualified var in a pure-context pattern must be a purity violation"
+    );
+}
+
+#[test]
+fn pure_match_pattern_allows_qualified_var_in_shell() {
+    let mut ctx = ctx_with_source("fn dummy() {}\n");
+    push_test_scope(&mut ctx, "tests/a");
+    let file = file_id_for(&ctx, "tests/a");
+    let stmt = extract_first_stmt("fn t() {\n  name ? ${App.field}\n}\n");
+    let ir = IrShellStmt::lower(&stmt, &file, &mut ctx)
+        .expect("qualified var in a shell pure-match pattern is legal");
+    assert!(matches!(ir, IrShellStmt::PureMatch { is_regex: true, .. }));
 }

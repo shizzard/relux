@@ -26,6 +26,7 @@
     foldedKindLabel,
     formatBytes,
     formatDuration,
+    formatMatchContext,
     formatMultiMatchPatternLabel,
     formatTimeoutLine,
   } from '../lib/format';
@@ -283,29 +284,25 @@
             out.push({ type: 'kv', key: 'value', value: e.value, mono: true });
             out.push({ type: 'kv', key: 'met', value: String(e.met), accent: true });
             break;
-          case 'eq':
-            out.push({ type: 'kv', key: 'lhs', value: e.lhs, mono: true });
-            out.push({ type: 'kv', key: 'rhs', value: e.rhs, mono: true });
-            out.push({ type: 'kv', key: 'met', value: String(e.met), accent: true });
-            break;
-          case 'regex':
+          case 'pure-match':
             out.push({ type: 'kv', key: 'value', value: e.value, mono: true });
             out.push({ type: 'kv', key: 'pattern', value: e.pattern, mono: true });
+            out.push({ type: 'kv', key: 'is_regex', value: String(e.is_regex) });
             out.push({ type: 'kv', key: 'met', value: String(e.met), accent: true });
             break;
         }
         return out;
       }
-      case 'pure-match': {
-        const out: Row[] = [
+      case 'pure-match-start':
+        return [
           { type: 'kv', key: 'value', value: ev.value, mono: true },
           { type: 'kv', key: 'pattern', value: ev.pattern, mono: true, accent: true },
+          { type: 'kv', key: 'is_regex', value: String(ev.is_regex) },
         ];
-        if (ev.result !== '') {
-          out.push({ type: 'kv', key: 'matched', value: ev.result, mono: true, accent: true });
-        } else {
-          out.push({ type: 'kv', key: 'matched', value: '(none)' });
-        }
+      case 'pure-match-done': {
+        const out: Row[] = [
+          { type: 'kv', key: 'matched', value: ev.matched, mono: true, accent: true },
+        ];
         const caps = Object.entries(ev.captures).filter(
           (entry): entry is [string, string] =>
             entry[0] !== '0' && entry[1] !== undefined,
@@ -315,6 +312,27 @@
           for (const [k, v] of caps) {
             out.push({ type: 'kv', key: `$${k}`, value: v, mono: true, accent: true });
           }
+        }
+        return out;
+      }
+      case 'pure-match-failed': {
+        const out: Row[] = [{ type: 'kv', key: 'result', value: '(no match)' }];
+        // When this event is the pure-match that ended the test, surface
+        // where it ran - a pure match has no shell of its own (it may run
+        // in a fn/pure-fn body, a test/effect preamble, or a shell block).
+        const outcome = state.data.outcome;
+        if (
+          outcome.kind === 'fail' &&
+          outcome.type === 'pure-match' &&
+          n(outcome.event_seq) === n(ev.seq)
+        ) {
+          out.push({
+            type: 'kv',
+            key: 'context',
+            value: formatMatchContext(outcome.match_context),
+            mono: true,
+            accent: true,
+          });
         }
         return out;
       }

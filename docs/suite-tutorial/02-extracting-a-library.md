@@ -212,6 +212,25 @@ test "key-value CRUD" {
 
 The gain is small for now. But in chapter 5, when we replace the hardcoded port with a dynamic one, we'll only need to change `url` in `service/db.relux` — not every test.
 
+### Asserting and extracting with a pure match
+
+Pure functions aren't limited to building strings — they can also *assert* the shape of a value and *extract* a piece out of it. A [pure match](../reference/08-pure-matching.md) (`<expr> ? <pattern>`) runs a regex against a computed value without touching a shell, so it is allowed inside a `pure fn`. On a match it binds the numbered captures `$1`, `$2`, ..., which the function can return. Add a helper to `service/db.relux`:
+
+```relux
+pure fn extract_port(addr) {
+    addr ? :(\d+)$
+    $1
+}
+```
+
+`extract_port("localhost:9000")` returns `"9000"`. If the argument has no `:port` suffix the pure match fails and the test fails at the call site — so the helper doubles as an assertion on its input. The captures a pure function binds are local to the call and discarded when it returns; the caller keeps the value by binding the result:
+
+```relux
+let port := extract_port("localhost:9000")
+```
+
+This is the extraction idiom — a `pure fn` that asserts a value's shape with `?` and returns a capture. It will come in handy in chapter 5, when the service's port is no longer a hardcoded constant.
+
 ## What we have so far
 
 ```text
