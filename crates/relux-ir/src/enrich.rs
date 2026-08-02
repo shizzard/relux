@@ -9,10 +9,33 @@ use relux_core::diagnostics::InvalidReport;
 use relux_core::diagnostics::IrSpan;
 use relux_core::diagnostics::LoweringBail;
 
+use crate::IrEffectItem;
+use crate::IrExpr;
+use crate::IrInterpolation;
 use crate::IrNode;
 use crate::IrPureExpr;
+use crate::IrShellStmt;
 use crate::IrStringPart;
 use crate::effect::IrEffectStart;
+
+/// Collects every `${Alias.var}`-shaped ref out of an `IrInterpolation`'s
+/// parts. Shared by the pure-expr walk below and the shell-statement walk
+/// in `validate_shell_body_refs`.
+fn collect_interp_refs(interp: &IrInterpolation, out: &mut Vec<(String, String, IrSpan)>) {
+    for part in interp.parts() {
+        match part {
+            IrStringPart::QualifiedVar {
+                qualifier,
+                name,
+                span,
+            } => out.push((qualifier.clone(), name.clone(), span.clone())),
+            IrStringPart::Literal { .. }
+            | IrStringPart::Var { .. }
+            | IrStringPart::CaptureRef { .. }
+            | IrStringPart::EscapedDollar { .. } => {}
+        }
+    }
+}
 
 fn collect_qualified_refs(expr: &IrPureExpr, out: &mut Vec<(String, String, IrSpan)>) {
     match expr {
@@ -21,21 +44,7 @@ fn collect_qualified_refs(expr: &IrPureExpr, out: &mut Vec<(String, String, IrSp
             name,
             span,
         } => out.push((qualifier.clone(), name.clone(), span.clone())),
-        IrPureExpr::String { value, .. } => {
-            for part in value.parts() {
-                match part {
-                    IrStringPart::QualifiedVar {
-                        qualifier,
-                        name,
-                        span,
-                    } => out.push((qualifier.clone(), name.clone(), span.clone())),
-                    IrStringPart::Literal { .. }
-                    | IrStringPart::Var { .. }
-                    | IrStringPart::CaptureRef { .. }
-                    | IrStringPart::EscapedDollar { .. } => {}
-                }
-            }
-        }
+        IrPureExpr::String { value, .. } => collect_interp_refs(value, out),
         IrPureExpr::Call { call, .. } => {
             for arg in call.args() {
                 collect_qualified_refs(arg, out);
@@ -43,6 +52,107 @@ fn collect_qualified_refs(expr: &IrPureExpr, out: &mut Vec<(String, String, IrSp
         }
         IrPureExpr::Var { .. } | IrPureExpr::Capture { .. } => {}
     }
+}
+
+/// Collects every `${Alias.var}`-shaped ref out of an `IrExpr` -- the shell
+/// (impure) expression type, which (unlike `IrPureExpr`) allows a bare
+/// `QualifiedVar` directly, not just nested inside a `String` interpolation
+/// (e.g. `let x := Alias.var`).
+fn collect_expr_refs(expr: &IrExpr, out: &mut Vec<(String, String, IrSpan)>) {
+    match expr {
+        IrExpr::QualifiedVar {
+            qualifier,
+            name,
+            span,
+        } => out.push((qualifier.clone(), name.clone(), span.clone())),
+        IrExpr::String { value, .. } => collect_interp_refs(value, out),
+        IrExpr::Call { call, .. } => {
+            for arg in call.args() {
+                collect_expr_refs(arg, out);
+            }
+        }
+        IrExpr::Var { .. } | IrExpr::CaptureRef { .. } => {}
+    }
+}
+
+/// Collects every `${Alias.var}`-shaped ref reachable from a single shell
+/// statement. Matches `IrShellStmt` exhaustively (no wildcard arm) so a
+/// future variant that carries an interpolation cannot silently skip
+/// validation.
+fn collect_shell_stmt_refs(stmt: &IrShellStmt, out: &mut Vec<(String, String, IrSpan)>) {
+    match stmt {
+        IrShellStmt::Let { stmt, .. } => {
+            if let Some(value) = stmt.value() {
+                collect_expr_refs(value, out);
+            }
+        }
+        IrShellStmt::Assign { stmt, .. } => collect_expr_refs(stmt.value(), out),
+        IrShellStmt::Expr { expr, .. } => collect_expr_refs(expr, out),
+        IrShellStmt::Send { payload, .. } | IrShellStmt::SendRaw { payload, .. } => {
+            collect_interp_refs(payload, out)
+        }
+        IrShellStmt::MatchRegex { pattern, .. } | IrShellStmt::MatchLiteral { pattern, .. } => {
+            collect_interp_refs(pattern, out)
+        }
+        IrShellStmt::PureMatch { lhs, pattern, .. } => {
+            collect_expr_refs(lhs, out);
+            collect_interp_refs(pattern, out);
+        }
+        IrShellStmt::TimedMatchRegex { pattern, .. }
+        | IrShellStmt::TimedMatchLiteral { pattern, .. } => collect_interp_refs(pattern, out),
+        IrShellStmt::FailRegex { pattern, .. } | IrShellStmt::FailLiteral { pattern, .. } => {
+            collect_interp_refs(pattern, out)
+        }
+        IrShellStmt::MultiMatch { patterns, .. } => {
+            for pattern in patterns {
+                collect_interp_refs(pattern.pattern(), out);
+            }
+        }
+        // No interpolation reachable from these variants.
+        IrShellStmt::Comment { .. }
+        | IrShellStmt::Timeout { .. }
+        | IrShellStmt::ClearFailPattern { .. }
+        | IrShellStmt::BufferReset { .. } => {}
+    }
+}
+
+/// Validates every `${Alias.var}` reference in `body_items`'s shell blocks
+/// against `exposed` (alias -> exposed var names) -- the same dependency
+/// map `enrich_start_dag` validates overlay refs against. All of an
+/// effect's dependencies are in scope in its shell bodies regardless of
+/// which shell block does the referencing (a qualified `Alias.shell { }`
+/// block re-entering a dep's own shell can still interpolate a *different*
+/// dep's exposed var), so every `IrEffectItem::Shell` block's body is
+/// walked uniformly. Unlike overlay refs, shell-body refs need no
+/// wait-set entry: by the time any shell block runs, every start in the
+/// effect's start-list has already completed (shells run after `starts`
+/// enrichment, not interleaved with it).
+pub fn validate_shell_body_refs(
+    body_items: &[IrEffectItem],
+    exposed: &HashMap<String, HashSet<String>>,
+) -> Result<(), LoweringBail> {
+    for item in body_items {
+        let IrEffectItem::Shell { block, .. } = item else {
+            continue;
+        };
+        for stmt in block.body() {
+            let mut refs = Vec::new();
+            collect_shell_stmt_refs(stmt, &mut refs);
+            for (qualifier, var, span) in refs {
+                let Some(vars) = exposed.get(qualifier.as_str()) else {
+                    return Err(LoweringBail::invalid(InvalidReport::unknown_qualifier(
+                        qualifier, span,
+                    )));
+                };
+                if !vars.contains(&var) {
+                    return Err(LoweringBail::invalid(InvalidReport::variable_not_exposed(
+                        qualifier, var, span,
+                    )));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Validates every qualified overlay reference in `starts` against the
@@ -166,6 +276,7 @@ mod tests {
     use relux_core::diagnostics::EffectName;
     use relux_core::diagnostics::ModulePath;
 
+    use crate::block::IrShellBlock;
     use crate::effect::IrOverlayEntry;
     use crate::ident::IrIdent;
     use crate::interpolation::IrInterpolation;
@@ -375,5 +486,67 @@ mod tests {
 
         assert_eq!(starts[1].deps(), &[0]);
         assert_eq!(starts[2].deps(), &[0]);
+    }
+
+    /// Builds a single-statement shell body item: `Alias.shell_name { >
+    /// ${qualifier.var} }` -- one `IrEffectItem::Shell` whose only statement
+    /// is a `send` interpolating one qualified ref.
+    fn shell_body_with_send_ref(qualifier: &str, var: &str) -> Vec<IrEffectItem> {
+        let payload = IrInterpolation::new(
+            vec![IrStringPart::QualifiedVar {
+                qualifier: qualifier.to_string(),
+                name: var.to_string(),
+                span: IrSpan::synthetic(),
+            }],
+            IrSpan::synthetic(),
+        );
+        let stmt = IrShellStmt::Send {
+            payload,
+            span: IrSpan::synthetic(),
+        };
+        let block = IrShellBlock::new(
+            None,
+            IrIdent::new("client", IrSpan::synthetic()),
+            vec![stmt],
+            IrSpan::synthetic(),
+        );
+        vec![IrEffectItem::Shell {
+            block,
+            span: IrSpan::synthetic(),
+        }]
+    }
+
+    #[test]
+    fn shell_body_valid_qualified_ref_is_accepted() {
+        let body_items = shell_body_with_send_ref("Db", "port");
+        let exposed = exposed_map(&[("Db", &["port"])]);
+
+        validate_shell_body_refs(&body_items, &exposed).unwrap();
+    }
+
+    #[test]
+    fn shell_body_unknown_qualifier_is_rejected() {
+        let body_items = shell_body_with_send_ref("Nope", "port");
+        let exposed = exposed_map(&[]);
+
+        let err = validate_shell_body_refs(&body_items, &exposed).unwrap_err();
+
+        assert!(matches!(
+            err.invalid_report(),
+            Some(InvalidReport::UnknownQualifier { .. })
+        ));
+    }
+
+    #[test]
+    fn shell_body_non_exposed_variable_is_rejected() {
+        let body_items = shell_body_with_send_ref("Db", "secret");
+        let exposed = exposed_map(&[("Db", &["port"])]);
+
+        let err = validate_shell_body_refs(&body_items, &exposed).unwrap_err();
+
+        assert!(matches!(
+            err.invalid_report(),
+            Some(InvalidReport::VariableNotExposed { .. })
+        ));
     }
 }

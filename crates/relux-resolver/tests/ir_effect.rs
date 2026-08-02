@@ -614,6 +614,8 @@ effect App {
 #[test]
 fn lower_overlay_accepts_top_level_qualified_var() {
     let source = r#"effect Db {
+  let port := available_port()
+  expose var port
   shell db {
     > start
   }
@@ -658,6 +660,10 @@ effect App {
 #[test]
 fn lower_overlay_accepts_qualified_var_nested_in_interpolation() {
     let source = r#"effect Db {
+  let host := "localhost"
+  let port := available_port()
+  expose var host
+  expose var port
   shell db {
     > start
   }

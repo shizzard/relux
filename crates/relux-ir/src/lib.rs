@@ -62,6 +62,7 @@ pub use block::*;
 pub use comment::*;
 pub use effect::*;
 pub use enrich::enrich_start_dag;
+pub use enrich::validate_shell_body_refs;
 pub use expr::*;
 pub use func::*;
 pub use ident::*;

@@ -644,6 +644,17 @@ impl IrNodeLowering for IrEffect {
             }
         }
 
+        // R015: enrich the start DAG (validate sibling overlay refs, fill
+        // each start's wait-set, reject reference cycles) using the
+        // dep_exposed_vars map already built above.
+        crate::enrich::enrich_start_dag(&mut starts, &dep_exposed_vars)?;
+
+        // R015: validate every ${Alias.var} in this effect's shell blocks
+        // against its own dependency map (all deps are in scope in shell
+        // bodies). Breaking tightening: an unknown/non-exposed qualified
+        // ref that used to resolve to "" is now a compile error.
+        crate::enrich::validate_shell_body_refs(&body_items, &dep_exposed_vars)?;
+
         Ok(IrEffect::new(
             name,
             expects,
