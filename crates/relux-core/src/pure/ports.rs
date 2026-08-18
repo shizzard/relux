@@ -7,7 +7,6 @@
 //! The probe binds `127.0.0.1` only, so the collision guarantee is
 //! loopback-scoped: a service that binds a specific non-loopback interface
 //! can still conflict with an allocated port.
-//! Design: docs/superpowers/specs/2026-08-18-available-port-allocator-design.md
 
 use std::collections::HashMap;
 use std::net::TcpListener;
@@ -50,9 +49,11 @@ pub struct PortRange {
 /// Failure modes for resolving or installing the allocation window.
 #[derive(Debug, thiserror::Error)]
 pub enum PortsError {
-    #[error("available_ports window {start}-{end} is empty")]
+    #[error(
+        "[available_ports] window {start}-{end} is empty; set range_start/range_end in Relux.toml to override"
+    )]
     EmptyRange { start: u16, end: u16 },
-    #[error("available_ports bounds must be at least 1024 (got {0})")]
+    #[error("[available_ports] bounds must be at least 1024 (got {0})")]
     BelowMinimum(u16),
     #[error("port allocator already configured")]
     AlreadyConfigured,
@@ -162,16 +163,31 @@ impl Allocator {
     }
 }
 
+/// Floor a detected ephemeral-range start at `FALLBACK_EPHEMERAL_START`
+/// whenever the reading is missing or claims the ephemeral range starts at
+/// or below `MIN_PORT`. A kernel tuned to e.g.
+/// `net.ipv4.ip_local_port_range = "1024 65535"` (real container/proxy
+/// tuning) claims the whole port space as ephemeral, leaving no safe
+/// default window; falling back to the conventional boundary beats
+/// refusing to start - the bind-probe and owner registry still protect
+/// against real collisions within whatever window results.
+fn sane_ephemeral_start(reading: Option<u16>) -> u16 {
+    match reading {
+        Some(p) if p > MIN_PORT => p,
+        _ => FALLBACK_EPHEMERAL_START,
+    }
+}
+
 fn detect_ephemeral_start() -> u16 {
     #[cfg(target_os = "linux")]
     if let Ok(s) = std::fs::read_to_string("/proc/sys/net/ipv4/ip_local_port_range")
         && let Some(p) = first_number(&s)
     {
-        return p;
+        return sane_ephemeral_start(Some(p));
     }
     #[cfg(target_os = "macos")]
     if let Some(p) = sysctl_u16("net.inet.ip.portrange.first") {
-        return p;
+        return sane_ephemeral_start(Some(p));
     }
     FALLBACK_EPHEMERAL_START
 }
@@ -332,6 +348,16 @@ mod tests {
                 end: 21700
             }
         );
+    }
+
+    #[test]
+    fn sane_ephemeral_start_floors_when_no_safe_window_remains() {
+        // Whole-port-space tuning (e.g. "1024 65535") reads back as 1024:
+        // must not be trusted, or the default window collapses to empty.
+        assert_eq!(sane_ephemeral_start(Some(1024)), FALLBACK_EPHEMERAL_START);
+        assert_eq!(sane_ephemeral_start(Some(1023)), FALLBACK_EPHEMERAL_START);
+        assert_eq!(sane_ephemeral_start(Some(20000)), 20000);
+        assert_eq!(sane_ephemeral_start(None), FALLBACK_EPHEMERAL_START);
     }
 
     #[test]
