@@ -345,10 +345,18 @@ pub fn resolve_project(matches: &clap::ArgMatches) -> (PathBuf, ReluxConfig) {
         Some(path) => config::load_manifest(path),
         None => config::discover_project_root(),
     };
-    result.unwrap_or_else(|e| {
+    let (project_root, config) = result.unwrap_or_else(|e| {
         eprintln!("error: {e}");
         process::exit(1);
-    })
+    });
+    if let Err(e) = relux_core::pure::ports::configure(
+        config.available_ports.range_start,
+        config.available_ports.range_end,
+    ) {
+        eprintln!("error: {e}");
+        process::exit(1);
+    }
+    (project_root, config)
 }
 
 pub fn read_file(path: &PathBuf) -> String {

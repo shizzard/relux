@@ -16,6 +16,10 @@ const TOML_TEMPLATE: &str = r#"# name = "my-test-suite"
 
 # [run]
 # jobs = 1
+
+# [available_ports]
+# range_start = 20000
+# range_end = 29999
 "#;
 
 pub fn cmd_init() {
@@ -58,4 +62,26 @@ pub fn cmd_init() {
     eprintln!("Created {}/{}/", config::RELUX_DIR, config::TESTS_DIR);
     eprintln!("Created {}/{}/", config::RELUX_DIR, config::LIB_DIR);
     eprintln!("Created {}/.gitignore", config::RELUX_DIR);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The template must stay parseable both as-is and with every
+    /// commented-out setting uncommented.
+    #[test]
+    fn toml_template_parses_commented_and_uncommented() {
+        toml::from_str::<relux_core::config::ReluxConfig>(TOML_TEMPLATE).expect("template as-is");
+        let uncommented: String = TOML_TEMPLATE
+            .lines()
+            .map(|l| l.strip_prefix("# ").unwrap_or(l))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let cfg = toml::from_str::<relux_core::config::ReluxConfig>(&uncommented)
+            .expect("template uncommented");
+        assert_eq!(cfg.available_ports.range_start, Some(20000));
+        assert_eq!(cfg.available_ports.range_end, Some(29999));
+        cfg.available_ports.validate().unwrap();
+    }
 }
