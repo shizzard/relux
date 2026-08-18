@@ -132,7 +132,9 @@ impl StructuredLogBuilder {
     }
 
     /// Allocation scope for `available_port()` calls made during this
-    /// test execution; `None` outside a live test run.
+    /// test execution; `None` outside a live test run. `None` here means
+    /// downstream allocations fall back to process-lifetime ownership and
+    /// are never released (see `ports::allocate`'s `None` case).
     pub fn port_owner(&self) -> Option<relux_core::pure::ports::PortOwner> {
         self.port_owner
     }
