@@ -141,6 +141,10 @@ impl<'a> LogSink<'a> {
 }
 
 impl<'a> PureEvalSink for LogSink<'a> {
+    fn port_owner(&self) -> Option<relux_core::pure::ports::PortOwner> {
+        self.log.port_owner()
+    }
+
     fn enter_pure_fn(
         &mut self,
         name: &str,
@@ -238,6 +242,7 @@ mod tests {
             Instant::now(),
             sources,
             Arc::from(PathBuf::from("/project").as_path()),
+            None,
         )
     }
 
