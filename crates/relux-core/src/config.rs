@@ -80,16 +80,19 @@ pub struct AvailablePortsConfig {
 }
 
 impl AvailablePortsConfig {
+    /// `pure::ports::resolve_range` enforces these same rules defensively
+    /// at configure time, in case a caller bypasses manifest validation.
     pub fn validate(&self) -> Result<(), String> {
+        let min = crate::pure::ports::MIN_PORT;
         for (key, value) in [
             ("range_start", self.range_start),
             ("range_end", self.range_end),
         ] {
             if let Some(v) = value
-                && v < 1024
+                && v < min
             {
                 return Err(format!(
-                    "[available_ports] {key} must be at least 1024 (got {v})"
+                    "[available_ports] {key} must be at least {min} (got {v})"
                 ));
             }
         }

@@ -62,6 +62,8 @@ pub enum PortsError {
 /// window. `detected_unprivileged` is the first non-privileged port;
 /// `detected_ephemeral_start` is the first port of the OS ephemeral
 /// interval (the window stays strictly below it).
+/// The friendly manifest-time twin of these checks lives at
+/// `config::AvailablePortsConfig::validate`.
 pub fn resolve_range(
     start_override: Option<u16>,
     end_override: Option<u16>,

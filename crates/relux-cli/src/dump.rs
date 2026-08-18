@@ -35,10 +35,21 @@ pub fn cmd_dump_ast(matches: &clap::ArgMatches) {
 }
 
 pub fn cmd_dump_ir(matches: &clap::ArgMatches) {
-    let (project_root, _config) = config::discover_project_root().unwrap_or_else(|e| {
+    let (project_root, cfg) = config::discover_project_root().unwrap_or_else(|e| {
         eprintln!("error: {e}");
         process::exit(1);
     });
+    // `dump ir` has no --manifest arg, so it can't go through
+    // super::resolve_project; configure the allocator here instead, same as
+    // resolve_project does, so lowering-time marker eval (which can call
+    // available_port()) sees the manifest's window.
+    if let Err(e) = relux_core::pure::ports::configure(
+        cfg.available_ports.range_start,
+        cfg.available_ports.range_end,
+    ) {
+        eprintln!("error: {e}");
+        process::exit(1);
+    }
 
     let files: Vec<PathBuf> = matches
         .get_many::<PathBuf>("files")
