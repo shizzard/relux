@@ -28,7 +28,7 @@ Always in scope; no imports. Split by purity: pure BIFs may be called anywhere; 
 
 | Function | Signature | Returns | Behavior |
 |---|---|---|---|
-| `available_port` | `available_port()` | string | Bind ephemeral TCP port on `127.0.0.1`; return port. Released before return -- call close to use. |
+| `available_port` | `available_port()` | string | Allocate a probed TCP port on 127.0.0.1 from outside the OS ephemeral range; owned by the running test, freed after its cleanup. -1 on exhaustion. |
 | `which` | `which(name)` | string | Absolute path of executable in PATH, or `""` if not found. With a path separator, checks that path directly. |
 | `sleep` | `sleep(duration)` | `""` | Pause. Humantime: `500ms`, `2s`, `1m30s`. |
 
@@ -107,25 +107,14 @@ Do:
 match_ok()
 ```
 
-### `available_port` is briefly raced -- call close to where it's used
+### Ports from `available_port` are owned by the running test
 
-The port is opened, bound, then released before returning, so a fast race could let another process bind it. Call right before launching the service that should use it.
-
-Don't:
-
-```relux
-let port := available_port()
-sleep("10s")
-> start-svc --port ${port}
-```
-
-Do:
-
-```relux
-let port := available_port()
-> start-svc --port ${port}
-<? listening on ${port}
-```
+Each call returns a distinct port from outside the OS ephemeral range,
+probed at allocation. The port stays reserved (within this relux process)
+until the allocating test's cleanup completes, so calls in effect config
+evaluated long before the service binds are safe -- no call-site
+positioning is needed. The `[available_ports]` manifest section narrows
+the window; see [project-layout](project-layout.md) > *Sections* for the fields.
 
 ## See also
 

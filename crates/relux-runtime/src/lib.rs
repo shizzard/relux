@@ -781,11 +781,13 @@ async fn run_test(
         default_timeout: run_ctx.default_timeout.clone(),
     };
 
+    let port_owner = relux_core::pure::ports::new_owner();
     let log = StructuredLogBuilder::new(
         progress_tx.clone(),
         test_start,
         tables.sources.clone(),
         Arc::from(run_ctx.project_root.as_path()),
+        Some(port_owner),
     );
 
     // Replay marker evaluations under a synthetic `markers` root span.
@@ -857,6 +859,9 @@ async fn run_test(
     // Release effects (always runs, even after cancellation)
     let effect_warnings = test_manager.cleanup_all().await;
     warnings.extend(effect_warnings);
+
+    // All services are down: free this execution's ports for reuse.
+    relux_core::pure::ports::release(port_owner);
 
     // Drop all remaining ProgressTx holders so the forwarder task can finish.
     drop(test_manager);
@@ -1355,6 +1360,7 @@ async fn log_skipped_test(
         test_start,
         source_table.clone(),
         Arc::from(run_ctx.project_root.as_path()),
+        None,
     );
 
     // Look up the originating definition's decision via the cause's
@@ -1954,6 +1960,7 @@ mod tests {
             std::time::Instant::now(),
             sources,
             std::sync::Arc::from(std::path::Path::new(".")),
+            None,
         );
 
         let span = relux_core::diagnostics::IrSpan::synthetic();

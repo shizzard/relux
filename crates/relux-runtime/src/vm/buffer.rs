@@ -641,6 +641,7 @@ mod tests {
             Instant::now(),
             sources,
             Arc::from(PathBuf::from("/project").as_path()),
+            None,
         );
         let buf = OutputBuffer::new(builder.clone(), "sh".into(), "m".into());
         (buf, builder, rx)

@@ -56,6 +56,7 @@ pub struct StructuredLogBuilder {
     pub(super) sources: SourceTable,
     pub(super) project_root: Arc<Path>,
     pub(super) progress_tx: ProgressTx,
+    port_owner: Option<relux_core::pure::ports::PortOwner>,
 }
 
 /// RAII handle for a span. `Drop` calls `close_span_inner` on the underlying
@@ -107,6 +108,7 @@ impl StructuredLogBuilder {
         test_start: Instant,
         sources: SourceTable,
         project_root: Arc<Path>,
+        port_owner: Option<relux_core::pure::ports::PortOwner>,
     ) -> Self {
         Self {
             inner: Arc::new(Mutex::new(BuilderInner {
@@ -121,11 +123,20 @@ impl StructuredLogBuilder {
             sources,
             project_root,
             progress_tx,
+            port_owner,
         }
     }
 
     pub(super) fn now(&self) -> Duration {
         self.test_start.elapsed()
+    }
+
+    /// Allocation scope for `available_port()` calls made during this
+    /// test execution; `None` outside a live test run. `None` here means
+    /// downstream allocations fall back to process-lifetime ownership and
+    /// are never released (see `ports::allocate`'s `None` case).
+    pub fn port_owner(&self) -> Option<relux_core::pure::ports::PortOwner> {
+        self.port_owner
     }
 
     pub(crate) fn resolve_location(&self, span: &IrSpan) -> Option<SourceLocation> {
@@ -330,6 +341,7 @@ mod tests {
             Instant::now(),
             sources,
             Arc::from(PathBuf::from("/project").as_path()),
+            None,
         );
         (builder, rx)
     }

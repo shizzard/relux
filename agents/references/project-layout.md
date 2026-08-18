@@ -35,6 +35,8 @@ An empty `Relux.toml` is valid; every field has a default.
 | `[run]` | `jobs` | `1` | Number of parallel test workers. |
 | `[flaky]` | `max_retries` | `0` | Retries for `# flaky` tests; 0 disables retry. |
 | `[flaky]` | `timeout_multiplier` | `1.5` | Base for exponential timeout scaling on retry; must be > 1.0. |
+| `[available_ports]` | `range_start` | OS privileged boundary (usually `1024`) | Inclusive; first port `available_port()` may allocate. |
+| `[available_ports]` | `range_end` | one below the OS ephemeral interval | Inclusive; last port `available_port()` may allocate. |
 
 Durations use humantime: `500ms`, `2s`, `1m30s`.
 

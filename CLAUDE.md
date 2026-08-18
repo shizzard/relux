@@ -68,6 +68,7 @@ Foundation types shared across all crates.
 - **diagnostics.rs**: `IrSpan`, `ModulePath`, `EffectName`, `CauseTable`, `CauseId`, `WarningId`, `DefinitionRef`, `FnId`, `EffectId` — typed diagnostic infrastructure for cross-file error reporting.
 - **pure/mod.rs**: `VarScope`, `Env`, `LayeredEnv` — variable scoping with layered environment chain (own → parent → grandparent). `LayeredEnv` uses `Arc`-sharing, no cloning of base env.
 - **pure/bifs.rs**: Pure built-in functions: `trim`, `upper`, `lower`, `replace`, `split`, `len`, `uuid`, `rand`, `available_port`, `which`, `default`.
+- **pure/ports.rs**: Owned port allocator behind `available_port` — allocates probed ports from between the OS privileged and ephemeral intervals, tracks port→owner per test execution, freed after test cleanup. `[available_ports]` in `Relux.toml` overrides the window.
 - **discover.rs**: `discover_relux_files()` — recursive `.relux` file discovery, stops at nested project boundaries.
 
 ### `relux-ast` (`crates/relux-ast/`)
@@ -183,7 +184,7 @@ In-repo Claude Code plugin packaging composable skills for authoring, running, a
 - **All values are strings** — no type system beyond that
 - **Pure vs impure split** — pure functions (string ops, random) evaluate at compile time in `let` bindings; impure functions (shell interaction) require a VM context
 - **Effects are CamelCase, functions are snake_case** — enforced at parse level, used to disambiguate in imports
-- **Effect identity** = `(name, expects)` — same tuple means deduplicated/reused instance; `EffectGuard` refcount ensures exactly-once teardown
+- **Effect identity** = `(name, expects)` — same tuple means deduplicated/reused instance *within a single test* (the EffectRegistry is per-test; effects are never shared across tests); `EffectGuard` refcount ensures exactly-once teardown
 - **Functions execute in caller's shell context** — no own shell, side effects (timeout/fail-pattern changes) persist
 - **Cleanup blocks** run in fresh implicit shells with uncancellable tokens; any statement valid in a shell block is valid in a cleanup block
 - **Module imports** resolve from project root, never relative to importing file

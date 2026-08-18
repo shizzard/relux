@@ -279,6 +279,7 @@ mod tests {
             Instant::now(),
             sources,
             Arc::from(PathBuf::from("/project").as_path()),
+            None,
         )
     }
 

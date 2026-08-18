@@ -141,6 +141,10 @@ impl<'a> LogSink<'a> {
 }
 
 impl<'a> PureEvalSink for LogSink<'a> {
+    fn port_owner(&self) -> Option<relux_core::pure::ports::PortOwner> {
+        self.log.port_owner()
+    }
+
     fn enter_pure_fn(
         &mut self,
         name: &str,
@@ -238,7 +242,31 @@ mod tests {
             Instant::now(),
             sources,
             Arc::from(PathBuf::from("/project").as_path()),
+            None,
         )
+    }
+
+    // Regression guard: if the builder's port_owner wiring or the LogSink
+    // override were deleted, PureEvalSink's default `None` would take over
+    // silently - everything still compiles and passes.
+    #[test]
+    fn log_sink_forwards_the_builders_port_owner() {
+        let owner = relux_core::pure::ports::new_owner();
+        let (tx, _rx) = progress::channel();
+        let sources = relux_core::table::SharedTable::new();
+        let log = StructuredLogBuilder::new(
+            tx,
+            Instant::now(),
+            sources,
+            Arc::from(PathBuf::from("/project").as_path()),
+            Some(owner),
+        );
+        let root = log.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        assert_eq!(LogSink::new(&log, root.id()).port_owner(), Some(owner));
+
+        let log_none = make_builder();
+        let root_none = log_none.open_span(SpanKind::Test { name: "t".into() }, None, None);
+        assert_eq!(LogSink::new(&log_none, root_none.id()).port_owner(), None);
     }
 
     #[test]

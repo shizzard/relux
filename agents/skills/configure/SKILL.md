@@ -163,6 +163,15 @@ the suite participates in a multi-suite repo and needs a distinct
 identifier in reports. Cosmetic; does not affect discovery,
 identity, or execution.
 
+### Port allocation window (`[available_ports]`)
+
+Fields and defaults: `../../references/project-layout.md` > *Sections*.
+Narrow `range_start` / `range_end` only when the suite must stay inside a
+specific port band (a firewalled CI range, a fixed Docker port-forward).
+For the allocation semantics and why the window sits outside the OS
+ephemeral range, see `../../references/bifs.md` > *Ports from
+`available_port` are owned by the running test*.
+
 ## Verify
 
 After every edit:
