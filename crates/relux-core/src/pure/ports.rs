@@ -8,16 +8,26 @@
 
 use std::collections::HashMap;
 use std::net::TcpListener;
+use std::sync::Mutex;
+use std::sync::OnceLock;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
 /// Hard floor: never allocate below the historic privileged boundary.
 pub const MIN_PORT: u16 = 1024;
 
+/// Ephemeral-range start assumed when detection fails. Conservative:
+/// at or below both the Linux default (32768) and macOS default (49152).
+const FALLBACK_EPHEMERAL_START: u16 = 32768;
+
 /// Opaque allocation-scope token. The runtime mints one per test execution
 /// and releases it after the test's cleanup completes.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct PortOwner(u64);
+
+/// Owner for allocations made outside any test execution (lowering-time
+/// marker eval, `relux check`). Never released.
+const PROCESS_OWNER: PortOwner = PortOwner(0);
 
 pub fn new_owner() -> PortOwner {
     static NEXT: AtomicU64 = AtomicU64::new(1);
@@ -65,9 +75,6 @@ pub fn resolve_range(
 /// First integer in a whitespace-separated string, as `u16`. Parses both
 /// `/proc/sys/net/ipv4/ip_local_port_range` ("32768\t60999") and
 /// `/proc/sys/net/ipv4/ip_unprivileged_port_start` ("1024").
-// Gains production callers (OS detection) in a later change; only
-// exercised by tests for now.
-#[allow(dead_code)]
 fn first_number(s: &str) -> Option<u16> {
     s.split_whitespace().next()?.parse().ok()
 }
@@ -75,10 +82,6 @@ fn first_number(s: &str) -> Option<u16> {
 /// The allocator proper: a scanning cursor over the window plus the
 /// `port -> owner` registry. Global wiring lives in `configure`/`allocate`/
 /// `release`; this struct is directly constructible for tests.
-///
-/// Gains a production caller (global wiring) in a later change; only
-/// exercised via `with_start` by tests for now.
-#[allow(dead_code)]
 struct Allocator {
     range: PortRange,
     /// Next candidate to try; wraps within `range`.
@@ -86,8 +89,16 @@ struct Allocator {
     owned: HashMap<u16, PortOwner>,
 }
 
-#[allow(dead_code)]
 impl Allocator {
+    /// Production constructor: random start offset, so concurrent relux
+    /// processes scan different parts of the window.
+    fn new(range: PortRange) -> Self {
+        use rand::RngExt;
+        let width = u32::from(range.end) - u32::from(range.start) + 1;
+        let offset = rand::rng().random_range(0..width) as u16;
+        Self::with_start(range, range.start + offset)
+    }
+
     /// Deterministic constructor for tests.
     fn with_start(range: PortRange, start_at: u16) -> Self {
         Self {
@@ -122,6 +133,99 @@ impl Allocator {
 
     fn release(&mut self, owner: PortOwner) {
         self.owned.retain(|_, o| *o != owner);
+    }
+}
+
+fn detect_ephemeral_start() -> u16 {
+    #[cfg(target_os = "linux")]
+    if let Ok(s) = std::fs::read_to_string("/proc/sys/net/ipv4/ip_local_port_range")
+        && let Some(p) = first_number(&s)
+    {
+        return p;
+    }
+    #[cfg(target_os = "macos")]
+    if let Some(p) = sysctl_u16("net.inet.ip.portrange.first") {
+        return p;
+    }
+    FALLBACK_EPHEMERAL_START
+}
+
+fn detect_unprivileged_start() -> u16 {
+    #[cfg(target_os = "linux")]
+    if let Ok(s) = std::fs::read_to_string("/proc/sys/net/ipv4/ip_unprivileged_port_start")
+        && let Some(p) = first_number(&s)
+    {
+        return p.max(MIN_PORT);
+    }
+    MIN_PORT
+}
+
+/// One-shot `sysctl -n <name>` read. Runs at most twice per process (both
+/// detection calls happen once, at allocator initialization).
+#[cfg(target_os = "macos")]
+fn sysctl_u16(name: &str) -> Option<u16> {
+    let out = std::process::Command::new("sysctl")
+        .arg("-n")
+        .arg(name)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    first_number(&String::from_utf8_lossy(&out.stdout))
+}
+
+static GLOBAL: OnceLock<Mutex<Allocator>> = OnceLock::new();
+
+/// Install the allocation window from manifest overrides. Called once by the
+/// CLI after manifest load, before any allocation. Errors if the resulting
+/// window is empty or the allocator was already configured.
+pub fn configure(start_override: Option<u16>, end_override: Option<u16>) -> Result<(), PortsError> {
+    let range = resolve_range(
+        start_override,
+        end_override,
+        detect_unprivileged_start(),
+        detect_ephemeral_start(),
+    )?;
+    GLOBAL
+        .set(Mutex::new(Allocator::new(range)))
+        .map_err(|_| PortsError::AlreadyConfigured)
+}
+
+fn global() -> &'static Mutex<Allocator> {
+    GLOBAL.get_or_init(|| {
+        // Library/embedded use without configure(): detected defaults, and on
+        // pathological sysctls fall back to the widest sane window.
+        let range = resolve_range(
+            None,
+            None,
+            detect_unprivileged_start(),
+            detect_ephemeral_start(),
+        )
+        .unwrap_or(PortRange {
+            start: MIN_PORT,
+            end: FALLBACK_EPHEMERAL_START - 1,
+        });
+        Mutex::new(Allocator::new(range))
+    })
+}
+
+/// Allocate a port for `owner` (`None` = process-lifetime, never released).
+/// `None` result means the window is exhausted right now.
+pub fn allocate(owner: Option<PortOwner>) -> Option<u16> {
+    global()
+        .lock()
+        .expect("port allocator lock poisoned")
+        .allocate(owner.unwrap_or(PROCESS_OWNER))
+}
+
+/// Free every port held by `owner`. Call only after the owning test's
+/// cleanup has completed (the services bound to those ports are down).
+pub fn release(owner: PortOwner) {
+    if let Some(m) = GLOBAL.get() {
+        m.lock()
+            .expect("port allocator lock poisoned")
+            .release(owner);
     }
 }
 
@@ -287,5 +391,19 @@ mod tests {
         assert_eq!(a.allocate(owner), Some(21752));
         assert_eq!(a.allocate(owner), Some(21750));
         assert_eq!(a.allocate(owner), Some(21751));
+    }
+
+    #[test]
+    fn global_allocate_returns_distinct_valid_ports() {
+        let a = allocate(None).expect("allocation from default window");
+        let b = allocate(None).expect("allocation from default window");
+        assert_ne!(a, b);
+        assert!(a >= MIN_PORT);
+        assert!(b >= MIN_PORT);
+    }
+
+    #[test]
+    fn global_release_of_unknown_owner_is_a_noop() {
+        release(new_owner()); // must not panic, even pre-init
     }
 }
