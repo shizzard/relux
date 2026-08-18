@@ -9,6 +9,7 @@ use crate::hash::StableHasher;
 
 pub mod bifs;
 pub mod matching;
+pub mod ports;
 
 // --- VarScope --------------------------------------------
 
