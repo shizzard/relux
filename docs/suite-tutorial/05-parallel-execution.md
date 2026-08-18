@@ -10,7 +10,7 @@ The fix is to stop hardcoding ports. Each effect instance should get its own por
 
 ## Dynamic ports with `available_port()`
 
-Relux provides a built-in pure function `available_port()` that binds to an ephemeral TCP port, records the port number, and releases the socket. Call it as close to startup as possible to minimize the window for another process to claim the same port.
+Relux provides a built-in pure function `available_port()` that allocates a free TCP port from outside the OS's ephemeral range and probes it by actually binding it. The port is reserved for the duration of the test -- across every effect and function it starts -- and is only released once the test's cleanup completes, so no other test running in parallel can ever be handed the same port.
 
 Environment overlay variables let us pass a port into an effect at the `start` site. Combine the two and each effect instance gets a unique port.
 

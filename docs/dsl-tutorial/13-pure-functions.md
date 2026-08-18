@@ -60,7 +60,7 @@ Several [built-in functions](05-built-in-functions.md) are also available in pur
 | `len(s)`                    | String length                     |
 | `uuid()`                    | Generate a UUID                   |
 | `rand(n)` / `rand(n, mode)` | Generate random values            |
-| `available_port()`          | Find a free TCP port              |
+| `available_port()`          | Allocate a free TCP port, reserved for this test until it finishes |
 | `which(cmd)`                | Locate a command on `PATH`        |
 | `default(a, b)`             | Return `a` if non-empty, else `b` |
 | `mnemonic(s)`               | Stable mnemonic id hashed from `s`|

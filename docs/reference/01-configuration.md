@@ -46,6 +46,10 @@ jobs = 1
 [flaky]
 max_retries = 0
 timeout_multiplier = 1.5
+
+[available_ports]
+range_start = 20000
+range_end = 29999
 ```
 
 ### Root-level fields
@@ -83,6 +87,24 @@ All durations use `humantime` format (e.g. `5s`, `1m30s`, `2h`).
 |----------------------|---------|---------|---------------------------------------------------------------------|
 | `max_retries`        | integer | `0`     | Max retries for `# flaky`-marked tests (0 = no retries)             |
 | `timeout_multiplier` | float   | `1.5`   | Exponential timeout multiplier base for flaky retries (must be > 1.0) |
+
+### `[available_ports]` section
+
+Bounds for the window `available_port()` allocates from. Both bounds are
+inclusive and independently optional - a missing bound keeps its
+kernel-derived default.
+
+| Key           | Type    | Default                                     | Description                              |
+| ------------- | ------- | ------------------------------------------- | ----------------------------------------- |
+| `range_start` | integer | OS privileged boundary (usually `1024`)     | First allocatable port (inclusive)       |
+| `range_end`   | integer | One below the OS ephemeral interval         | Last allocatable port (inclusive)        |
+
+Bounds must be at least `1024`, and `range_start` must not exceed
+`range_end`. A window that comes out empty against the detected defaults
+(e.g. `range_start` above the ephemeral boundary) is rejected at startup.
+An explicit range should stay outside the OS ephemeral interval - relux
+does not second-guess an override. See the built-in functions chapter for
+why the window avoids the ephemeral range.
 
 ## Project structure
 
