@@ -64,6 +64,44 @@ pub struct ReluxConfig {
     pub flaky: FlakyConfig,
     #[serde(default)]
     pub run: RunConfig,
+    #[serde(default)]
+    pub available_ports: AvailablePortsConfig,
+}
+
+/// `[available_ports]` - the `available_port()` BIF's allocation window.
+/// Each bound is independently optional and inclusive; a missing bound keeps
+/// its kernel-derived default (privileged boundary / below the ephemeral
+/// interval). See the reference book's configuration chapter.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct AvailablePortsConfig {
+    pub range_start: Option<u16>,
+    pub range_end: Option<u16>,
+}
+
+impl AvailablePortsConfig {
+    pub fn validate(&self) -> Result<(), String> {
+        for (key, value) in [
+            ("range_start", self.range_start),
+            ("range_end", self.range_end),
+        ] {
+            if let Some(v) = value
+                && v < 1024
+            {
+                return Err(format!(
+                    "[available_ports] {key} must be at least 1024 (got {v})"
+                ));
+            }
+        }
+        if let (Some(start), Some(end)) = (self.range_start, self.range_end)
+            && start > end
+        {
+            return Err(format!(
+                "[available_ports] range_start ({start}) must not exceed range_end ({end})"
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -141,7 +179,13 @@ pub fn discover_project_root() -> Result<(PathBuf, ReluxConfig), String> {
 pub fn load_config(path: &Path) -> Result<ReluxConfig, String> {
     let contents = std::fs::read_to_string(path)
         .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-    toml::from_str(&contents).map_err(|e| format!("invalid {}: {e}", path.display()))
+    let config: ReluxConfig =
+        toml::from_str(&contents).map_err(|e| format!("invalid {}: {e}", path.display()))?;
+    config
+        .available_ports
+        .validate()
+        .map_err(|e| format!("invalid {}: {e}", path.display()))?;
+    Ok(config)
 }
 
 pub fn load_manifest(path: &Path) -> Result<(PathBuf, ReluxConfig), String> {
@@ -266,5 +310,48 @@ max_retries = 5
     fn parse_run_jobs() {
         let config: ReluxConfig = toml::from_str("[run]\njobs = 4\n").unwrap();
         assert_eq!(config.run.jobs, 4);
+    }
+
+    #[test]
+    fn available_ports_absent_defaults_to_none() {
+        let cfg: ReluxConfig = toml::from_str("").unwrap();
+        assert_eq!(cfg.available_ports.range_start, None);
+        assert_eq!(cfg.available_ports.range_end, None);
+    }
+
+    #[test]
+    fn available_ports_single_key_is_allowed() {
+        let cfg: ReluxConfig = toml::from_str("[available_ports]\nrange_start = 20000\n").unwrap();
+        assert_eq!(cfg.available_ports.range_start, Some(20000));
+        assert_eq!(cfg.available_ports.range_end, None);
+        cfg.available_ports.validate().unwrap();
+    }
+
+    #[test]
+    fn available_ports_below_1024_is_rejected() {
+        let cfg: ReluxConfig = toml::from_str("[available_ports]\nrange_end = 1000\n").unwrap();
+        let err = cfg.available_ports.validate().unwrap_err();
+        assert!(err.contains("range_end"), "err was: {err}");
+        assert!(err.contains("1024"), "err was: {err}");
+    }
+
+    #[test]
+    fn available_ports_inverted_range_is_rejected() {
+        let cfg: ReluxConfig =
+            toml::from_str("[available_ports]\nrange_start = 30000\nrange_end = 20000\n").unwrap();
+        let err = cfg.available_ports.validate().unwrap_err();
+        assert!(err.contains("must not exceed"), "err was: {err}");
+    }
+
+    #[test]
+    fn available_ports_width_one_range_is_valid() {
+        let cfg: ReluxConfig =
+            toml::from_str("[available_ports]\nrange_start = 21700\nrange_end = 21700\n").unwrap();
+        cfg.available_ports.validate().unwrap();
+    }
+
+    #[test]
+    fn available_ports_above_u16_is_a_parse_error() {
+        assert!(toml::from_str::<ReluxConfig>("[available_ports]\nrange_start = 70000\n").is_err());
     }
 }
