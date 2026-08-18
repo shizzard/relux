@@ -59,17 +59,19 @@ allocates from the window between them, starting at a random offset. Every
 candidate is verified by binding it (ports in TIME_WAIT fail this probe
 and are skipped). A handed-out port is owned by the running test - across
 all its effects and functions - and is returned to the pool only after the
-test's cleanup has completed, so no two concurrent tests can ever receive
-the same port.
+test's cleanup has completed, so within one relux run, no two concurrent
+tests can ever receive the same port.
 
 The window can be narrowed with the manifest's `[available_ports]` section
 (see the configuration chapter). On exhaustion of the window the call
 returns `-1`, like other BIF failures.
 
-One residual caveat: relux cannot stop an unrelated process on the machine
-from binding the chosen port before your service does. The allocation
-window makes that unlikely (the kernel never assigns those ports on its
-own), but it is not a machine-wide reservation.
+One residual caveat: this bookkeeping is per relux process, not a
+machine-wide reservation, so relux cannot stop an unrelated process on the
+machine - including another concurrent `relux run` invocation - from
+binding the chosen port before your service does. The allocation window
+makes that unlikely (the kernel never assigns those ports on its own), but
+it is not a guarantee.
 
 ### Logging
 
