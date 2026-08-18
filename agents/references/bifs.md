@@ -107,15 +107,14 @@ Do:
 match_ok()
 ```
 
-### `available_port` ports are owned by the running test
+### Ports from `available_port` are owned by the running test
 
 Each call returns a distinct port from outside the OS ephemeral range,
 probed at allocation. The port stays reserved (within this relux process)
 until the allocating test's cleanup completes, so calls in effect config
-evaluated long before the service binds are safe - no call-site
+evaluated long before the service binds are safe -- no call-site
 positioning is needed. The `[available_ports]` manifest section narrows
-the window; see the reference book's configuration and built-in-functions
-chapters for the semantics.
+the window; see [project-layout](project-layout.md) > *Sections* for the fields.
 
 ## See also
 

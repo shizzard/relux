@@ -37,14 +37,12 @@ Shell-independent also does not mean infallible. A `pure fn` body may contain a 
 
 | Function         | Signature          | Returns | Description                                                                                                                                                                                                                                                              |
 |------------------|--------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `available_port` | `available_port()` | string  | Allocate a free TCP port on 127.0.0.1 from the window between the OS privileged and ephemeral port intervals. Probed at allocation and never handed out twice while the allocating test is running; freed after the test's cleanup completes. |
+| `available_port` | `available_port()` | string  | Allocate a free TCP port on 127.0.0.1 from the window between the OS privileged and ephemeral port intervals. Probed at allocation and never handed out twice while the allocating test is running; freed after the test's cleanup completes.                            |
 | `which`          | `which(name)`      | string  | Search `PATH` for an executable named `name`. Returns the absolute path to the first match, or `""` if not found. Checks that the file has an executable permission bit set. If `name` contains a path separator, checks that path directly instead of searching `PATH`. |
 | `sleep`          | `sleep(duration)`  | `""`    | Pause execution for `duration`. Accepts [humantime](https://docs.rs/humantime) format: `500ms`, `2s`, `1m30s`, etc. Errors if the duration is invalid.                                                                                                                   |
 
-### How `available_port` picks ports
-
 A naive "bind port 0, read the number, close" probe returns a port from the
-OS *ephemeral* range - the same range the kernel uses for the source ports
+OS *ephemeral* range — the same range the kernel uses for the source ports
 of outbound connections. Between picking the port and your service binding
 it, any client connection (a database bootstrap, a migration, a health
 check) can be assigned that number, and a closed client keeps the port in
@@ -57,8 +55,8 @@ range. At first use relux reads the OS ephemeral interval
 `net.inet.ip.portrange` on macOS) and the privileged boundary, and
 allocates from the window between them, starting at a random offset. Every
 candidate is verified by binding it (ports in TIME_WAIT fail this probe
-and are skipped). A handed-out port is owned by the running test - across
-all its effects and functions - and is returned to the pool only after the
+and are skipped). A handed-out port is owned by the running test — across
+all its effects and functions — and is returned to the pool only after the
 test's cleanup has completed, so within one relux run, no two concurrent
 tests can ever receive the same port.
 
@@ -68,7 +66,7 @@ returns `-1`, like other BIF failures.
 
 One residual caveat: this bookkeeping is per relux process, not a
 machine-wide reservation, so relux cannot stop an unrelated process on the
-machine - including another concurrent `relux run` invocation - from
+machine — including another concurrent `relux run` invocation — from
 binding the chosen port before your service does. The allocation window
 makes that unlikely (the kernel never assigns those ports on its own), but
 it is not a guarantee.
