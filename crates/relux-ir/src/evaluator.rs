@@ -76,7 +76,11 @@ pub fn eval_pure_fn(
     sink: &mut dyn PureEvalSink,
 ) -> Result<String, PureEvalError> {
     match func {
-        IrPureFn::Builtin { name, .. } => Ok(relux_core::pure::bifs::dispatch(name, args)),
+        IrPureFn::Builtin { name, .. } => Ok(relux_core::pure::bifs::dispatch(
+            name,
+            args,
+            sink.port_owner(),
+        )),
         IrPureFn::UserDefined { params, body, .. } => {
             let mut scope = VarScope::new();
             let mut captures: HashMap<String, String> = HashMap::new();

@@ -38,6 +38,13 @@ pub trait PureEvalSink {
     /// an interpolation are captured by `record_interpolation` so we
     /// don't double-emit.
     fn record_var_read(&mut self, name: &str, value: &str, span: &IrSpan);
+    /// Allocation scope for `available_port()` calls evaluated through this
+    /// sink. `None` (the default) means process-lifetime ownership - the
+    /// runtime's `LogSink` overrides this with the current test execution's
+    /// owner so ports free up when the test finishes.
+    fn port_owner(&self) -> Option<relux_core::pure::ports::PortOwner> {
+        None
+    }
 }
 
 pub struct NoOpSink;

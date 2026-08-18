@@ -133,7 +133,11 @@ pub fn is_pure_bif(name: &str, arity: usize) -> bool {
     )
 }
 
-pub fn dispatch(name: &str, args: Vec<String>) -> String {
+pub fn dispatch(
+    name: &str,
+    args: Vec<String>,
+    port_owner: Option<crate::pure::ports::PortOwner>,
+) -> String {
     match name {
         "trim" => args[0].trim().to_string(),
         "upper" => args[0].to_uppercase(),
@@ -163,10 +167,9 @@ pub fn dispatch(name: &str, args: Vec<String>) -> String {
                 random_string(n, charset)
             }
         }
-        "available_port" => std::net::TcpListener::bind("127.0.0.1:0")
-            .and_then(|l| l.local_addr())
-            .map(|a| a.port().to_string())
-            .unwrap_or_else(|_| "-1".into()),
+        "available_port" => crate::pure::ports::allocate(port_owner)
+            .map(|p| p.to_string())
+            .unwrap_or_else(|| "-1".into()),
         "which" => {
             let name = &args[0];
             if name.is_empty() {
@@ -223,43 +226,43 @@ mod tests {
 
     #[test]
     fn bif_trim() {
-        assert_eq!(dispatch("trim", vec!["  hi  ".into()]), "hi");
+        assert_eq!(dispatch("trim", vec!["  hi  ".into()], None), "hi");
     }
 
     #[test]
     fn bif_trim_no_whitespace() {
-        assert_eq!(dispatch("trim", vec!["hi".into()]), "hi");
+        assert_eq!(dispatch("trim", vec!["hi".into()], None), "hi");
     }
 
     #[test]
     fn bif_trim_only_whitespace() {
-        assert_eq!(dispatch("trim", vec!["   ".into()]), "");
+        assert_eq!(dispatch("trim", vec!["   ".into()], None), "");
     }
 
     #[test]
     fn bif_upper() {
-        assert_eq!(dispatch("upper", vec!["hello".into()]), "HELLO");
+        assert_eq!(dispatch("upper", vec!["hello".into()], None), "HELLO");
     }
 
     #[test]
     fn bif_upper_empty() {
-        assert_eq!(dispatch("upper", vec![String::new()]), "");
+        assert_eq!(dispatch("upper", vec![String::new()], None), "");
     }
 
     #[test]
     fn bif_lower() {
-        assert_eq!(dispatch("lower", vec!["HELLO".into()]), "hello");
+        assert_eq!(dispatch("lower", vec!["HELLO".into()], None), "hello");
     }
 
     #[test]
     fn bif_lower_empty() {
-        assert_eq!(dispatch("lower", vec![String::new()]), "");
+        assert_eq!(dispatch("lower", vec![String::new()], None), "");
     }
 
     #[test]
     fn bif_replace() {
         assert_eq!(
-            dispatch("replace", vec!["aXb".into(), "X".into(), "Y".into()]),
+            dispatch("replace", vec!["aXb".into(), "X".into(), "Y".into()], None),
             "aYb"
         );
     }
@@ -267,21 +270,25 @@ mod tests {
     #[test]
     fn bif_replace_no_match() {
         assert_eq!(
-            dispatch("replace", vec!["abc".into(), "X".into(), "Y".into()]),
+            dispatch("replace", vec!["abc".into(), "X".into(), "Y".into()], None),
             "abc"
         );
     }
 
     #[test]
     fn bif_replace_empty_from() {
-        let result = dispatch("replace", vec!["abc".into(), String::new(), "X".into()]);
+        let result = dispatch(
+            "replace",
+            vec!["abc".into(), String::new(), "X".into()],
+            None,
+        );
         assert!(result.contains('X'));
     }
 
     #[test]
     fn bif_split_basic() {
         assert_eq!(
-            dispatch("split", vec!["a,b,c".into(), ",".into(), "1".into()]),
+            dispatch("split", vec!["a,b,c".into(), ",".into(), "1".into()], None),
             "b"
         );
     }
@@ -289,7 +296,7 @@ mod tests {
     #[test]
     fn bif_split_out_of_bounds() {
         assert_eq!(
-            dispatch("split", vec!["a,b".into(), ",".into(), "5".into()]),
+            dispatch("split", vec!["a,b".into(), ",".into(), "5".into()], None),
             ""
         );
     }
@@ -297,131 +304,132 @@ mod tests {
     #[test]
     fn bif_split_first_element() {
         assert_eq!(
-            dispatch("split", vec!["a,b,c".into(), ",".into(), "0".into()]),
+            dispatch("split", vec!["a,b,c".into(), ",".into(), "0".into()], None),
             "a"
         );
     }
 
     #[test]
     fn bif_len() {
-        assert_eq!(dispatch("len", vec!["abc".into()]), "3");
+        assert_eq!(dispatch("len", vec!["abc".into()], None), "3");
     }
 
     #[test]
     fn bif_len_empty() {
-        assert_eq!(dispatch("len", vec![String::new()]), "0");
+        assert_eq!(dispatch("len", vec![String::new()], None), "0");
     }
 
     #[test]
     fn bif_len_unicode_bytes() {
         // len counts bytes, not chars
-        assert_eq!(dispatch("len", vec!["h\u{e9}llo".into()]), "6");
+        assert_eq!(dispatch("len", vec!["h\u{e9}llo".into()], None), "6");
     }
 
     #[test]
     fn bif_uuid_format() {
-        let result = dispatch("uuid", vec![]);
+        let result = dispatch("uuid", vec![], None);
         assert_eq!(result.len(), 36);
         assert_eq!(result.chars().filter(|&c| c == '-').count(), 4);
     }
 
     #[test]
     fn bif_uuid_unique() {
-        let a = dispatch("uuid", vec![]);
-        let b = dispatch("uuid", vec![]);
+        let a = dispatch("uuid", vec![], None);
+        let b = dispatch("uuid", vec![], None);
         assert_ne!(a, b);
     }
 
     #[test]
     fn bif_rand_length() {
-        let result = dispatch("rand", vec!["8".into()]);
+        let result = dispatch("rand", vec!["8".into()], None);
         assert_eq!(result.len(), 8);
     }
 
     #[test]
     fn bif_rand_with_mode_hex() {
-        let result = dispatch("rand", vec!["16".into(), "hex".into()]);
+        let result = dispatch("rand", vec!["16".into(), "hex".into()], None);
         assert_eq!(result.len(), 16);
         assert!(result.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
     #[test]
     fn bif_rand_with_mode_alpha() {
-        let result = dispatch("rand", vec!["10".into(), "alpha".into()]);
+        let result = dispatch("rand", vec!["10".into(), "alpha".into()], None);
         assert_eq!(result.len(), 10);
         assert!(result.chars().all(|c| c.is_ascii_alphabetic()));
     }
 
     #[test]
     fn bif_rand_with_mode_num() {
-        let result = dispatch("rand", vec!["10".into(), "num".into()]);
+        let result = dispatch("rand", vec!["10".into(), "num".into()], None);
         assert_eq!(result.len(), 10);
         assert!(result.chars().all(|c| c.is_ascii_digit()));
     }
 
     #[test]
-    fn bif_available_port_numeric() {
-        let result = dispatch("available_port", vec![]);
-        let port: u16 = result.parse().expect("should be a valid port number");
-        assert!(port > 0);
-    }
-
-    #[test]
-    fn bif_available_port_unique() {
-        let a = dispatch("available_port", vec![]);
-        let b = dispatch("available_port", vec![]);
-        // Ports might occasionally collide, but very unlikely in practice
-        let _: u16 = a.parse().unwrap();
-        let _: u16 = b.parse().unwrap();
+    fn bif_available_port_numeric_and_unique() {
+        let a: u16 = dispatch("available_port", vec![], None)
+            .parse()
+            .expect("should be a valid port number");
+        let b: u16 = dispatch("available_port", vec![], None)
+            .parse()
+            .expect("should be a valid port number");
+        assert!(a >= 1024);
+        assert!(b >= 1024);
+        assert_ne!(a, b, "unreleased allocations must never repeat");
     }
 
     #[test]
     fn bif_which_existing_command() {
         // "sh" should exist on any Unix system
-        let result = dispatch("which", vec!["sh".into()]);
+        let result = dispatch("which", vec!["sh".into()], None);
         assert!(!result.is_empty());
         assert!(result.contains("sh"));
     }
 
     #[test]
     fn bif_which_nonexistent() {
-        let result = dispatch("which", vec!["nonexistent_command_xyz_12345".into()]);
+        let result = dispatch("which", vec!["nonexistent_command_xyz_12345".into()], None);
         assert_eq!(result, "");
     }
 
     #[test]
     fn bif_which_empty() {
-        let result = dispatch("which", vec![String::new()]);
+        let result = dispatch("which", vec![String::new()], None);
         assert_eq!(result, "");
     }
 
     #[test]
     fn bif_replace_all_occurrences() {
-        let result = dispatch("replace", vec!["aaa".into(), "a".into(), "b".into()]);
+        let result = dispatch("replace", vec!["aaa".into(), "a".into(), "b".into()], None);
         assert_eq!(result, "bbb");
     }
 
     #[test]
     fn bif_replace_empty_to() {
-        let result = dispatch("replace", vec!["hello".into(), "l".into(), String::new()]);
+        let result = dispatch(
+            "replace",
+            vec!["hello".into(), "l".into(), String::new()],
+            None,
+        );
         assert_eq!(result, "heo");
     }
 
     #[test]
     fn bif_split_delimiter_not_found() {
-        let result = dispatch("split", vec!["abc".into(), ",".into(), "0".into()]);
+        let result = dispatch("split", vec!["abc".into(), ",".into(), "0".into()], None);
         assert_eq!(result, "abc");
     }
 
     #[test]
     fn bif_split_empty_string() {
-        let result = dispatch("split", vec![String::new(), ",".into(), "0".into()]);
+        let result = dispatch("split", vec![String::new(), ",".into(), "0".into()], None);
         assert_eq!(result, "");
     }
 
     #[test]
     fn bif_rand_unknown_mode_falls_back() {
-        let result = dispatch("rand", vec!["10".into(), "invalid".into()]);
+        let result = dispatch("rand", vec!["10".into(), "invalid".into()], None);
         assert_eq!(result.len(), 10);
         // Fallback to ALPHANUM - all chars should be alphanumeric.
         assert!(result.chars().all(|c| c.is_ascii_alphanumeric()));
@@ -429,14 +437,14 @@ mod tests {
 
     #[test]
     fn bif_rand_zero_length() {
-        let result = dispatch("rand", vec!["0".into()]);
+        let result = dispatch("rand", vec!["0".into()], None);
         assert_eq!(result, "");
     }
 
     #[test]
     fn bif_default_returns_first_when_non_empty() {
         assert_eq!(
-            dispatch("default", vec!["hello".into(), "fallback".into()]),
+            dispatch("default", vec!["hello".into(), "fallback".into()], None),
             "hello"
         );
     }
@@ -444,26 +452,29 @@ mod tests {
     #[test]
     fn bif_default_returns_second_when_first_empty() {
         assert_eq!(
-            dispatch("default", vec![String::new(), "fallback".into()]),
+            dispatch("default", vec![String::new(), "fallback".into()], None),
             "fallback"
         );
     }
 
     #[test]
     fn bif_default_both_empty() {
-        assert_eq!(dispatch("default", vec![String::new(), String::new()]), "");
+        assert_eq!(
+            dispatch("default", vec![String::new(), String::new()], None),
+            ""
+        );
     }
 
     #[test]
     fn bif_which_with_path_separator() {
-        let result = dispatch("which", vec!["/nonexistent/path".into()]);
+        let result = dispatch("which", vec!["/nonexistent/path".into()], None);
         assert_eq!(result, "");
     }
 
     #[test]
     fn mnemonic_is_well_formed_and_stable() {
-        let a = dispatch("mnemonic", vec!["empay".into()]);
-        let b = dispatch("mnemonic", vec!["empay".into()]);
+        let a = dispatch("mnemonic", vec!["empay".into()], None);
+        let b = dispatch("mnemonic", vec!["empay".into()], None);
         assert_eq!(a, b, "same input must yield same mnemonic");
         // adjective-noun-NNNN, all-lowercase words, 4-digit suffix.
         let parts: Vec<&str> = a.split('-').collect();
@@ -477,19 +488,19 @@ mod tests {
     #[test]
     fn mnemonic_distinguishes_inputs() {
         assert_ne!(
-            dispatch("mnemonic", vec!["alpha".into()]),
-            dispatch("mnemonic", vec!["beta".into()])
+            dispatch("mnemonic", vec!["alpha".into()], None),
+            dispatch("mnemonic", vec!["beta".into()], None)
         );
     }
 
     #[test]
     fn sha1_matches_known_vectors() {
         assert_eq!(
-            dispatch("sha1", vec![String::new()]),
+            dispatch("sha1", vec![String::new()], None),
             "da39a3ee5e6b4b0d3255bfef95601890afd80709"
         );
         assert_eq!(
-            dispatch("sha1", vec!["abc".into()]),
+            dispatch("sha1", vec!["abc".into()], None),
             "a9993e364706816aba3e25717850c26c9cd0d89d"
         );
     }
@@ -555,10 +566,10 @@ mod tests {
 
     #[test]
     fn timestamp_clock_path_smoke() {
-        let year = dispatch("timestamp", vec!["%Y".into()]);
+        let year = dispatch("timestamp", vec!["%Y".into()], None);
         assert_eq!(year.len(), 4);
         assert!(year.chars().all(|c| c.is_ascii_digit()));
-        let secs = dispatch("timestamp", vec!["%s".into()]);
+        let secs = dispatch("timestamp", vec!["%s".into()], None);
         assert!(!secs.is_empty());
         assert!(secs.chars().all(|c| c.is_ascii_digit()));
     }
