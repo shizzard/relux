@@ -4,6 +4,9 @@
 //! the OS ephemeral interval, so the kernel can never assign one of our ports
 //! as an outbound source port. Each port is probed by binding it and tracked
 //! against an owner (one per test execution) until the owner is released.
+//! The probe binds `127.0.0.1` only, so the collision guarantee is
+//! loopback-scoped: a service that binds a specific non-loopback interface
+//! can still conflict with an allocated port.
 //! Design: docs/superpowers/specs/2026-08-18-available-port-allocator-design.md
 
 use std::collections::HashMap;
@@ -29,6 +32,9 @@ pub struct PortOwner(u64);
 /// marker eval, `relux check`). Never released.
 const PROCESS_OWNER: PortOwner = PortOwner(0);
 
+/// Mint a fresh owner token. Callers use one owner per test execution: every
+/// port allocated under it is freed together by a single `release` call
+/// after that test's cleanup completes.
 pub fn new_owner() -> PortOwner {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     PortOwner(NEXT.fetch_add(1, Ordering::Relaxed))
@@ -41,6 +47,7 @@ pub struct PortRange {
     pub end: u16,
 }
 
+/// Failure modes for resolving or installing the allocation window.
 #[derive(Debug, thiserror::Error)]
 pub enum PortsError {
     #[error("available_ports window {start}-{end} is empty")]
@@ -79,6 +86,14 @@ fn first_number(s: &str) -> Option<u16> {
     s.split_whitespace().next()?.parse().ok()
 }
 
+/// Bind-probe a candidate port with default socket options (no
+/// `SO_REUSEADDR`): a live listener or TIME_WAIT residue both disqualify
+/// the candidate. Production probe used by `Allocator::new`; tests inject
+/// a cheaper, deterministic substitute so they never touch a real socket.
+fn probe_bind(port: u16) -> bool {
+    TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
 /// The allocator proper: a scanning cursor over the window plus the
 /// `port -> owner` registry. Global wiring lives in `configure`/`allocate`/
 /// `release`; this struct is directly constructible for tests.
@@ -87,6 +102,10 @@ struct Allocator {
     /// Next candidate to try; wraps within `range`.
     next: u16,
     owned: HashMap<u16, PortOwner>,
+    /// Availability probe: `true` means the candidate is free to take.
+    /// Production uses `probe_bind`; tests inject a fake so bookkeeping
+    /// tests never touch a real socket.
+    probe: fn(u16) -> bool,
 }
 
 impl Allocator {
@@ -96,15 +115,18 @@ impl Allocator {
         use rand::RngExt;
         let width = u32::from(range.end) - u32::from(range.start) + 1;
         let offset = rand::rng().random_range(0..width) as u16;
-        Self::with_start(range, range.start + offset)
+        Self::with_start(range, range.start + offset, probe_bind)
     }
 
-    /// Deterministic constructor for tests.
-    fn with_start(range: PortRange, start_at: u16) -> Self {
+    /// Deterministic constructor for tests: fixed start position plus an
+    /// injected probe, so tests control availability without real sockets.
+    fn with_start(range: PortRange, start_at: u16, probe: fn(u16) -> bool) -> Self {
+        debug_assert!((range.start..=range.end).contains(&start_at));
         Self {
             range,
             next: start_at,
             owned: HashMap::new(),
+            probe,
         }
     }
 
@@ -120,9 +142,11 @@ impl Allocator {
             if self.owned.contains_key(&candidate) {
                 continue;
             }
-            // Probe with default socket options (no SO_REUSEADDR): a live
-            // listener or TIME_WAIT residue both disqualify the candidate.
-            if TcpListener::bind(("127.0.0.1", candidate)).is_err() {
+            // The global mutex is held across this probe (a syscall in
+            // production). A near-exhausted window means up to O(width)
+            // binds under the lock in the worst case - an accepted bound,
+            // not a bug, since the window is small (thousands of ports).
+            if !(self.probe)(candidate) {
                 continue;
             }
             self.owned.insert(candidate, owner);
@@ -180,6 +204,12 @@ static GLOBAL: OnceLock<Mutex<Allocator>> = OnceLock::new();
 /// Install the allocation window from manifest overrides. Called once by the
 /// CLI after manifest load, before any allocation. Errors if the resulting
 /// window is empty or the allocator was already configured.
+///
+/// Must run before the first `allocate`/`release` call - the CLI calls this
+/// first thing, before dispatching any BIF that could touch the allocator.
+/// If `AlreadyConfigured` fires, it means lazy init (`global()`) already ran
+/// ahead of `configure`, which indicates an internal call-ordering bug, not
+/// a condition callers should recover from.
 pub fn configure(start_override: Option<u16>, end_override: Option<u16>) -> Result<(), PortsError> {
     let range = resolve_range(
         start_override,
@@ -215,7 +245,7 @@ fn global() -> &'static Mutex<Allocator> {
 pub fn allocate(owner: Option<PortOwner>) -> Option<u16> {
     global()
         .lock()
-        .expect("port allocator lock poisoned")
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .allocate(owner.unwrap_or(PROCESS_OWNER))
 }
 
@@ -224,7 +254,7 @@ pub fn allocate(owner: Option<PortOwner>) -> Option<u16> {
 pub fn release(owner: PortOwner) {
     if let Some(m) = GLOBAL.get() {
         m.lock()
-            .expect("port allocator lock poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .release(owner);
     }
 }
@@ -315,31 +345,41 @@ mod tests {
         assert_ne!(new_owner(), new_owner());
     }
 
+    /// Availability probe that treats every candidate as free. Used by
+    /// bookkeeping tests that exercise cursor/owner logic, not real binding.
+    fn always_free(_: u16) -> bool {
+        true
+    }
+
     #[test]
     fn allocator_never_repeats_within_owner() {
         let range = PortRange {
             start: 21710,
             end: 21714,
         };
-        let mut a = Allocator::with_start(range, 21710);
+        let mut a = Allocator::with_start(range, 21710, always_free);
         let owner = new_owner();
         let mut seen = std::collections::HashSet::new();
         while let Some(p) = a.allocate(owner) {
             assert!(p >= range.start && p <= range.end);
             assert!(seen.insert(p), "port {p} returned twice");
         }
-        // Window of 5 fully consumable (assuming the fixed test range is free).
+        // Window of 5 fully consumable (probe always reports free).
         assert_eq!(seen.len(), 5);
     }
 
     #[test]
     fn allocator_skips_bound_port() {
+        // Fake probe: every port free except 21721, which stands in for a
+        // live listener or TIME_WAIT residue - no real socket involved.
+        fn busy(p: u16) -> bool {
+            p != 21721
+        }
         let range = PortRange {
             start: 21720,
             end: 21722,
         };
-        let _busy = TcpListener::bind(("127.0.0.1", 21721)).expect("bind fixture port");
-        let mut a = Allocator::with_start(range, 21721);
+        let mut a = Allocator::with_start(range, 21721, busy);
         let owner = new_owner();
         let got: Vec<u16> = std::iter::from_fn(|| a.allocate(owner)).collect();
         assert!(!got.contains(&21721), "bound port must be skipped: {got:?}");
@@ -352,7 +392,7 @@ mod tests {
             start: 21730,
             end: 21730,
         };
-        let mut a = Allocator::with_start(range, 21730);
+        let mut a = Allocator::with_start(range, 21730, always_free);
         let first = new_owner();
         assert_eq!(a.allocate(first), Some(21730));
         assert_eq!(a.allocate(first), None, "width-1 window exhausted");
@@ -367,16 +407,16 @@ mod tests {
             start: 21740,
             end: 21741,
         };
-        let mut a = Allocator::with_start(range, 21740);
+        let mut a = Allocator::with_start(range, 21740, always_free);
         let keep = new_owner();
         let drop_ = new_owner();
         let kept = a.allocate(keep).unwrap();
         let dropped = a.allocate(drop_).unwrap();
+        assert_ne!(kept, dropped);
         a.release(drop_);
         // The kept port is still owned; only the dropped one came back.
         assert_eq!(a.allocate(new_owner()), Some(dropped));
         assert_eq!(a.allocate(new_owner()), None);
-        let _ = kept;
     }
 
     #[test]
@@ -386,13 +426,33 @@ mod tests {
             end: 21752,
         };
         // Start scanning at the last port: wraparound must reach the first.
-        let mut a = Allocator::with_start(range, 21752);
+        let mut a = Allocator::with_start(range, 21752, always_free);
         let owner = new_owner();
         assert_eq!(a.allocate(owner), Some(21752));
         assert_eq!(a.allocate(owner), Some(21750));
         assert_eq!(a.allocate(owner), Some(21751));
     }
 
+    #[test]
+    fn allocator_new_random_offset_stays_in_window() {
+        let range = PortRange {
+            start: 21760,
+            end: 21764,
+        };
+        for _ in 0..1000 {
+            let a = Allocator::new(range);
+            assert!(
+                range.start <= a.next && a.next <= range.end,
+                "offset {} out of window {:?}",
+                a.next,
+                range
+            );
+        }
+    }
+
+    // Only test on the real probe_bind path: covers actual binding via the
+    // default window. Assert in-window/distinct only, never exact values -
+    // the default window is environment-dependent.
     #[test]
     fn global_allocate_returns_distinct_valid_ports() {
         let a = allocate(None).expect("allocation from default window");
@@ -404,6 +464,8 @@ mod tests {
 
     #[test]
     fn global_release_of_unknown_owner_is_a_noop() {
-        release(new_owner()); // must not panic, even pre-init
+        // Must not panic. GLOBAL may already be initialized by another test
+        // in this process (tests run in parallel and share the OnceLock).
+        release(new_owner());
     }
 }
