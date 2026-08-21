@@ -551,17 +551,17 @@ delta is only visible at `relux run` time, in span counts.
 Don't:
 
 ```relux
-# Before: expect (data_dir, port) -- two `start Server` sites in
-# the same test's dependency graph, on distinct ports, distinct
-# instances.
-# After: expect (data_dir) -- the two sites' overlays differ only
-# on port; they now share one instance. The second site silently
-# runs against the first site's port.
+// Before: expect (data_dir, port) -- two `start Server` sites in
+// the same test's dependency graph, on distinct ports, distinct
+// instances.
+// After: expect (data_dir) -- the two sites' overlays differ only
+// on port; they now share one instance. The second site silently
+// runs against the first site's port.
 effect Server {
   expect data_dir
-  let port := "8080"           # was: expect (data_dir, port)
+  let port := "8080"           // was: expect (data_dir, port)
   shell run {
-    send "./server --data ${data_dir} --port ${port}"
+    > ./server --data ${data_dir} --port ${port}
   }
 }
 ```
