@@ -461,8 +461,8 @@ relux run                    # mandatory after every Modify
   send/match logic. `relux check` cannot catch any of these.
 - **Cleanup ordering** (Dimension 5) -- a cleanup that errors on
   already-cleaned state, or unwinds in the wrong order, surfaces
-  as failure annotations in the teardown spans of any test that
-  shares this effect.
+  as failure annotations in the teardown spans of every test that
+  `start`s this effect.
 
 A green `relux run` is the gate. A `relux check` pass on its own
 is necessary but never sufficient for a Modify.
@@ -579,5 +579,5 @@ drift visible only at call sites (Dimension 2), body regressions
 check-only verification is silently false confidence. After a
 Modify, always `relux check && relux run`; scan setup-span counts
 in `events.json` for dedup deltas when Dimension 1 was touched,
-and scan failure annotations across every test that shares this
+and scan failure annotations across every test that `start`s this
 effect for Dimensions 2 / 5 fallout.

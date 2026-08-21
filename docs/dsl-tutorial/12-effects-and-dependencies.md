@@ -54,7 +54,7 @@ test "user login" {
 }
 ```
 
-Two tests, and the database and service startup is already duplicated. Functions reduce some repetition, but they run in the caller's shell — they cannot spin up separate, independent services declaratively. And there is no way to share a running database across tests or control the teardown order when things go wrong.
+Two tests, and the database and service startup is already duplicated. Functions reduce some repetition, but they run in the caller's shell — they cannot spin up separate, independent services declaratively, and there is no way to control the teardown order when things go wrong.
 
 Effects solve this. An effect is a named, reusable piece of test infrastructure. You define it once — what to start, how to verify it is ready — and each test declares what it needs. Relux resolves the dependency graph, starts everything in the right order, and tears it down when the test is done:
 
