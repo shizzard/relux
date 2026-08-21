@@ -7,7 +7,7 @@ Relux provides built-in functions (BIFs) that are always available without impor
 - **Pure** BIFs do not interact with any shell. They can be called from pure functions, condition markers, overlay expressions, and regular shell blocks.
 - **Impure** BIFs require a shell context (they send input or match output). They can only be called inside shell blocks and regular (non-pure) functions.
 
-"Pure" here means shell-independent, not side-effect-free — pure BIFs may still perform I/O (e.g. `sleep`, `log`, `which`).
+"Pure" here means shell-independent, not side-effect-free — a pure BIF may still touch the outside world (`which` reads the filesystem, `timestamp` reads the system clock) and need not be deterministic (`uuid`, `rand`). What it may not do is require a shell. `sleep`, `log`, and `annotate` do require one and are impure, despite doing nothing shell-specific.
 
 Shell-independent also does not mean infallible. A `pure fn` body may contain a [pure match](08-pure-matching.md) (`<expr> = <pattern>` / `<expr> ? <pattern>`), and a non-matching pure match is an assertion failure: a `pure fn` that runs one can fail the test through whichever runtime site called it (a `let`, an overlay value, or a shell-block call). The one exception is a marker condition, where a pure-eval failure makes the condition falsy rather than failing the test.
 
@@ -39,7 +39,6 @@ Shell-independent also does not mean infallible. A `pure fn` body may contain a 
 |------------------|--------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `available_port` | `available_port()` | string  | Allocate a free TCP port on 127.0.0.1 from the window between the OS privileged and ephemeral port intervals. Probed at allocation and never handed out twice while the allocating test is running; freed after the test's cleanup completes.                            |
 | `which`          | `which(name)`      | string  | Search `PATH` for an executable named `name`. Returns the absolute path to the first match, or `""` if not found. Checks that the file has an executable permission bit set. If `name` contains a path separator, checks that path directly instead of searching `PATH`. |
-| `sleep`          | `sleep(duration)`  | `""`    | Pause execution for `duration`. Accepts [humantime](https://docs.rs/humantime) format: `500ms`, `2s`, `1m30s`, etc. Errors if the duration is invalid.                                                                                                                   |
 
 A naive "bind port 0, read the number, close" probe returns a port from the
 OS *ephemeral* range — the same range the kernel uses for the source ports
@@ -70,13 +69,6 @@ machine — including another concurrent `relux run` invocation — from
 binding the chosen port before your service does. The allocation window
 makes that unlikely (the kernel never assigns those ports on its own), but
 it is not a guarantee.
-
-### Logging
-
-| Function   | Signature        | Returns | Description                                                                       |
-|------------|------------------|---------|-----------------------------------------------------------------------------------|
-| `log`      | `log(message)`   | string  | Emit `message` to the event log and HTML report. Returns `message`.               |
-| `annotate` | `annotate(text)` | string  | Emit `text` as a progress annotation. Renders inline on the live progress line (between the surrounding fn-call `(` and `)`) and is recorded as an event in the structured log. Returns `text`. |
 
 ### Hashing
 
@@ -121,3 +113,16 @@ timestamp("%H%M%S-%6f")          -> 153045-123456
 | `ctrl_z`         | `ctrl_z()`         | `""`    | Send `SUB` (0x1A) — suspend the current process.        |
 | `ctrl_l`         | `ctrl_l()`         | `""`    | Send `FF` (0x0C) — clear the terminal screen.           |
 | `ctrl_backslash` | `ctrl_backslash()` | `""`    | Send `FS` (0x1C) — send SIGQUIT to the current process. |
+
+### Timing
+
+| Function | Signature         | Returns | Description                                                                                                                                             |
+|----------|-------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `sleep`  | `sleep(duration)` | `""`    | Pause execution for `duration`. Accepts [humantime](https://docs.rs/humantime) format: `500ms`, `2s`, `1m30s`, etc. Errors if the duration is invalid. |
+
+### Logging
+
+| Function   | Signature        | Returns | Description                                                                       |
+|------------|------------------|---------|-------------------------------------------------------------------------------------|
+| `log`      | `log(message)`   | string  | Emit `message` to the event log and HTML report. Returns `message`.               |
+| `annotate` | `annotate(text)` | string  | Emit `text` as a progress annotation. Renders inline on the live progress line (between the surrounding fn-call `(` and `)`) and is recorded as an event in the structured log. Returns `text`. |
