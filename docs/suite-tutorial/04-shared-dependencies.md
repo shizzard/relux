@@ -56,7 +56,7 @@ pure fn url(path) {
 
 If relux started a new db_service for each `start Db`, we would end up with two database instances on the same port -- and the second one would fail to bind. This is where effect deduplication comes in.
 
-Relux identifies each effect instance by its name and overlay values (we will cover overlays in the next chapter). Two `start Db` statements with no overlay both refer to the same identity: `(Db, {})`. Within a single test, relux resolves the full dependency graph as a DAG and runs each unique instance exactly once. Each test gets its own registry, so a second test starting `Db` gets its own database -- that is what keeps tests independent when they run concurrently.
+Relux identifies each effect instance by its name and overlay values (we will cover overlays in the next chapter). Two `start Db` statements with no overlay both refer to the same identity: `(Db, {})`. Within a single test, relux resolves the full dependency graph as a DAG and runs each unique instance exactly once -- a second test starting `Db` gets its own separate instance.
 
 In our case, the execution order is:
 

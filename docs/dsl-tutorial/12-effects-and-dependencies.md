@@ -369,7 +369,7 @@ Exposed variables are read-only — they are fixed at the time the effect finish
 
 ## Effect identity and deduplication
 
-What happens when two `start` statements in the same test request the same effect? Relux does not run it twice. It identifies each effect instance by its **identity** and deduplicates: if the identity matches, the effect runs once and all references share the same instance. The registry is per-test, so this never crosses a test boundary — two tests that start the same effect with the same identity each get their own instance, their own setup, and their own cleanup. That isolation is exactly what makes running tests concurrently safe.
+What happens when two `start` statements in the same test request the same effect? Relux does not run it twice. It identifies each effect instance by its **identity** and deduplicates: if the identity matches, the effect runs once and all references share the same instance. Registries are per-test, so this never crosses a test boundary — two tests that start the same effect with the same identity each get their own instance, their own setup, and their own cleanup. That isolation is exactly what makes running tests concurrently safe.
 
 For effects without overlay variables (covered in the next section), the identity is simply the effect name. Two `start` statements for the same effect share one instance — the effect runs once, and both aliases point to the same shell:
 
