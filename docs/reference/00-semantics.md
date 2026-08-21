@@ -32,21 +32,17 @@
 
 ## Injected Environment
 
-The runtime injects eight `__RELUX_*` variables into every shell, layered above the `.env` stack so no `.env` or host value can shadow them. Five are run-level, shared by every test in the run:
-
-- `__RELUX_RUN_ID` — identifier of the current run; matches the `relux/out/<run>/` directory name
-- `__RELUX_RUN_ARTIFACTS` — absolute path to `relux/out/<run>/artifacts/`, shared across the run and **not** collected into any test's `artifacts[]`
-- `__RELUX_SHELL_PROMPT` — the configured shell prompt; mirrors `[shell].prompt`
-- `__RELUX_SUITE_ROOT` — absolute path to the directory containing `Relux.toml`
-- `__RELUX` — absolute path to the `relux` binary; unset if the runtime cannot resolve its own executable path
-
-Three are per-test:
-
-- `__RELUX_TEST_ID` — stable mnemonic id hashed from the test's file path and name; stable across runs and reruns
-- `__RELUX_TEST_ARTIFACTS` — absolute path to this test's artifacts directory. This is the only artifacts directory the runtime scans; files here appear in the test's `artifacts[]` and are bundled with its log
-- `__RELUX_TEST_ROOT` — absolute path to the directory containing the test file; unset when that path has no parent
-
-Anything a test or its effects produce belongs under `__RELUX_TEST_ARTIFACTS`. `__RELUX_RUN_ARTIFACTS` is for artifacts deliberately shared across the whole run, and under concurrent execution its paths are visible to every test at once.
+- The runtime injects eight `__RELUX_*` variables into every shell, layered above the `.env` stack so no `.env` or host value can shadow them
+- Run-level, shared by every test in the run:
+  - `__RELUX_RUN_ID` — identifier of the current run; matches the `relux/out/<run>/` directory name
+  - `__RELUX_RUN_ARTIFACTS` — absolute path to `relux/out/<run>/artifacts/`; shared across the run (visible to every test concurrently) and **not** collected into any test's `artifacts[]`
+  - `__RELUX_SHELL_PROMPT` — the configured shell prompt; mirrors `[shell].prompt`
+  - `__RELUX_SUITE_ROOT` — absolute path to the directory containing `Relux.toml`
+  - `__RELUX` — absolute path to the `relux` binary; unset if the runtime cannot resolve its own executable path
+- Per-test:
+  - `__RELUX_TEST_ID` — stable mnemonic id hashed from the test's file path and name; stable across runs and reruns
+  - `__RELUX_TEST_ARTIFACTS` — absolute path to this test's own artifacts directory; the only one the runtime scans, so test- and effect-produced output belongs here — files appear in the test's `artifacts[]` and are bundled with its log
+  - `__RELUX_TEST_ROOT` — absolute path to the directory containing the test file; unset when that path has no parent
 
 ## Functions
 
