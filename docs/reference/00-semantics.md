@@ -64,12 +64,12 @@ Anything a test or its effects produce belongs under `__RELUX_TEST_ARTIFACTS`. `
 
 - Declared with `pure fn` instead of `fn`
 - Cannot contain shell operators (`>`, `=>`, `<?`, `<=`, `!?`, `!=`, timeouts)
-- Cannot call impure built-in functions (e.g., `match_prompt()`, `ctrl_c()`)
+- Cannot call impure built-in functions (e.g., `match_prompt()`, `ctrl_c()`, `sleep()`, `log()`, `annotate()`)
 - Cannot call regular `fn` functions — only other pure functions and pure built-in functions
 - Can only contain: `let` declarations, variable reassignment, expressions, and [pure-match](08-pure-matching.md) statements (`<expr> = <pattern>` / `<expr> ? <pattern>`)
 - A `?` pure match inside the body binds `$1..$n` into the call's own capture frame, so a `pure fn` can extract a value and return it; a non-matching pure match fails the test through the runtime site that called the function (a marker condition is the exception — a pure-eval failure there is falsy, not a test failure)
 - Can be called from condition markers, overlay expressions, and regular shell blocks
-- "Pure" means shell-independent, not side-effect-free — pure BIFs like `sleep()` and `log()` are allowed
+- "Pure" means shell-independent, not side-effect-free — a pure BIF may still read the filesystem (`which()`) or the clock (`timestamp()`), and need not be deterministic (`uuid()`, `rand()`). `sleep()`, `log()`, and `annotate()` require a shell context and are impure
 
 ## Shells
 
