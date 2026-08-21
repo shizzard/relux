@@ -34,7 +34,7 @@
 
 - The runtime injects eight `__RELUX_*` variables into every shell, layered above the `.env` stack so no `.env` or host value can shadow them
 - Run-level, shared by every test in the run:
-  - `__RELUX_RUN_ID` — identifier of the current run; matches the `relux/out/<run>/` directory name
+  - `__RELUX_RUN_ID` — identifier of the current run; appears in the `relux/out/<run>/` directory name alongside a timestamp
   - `__RELUX_RUN_ARTIFACTS` — absolute path to `relux/out/<run>/artifacts/`; shared across the run (visible to every test concurrently) and **not** collected into any test's `artifacts[]`
   - `__RELUX_SHELL_PROMPT` — the configured shell prompt; mirrors `[shell].prompt`
   - `__RELUX_SUITE_ROOT` — absolute path to the directory containing `Relux.toml`
