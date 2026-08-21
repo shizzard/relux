@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.3](https://github.com/shizzard/relux/compare/v0.8.2...v0.8.3) (2026-08-21)
+
+
+### Bug Fixes
+
+* **ci:** list the packaged crate instead of building it ([6f5fc8a](https://github.com/shizzard/relux/commit/6f5fc8a7906a3ad29d40d21b8c41b8be210c3747))
+* **intellij:** publish the release version instead of 0.1.0 ([0b91c56](https://github.com/shizzard/relux/commit/0b91c563bf33937bbe50443df81e4eaecf6fe34e))
+
 ## [0.8.2](https://github.com/shizzard/relux/compare/v0.8.1...v0.8.2) (2026-08-21)
 
 
