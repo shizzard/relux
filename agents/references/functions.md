@@ -35,7 +35,7 @@ pure fn compose_url(host, port) {
 - Cannot contain: shell operators, timeouts, impure BIFs, calls to `fn`.
 - A `?` pure match inside the body binds `$1`..`$n` in the function's own capture frame (return `$1` to extract a value); a no-match FAILS the test through the calling site. This makes `pure fn` evaluation fallible even though it has no shell.
 - Callable from: condition markers, overlay expressions, `let` RHS, shell-block expressions.
-- "Pure" means shell-independent, not deterministic -- `uuid()`, `rand()`, `sleep()`, `which()` are all allowed.
+- "Pure" means shell-independent, not deterministic -- `uuid()`, `rand()`, `which()`, and `timestamp()` are all allowed. `sleep()`, `log()`, and `annotate()` are impure and are not: they require a shell context. See [bifs](bifs.md).
 
 ## Arguments and returns
 
