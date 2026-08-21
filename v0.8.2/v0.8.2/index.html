@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Relux Documentation</title>
+    <link rel="stylesheet" href="_theme/relux.css">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: var(--relux-font-body);
+            background: var(--relux-bg);
+            color: var(--relux-ink);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        main {
+            max-width: 750px;
+            margin: 0 auto;
+            padding: 60px 15px;
+        }
+
+        h1 {
+            font-size: 2em;
+            margin-bottom: 0.3em;
+            font-weight: 600;
+        }
+
+        .subtitle {
+            font-size: 1.1em;
+            color: var(--relux-ink-dim);
+            margin-bottom: 2.5em;
+        }
+
+        .cards {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .card {
+            display: block;
+            padding: 20px 24px;
+            background: var(--relux-paper);
+            border: 1px solid var(--relux-border);
+            border-radius: 6px;
+            text-decoration: none;
+            color: var(--relux-ink);
+            transition: border-color 0.15s, background 0.15s;
+        }
+
+        .card:hover {
+            border-color: var(--relux-accent);
+            background: var(--relux-paper-2);
+        }
+
+        .card-title {
+            font-size: 1.15em;
+            font-weight: 600;
+            color: var(--relux-accent);
+            margin-bottom: 4px;
+        }
+
+        .card-desc {
+            font-size: 0.9em;
+            color: var(--relux-ink-dim);
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Relux Documentation</h1>
+        <p class="subtitle">Choose a tutorial to get started.</p>
+        <div class="cards">
+            <a class="card" href="dsl-tutorial/index.html">
+                <div class="card-title">DSL Tutorial</div>
+                <div class="card-desc">Learn the Relux language from scratch &mdash; shells, operators, variables, functions, effects, and more.</div>
+            </a>
+            <a class="card" href="suite-tutorial/index.html">
+                <div class="card-title">Suite Tutorial</div>
+                <div class="card-desc">Build a real-world test suite with shared infrastructure, libraries, and parallel execution.</div>
+            </a>
+            <a class="card" href="reference/index.html">
+                <div class="card-title">Reference</div>
+                <div class="card-desc">Semantic model, configuration, syntax reference, built-in functions, and CI integration.</div>
+            </a>
+        </div>
+    </main>
+</body>
+</html>
