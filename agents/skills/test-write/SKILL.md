@@ -386,12 +386,12 @@ on input it sent rather than output the program produced
 
 7. **Decide cleanup.** The default answer is no. When yes,
    `../../references/cleanup.md` owns both the rationale (cleanup
-   is for state outside the test's artifact directory that
-   survives shell termination) and the discipline (fresh implicit
-   shell, idempotency, no service kills, no fail patterns,
-   artifact preservation). Read it before writing the block; the
-   skill-level contribution is only "decide now, default to no --
-   most tests don't need it."
+   is for state that survives shell termination and lives outside
+   the test's artifact directory) and the discipline (fresh
+   implicit shell, idempotency, no service kills, no fail
+   patterns, artifact preservation). Read it before writing the
+   block; the skill-level contribution is only "decide now,
+   default to no -- most tests don't need it."
 
 8. **Mark for external tools.** If the test (or any helper it
    calls, or any effect it starts) invokes a non-standard
