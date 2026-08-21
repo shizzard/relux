@@ -1,0 +1,14 @@
+[book]
+title = "Relux DSL Tutorial"
+authors = ["shizzard"]
+language = "en"
+src = "."
+
+[output.html]
+additional-js = ["highlight-relux.js"]
+additional-css = ["relux.css"]
+default-theme = "relux"
+preferred-dark-theme = "relux"
+
+[build]
+build-dir = "../../target/book/dsl-tutorial"

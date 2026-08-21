@@ -1,0 +1,439 @@
+<!DOCTYPE HTML>
+<html lang="en" class="relux sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Pure Matching - Relux Reference</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="relux-1a28bb9c.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "relux";
+            const default_dark_theme = "relux";
+            window.path_to_searchindex_js = "searchindex-d95e18a4.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-9de17168.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('relux')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Relux Reference</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="pure-matching"><a class="header" href="#pure-matching">Pure Matching</a></h1>
+<p>A <strong>pure match</strong> asserts that a value your test has already computed
+satisfies a pattern. Unlike the shell match operators (<code>&lt;?</code> / <code>&lt;=</code>),
+which scan a shell’s streaming output buffer for a match, a pure match
+compares against a single complete value — a variable, a function
+result, an interpolated string. Nothing is read from a PTY.</p>
+<p>There are two statement forms:</p>
+<pre><code class="language-relux">&lt;expr&gt; = &lt;pattern&gt;      // exact-equality assertion
+&lt;expr&gt; ? &lt;pattern&gt;      // regex assertion (binds captures $0..$n)
+</code></pre>
+<ul>
+<li><code>&lt;expr&gt;</code> is any pure expression: a bare identifier (<code>os</code>), a
+quoted/interpolated string (<code>"${HOST}:${PORT}"</code>), a function call
+(<code>which("docker")</code>), a dot-accessed exposed variable (<code>Db.port</code>), a
+capture (<code>$1</code>), or a bare number (<code>42</code>).</li>
+<li><code>&lt;pattern&gt;</code> is an interpolated string to end of line — the same
+right-hand side shape as <code>&lt;=</code> (for <code>=</code>) and <code>&lt;?</code> (for <code>?</code>). <code>${var}</code>
+interpolation applies before the comparison.</li>
+</ul>
+<p>These are the same <code>=</code> / <code>?</code> semantics as <a href="02-syntax.html#condition-markers">condition
+markers</a>: <code>=</code> is exact equality and <code>?</code>
+is an unanchored regex. A pure match reuses the shared matcher; the only
+difference is that a marker gates a whole declaration before shells
+spawn, while a pure-match statement asserts inline during execution.</p>
+<h2 id="the--form-exact-equality"><a class="header" href="#the--form-exact-equality">The <code>=</code> form: exact equality</a></h2>
+<p><code>&lt;expr&gt; = &lt;pattern&gt;</code> passes only when the value of <code>&lt;expr&gt;</code> is
+<strong>byte-for-byte equal</strong> to the interpolated pattern. It is not a
+substring test:</p>
+<pre><code class="language-relux">let os := "linux"
+os = linux                 // passes: "linux" == "linux"
+os = lin                   // FAILS: not equal (substring is not enough)
+os = ubuntu-linux          // FAILS: not equal
+</code></pre>
+<p>This differs from the shell literal operator <code>&lt;=</code>, which scans the
+output buffer and succeeds on any substring hit. <code>=</code> compares a
+complete value, so it fails on a superstring or a partial overlap. For a
+substring or pattern check, use <code>?</code> instead.</p>
+<p>An empty pattern matches only an empty (or unset) value.</p>
+<h2 id="the--form-regex-and-captures"><a class="header" href="#the--form-regex-and-captures">The <code>?</code> form: regex and captures</a></h2>
+<p><code>&lt;expr&gt; ? &lt;pattern&gt;</code> compiles <code>&lt;pattern&gt;</code> as a regular expression
+(Rust’s <a href="https://docs.rs/regex"><code>regex</code></a> crate) and passes when the
+regex matches anywhere in the value — it is unanchored, exactly like
+<code>&lt;?</code>. Add <code>^</code> / <code>$</code> yourself when you need a full-value match.</p>
+<p>A successful <code>?</code> binds the numeric capture groups <code>$0..$n</code> in the
+current shell, read as <code>$0</code>, <code>$1</code>, <code>${2}</code>, and so on — the same binding
+<code>&lt;?</code> performs:</p>
+<pre><code class="language-relux">let greeting := "hello world"
+greeting ? (hello) (world)
+&gt; echo "full=${0} first=${1} second=${2}"
+</code></pre>
+<p>After the match, <code>$0</code> is <code>hello world</code>, <code>$1</code> is <code>hello</code>, <code>$2</code> is
+<code>world</code>. As with <code>&lt;?</code>, the captures live until the next regex match
+overwrites them — bind anything you need to keep with <code>let</code>. The <code>=</code>
+form never binds captures.</p>
+<h2 id="assertion-semantics-a-no-match-fails-the-test"><a class="header" href="#assertion-semantics-a-no-match-fails-the-test">Assertion semantics: a no-match fails the test</a></h2>
+<p>A pure match is an <strong>assertion</strong>. Relux has no error handling, so a
+no-match is a hard failure that stops the test immediately — the same
+way a <code>&lt;?</code> that never matches fails. There is no negated form.</p>
+<pre><code class="language-relux">let status := "500"
+status ? ^2\d\d$           // no match -&gt; the test fails right here
+</code></pre>
+<p>Because the value is already in hand, a pure match cannot time out (no
+buffer, nothing to wait for) — it either matches or fails at once. A
+<code>?</code> pattern that fails to compile (only possible when interpolation
+produces malformed regex) is a runtime failure, not a no-match.</p>
+<h2 id="where-pure-matches-are-allowed"><a class="header" href="#where-pure-matches-are-allowed">Where pure matches are allowed</a></h2>
+<p>Pure-match statements are valid inside:</p>
+<ul>
+<li><strong><code>shell</code> blocks</strong> (in tests and effects)</li>
+<li><strong>test and effect preambles</strong> — alongside <code>let</code>, before the first
+<code>shell</code> block (and, in an effect, before its <code>start</code> and <code>expose</code>
+items)</li>
+<li>regular <strong><code>fn</code> bodies</strong></li>
+<li><strong><code>pure fn</code> bodies</strong></li>
+</ul>
+<p>Inside a <code>pure fn</code>, a regex pure match binds numeric captures (<code>$1</code>,
+<code>$2</code>, …) into the function’s own capture frame, so a <code>pure fn</code> can run
+<code>s ? ^id=(\d+)$</code> and then return <code>$1</code> to extract a value. Each <code>pure fn</code>
+call starts with an empty capture frame. A no-match inside a <code>pure fn</code>
+fails the test through whichever runtime site called the function — a
+test- or effect-level <code>let</code>, an overlay value, or a shell-block call; a
+malformed interpolated pattern surfaces as a runtime error. The one
+exception is a <strong>marker condition</strong>: a <em>no-match</em> there makes the
+condition falsy rather than failing the test (a marker is evaluated to
+decide skip/run/flaky, not to assert). A <strong>malformed pattern</strong> is <em>not</em>
+excepted — it is a hard error in every pure context, marker conditions
+included, so a broken regex never masquerades as an unmet condition.</p>
+<p>This is the extraction idiom: a <code>pure fn</code> asserts the value’s shape with
+<code>?</code> and returns a capture, and a caller binds the result with <code>let</code>.</p>
+<pre><code class="language-relux">pure fn extract_id(s) {
+    s ? ^id=(\d+)$
+    $1
+}
+
+test "extract an id" {
+    let payload := "id=42"
+    let id := extract_id(payload)   // id is "42"
+    shell s {
+        &gt; echo "id=${id}"
+        &lt;? ^id=42$
+    }
+}
+</code></pre>
+<p>The captures <code>extract_id</code> binds are local to its call: once it returns,
+<code>$1</code> is gone (just as a called <code>fn</code>’s captures do not leak into the
+caller’s shell frame). Keep the extracted value by returning it and
+binding it with <code>let</code>, as above.</p>
+<h2 id="preamble-captures-and-the-shell-boundary"><a class="header" href="#preamble-captures-and-the-shell-boundary">Preamble captures and the shell boundary</a></h2>
+<p>A <code>?</code> pure match in a test or effect <strong>preamble</strong> binds its numeric
+captures into a single capture frame that is hoisted across the whole
+preamble. Later preamble <code>let</code>s and later preamble pure matches read it,
+and a <code>start</code>’s overlay expressions read it too:</p>
+<pre><code class="language-relux">test "destructure a dsn in the preamble" {
+    let url := "postgres://user:pw@db.internal:5432/shop"
+    url ? ^postgres://[^@]+@([^:/]+):(\d+)/(\w+)$
+    let host := "${1}"                 // reads the preamble frame
+    let port := "${2}"
+    start Conn as C { HOST := host, DB := "${3}" }  // overlay reads $3
+    shell C.c { // ... }
+}
+</code></pre>
+<p><code>$n</code> reads the <strong>ambient</strong> capture frame uniformly, rendering <code>""</code> when
+no regex has run — so a <code>$n</code> in a <code>let</code> or overlay with no preceding
+regex match is not an error, just an empty string.</p>
+<p><strong>Shells do not inherit the preamble frame.</strong> A <code>shell</code> block owns its
+own capture frame, populated only by that shell’s own <code>&lt;?</code> matches; it
+starts empty. <code>$n</code> inside a shell reads the shell’s frame, never the
+preamble’s. To carry a preamble capture into a shell, bind it to a <code>let</code>
+in the preamble and read the <code>let</code>:</p>
+<pre><code class="language-relux">test "captures do not leak into shells" {
+    let subject := "token=abc"
+    subject ? ^token=(\S+)$             // preamble frame: $1 = "abc"
+    let kept := "${1}"                  // carry it across the boundary
+    shell s {
+        &gt; echo "shell=[${1}] kept=[${kept}]"
+        &lt;? ^shell=\[\] kept=\[abc\]$    // shell $1 is empty; kept survives
+    }
+}
+</code></pre>
+<p>Markers are evaluated before the preamble runs, so a marker condition
+sees an empty capture frame.</p>
+<p>A pure match is <strong>statement-only</strong>. It cannot appear as the right-hand
+side of a <code>let</code>, an overlay value, or a cleanup value. The statement
+evaluates to the matched text – <code>$0</code> (the whole match) for <code>?</code>, and the
+whole value for <code>=</code> – the same value the shell <code>&lt;?</code> operator returns.
+Its intended use, though, is the assertion (and, for <code>?</code>, the capture
+side effect) rather than a returned result; the value surfaces only when
+a pure match is the last statement of a <code>fn</code> / <code>pure fn</code> body.</p>
+<h2 id="-binds--asserts"><a class="header" href="#-binds--asserts"><code>:=</code> binds, <code>=</code> asserts</a></h2>
+<p>Mind the one-character difference:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Statement</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><code>x := e</code></td><td>bind or reassign the variable <code>x</code> to the value of <code>e</code></td></tr>
+<tr><td><code>x = e</code></td><td><strong>assert</strong> that the value of <code>x</code> equals the pattern <code>e</code></td></tr>
+<tr><td><code>let x := e</code></td><td>declare <code>x</code> with the value of <code>e</code></td></tr>
+<tr><td><code>let x = e</code></td><td>error — binding requires <code>:=</code>, never bare <code>=</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Reassignment always uses <code>:=</code>. Bare <code>=</code> is now the exact-equality
+pure-match assertion, so <code>x = e</code> no longer binds anything. <code>let x = e</code>
+remains an error: use <code>let x := e</code>.</p>
+<blockquote>
+<p><strong>There is no <code>==</code> operator.</strong> All values are strings, so <code>==</code> is not
+a comparison. Writing <code>x == y</code> — a <code>=</code> immediately followed by another
+<code>=</code>, with no space between them — is a <strong>parse error</strong>: there is no
+<code>==</code> operator. Write <code>x = y</code> for “x equals y exactly”; write <code>x := y</code>
+to bind. A pattern may legitimately begin with <code>=</code>, so if you really
+want to assert that <code>x</code> equals the literal text <code>= y</code>, put a space
+between the two: <code>x = = y</code> is valid and matches the pattern <code>= y</code>.</p>
+</blockquote>
+<h2 id="what-lands-in-the-structured-log"><a class="header" href="#what-lands-in-the-structured-log">What lands in the structured log</a></h2>
+<p>Every pure match emits a three-event trio into
+<a href="06-events-json-schema.html"><code>events.json</code></a>: <code>pure-match-start</code> (carries
+<code>value</code>, <code>pattern</code>, <code>is_regex</code>) followed by either <code>pure-match-done</code>
+(<code>matched</code> whole-match substring, plus <code>captures</code>) on a hit, or
+<code>pure-match-failed</code> on a miss. A malformed regex emits nothing (no
+orphan <code>pure-match-start</code>).</p>
+<p>When a pure match fails the test, the outcome carries a
+<a href="06-events-json-schema.html#failure"><code>FailureRecord</code></a> of type
+<code>pure-match</code> with <code>span</code>, <code>event_seq</code>, <code>match_context</code>, <code>value</code>,
+<code>pattern</code>, <code>is_regex</code>, <code>call_stack</code>, and <code>vars_in_scope</code>. It
+deliberately has <strong>no <code>buffer_tail</code></strong> — a pure match has no buffer.</p>
+<p><code>match_context</code> (a
+<a href="06-events-json-schema.html#matchcontext"><code>MatchContext</code></a>) names exactly
+where the assertion ran: a <code>shell</code> block, a <code>fn</code> / <code>pure fn</code> body, a
+test preamble, or an effect preamble — replacing the plain shell name
+a <code>"pure-match"</code> failure used to carry, since a pure match can run
+outside any shell. <code>event_seq</code> and <code>vars_in_scope</code> are populated for
+every <code>"pure-match"</code> failure, including one raised from a test/effect
+preamble, an overlay expression, or a <code>pure fn</code> body — there is no
+preamble carve-out that leaves them at <code>0</code> / empty.</p>
+<p>The console reporter renders “pure match in <code>&lt;context&gt;</code> did not match”
+(e.g. “pure match in shell <code>default</code> did not match” or “pure match in
+fn <code>extract_id</code> did not match”) together with the value and the failing
+<code>= pattern</code> / <code>? pattern</code>. The HTML viewer instead surfaces the context
+as a structured <code>context</code> row on the failing <code>pure-match-failed</code> event
+(e.g. <code>fn 'extract_id'</code>), alongside the same value and pattern.</p>
+<p>In the HTML viewer, a pure match appears as a single folded, outcome-colored row labeled <code>pure-match</code>, matching how impure PTY matches render.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="02-syntax.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="03-built-in-functions.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="02-syntax.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="03-built-in-functions.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-c4a399dd.js"></script>
+        <script src="book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="highlight-relux-e865ca5b.js"></script>
+
+
+
+    </div>
+    </body>
+</html>
