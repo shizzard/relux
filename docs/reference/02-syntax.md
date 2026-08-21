@@ -348,8 +348,8 @@ Last expression in a function body is the return value.
 
 `(effect-name, evaluated overlay restricted to expect-declared vars)` determines instance identity:
 - Same tuple = same instance (deduplicated)
-- The registry is per-test — the tuple deduplicates within one test's dependency graph, never across tests
 - Different tuple = different instance
+- The registry is per-test — the tuple deduplicates within one test's dependency graph, never across tests
 - Overlay expressions are evaluated at setup time; identity is based on evaluated values, not AST form
 - A `KEY := Alias.var` sibling reference is an overlay value like any other: it is evaluated (the sibling is `Ready` by then) before identity is derived, so two dependents sourcing different sibling values get distinct identities
 
