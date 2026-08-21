@@ -66,20 +66,22 @@ jobs:
       # them yields a `cargo install relux` whose viewer is broken. Derived
       # from the directory rather than hardcoded so a vendored file added or
       # renamed later is covered without touching this step.
+      # `--list` rather than building the tarball: packaging rewrites path
+      # dependencies into registry requirements, so on the release branch it
+      # tries to resolve a relux-core version that is not published until that
+      # very release, and fails. Listing needs no resolution and still reports
+      # exactly which files cargo would include.
       - name: Verify vendored bundles ship in the packaged crate
         run: |
-          cargo package -p relux-runtime --no-verify
-          crate=$(ls target/package/relux-runtime-*.crate)
-          echo "Inspecting $crate"
-          contents=$(tar tzf "$crate")
+          listed=$(cargo package --list -p relux-runtime)
           missing=0
           for path in crates/relux-runtime/vendor/*; do
-            name="vendor/$(basename "$path")"
-            if ! grep -qx ".*/$name" <<<"$contents"; then
-              echo "::error::$name is missing from $(basename "$crate")"
-              missing=1
-            else
+            name="vendor/${path##*/}"
+            if grep -qxF "$name" <<<"$listed"; then
               echo "  ok: $name"
+            else
+              echo "::error::$name would not be included in the packaged relux-runtime crate"
+              missing=1
             fi
           done
           exit "$missing"
