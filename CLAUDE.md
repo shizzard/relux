@@ -67,7 +67,7 @@ Foundation types shared across all crates.
 - **table.rs**: `SharedTable<K,V>` — thread-safe write-once table backed by `elsa::FrozenMap`. `FileId`, `SourceFile`, `SourceTable`. `SourceFile::line_at()` resolves byte offsets to (line, col) via cached line-offset tables.
 - **diagnostics.rs**: `IrSpan`, `ModulePath`, `EffectName`, `CauseTable`, `CauseId`, `WarningId`, `DefinitionRef`, `FnId`, `EffectId` — typed diagnostic infrastructure for cross-file error reporting.
 - **pure/mod.rs**: `VarScope`, `Env`, `LayeredEnv` — variable scoping with layered environment chain (own → parent → grandparent). `LayeredEnv` uses `Arc`-sharing, no cloning of base env.
-- **pure/bifs.rs**: Pure built-in functions: `trim`, `upper`, `lower`, `replace`, `split`, `len`, `uuid`, `rand`, `available_port`, `which`, `default`.
+- **pure/bifs.rs**: Pure built-in functions: `trim`, `upper`, `lower`, `replace`, `split`, `len`, `uuid`, `rand`, `available_port`, `which`, `default`, `mnemonic`, `sha1`, `timestamp`.
 - **pure/ports.rs**: Owned port allocator behind `available_port` — allocates probed ports from between the OS privileged and ephemeral intervals, tracks port→owner per test execution, freed after test cleanup. `[available_ports]` in `Relux.toml` overrides the window.
 - **discover.rs**: `discover_relux_files()` — recursive `.relux` file discovery, stops at nested project boundaries.
 
