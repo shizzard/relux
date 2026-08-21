@@ -125,7 +125,7 @@ muddies what the test author has to set. The right move is to split:
      share one `<Svc>Config` instance, rendering the wrong file;
      over-list and dedup fragments needlessly).
    - Renders the config file to a deterministic artifact path under
-     `${__RELUX_RUN_ARTIFACTS}/<svc>/config.<ext>`.
+     `${__RELUX_TEST_ARTIFACTS}/<svc>/config.<ext>`.
    - Exposes the full path as a let-bound var:
      `let config_path := "..."` then `expose var config_path`.
    - **No `cleanup`** -- the rendered file is a meaningful test
@@ -231,7 +231,7 @@ genuinely need to send commands against the provisioning layer
 itself; rare but not prohibited.
 
 The layer's own shell **may still write provisioning artifacts**
-under `${__RELUX_RUN_ARTIFACTS}/<svc>/<layer>/` regardless of expose --
+under `${__RELUX_TEST_ARTIFACTS}/<svc>/<layer>/` regardless of expose --
 artifact-writing is independent of whether the shell is exposed.
 The migration log, the applied schema dump, even copies of the
 migration SQL files themselves -- whatever rounds out the
@@ -239,7 +239,8 @@ artifact set so a post-mortem on a failed test can see exactly
 what state the service was in at each layer. Apply the same
 artifact-mapping discipline from *Shared: Composing the service
 shell* to provisioning shells: configure tools to write under the
-run dir, redirect at the shell level when they do not.
+test's artifact directory, redirect at the shell level when they
+do not.
 
 After decomposition + transparency, each layer in the chain is
 mechanically a **Wrap** effect against the layer below. Building
@@ -287,15 +288,15 @@ the foreground*. Skill-level note: this is the discipline a fresh
 draft most often violates -- check the launch line(s) before
 moving on.
 
-**Map meaningful service artifacts into the run directory.**
-`${__RELUX_RUN_ARTIFACTS}` is scanned and surfaced in `event.html`
+**Map meaningful service artifacts into the test artifact directory.**
+`${__RELUX_TEST_ARTIFACTS}` is scanned and surfaced in `event.html`
 (`../../references/project-layout.md` > *Built-in environment
 variables*); writes outside it are invisible to the viewer.
 **Ask the user which artifacts are meaningful** (logs are the
 canonical case), then either configure the service to write
-under the run dir (`-c log_directory=${__RELUX_RUN_ARTIFACTS}/...`)
+under it (`-c log_directory=${__RELUX_TEST_ARTIFACTS}/...`)
 or redirect at the shell level
-(`> svc > ${__RELUX_RUN_ARTIFACTS}/svc/svc.log 2>&1`) when the
+(`> svc > ${__RELUX_TEST_ARTIFACTS}/svc/svc.log 2>&1`) when the
 path is hard-coded.
 
 **Fail patterns: actively hunt for one.** Almost every real
@@ -361,7 +362,7 @@ plumbing, not a wrap).
    service-running shell, walk *Shared: Composing the service shell*
    above -- foreground run (no `&` / `nohup` / `docker -d`),
    container auto-removal (`--rm`), artifact mapping into
-   `${__RELUX_RUN_ARTIFACTS}/`, and inline fail patterns. Helper functions
+   `${__RELUX_TEST_ARTIFACTS}/`, and inline fail patterns. Helper functions
    for repetitive sequences belong in a library module -- handoff to
    `relux:function`.
 
@@ -434,7 +435,7 @@ both the wrapped dep's shells and (optionally) the wrapper's own.
    when genuinely useful to the caller.
 
    The layer's own shell **may still write provisioning artifacts**
-   under `${__RELUX_RUN_ARTIFACTS}/<svc>/<layer>/` regardless of expose
+   under `${__RELUX_TEST_ARTIFACTS}/<svc>/<layer>/` regardless of expose
    -- migration logs, applied-schema dumps, copies of the migration
    SQL itself. Apply the artifact-mapping discipline from *Shared:
    Composing the service shell*; expose is about caller interaction,
@@ -449,11 +450,11 @@ Then run **Verify**, then **Audit**.
 ### Shared: Cleanup
 
 Ask "do I even need cleanup?" first. The answer is usually no --
-PTY death already kills service children, and the run dir is
-post-mortem evidence (do not delete it; see
+PTY death already kills service children, and the test's artifact
+directory is post-mortem evidence (do not delete it; see
 `../../references/cleanup.md` > *Don't delete files under
-`${__RELUX_RUN_ARTIFACTS}`*). Cleanup is for filesystem side
-effects *outside* `${__RELUX_RUN_ARTIFACTS}` -- sockets in
+`${__RELUX_TEST_ARTIFACTS}`*). Cleanup is for filesystem side
+effects *outside* `${__RELUX_TEST_ARTIFACTS}` -- sockets in
 `/tmp`, files in `/var`, anything the next test would trip
 over. `<Svc>Config` typically has no cleanup for this reason:
 its rendered file is exactly what a failed-run post-mortem
@@ -520,7 +521,7 @@ After authoring, re-walk the effect and its caller surface.
   own shell) pass the general "useful for the caller" rule from
   the Expose rubric; if the provisioning step produces meaningful
   artifacts (logs, applied schema), the layer's shell writes them
-  under `${__RELUX_RUN_ARTIFACTS}/<svc>/<layer>/`.
+  under `${__RELUX_TEST_ARTIFACTS}/<svc>/<layer>/`.
 - **External-tool guard.** If the body invokes a non-standard
   external tool (`docker`, `pg_ctl`, `psql`, `kubectl`, project
   CLIs), confirm the effect carries a `# skip unless which("...")`
@@ -529,7 +530,7 @@ After authoring, re-walk the effect and its caller surface.
   loudly instead of skipping. Handoff to `relux:markers` (Add
   path) if missing.
 - **No cleanup deleting artifacts.** Any `cleanup` block that
-  touches paths under `${__RELUX_RUN_ARTIFACTS}/` is removing test
+  touches paths under `${__RELUX_TEST_ARTIFACTS}/` is removing test
   evidence. Pull those lines.
 
 ### Shared: Follow-up -- propose a smoke test to the user
@@ -596,7 +597,7 @@ already supply.
 - For Config + Service: both halves exist, both `expect` the same
   set, `<Svc>` reads `${Cfg.config_path}` in its shell, and the
   rendered config file is a documented test artifact under
-  `${__RELUX_RUN_ARTIFACTS}/`.
+  `${__RELUX_TEST_ARTIFACTS}/`.
 - For Wrap: every dep shell *and* var the caller could have reached
   by starting the dep directly is re-exposed; the wrapper's own
   shells are exposed only when callers need to operate on them.
@@ -607,12 +608,12 @@ already supply.
   when the caller genuinely needs to operate on it), and any
   layer-added exposures pass the general "useful for the caller"
   rule; meaningful provisioning artifacts write under
-  `${__RELUX_RUN_ARTIFACTS}/<svc>/<layer>/`.
+  `${__RELUX_TEST_ARTIFACTS}/<svc>/<layer>/`.
 - The service-running shell is exposed; the service launches in the
   foreground (no `&` / `nohup` / `docker -d`); containerised
   services use `--rm` for auto-cleanup.
 - Meaningful service artifacts (logs, dumps) write under
-  `${__RELUX_RUN_ARTIFACTS}/<svc>/`; the user has confirmed what is
+  `${__RELUX_TEST_ARTIFACTS}/<svc>/`; the user has confirmed what is
   worth preserving for post-mortem.
 - A `!?` / `!=` fail-pattern guard is set inline in the service
   shell (not in a function -- the slot is frame-scoped). If no
@@ -624,7 +625,7 @@ already supply.
 - Non-standard external tools the body invokes are guarded by a
   marker (handoff to `relux:markers` completed).
 - Cleanup, if present, touches only state outside
-  `${__RELUX_RUN_ARTIFACTS}/`, is idempotent, and does not set fail
+  `${__RELUX_TEST_ARTIFACTS}/`, is idempotent, and does not set fail
   patterns.
 
 ## Cross-skill handoffs
@@ -667,7 +668,7 @@ already supply.
   `${Alias.var}` interpolation.
 - `../../references/markers.md` -- effect-level marker propagation
   (markers on effects reach every test that `start`s them).
-- `../../references/project-layout.md` -- the `${__RELUX_RUN_ARTIFACTS}/`
+- `../../references/project-layout.md` -- the `${__RELUX_TEST_ARTIFACTS}/`
   artifact directory layout and built-in env vars.
 
 ## Pitfalls

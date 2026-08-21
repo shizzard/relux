@@ -654,7 +654,7 @@ After the run passes, re-walk the edit once.
 - `../../references/bifs.md` -- `match_ok` / `match_not_ok`,
   `available_port`, `uuid`, `sleep`, control characters.
 - `../../references/project-layout.md` -- `relux/tests/` location,
-  built-in env vars (`__RELUX_RUN_ARTIFACTS`, `__RELUX_RUN_ID`).
+  built-in env vars (`__RELUX_TEST_ARTIFACTS`, `__RELUX_RUN_ID`).
 
 ## Pitfalls
 

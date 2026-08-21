@@ -122,17 +122,17 @@ cleanup {
 }
 ```
 
-### Don't delete files under `${__RELUX_RUN_ARTIFACTS}`
+### Don't delete files under `${__RELUX_TEST_ARTIFACTS}`
 
-Files dropped under `${__RELUX_RUN_ARTIFACTS}` are scanned by the runtime and surfaced as the test's artifact list (see [project-layout](project-layout.md) > Built-in environment variables). They are the post-mortem surface for the viewer -- logs, rendered configs, captured outputs. Cleanup that removes them erases that surface for every test that shared the effect instance.
+Files dropped under `${__RELUX_TEST_ARTIFACTS}` are scanned by the runtime and surfaced as the test's artifact list (see [project-layout](project-layout.md) > Built-in environment variables). They are the post-mortem surface for the viewer -- logs, rendered configs, captured outputs. Cleanup that removes them erases that surface for the test that produced them.
 
-Cleanup is for state *outside* the run dir (real databases, cloud resources, shared queues). Leave the run dir alone.
+Cleanup is for state *outside* the test's artifact directory (real databases, cloud resources, shared queues). Leave the artifact directory alone.
 
 Don't:
 
 ```relux
 cleanup {
-    > rm -rf ${__RELUX_RUN_ARTIFACTS}/db/
+    > rm -rf ${__RELUX_TEST_ARTIFACTS}/db/
 }
 ```
 

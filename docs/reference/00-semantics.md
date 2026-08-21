@@ -30,6 +30,20 @@
 - Hierarchical `.env` files, when present, layer over the host process environment and take precedence over it; their values feed interpolation, marker evaluation, and the shell under test
 - Regex capture groups (`$1`, `$2`, ...) are set after a `<?` match or a `?` [pure match](08-pure-matching.md) and remain in scope until overwritten by the next regex match. Inside a `pure fn` body a `?` pure match binds `$1..$n` into the function's own per-call frame, discarded when the function returns (they do not leak to the caller, just as a called `fn`'s captures do not leak out)
 
+## Injected Environment
+
+- The runtime injects eight `__RELUX_*` variables into every shell, layered above the `.env` stack so no `.env` or host value can shadow them
+- Run-level, shared by every test in the run:
+  - `__RELUX_RUN_ID` — identifier of the current run; appears in the `relux/out/<run>/` directory name alongside a timestamp
+  - `__RELUX_RUN_ARTIFACTS` — absolute path to `relux/out/<run>/artifacts/`; shared across the run (visible to every test concurrently) and **not** collected into any test's `artifacts[]`
+  - `__RELUX_SHELL_PROMPT` — the configured shell prompt; mirrors `[shell].prompt`
+  - `__RELUX_SUITE_ROOT` — absolute path to the directory containing `Relux.toml`
+  - `__RELUX` — absolute path to the `relux` binary; unset if the runtime cannot resolve its own executable path
+- Per-test:
+  - `__RELUX_TEST_ID` — stable mnemonic id hashed from the test's file path and name; stable across runs and reruns
+  - `__RELUX_TEST_ARTIFACTS` — absolute path to this test's own artifacts directory; the only one the runtime scans, so test- and effect-produced output belongs here — files appear in the test's `artifacts[]` and are bundled with its log
+  - `__RELUX_TEST_ROOT` — absolute path to the directory containing the test file; unset when that path has no parent
+
 ## Functions
 
 - Function and shell names must start with a lowercase letter or underscore (`snake_case`) — this is enforced at the syntactic level
@@ -46,12 +60,12 @@
 
 - Declared with `pure fn` instead of `fn`
 - Cannot contain shell operators (`>`, `=>`, `<?`, `<=`, `!?`, `!=`, timeouts)
-- Cannot call impure built-in functions (e.g., `match_prompt()`, `ctrl_c()`)
+- Cannot call impure built-in functions (e.g., `match_prompt()`, `ctrl_c()`, `sleep()`, `log()`, `annotate()`)
 - Cannot call regular `fn` functions — only other pure functions and pure built-in functions
 - Can only contain: `let` declarations, variable reassignment, expressions, and [pure-match](08-pure-matching.md) statements (`<expr> = <pattern>` / `<expr> ? <pattern>`)
 - A `?` pure match inside the body binds `$1..$n` into the call's own capture frame, so a `pure fn` can extract a value and return it; a non-matching pure match fails the test through the runtime site that called the function (a marker condition is the exception — a pure-eval failure there is falsy, not a test failure)
 - Can be called from condition markers, overlay expressions, and regular shell blocks
-- "Pure" means shell-independent, not side-effect-free — pure BIFs like `sleep()` and `log()` are allowed
+- "Pure" means shell-independent, not side-effect-free — a pure BIF may still read the filesystem (`which()`) or the clock (`timestamp()`), and need not be deterministic (`uuid()`, `rand()`). `sleep()`, `log()`, and `annotate()` require a shell context and are impure
 
 ## Shells
 
@@ -125,6 +139,7 @@
 - Effect instance identity is determined by `(effect-name, evaluated overlay restricted to expect-declared vars)`:
   - Same identity tuple = same instance (deduplicated, reused)
   - Different identity tuple = separate instances
+  - The registry is per-test: identity and reuse apply only within a single test's dependency graph. Two tests that start the same effect with identical overlays get two independent instances, with independent setups and independent cleanups
 - When a test or effect starts the same effect multiple times with the same evaluated overlay, only one instance is created
 - A dependent's identity includes any value it sources from a sibling via the `Alias.var` overlay form above, exactly like any other overlay value: two dependents wired to different producers (e.g. two `Api` instances reading different `Db.port` values) get distinct instances
 - Exposed shells are accessed via dot notation: `shell Alias.shell_name { ... }`

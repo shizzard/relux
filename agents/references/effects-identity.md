@@ -74,7 +74,7 @@ start Service as B {
 - For each unique identity: instantiate, run setup shells, keep exposed shells alive.
 - Multiple `start` sites with the same identity share one instance via refcounted guards.
 - Cleanup runs once per instance at last-guard release, in reverse topological order, under uncancellable tokens. See [cleanup](cleanup.md).
-- Failed setup propagates: dependent tests fail.
+- Failed setup propagates: it fails the one test whose dependency graph contains this instance.
 
 ### Scope: per-test, not per-suite
 
@@ -146,7 +146,7 @@ shell svc {
 
 ### Keep `expect` to identity-relevant variables
 
-Every variable in `expect` fragments dedup. Listing a `LOG_LEVEL` you don't actually want to dedupe on means two tests with different log levels each pay the full setup cost.
+Every variable in `expect` fragments dedup within a test. Listing a `LOG_LEVEL` you don't actually want to dedupe on means a test that starts the effect twice with different log levels pays the full setup cost twice instead of reusing one instance. Across tests there is nothing to fragment -- see *Scope: per-test, not per-suite* above.
 
 Don't:
 

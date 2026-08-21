@@ -252,7 +252,7 @@ In the [test log viewer](03-send-match-and-logs.md), user-defined pure functions
 
 If you are familiar with functional programming, the word "pure" might suggest a function that is deterministic and free of side effects — calling it with the same arguments always produces the same result.
 
-Relux uses a narrower definition. Two pure built-in functions violate the functional programming definition: `uuid()` and `rand()` return different values on each call. They are non-deterministic, yet Relux considers them pure.
+Relux uses a narrower definition. Several pure built-in functions violate the functional programming definition: `uuid()`, `rand()`, `timestamp()`, and `available_port()` each return a different value on every call. They are non-deterministic, yet Relux considers them pure.
 
 In Relux, **"pure" means shell-independent**. A pure function does not read from or write to any PTY session. It operates on string values only and does not require an output buffer. This is a narrower guarantee than functional purity, but it is the guarantee that matters — it determines where a function can be called.
 

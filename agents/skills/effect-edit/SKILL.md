@@ -163,10 +163,15 @@ unique-resource taxonomy: `../../references/effects-identity.md`.
 
 - Identity tuple shrinks. Call sites that previously held
   separate instances on this var now merge into one. **This is a
-  silent change.** Two tests that ran against different ports
-  (and got distinct ephemeral instances) will suddenly share a
-  single instance with whichever overlay won the dedup race.
-  Surface this to the user before removing.
+  silent change.** Two `start <E>` sites within the same test's
+  dependency graph that ran against different ports (and got
+  distinct ephemeral instances) will suddenly share a single
+  instance with whichever overlay won the dedup race. This is a
+  within-test effect only -- the registry is per-test
+  (`../../references/effects-identity.md` > *Scope*), so sites in
+  different tests never interacted before the removal and still
+  don't after. Surface the within-test delta to the user before
+  removing.
 - Callers may keep passing the var in their overlay -- legal but
   no longer identity-relevant (`../../references/effects-identity.md`
   > *The `expect` contract* covers the "contract, not sandbox"
@@ -186,10 +191,15 @@ unique-resource taxonomy: `../../references/effects-identity.md`.
   **runtime-resolved** (`uuid()`, `available_port()`, `rand()`,
   `which(...)`, anything reading the effective env or a parent
   effect's `let` that itself depends on runtime values).
-- For statically-known sites, **list the dedup delta** before
-  the edit lands: "after this change, tests A and B will share
-  one `<E>` instance; tests C and D will split." The user can
-  confirm or veto on the spot.
+- For statically-known sites, **list the dedup delta per test**
+  before the edit lands: for any test whose dependency graph
+  contains more than one `start <E>` site, state whether they now
+  share one `<E>` instance or split into separate ones -- e.g.
+  "in test T, `start` sites P and Q will share one `<E>` instance;
+  sites R and S will split." Sites in different tests never
+  interact -- each test gets its own registry -- so there is no
+  cross-test delta to report. The user can confirm or veto on the
+  spot.
 - For runtime-resolved sites, the dedup delta is **unknowable
   statically.** Warn the user explicitly: name the call sites
   and the runtime-resolved value(s) that make them
@@ -321,7 +331,7 @@ rule: `../../references/effects-expose.md`.
   from `relux:effect-write` > *Composing the service shell*
   still applies (no `&` / `nohup` / `docker run -d`; containers
   use `docker run --rm -i`).
-- **Artifact paths** under `${__RELUX_RUN_ARTIFACTS}` are
+- **Artifact paths** under `${__RELUX_TEST_ARTIFACTS}` are
   scanned by the runtime and surfaced in `event.html` (see
   `../../references/project-layout.md` > Built-in environment
   variables). Writes outside that path are invisible to the
@@ -350,10 +360,10 @@ The skill-level discipline below is *when and why* to edit, not
 **Adding cleanup.**
 
 - Confirm one is actually needed. Most effects don't have one --
-  service processes exit on shell termination; the run dir is
-  preserved as a test artifact. The usual cases are external
-  resources outside the run dir (real databases, cloud
-  resources, shared queues / cache keyspaces).
+  service processes exit on shell termination; the test's
+  artifact directory is preserved as post-mortem evidence. The
+  usual cases are external resources outside it (real databases,
+  cloud resources, shared queues / cache keyspaces).
 
 **Removing cleanup.**
 
@@ -365,7 +375,7 @@ The skill-level discipline below is *when and why* to edit, not
 
 - The artifact-preservation pitfall in `../../references/cleanup.md`
   applies as much on edits as on initial authoring -- do not
-  delete files under `${__RELUX_RUN_ARTIFACTS}`.
+  delete files under `${__RELUX_TEST_ARTIFACTS}`.
 - **Wrapper cleanup direction:** when this effect is a wrapper,
   its cleanup runs *before* its dep's (root-to-leaf, per
   `../../references/cleanup.md` > *When it runs*). Unwind only what
@@ -451,8 +461,8 @@ relux run                    # mandatory after every Modify
   send/match logic. `relux check` cannot catch any of these.
 - **Cleanup ordering** (Dimension 5) -- a cleanup that errors on
   already-cleaned state, or unwinds in the wrong order, surfaces
-  as failure annotations in the teardown spans of any test that
-  shares this effect.
+  as failure annotations in the teardown spans of every test that
+  `start`s this effect.
 
 A green `relux run` is the gate. A `relux check` pass on its own
 is necessary but never sufficient for a Modify.
@@ -477,8 +487,9 @@ is necessary but never sufficient for a Modify.
   first; the Modify here happened second; both halves' surfaces
   union to at least the original's surface.
 - `relux check` passes.
-- `relux run` passes -- including any tests that share this
-  effect via dedup. A passing run on the directly-edited tests
+- `relux run` passes -- including every other test that `start`s
+  this effect. Each such test builds its own instance from the
+  same declaration, so a passing run on the directly-edited tests
   alone is not sufficient.
 
 ## Cross-skill handoffs
@@ -521,7 +532,7 @@ is necessary but never sufficient for a Modify.
 The recurring effect-language mistakes -- expose-var leak from
 body-only `let` edits, dropping a wrapper's re-exposed dep
 surface, setting fail patterns inside a `fn`, cleanup that
-deletes artifacts under `${__RELUX_RUN_ARTIFACTS}` -- live in
+deletes artifacts under `${__RELUX_TEST_ARTIFACTS}` -- live in
 `../../references/effects-expose.md`, `../../references/fail-patterns.md`,
 `../../references/functions.md`, and `../../references/cleanup.md` with
 canonical Don't/Do examples. The pre-flight reads load them;
@@ -540,16 +551,17 @@ delta is only visible at `relux run` time, in span counts.
 Don't:
 
 ```relux
-# Before: expect (data_dir, port) -- two tests on distinct ports,
-# distinct instances.
-# After: expect (data_dir) -- two tests' overlays differ only on
-# port; they now share one instance. The second test silently runs
-# against the first test's port.
+// Before: expect (data_dir, port) -- two `start Server` sites in
+// the same test's dependency graph, on distinct ports, distinct
+// instances.
+// After: expect (data_dir) -- the two sites' overlays differ only
+// on port; they now share one instance. The second site silently
+// runs against the first site's port.
 effect Server {
   expect data_dir
-  let port := "8080"           # was: expect (data_dir, port)
+  let port := "8080"           // was: expect (data_dir, port)
   shell run {
-    send "./server --data ${data_dir} --port ${port}"
+    > ./server --data ${data_dir} --port ${port}
   }
 }
 ```
@@ -567,5 +579,5 @@ drift visible only at call sites (Dimension 2), body regressions
 check-only verification is silently false confidence. After a
 Modify, always `relux check && relux run`; scan setup-span counts
 in `events.json` for dedup deltas when Dimension 1 was touched,
-and scan failure annotations across every test that shares this
+and scan failure annotations across every test that `start`s this
 effect for Dimensions 2 / 5 fallout.

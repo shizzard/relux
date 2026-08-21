@@ -79,7 +79,7 @@ These are BIFs (parenthesised). See [bifs](bifs.md).
 
 ## Sleep
 
-- `sleep("2s")` or `sleep("500ms")` -- pause the current shell only. Pure BIF; usable in pure contexts too.
+- `sleep("2s")` or `sleep("500ms")` -- pause the current shell only. Impure BIF; requires a shell context, not usable in pure fns or marker conditions. See [bifs](bifs.md).
 
 ## Comments
 

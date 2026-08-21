@@ -57,15 +57,25 @@ A file at `relux/lib/utils/greeter.relux` has the module path `utils/greeter`. T
 
 ## Built-in environment variables
 
-The runtime injects five env vars into every shell on top of the inherited process env. Each is readable like any other env var: `${__RELUX_RUN_ID}` inside a string, or bare in BIF/marker positions.
+The runtime injects eight env vars into every shell on top of the inherited process env. Each is readable like any other env var: `${__RELUX_RUN_ID}` inside a string, or bare in BIF/marker positions.
+
+Five are run-level -- one value shared by every test in the run:
 
 | Name | Value |
 |---|---|
 | `__RELUX_RUN_ID` | Identifier of the current run -- the same value used in the `relux/out/<run>/` directory name. Useful as a per-run discriminator for temp paths. |
-| `__RELUX_RUN_ARTIFACTS` | Absolute path to the per-test artifacts directory under the current run. Files dropped here are picked up by `scan_artifacts` and listed in the test's `artifacts[]`. |
+| `__RELUX_RUN_ARTIFACTS` | Absolute path to the run-level artifacts directory, `relux/out/<run>/artifacts/`. Shared by every test in the run and **not** scanned into any test's `artifacts[]`. For anything a single test produces, use `__RELUX_TEST_ARTIFACTS` instead. |
 | `__RELUX_SHELL_PROMPT` | The configured shell prompt (default `relux> `). Mirrors `[shell].prompt`. |
 | `__RELUX_SUITE_ROOT` | Absolute path to the suite root (the directory containing `Relux.toml`). |
-| `__RELUX` | Absolute path to the `relux` binary itself. Useful for sub-invocations from within a test. |
+| `__RELUX` | Absolute path to the `relux` binary itself. Useful for sub-invocations from within a test. Unset if the runtime cannot resolve its own executable path. |
+
+Three are per-test -- a distinct value for each test:
+
+| Name | Value |
+|---|---|
+| `__RELUX_TEST_ID` | Stable mnemonic id for the current test (e.g. `brave-otter-0042`), hashed from the test's file path and name. Stable across runs and reruns, which makes it a good key for naming per-test resources. |
+| `__RELUX_TEST_ARTIFACTS` | Absolute path to this test's own artifacts directory. Files dropped here are picked up by `scan_artifacts`, listed in the test's `artifacts[]`, and bundled with the test log. This is the correct destination for anything a test or its effects produce. |
+| `__RELUX_TEST_ROOT` | Absolute path to the directory containing the current test file. Unset when the test's source path has no parent directory. |
 
 ## Pitfalls and best practices
 

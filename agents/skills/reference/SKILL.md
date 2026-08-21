@@ -155,11 +155,9 @@ Reference files live alongside this skill in the plugin. Read them via
 - `cleanup.md` -- `cleanup` blocks on tests and effects,
   the fresh implicit shell, uncancellable tokens, what statements are
   legal.
-- `bifs.md` -- built-in functions split by purity (pure
-  BIFs: `trim`, `upper`, `lower`, `replace`, `split`, `len`, `uuid`,
-  `rand`, `available_port`, `which`, `default`; impure BIFs:
-  `sleep`, `annotate`, `log`, `match_prompt`, `match_exit_code`,
-  `match_ok`, `match_not_ok`, control codes).
+- `bifs.md` -- built-in functions split by purity: which
+  BIFs are legal in pure fns / marker conditions / overlay
+  expressions, and which require a shell context.
 
 ### Markers
 
@@ -169,16 +167,17 @@ Reference files live alongside this skill in the plugin. Read them via
 
 ### Running, CI, artifacts
 
-- `cli-reference.md` -- `relux` subcommands (`init`, `new`,
-  `check`, `run`, `history`) and the flags an agent needs.
-- `ci-integration.md` -- output formats (JUnit, TAP),
-  scaling for slower environments via `--timeout-multiplier`, what to
+- `cli-reference.md` -- flags for scaffolding, validating,
+  running (parallelism, `--timeout-multiplier`, fail-fast),
+  dumping IR, analyzing run history, and shell completions.
+- `ci-integration.md` -- report output formats, scaling
+  for slower environments via `--timeout-multiplier`, what to
   archive.
 - `events-schema.md` -- the canonical `events.json` shape,
   top-level fields, event / span / buffer-event records.
-- `events-failures.md` -- the `outcome` enum for
-  non-passing tests (Pass / Fail / Cancelled / Skipped / Invalid) and
-  the records they carry.
+- `events-failures.md` -- failure, cancellation, and
+  skip/marker-eval record shapes for non-passing tests, and
+  the marker_kind/decision table behind why a skip fired.
 - `events-recipes.md` -- catalog of operational queries against
   `events.json` (buffer state at a seq, variable scope, call stack,
   dedup audit, per-shell timeline, regression diff). Routes the

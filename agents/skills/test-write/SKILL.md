@@ -385,12 +385,13 @@ on input it sent rather than output the program produced
    (`../../references/block-structure.md` > *Test block*).
 
 7. **Decide cleanup.** The default answer is no. When yes,
-   `../../references/cleanup.md` owns both the rationale (when cleanup
-   is warranted vs the run dir being self-cleaning) and the
-   discipline (fresh implicit shell, idempotency, no service
-   kills, no fail patterns, artifact preservation). Read it
-   before writing the block; the skill-level contribution is
-   only "decide now, default to no -- most tests don't need it."
+   `../../references/cleanup.md` owns both the rationale (cleanup
+   is for state that survives shell termination and lives outside
+   the test's artifact directory) and the discipline (fresh
+   implicit shell, idempotency, no service kills, no fail
+   patterns, artifact preservation). Read it before writing the
+   block; the skill-level contribution is only "decide now,
+   default to no -- most tests don't need it."
 
 8. **Mark for external tools.** If the test (or any helper it
    calls, or any effect it starts) invokes a non-standard
@@ -477,7 +478,7 @@ After the run passes, re-walk the test once.
   No hardcoded ports or paths.
 - **Cleanup absent or correct.** No cleanup is the common case.
   If a cleanup block exists, it stays outside
-  `${__RELUX_RUN_ARTIFACTS}/`, is idempotent, sets no fail
+  `${__RELUX_TEST_ARTIFACTS}/`, is idempotent, sets no fail
   patterns, and does not try to stop services
   (`../../references/cleanup.md`).
 - **External-tool guard present.** If the body / its helpers /
@@ -511,7 +512,7 @@ After the run passes, re-walk the test once.
 - Test isolation is intact: ports / paths / ids come from
   `available_port()` / `uuid()` / effect identity, not hardcoded.
 - Cleanup, if present, is idempotent and outside
-  `${__RELUX_RUN_ARTIFACTS}/`.
+  `${__RELUX_TEST_ARTIFACTS}/`.
 - External-tool guards are in place where required.
 - `relux check` passes.
 - `relux run` against the new test passes.
@@ -579,7 +580,7 @@ After the run passes, re-walk the test once.
 - `../../references/imports.md` -- import syntax and resolution from
   project root.
 - `../../references/project-layout.md` -- `relux/tests/` location,
-  built-in env vars (`__RELUX_RUN_ARTIFACTS`, `__RELUX_RUN_ID`).
+  built-in env vars (`__RELUX_TEST_ARTIFACTS`, `__RELUX_RUN_ID`).
 - `../../references/markers.md` -- marker propagation rules; the test
   inherits markers from imported effects and functions.
 
@@ -798,7 +799,7 @@ Do:
 test "stores the user" {
     """..."""
     let suffix := uuid()
-    let db_path := "${__RELUX_RUN_ARTIFACTS}/users-${suffix}.db"
+    let db_path := "${__RELUX_TEST_ARTIFACTS}/users-${suffix}.db"
     shell s {
         > my-app create-user --db ${db_path} --name alice
         <? created user alice

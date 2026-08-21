@@ -54,7 +54,7 @@ test "user login" {
 }
 ```
 
-Two tests, and the database and service startup is already duplicated. Functions reduce some repetition, but they run in the caller's shell — they cannot spin up separate, independent services declaratively. And there is no way to share a running database across tests or control the teardown order when things go wrong.
+Two tests, and the database and service startup is already duplicated. Functions reduce some repetition, but they run in the caller's shell — they cannot spin up separate, independent services declaratively, and there is no way to control the teardown order when things go wrong.
 
 Effects solve this. An effect is a named, reusable piece of test infrastructure. You define it once — what to start, how to verify it is ready — and each test declares what it needs. Relux resolves the dependency graph, starts everything in the right order, and tears it down when the test is done:
 
@@ -369,7 +369,7 @@ Exposed variables are read-only — they are fixed at the time the effect finish
 
 ## Effect identity and deduplication
 
-What happens when two tests — or two `start` statements in the same test — request the same effect? Relux does not run it twice. It identifies each effect instance by its **identity** and deduplicates: if the identity matches, the effect runs once and all references share the same instance.
+What happens when two `start` statements in the same test request the same effect? Relux does not run it twice. It identifies each effect instance by its **identity** and deduplicates: if the identity matches, the effect runs once and all references share the same instance. Relux keeps one registry per test, so this never crosses a test boundary — two tests that start the same effect with the same identity each get their own instance, their own setup, and their own cleanup. That isolation is exactly what makes running tests concurrently safe.
 
 For effects without overlay variables (covered in the next section), the identity is simply the effect name. Two `start` statements for the same effect share one instance — the effect runs once, and both aliases point to the same shell:
 
