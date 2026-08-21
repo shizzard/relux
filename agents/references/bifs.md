@@ -30,14 +30,19 @@ Always in scope; no imports. Split by purity: pure BIFs may be called anywhere; 
 |---|---|---|---|
 | `available_port` | `available_port()` | string | Allocate a probed TCP port on 127.0.0.1 from outside the OS ephemeral range; owned by the running test, freed after its cleanup. -1 on exhaustion. |
 | `which` | `which(name)` | string | Absolute path of executable in PATH, or `""` if not found. With a path separator, checks that path directly. |
-| `sleep` | `sleep(duration)` | `""` | Pause. Humantime: `500ms`, `2s`, `1m30s`. |
 
-### Logging
+### Hashing
 
 | Function | Signature | Returns | Behavior |
 |---|---|---|---|
-| `log` | `log(message)` | message | Emit to structured event log. |
-| `annotate` | `annotate(text)` | text | Render inline on progress line and as a structured event. |
+| `mnemonic` | `mnemonic(s)` | string | Stable `adjective-noun-NNNN` id hashed from `s` (e.g. `brave-otter-0042`). Deterministic across runs and relux versions. About 2^29 values -- a readable label, not collision-proof, not for security. |
+| `sha1` | `sha1(s)` | string | SHA-1 digest of `s` as 40-character lowercase hex. |
+
+### Time
+
+| Function | Signature | Returns | Behavior |
+|---|---|---|---|
+| `timestamp` | `timestamp(fmt)` | string | Current UTC time formatted with a GNU `date`-style strftime string. Fractional seconds accept any width (`%<N>f`, `%.<N>f`); an unknown specifier is emitted verbatim. Always UTC -- there is no local-timezone mode. Reads the clock, so it is non-deterministic across calls, but it is pure: it never touches a shell. |
 
 ## Impure BIFs
 
@@ -60,6 +65,19 @@ Always in scope; no imports. Split by purity: pure BIFs may be called anywhere; 
 | `ctrl_z()` | `0x1A` (SUB) | Suspend foreground process. |
 | `ctrl_l()` | `0x0C` (FF) | Clear terminal screen. |
 | `ctrl_backslash()` | `0x1C` (FS) | Send SIGQUIT to foreground process. |
+
+### Timing
+
+| Function | Signature | Returns | Behavior |
+|---|---|---|---|
+| `sleep` | `sleep(duration)` | `""` | Pause. Humantime: `500ms`, `2s`, `1m30s`. Requires a shell context -- not callable from a pure fn or a marker condition. |
+
+### Logging
+
+| Function | Signature | Returns | Behavior |
+|---|---|---|---|
+| `log` | `log(message)` | message | Emit to structured event log. Requires a shell context. |
+| `annotate` | `annotate(text)` | text | Render inline on progress line and as a structured event. Requires a shell context. |
 
 ## Where each is allowed
 
