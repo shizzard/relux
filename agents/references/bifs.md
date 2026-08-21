@@ -42,7 +42,7 @@ Always in scope; no imports. Split by purity: pure BIFs may be called anywhere; 
 
 | Function | Signature | Returns | Behavior |
 |---|---|---|---|
-| `timestamp` | `timestamp(fmt)` | string | Current UTC time formatted with a GNU `date`-style strftime string. Fractional seconds accept any width (`%<N>f`, `%.<N>f`); an unknown specifier is emitted verbatim. Always UTC -- there is no local-timezone mode. Reads the clock, so it is non-deterministic across calls, but it is pure: it never touches a shell. |
+| `timestamp` | `timestamp(fmt)` | string | Current UTC time formatted with a GNU `date`-style strftime string. Fractional seconds accept any width (`%<N>f`, `%.<N>f`); an unknown specifier is emitted verbatim. Always UTC -- there is no local-timezone mode. Reads the clock, so it is non-deterministic across calls. |
 
 ## Impure BIFs
 
@@ -70,14 +70,14 @@ Always in scope; no imports. Split by purity: pure BIFs may be called anywhere; 
 
 | Function | Signature | Returns | Behavior |
 |---|---|---|---|
-| `sleep` | `sleep(duration)` | `""` | Pause. Humantime: `500ms`, `2s`, `1m30s`. Requires a shell context -- not callable from a pure fn or a marker condition. |
+| `sleep` | `sleep(duration)` | `""` | Pause. Humantime: `500ms`, `2s`, `1m30s`. |
 
 ### Logging
 
 | Function | Signature | Returns | Behavior |
 |---|---|---|---|
-| `log` | `log(message)` | message | Emit to structured event log. Requires a shell context. |
-| `annotate` | `annotate(text)` | text | Render inline on progress line and as a structured event. Requires a shell context. |
+| `log` | `log(message)` | message | Emit to structured event log. |
+| `annotate` | `annotate(text)` | text | Render inline on progress line and as a structured event. |
 
 ## Where each is allowed
 

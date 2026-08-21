@@ -167,8 +167,9 @@ Reference files live alongside this skill in the plugin. Read them via
 
 ### Running, CI, artifacts
 
-- `cli-reference.md` -- `relux` subcommands and the flags
-  an agent needs.
+- `cli-reference.md` -- flags for scaffolding, validating,
+  running (parallelism, `--timeout-multiplier`, fail-fast),
+  dumping IR, analyzing run history, and shell completions.
 - `ci-integration.md` -- report output formats, scaling
   for slower environments via `--timeout-multiplier`, what to
   archive.
