@@ -174,9 +174,9 @@ Reference files live alongside this skill in the plugin. Read them via
   archive.
 - `events-schema.md` -- the canonical `events.json` shape,
   top-level fields, event / span / buffer-event records.
-- `events-failures.md` -- the `outcome` enum for
-  non-passing tests and the failure/cancellation records each
-  variant carries.
+- `events-failures.md` -- failure, cancellation, and
+  skip/marker-eval record shapes for non-passing tests, and
+  the marker_kind/decision table behind why a skip fired.
 - `events-recipes.md` -- catalog of operational queries against
   `events.json` (buffer state at a seq, variable scope, call stack,
   dedup audit, per-shell timeline, regression diff). Routes the
