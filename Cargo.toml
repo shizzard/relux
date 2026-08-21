@@ -14,6 +14,14 @@ resolver = "3"
 [workspace.package]
 version = "0.8.2"
 edition = "2024"
+# The oldest toolchain the workspace compiles on, which is not the toolchain it
+# is built with: `rust-toolchain.toml` pins 1.98.0 for reproducibility, while
+# this is the floor consumers must clear. Two things set it -- edition 2024 and
+# the chumsky -> stacker -> psm chain put the dependency floor at 1.88.0, and
+# `str::ceil_char_boundary` in relux-runtime raises it to 1.91. Declaring it
+# here arms clippy::incompatible_msrv, which is what flags a call that outruns
+# this number; run `cargo clippy --workspace --all-targets` after changing it.
+rust-version = "1.91"
 description = "Expect-style integration test framework for interactive shell programs"
 license = "MIT"
 repository = "https://github.com/shizzard/relux"

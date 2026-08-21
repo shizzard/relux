@@ -2,6 +2,7 @@
 name = "relux-core"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Internal: core types for Relux. No semver guarantees."
