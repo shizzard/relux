@@ -16,7 +16,13 @@
             inherit system;
             overlays = [ rust-overlay.overlays.default ];
           };
-          rust = pkgs.rust-bin.stable.latest.default.override {
+          # Pinned, not `stable.latest`. A floating "latest" resolved to a
+          # different compiler on every machine depending on when each
+          # developer last updated the lock, so a clippy lint added in 1.98
+          # could fail CI on a branch that passed locally. Keep this version
+          # in step with `rust-toolchain.toml` and the workflow pins in
+          # `.github/workflows/`.
+          rust = pkgs.rust-bin.stable."1.98.0".default.override {
             extensions = [ "rust-src" "rust-analyzer" "clippy" ];
             targets = [];
           };

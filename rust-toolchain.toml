@@ -1,0 +1,15 @@
+# Pin the Rust toolchain so local checks, the pre-commit hook, and CI all
+# lint against the same compiler.
+#
+# Previously CI installed an unpinned `stable` on every run while developers
+# ran whatever `stable` they had last updated to. When 1.98 shipped a
+# tightened `clippy::result_large_err`, CI began failing on branches that
+# passed locally against an older `stable` -- a failure with no connection to
+# the change under review.
+#
+# `just check-fmt` and the pre-commit hook invoke `rustup run nightly rustfmt`
+# explicitly, which overrides this pin; nightly is still required for
+# `rustfmt --edition 2024`.
+[toolchain]
+channel = "1.98.0"
+components = ["clippy", "rustfmt"]

@@ -23,7 +23,7 @@ jobs:
           ref: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
           token: ${{ secrets.RELEASE_TOKEN }}
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.98.0
         if: steps.release.outputs.pr
 
       - name: Update Cargo.lock
