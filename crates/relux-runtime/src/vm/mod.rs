@@ -208,7 +208,7 @@ impl Vm {
             &reason,
         );
         let _ = span;
-        ExecError::Cancelled(Cancellation { reason, context })
+        ExecError::Cancelled(Box::new(Cancellation { reason, context }))
     }
 
     fn current_span(&self) -> SpanId {

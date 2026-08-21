@@ -540,14 +540,31 @@ impl From<&Cancellation> for relux_core::error::DiagnosticReport {
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ExecError {
     #[error(transparent)]
-    Failure(#[from] Failure),
+    Failure(Box<Failure>),
     #[error(transparent)]
-    Cancelled(#[from] Cancellation),
+    Cancelled(Box<Cancellation>),
 }
 
 impl ExecError {
     pub fn summary(&self) -> String {
         self.to_string()
+    }
+}
+
+// Hand-written rather than `#[from]` on the variants: `#[from]` would derive
+// `From<Box<Failure>>` / `From<Box<Cancellation>>`, which breaks every `?`
+// that propagates a bare `Failure` / `Cancellation`. Boxing here keeps `?`
+// ergonomics unchanged at call sites while still shrinking `ExecError` to a
+// pointer-sized `Result::Err` payload.
+impl From<Failure> for ExecError {
+    fn from(f: Failure) -> Self {
+        ExecError::Failure(Box::new(f))
+    }
+}
+
+impl From<Cancellation> for ExecError {
+    fn from(c: Cancellation) -> Self {
+        ExecError::Cancelled(Box::new(c))
     }
 }
 

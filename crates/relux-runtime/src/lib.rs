@@ -947,7 +947,7 @@ async fn run_test(
         Err(ExecError::Failure(f)) => TestResult {
             test_name: meta.name().to_string(),
             test_path: test_path.to_string(),
-            outcome: Outcome::Fail(f),
+            outcome: Outcome::Fail(*f),
             duration,
             progress: String::new(),
             log_dir: Some(log_dir),
@@ -957,7 +957,7 @@ async fn run_test(
         Err(ExecError::Cancelled(c)) => TestResult {
             test_name: meta.name().to_string(),
             test_path: test_path.to_string(),
-            outcome: Outcome::Cancelled(c),
+            outcome: Outcome::Cancelled(*c),
             duration,
             progress: String::new(),
             log_dir: Some(log_dir),
