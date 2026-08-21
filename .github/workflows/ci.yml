@@ -20,6 +20,10 @@ jobs:
       - name: Restore file timestamps
         uses: chetan/git-restore-mtime-action@v2
 
+      # Cheap and toolchain-free, so it runs before anything is installed.
+      - name: ASCII check
+        run: ./.scripts/check-ascii.sh
+
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
@@ -56,6 +60,30 @@ jobs:
       - name: Verify vendored bundle is in sync
         run: git diff --exit-code -- crates/relux-runtime/vendor/relux-viewer.js.gz
 
+      # The bundles being in sync is not enough -- they also have to reach
+      # crates.io. `release.yml` publishes with `--no-verify`, so nothing else
+      # checks that the packaged crate carries them, and a crate that omits
+      # them yields a `cargo install relux` whose viewer is broken. Derived
+      # from the directory rather than hardcoded so a vendored file added or
+      # renamed later is covered without touching this step.
+      - name: Verify vendored bundles ship in the packaged crate
+        run: |
+          cargo package -p relux-runtime --no-verify
+          crate=$(ls target/package/relux-runtime-*.crate)
+          echo "Inspecting $crate"
+          contents=$(tar tzf "$crate")
+          missing=0
+          for path in crates/relux-runtime/vendor/*; do
+            name="vendor/$(basename "$path")"
+            if ! grep -qx ".*/$name" <<<"$contents"; then
+              echo "::error::$name is missing from $(basename "$crate")"
+              missing=1
+            else
+              echo "  ok: $name"
+            fi
+          done
+          exit "$missing"
+
       - name: Check VS Code extension packages cleanly
         run: |
           mkdir -p editors/vscode/build
@@ -91,6 +119,30 @@ jobs:
         env:
           RUST_BACKTRACE: "1"
         run: cargo test --workspace
+
+  intellij:
+    name: IntelliJ Plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # Same pin as `.github/workflows/release.yml` -- keep the two in step.
+      # Building here is the whole point of this job: an unbuildable plugin
+      # should fail on the pull request, not at the release tag, where the
+      # only way to ship a fix is to move a published tag.
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: 9.6.1
+
+      - name: Build IntelliJ plugin
+        working-directory: editors/intellij
+        run: gradle buildPlugin
 
   build:
     name: Build (${{ matrix.target || matrix.os }})

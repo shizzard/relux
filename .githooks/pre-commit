@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ascii_check() {
+    echo "Running ASCII check..."
+    ./.scripts/check-ascii.sh
+}
+
 cargo_check() {
     echo "Running cargo check..."
     cargo check --workspace
@@ -56,6 +61,7 @@ verify_viewer_bundle() {
     fi
 }
 
+ascii_check
 cargo_check
 cargo_clippy
 cargo_fmt
