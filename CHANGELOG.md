@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/shizzard/relux/compare/v0.8.1...v0.8.2) (2026-08-21)
+
+
+### Features
+
+* **core:** allocate available_port() outside the OS ephemeral range ([#41](https://github.com/shizzard/relux/issues/41)) ([1fe2e07](https://github.com/shizzard/relux/commit/1fe2e07105cd5f419c13d2d15f8b2399d1995601))
+
 ## [0.8.1](https://github.com/shizzard/relux/compare/v0.8.0...v0.8.1) (2026-08-02)
 
 
