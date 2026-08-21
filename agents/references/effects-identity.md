@@ -146,7 +146,7 @@ shell svc {
 
 ### Keep `expect` to identity-relevant variables
 
-Every variable in `expect` fragments dedup. Listing a `LOG_LEVEL` you don't actually want to dedupe on means two tests with different log levels each pay the full setup cost.
+Every variable in `expect` fragments dedup within a test. Listing a `LOG_LEVEL` you don't actually want to dedupe on means a test that starts the effect twice with different log levels pays the full setup cost twice instead of reusing one instance. Across tests there is nothing to fragment -- see *Scope: per-test, not per-suite* above.
 
 Don't:
 

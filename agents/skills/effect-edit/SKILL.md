@@ -163,10 +163,15 @@ unique-resource taxonomy: `../../references/effects-identity.md`.
 
 - Identity tuple shrinks. Call sites that previously held
   separate instances on this var now merge into one. **This is a
-  silent change.** Two tests that ran against different ports
-  (and got distinct ephemeral instances) will suddenly share a
-  single instance with whichever overlay won the dedup race.
-  Surface this to the user before removing.
+  silent change.** Two `start <E>` sites within the same test's
+  dependency graph that ran against different ports (and got
+  distinct ephemeral instances) will suddenly share a single
+  instance with whichever overlay won the dedup race. This is a
+  within-test effect only -- the registry is per-test
+  (`../../references/effects-identity.md` > *Scope*), so sites in
+  different tests never interacted before the removal and still
+  don't after. Surface the within-test delta to the user before
+  removing.
 - Callers may keep passing the var in their overlay -- legal but
   no longer identity-relevant (`../../references/effects-identity.md`
   > *The `expect` contract* covers the "contract, not sandbox"
@@ -186,10 +191,15 @@ unique-resource taxonomy: `../../references/effects-identity.md`.
   **runtime-resolved** (`uuid()`, `available_port()`, `rand()`,
   `which(...)`, anything reading the effective env or a parent
   effect's `let` that itself depends on runtime values).
-- For statically-known sites, **list the dedup delta** before
-  the edit lands: "after this change, tests A and B will share
-  one `<E>` instance; tests C and D will split." The user can
-  confirm or veto on the spot.
+- For statically-known sites, **list the dedup delta per test**
+  before the edit lands: for any test whose dependency graph
+  contains more than one `start <E>` site, state whether they now
+  share one `<E>` instance or split into separate ones -- e.g.
+  "in test T, `start` sites P and Q will share one `<E>` instance;
+  sites R and S will split." Sites in different tests never
+  interact -- each test gets its own registry -- so there is no
+  cross-test delta to report. The user can confirm or veto on the
+  spot.
 - For runtime-resolved sites, the dedup delta is **unknowable
   statically.** Warn the user explicitly: name the call sites
   and the runtime-resolved value(s) that make them
@@ -540,11 +550,12 @@ delta is only visible at `relux run` time, in span counts.
 Don't:
 
 ```relux
-# Before: expect (data_dir, port) -- two tests on distinct ports,
-# distinct instances.
-# After: expect (data_dir) -- two tests' overlays differ only on
-# port; they now share one instance. The second test silently runs
-# against the first test's port.
+# Before: expect (data_dir, port) -- two `start Server` sites in
+# the same test's dependency graph, on distinct ports, distinct
+# instances.
+# After: expect (data_dir) -- the two sites' overlays differ only
+# on port; they now share one instance. The second site silently
+# runs against the first site's port.
 effect Server {
   expect data_dir
   let port := "8080"           # was: expect (data_dir, port)
