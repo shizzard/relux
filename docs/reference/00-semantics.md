@@ -138,6 +138,7 @@
 - Effects inherit the full parent environment — overlay entries override specific keys
 - Effect instance identity is determined by `(effect-name, evaluated overlay restricted to expect-declared vars)`:
   - Same identity tuple = same instance (deduplicated, reused)
+  - The registry is per-test: identity and reuse apply only within a single test's dependency graph. Two tests that start the same effect with identical overlays get two independent instances, with independent setups and independent cleanups. Effects are never shared across tests, which is what makes concurrent execution safe
   - Different identity tuple = separate instances
 - When a test or effect starts the same effect multiple times with the same evaluated overlay, only one instance is created
 - A dependent's identity includes any value it sources from a sibling via the `Alias.var` overlay form above, exactly like any other overlay value: two dependents wired to different producers (e.g. two `Api` instances reading different `Db.port` values) get distinct instances
