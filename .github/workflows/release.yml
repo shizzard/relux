@@ -197,8 +197,16 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      # Pinned, not the runner's default. Gradle floated from 9.6.1 to 9.7.0
+      # between v0.8.1 and v0.8.2, and 9.7.0 repackages an ASM that drops the
+      # `ClassReader(InputStream)` constructor the IntelliJ Platform plugin's
+      # `:instrumentCode` task calls -- so v0.8.2 failed on unchanged sources.
+      # Raise this deliberately, together with `org.jetbrains.intellij.platform`
+      # in `editors/intellij/settings.gradle.kts`.
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: 9.6.1
 
       - name: Build IntelliJ plugin
         working-directory: editors/intellij
