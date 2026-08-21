@@ -61,7 +61,7 @@ The braces hold exactly one reference: `${name}` (variable), `${1}` (capture ind
 Don't:
 
 ```relux
-let db_path := "${__RELUX_RUN_ARTIFACTS}/users-${uuid()}.db"
+let db_path := "${__RELUX_TEST_ARTIFACTS}/users-${uuid()}.db"
 > curl http://localhost:${available_port()}/health
 <? port=${default(PORT, "8080")}
 ```
@@ -70,7 +70,7 @@ Do:
 
 ```relux
 let suffix := uuid()
-let db_path := "${__RELUX_RUN_ARTIFACTS}/users-${suffix}.db"
+let db_path := "${__RELUX_TEST_ARTIFACTS}/users-${suffix}.db"
 
 let port := available_port()
 > curl http://localhost:${port}/health

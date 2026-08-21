@@ -321,7 +321,7 @@ rule: `../../references/effects-expose.md`.
   from `relux:effect-write` > *Composing the service shell*
   still applies (no `&` / `nohup` / `docker run -d`; containers
   use `docker run --rm -i`).
-- **Artifact paths** under `${__RELUX_RUN_ARTIFACTS}` are
+- **Artifact paths** under `${__RELUX_TEST_ARTIFACTS}` are
   scanned by the runtime and surfaced in `event.html` (see
   `../../references/project-layout.md` > Built-in environment
   variables). Writes outside that path are invisible to the
@@ -350,10 +350,10 @@ The skill-level discipline below is *when and why* to edit, not
 **Adding cleanup.**
 
 - Confirm one is actually needed. Most effects don't have one --
-  service processes exit on shell termination; the run dir is
-  preserved as a test artifact. The usual cases are external
-  resources outside the run dir (real databases, cloud
-  resources, shared queues / cache keyspaces).
+  service processes exit on shell termination; the test's
+  artifact directory is preserved as post-mortem evidence. The
+  usual cases are external resources outside it (real databases,
+  cloud resources, shared queues / cache keyspaces).
 
 **Removing cleanup.**
 
@@ -365,7 +365,7 @@ The skill-level discipline below is *when and why* to edit, not
 
 - The artifact-preservation pitfall in `../../references/cleanup.md`
   applies as much on edits as on initial authoring -- do not
-  delete files under `${__RELUX_RUN_ARTIFACTS}`.
+  delete files under `${__RELUX_TEST_ARTIFACTS}`.
 - **Wrapper cleanup direction:** when this effect is a wrapper,
   its cleanup runs *before* its dep's (root-to-leaf, per
   `../../references/cleanup.md` > *When it runs*). Unwind only what
@@ -521,7 +521,7 @@ is necessary but never sufficient for a Modify.
 The recurring effect-language mistakes -- expose-var leak from
 body-only `let` edits, dropping a wrapper's re-exposed dep
 surface, setting fail patterns inside a `fn`, cleanup that
-deletes artifacts under `${__RELUX_RUN_ARTIFACTS}` -- live in
+deletes artifacts under `${__RELUX_TEST_ARTIFACTS}` -- live in
 `../../references/effects-expose.md`, `../../references/fail-patterns.md`,
 `../../references/functions.md`, and `../../references/cleanup.md` with
 canonical Don't/Do examples. The pre-flight reads load them;
