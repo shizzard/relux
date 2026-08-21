@@ -286,10 +286,12 @@ Relux injects several variables into every test run. These are real environment 
 
 - `${__RELUX_RUN_ID}` — the unique identifier for the current test run
 - `${__RELUX_TEST_ID}` — a stable, memorable identifier for the current test (e.g. `broken-walrus-0042`), derived by hashing the test's file path and name. It is unique per test and, unlike `${__RELUX_RUN_ID}`, is stable across runs and reruns — which makes it a good key for naming per-test resources such as a throwaway database (`mydb_${__RELUX_TEST_ID}`). It stays constant across the whole test, so several call sites that build the same name all agree. (Two distinct tests can, very rarely, hash to the same value; treat it as a strong uniqueness hint rather than a guarantee.)
-- `${__RELUX_TEST_ARTIFACTS}` — the path to the run's `artifacts/` subdirectory (inside the run directory under `relux/out/`). This is a good place to store files related to the test run: generated configs, temporary databases, downloaded fixtures, or any other artifacts that should be preserved alongside the [test logs](03-send-match-and-logs.md).
+- `${__RELUX_TEST_ARTIFACTS}` — the path to *this test's own* `artifacts/` directory. This is where test-produced files belong: generated configs, temporary databases, downloaded fixtures, service logs. Everything dropped here is collected into the test's artifact list and preserved alongside the [test logs](03-send-match-and-logs.md), so it is still there when you are reading a failure after the fact.
+- `${__RELUX_RUN_ARTIFACTS}` — the path to the *run-level* `artifacts/` directory, shared by every test in the run. It is not collected into any individual test's artifact list. Reach for it only when you genuinely want one artifact shared across the whole run; for anything a single test produces, use `${__RELUX_TEST_ARTIFACTS}`.
 - `${__RELUX_SHELL_PROMPT}` — the configured shell prompt string
 - `${__RELUX_SUITE_ROOT}` — the absolute path to the project root (where `Relux.toml` lives)
 - `${__RELUX_TEST_ROOT}` — the absolute path to the directory containing the current test file
+- `${__RELUX}` — the absolute path to the `relux` binary itself, for invoking relux from inside a test
 
 The test log viewer surfaces all of this in a dedicated **environment** modal, opened with the `E` key (or by clicking the small `env` chip at the bottom of the variables-in-scope pane). It lists every env var captured at the moment the test started — host vars, any `.env` file values, and Relux-injected ones together — and groups them so the noise stays out of the way. A search box at the top filters by name or value when you need to find one quickly.
 
