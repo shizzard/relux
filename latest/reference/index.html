@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "relux";
             const default_dark_theme = "relux";
-            window.path_to_searchindex_js = "searchindex-37629125.js";
+            window.path_to_searchindex_js = "searchindex-d95e18a4.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-9de17168.js"></script>
@@ -206,6 +206,26 @@
 <li>Hierarchical <code>.env</code> files, when present, layer over the host process environment and take precedence over it; their values feed interpolation, marker evaluation, and the shell under test</li>
 <li>Regex capture groups (<code>$1</code>, <code>$2</code>, …) are set after a <code>&lt;?</code> match or a <code>?</code> <a href="08-pure-matching.html">pure match</a> and remain in scope until overwritten by the next regex match. Inside a <code>pure fn</code> body a <code>?</code> pure match binds <code>$1..$n</code> into the function’s own per-call frame, discarded when the function returns (they do not leak to the caller, just as a called <code>fn</code>’s captures do not leak out)</li>
 </ul>
+<h2 id="injected-environment"><a class="header" href="#injected-environment">Injected Environment</a></h2>
+<ul>
+<li>The runtime injects eight <code>__RELUX_*</code> variables into every shell, layered above the <code>.env</code> stack so no <code>.env</code> or host value can shadow them</li>
+<li>Run-level, shared by every test in the run:
+<ul>
+<li><code>__RELUX_RUN_ID</code> — identifier of the current run; appears in the <code>relux/out/&lt;run&gt;/</code> directory name alongside a timestamp</li>
+<li><code>__RELUX_RUN_ARTIFACTS</code> — absolute path to <code>relux/out/&lt;run&gt;/artifacts/</code>; shared across the run (visible to every test concurrently) and <strong>not</strong> collected into any test’s <code>artifacts[]</code></li>
+<li><code>__RELUX_SHELL_PROMPT</code> — the configured shell prompt; mirrors <code>[shell].prompt</code></li>
+<li><code>__RELUX_SUITE_ROOT</code> — absolute path to the directory containing <code>Relux.toml</code></li>
+<li><code>__RELUX</code> — absolute path to the <code>relux</code> binary; unset if the runtime cannot resolve its own executable path</li>
+</ul>
+</li>
+<li>Per-test:
+<ul>
+<li><code>__RELUX_TEST_ID</code> — stable mnemonic id hashed from the test’s file path and name; stable across runs and reruns</li>
+<li><code>__RELUX_TEST_ARTIFACTS</code> — absolute path to this test’s own artifacts directory; the only one the runtime scans, so test- and effect-produced output belongs here — files appear in the test’s <code>artifacts[]</code> and are bundled with its log</li>
+<li><code>__RELUX_TEST_ROOT</code> — absolute path to the directory containing the test file; unset when that path has no parent</li>
+</ul>
+</li>
+</ul>
 <h2 id="functions"><a class="header" href="#functions">Functions</a></h2>
 <ul>
 <li>Function and shell names must start with a lowercase letter or underscore (<code>snake_case</code>) — this is enforced at the syntactic level</li>
@@ -222,12 +242,12 @@
 <ul>
 <li>Declared with <code>pure fn</code> instead of <code>fn</code></li>
 <li>Cannot contain shell operators (<code>&gt;</code>, <code>=&gt;</code>, <code>&lt;?</code>, <code>&lt;=</code>, <code>!?</code>, <code>!=</code>, timeouts)</li>
-<li>Cannot call impure built-in functions (e.g., <code>match_prompt()</code>, <code>ctrl_c()</code>)</li>
+<li>Cannot call impure built-in functions (e.g., <code>match_prompt()</code>, <code>ctrl_c()</code>, <code>sleep()</code>, <code>log()</code>, <code>annotate()</code>)</li>
 <li>Cannot call regular <code>fn</code> functions — only other pure functions and pure built-in functions</li>
 <li>Can only contain: <code>let</code> declarations, variable reassignment, expressions, and <a href="08-pure-matching.html">pure-match</a> statements (<code>&lt;expr&gt; = &lt;pattern&gt;</code> / <code>&lt;expr&gt; ? &lt;pattern&gt;</code>)</li>
 <li>A <code>?</code> pure match inside the body binds <code>$1..$n</code> into the call’s own capture frame, so a <code>pure fn</code> can extract a value and return it; a non-matching pure match fails the test through the runtime site that called the function (a marker condition is the exception — a pure-eval failure there is falsy, not a test failure)</li>
 <li>Can be called from condition markers, overlay expressions, and regular shell blocks</li>
-<li>“Pure” means shell-independent, not side-effect-free — pure BIFs like <code>sleep()</code> and <code>log()</code> are allowed</li>
+<li>“Pure” means shell-independent, not side-effect-free — a pure BIF may still read the filesystem (<code>which()</code>) or the clock (<code>timestamp()</code>), and need not be deterministic (<code>uuid()</code>, <code>rand()</code>). <code>sleep()</code>, <code>log()</code>, and <code>annotate()</code> require a shell context and are impure</li>
 </ul>
 <h2 id="shells"><a class="header" href="#shells">Shells</a></h2>
 <ul>
@@ -326,6 +346,7 @@
 <ul>
 <li>Same identity tuple = same instance (deduplicated, reused)</li>
 <li>Different identity tuple = separate instances</li>
+<li>The registry is per-test: identity and reuse apply only within a single test’s dependency graph. Two tests that start the same effect with identical overlays get two independent instances, with independent setups and independent cleanups</li>
 </ul>
 </li>
 <li>When a test or effect starts the same effect multiple times with the same evaluated overlay, only one instance is created</li>
