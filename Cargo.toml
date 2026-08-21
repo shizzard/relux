@@ -12,7 +12,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.8.2"
+version = "0.8.3"
 edition = "2024"
 # The oldest toolchain the workspace compiles on, which is not the toolchain it
 # is built with: `rust-toolchain.toml` pins 1.98.0 for reproducibility, while
@@ -32,13 +32,13 @@ categories = ["development-tools::testing"]
 
 [workspace.dependencies]
 # -- Internal crates --
-relux-core     = { path = "crates/relux-core", version = "0.8.2" }
-relux-ast      = { path = "crates/relux-ast", version = "0.8.2" }
-relux-lexer    = { path = "crates/relux-lexer", version = "0.8.2" }
-relux-parser   = { path = "crates/relux-parser", version = "0.8.2" }
-relux-ir       = { path = "crates/relux-ir", version = "0.8.2" }
-relux-resolver = { path = "crates/relux-resolver", version = "0.8.2" }
-relux-runtime  = { path = "crates/relux-runtime", version = "0.8.2" }
+relux-core     = { path = "crates/relux-core", version = "0.8.3" }
+relux-ast      = { path = "crates/relux-ast", version = "0.8.3" }
+relux-lexer    = { path = "crates/relux-lexer", version = "0.8.3" }
+relux-parser   = { path = "crates/relux-parser", version = "0.8.3" }
+relux-ir       = { path = "crates/relux-ir", version = "0.8.3" }
+relux-resolver = { path = "crates/relux-resolver", version = "0.8.3" }
+relux-runtime  = { path = "crates/relux-runtime", version = "0.8.3" }
 
 # -- External deps --
 logos           = { version = "~0.16" }
