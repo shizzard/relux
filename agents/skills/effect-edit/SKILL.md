@@ -487,8 +487,9 @@ is necessary but never sufficient for a Modify.
   first; the Modify here happened second; both halves' surfaces
   union to at least the original's surface.
 - `relux check` passes.
-- `relux run` passes -- including any tests that share this
-  effect via dedup. A passing run on the directly-edited tests
+- `relux run` passes -- including every other test that `start`s
+  this effect. Each such test builds its own instance from the
+  same declaration, so a passing run on the directly-edited tests
   alone is not sufficient.
 
 ## Cross-skill handoffs
