@@ -86,7 +86,18 @@ jobs:
           done
           exit "$missing"
 
-      - name: Check VS Code extension packages cleanly
+  # Its own job rather than a step in `lint`, to match `intellij`: as a trailing
+  # lint step it had no check of its own in the pull request list, and any
+  # earlier failure -- clippy, rustfmt, the viewer bundle -- skipped it, so the
+  # editor packaging silently went unverified exactly when something else was
+  # already wrong.
+  vscode:
+    name: VS Code Extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check the extension packages cleanly
         run: |
           mkdir -p editors/vscode/build
           docker run --rm -v "$PWD/editors/vscode":/src -w /src node:lts-slim \
