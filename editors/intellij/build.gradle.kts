@@ -5,7 +5,9 @@ plugins {
 }
 
 group = "eu.spawnlink"
-version = "0.1.0"
+// No `version` assignment here on purpose: it would override the value
+// release-please maintains in gradle.properties, which is where the plugin
+// version comes from.
 
 repositories {
     mavenCentral()
