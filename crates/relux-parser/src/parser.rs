@@ -216,7 +216,26 @@ impl<'a> Parser<'a> {
     }
 
     /// Close `m`, deciding its kind.
+    ///
+    /// Panics if `m.pos` no longer holds an unclaimed `TOMBSTONE`. `open`
+    /// always pushes a `TOMBSTONE` and hands back that index, `Marker` is not
+    /// `Copy` so it cannot be closed twice, and nested markers patch distinct
+    /// slots -- so the only way this slot is not a tombstone is that an
+    /// `open_before` called after `m` was opened shifted the index out from
+    /// under it. See `open_before`'s doc comment for the actual constraint.
     pub fn close(&mut self, m: Marker, k: SyntaxKind) -> Completed {
+        assert!(
+            matches!(
+                self.events[m.pos],
+                Event::Open {
+                    kind: SyntaxKind::TOMBSTONE
+                }
+            ),
+            "stale Marker at event {}: expected an unclaimed TOMBSTONE, found {:?}. \
+             An open_before after this marker was opened shifted its index.",
+            m.pos,
+            self.events[m.pos]
+        );
         self.events[m.pos] = Event::Open { kind: k };
         self.events.push(Event::Close);
         Completed { pos: m.pos }
@@ -230,9 +249,20 @@ impl<'a> Parser<'a> {
     ///
     /// **Invalidates markers.** It inserts into the event vector, so every
     /// `Marker` and `Completed` holding a `pos >= c.pos` silently shifts by
-    /// one and now points at the wrong event. Only ever call it on the most
-    /// recently completed node.
+    /// one and now points at the wrong event. It is safe to call only when no
+    /// marker opened after `c` was completed is still live -- "call it on the
+    /// most recently completed node" is necessary but not sufficient, since a
+    /// marker opened afterward and not yet closed is exactly such a survivor.
+    /// `close` asserts on the violation for `Marker`; this method asserts on
+    /// it for `Completed`.
     pub fn open_before(&mut self, c: Completed) -> Marker {
+        assert!(
+            matches!(self.events[c.pos], Event::Open { .. }),
+            "stale Marker at event {}: expected an Open event, found {:?}. \
+             An open_before after this node was completed shifted its index.",
+            c.pos,
+            self.events[c.pos]
+        );
         self.events.insert(
             c.pos,
             Event::Open {
@@ -593,6 +623,61 @@ mod tests {
                 Event::Close,
             ]
         );
+    }
+
+    /// `open_before`'s doc comment used to say "only call this on the most
+    /// recently completed node," but that is not the actual constraint: `c0`
+    /// here *is* the most recently completed node, and the sequence still
+    /// corrupts the stream, because `m2` -- opened after `c0` was completed
+    /// -- is still live when `open_before` shifts everything at or after
+    /// `c0.pos`. `close(m2, ..)` then patches whatever now sits at the
+    /// stale index, which happens to be the `Close` that `close(w, ..)` just
+    /// pushed. `close` must detect this rather than silently overwrite it.
+    #[test]
+    #[should_panic(expected = "stale Marker")]
+    fn close_detects_a_marker_invalidated_by_open_before() {
+        let mut p = Parser::new("fn a b");
+
+        let m1 = p.open();
+        p.advance();
+        let c0 = p.close(m1, SyntaxKind::VAR_EXPR);
+
+        let m2 = p.open();
+        p.advance();
+
+        let w = p.open_before(c0);
+        p.close(w, SyntaxKind::PURE_MATCH_STMT);
+
+        p.close(m2, SyntaxKind::FN_DEF);
+    }
+
+    /// The other half of the same hazard: `open_before` itself must refuse a
+    /// stale `Completed`, not just `close`. `c2` is completed after `c0`, so
+    /// wrapping `c0` (an out-of-order `open_before`, itself a misuse) shifts
+    /// `c2.pos` to land on the `Close` event that used to sit one slot
+    /// earlier -- not an `Open` at all. `open_before(c2)` must catch that
+    /// rather than silently inserting into the middle of an unrelated node.
+    #[test]
+    #[should_panic(expected = "stale Marker")]
+    fn open_before_detects_a_stale_completed() {
+        let mut p = Parser::new("fn a");
+
+        let m1 = p.open();
+        p.advance();
+        let c0 = p.close(m1, SyntaxKind::VAR_EXPR);
+
+        let m2 = p.open();
+        p.advance();
+        let c2 = p.close(m2, SyntaxKind::IDENT_FN);
+
+        // Out of order: c0 is not the most recently completed node (c2 is).
+        // This shifts c2.pos out from under it.
+        let w = p.open_before(c0);
+        p.close(w, SyntaxKind::PURE_MATCH_STMT);
+
+        // c2 is stale now; using it again must be caught, not silently
+        // accepted.
+        let _ = p.open_before(c2);
     }
 
     #[test]
