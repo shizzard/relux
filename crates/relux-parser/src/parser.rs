@@ -48,6 +48,7 @@ pub fn errors_of(events: &[Event]) -> Vec<SyntaxError> {
 /// Walks a token stream, recording `Event`s. Grammar productions are written
 /// as free functions taking `&mut Parser`.
 pub struct Parser<'a> {
+    source: &'a str,
     tokens: Vec<relux_lexer::Spanned<'a>>,
     pos: usize,
     events: Vec<Event>,
@@ -57,6 +58,7 @@ impl<'a> Parser<'a> {
     /// Lex `source` and position the cursor at its first token.
     pub fn new(source: &'a str) -> Parser<'a> {
         Parser {
+            source,
             tokens: relux_lexer::lex(source),
             pos: 0,
             events: Vec::new(),
@@ -73,6 +75,39 @@ impl<'a> Parser<'a> {
     /// True once every token has been consumed.
     pub fn eof(&self) -> bool {
         self.pos >= self.tokens.len()
+    }
+
+    /// The kind `n` tokens ahead of the cursor, or `EOF` past the end.
+    pub fn nth(&self, n: usize) -> SyntaxKind {
+        match self.tokens.get(self.pos + n) {
+            Some(token) => crate::syntax_kind::kind_of(&token.node),
+            None => SyntaxKind::EOF,
+        }
+    }
+
+    /// The source text of the token `n` ahead, or `""` past the end.
+    ///
+    /// This is the raw source slice, never the token's payload -- the two
+    /// differ for `Token::Escape`, and T01 and T03 both fixed leaf text as
+    /// the slice.
+    pub fn nth_text(&self, n: usize) -> &'a str {
+        // Copy the `&'a str` out of `self` first: indexing through `&self`
+        // would tie the result to the borrow of `self` rather than to `'a`.
+        let source: &'a str = self.source;
+        match self.tokens.get(self.pos + n) {
+            Some(token) => &source[token.span.start()..token.span.end()],
+            None => "",
+        }
+    }
+
+    /// True if the cursor is on a token of kind `k`.
+    pub fn at(&self, k: SyntaxKind) -> bool {
+        self.nth(0) == k
+    }
+
+    /// True if the cursor is on any of `ks`.
+    pub fn at_any(&self, ks: &[SyntaxKind]) -> bool {
+        ks.contains(&self.nth(0))
     }
 }
 
@@ -106,6 +141,71 @@ mod tests {
         let (tokens, _) = Parser::new(source).finish();
 
         assert_eq!(tokens.len(), expected);
+    }
+
+    #[test]
+    fn nth_reports_kinds_in_order() {
+        let p = Parser::new("fn a");
+
+        assert_eq!(p.nth(0), SyntaxKind::FN_KW);
+        assert_eq!(p.nth(1), SyntaxKind::SPACE);
+        assert_eq!(p.nth(2), SyntaxKind::TEXT);
+    }
+
+    #[test]
+    fn nth_is_eof_past_the_end() {
+        let p = Parser::new("fn");
+
+        assert_eq!(p.nth(0), SyntaxKind::FN_KW);
+        assert_eq!(p.nth(1), SyntaxKind::EOF);
+        assert_eq!(p.nth(99), SyntaxKind::EOF);
+    }
+
+    #[test]
+    fn nth_is_eof_for_empty_input() {
+        assert_eq!(Parser::new("").nth(0), SyntaxKind::EOF);
+    }
+
+    #[test]
+    fn nth_text_returns_the_source_slice() {
+        let p = Parser::new("fn hello");
+
+        assert_eq!(p.nth_text(0), "fn");
+        assert_eq!(p.nth_text(1), " ");
+        assert_eq!(p.nth_text(2), "hello");
+    }
+
+    /// `nth_text` is the source slice, not the token payload. They differ for
+    /// `Token::Escape`, whose payload is `n` where the source reads `\n`.
+    /// T01 and T03 both fixed leaf text as the source slice; this keeps the
+    /// cursor consistent with them.
+    #[test]
+    fn nth_text_is_the_slice_not_the_payload() {
+        let p = Parser::new(r"\n");
+
+        assert_eq!(p.nth(0), SyntaxKind::ESCAPE);
+        assert_eq!(p.nth_text(0), r"\n");
+    }
+
+    #[test]
+    fn nth_text_is_empty_past_the_end() {
+        assert_eq!(Parser::new("").nth_text(0), "");
+        assert_eq!(Parser::new("fn").nth_text(5), "");
+    }
+
+    #[test]
+    fn at_and_at_any_test_the_current_token() {
+        let p = Parser::new("fn a");
+
+        assert!(p.at(SyntaxKind::FN_KW));
+        assert!(!p.at(SyntaxKind::TEST_KW));
+        assert!(p.at_any(&[SyntaxKind::TEST_KW, SyntaxKind::FN_KW]));
+        assert!(!p.at_any(&[SyntaxKind::TEST_KW, SyntaxKind::EFFECT_KW]));
+    }
+
+    #[test]
+    fn at_matches_eof_at_the_end() {
+        assert!(Parser::new("").at(SyntaxKind::EOF));
     }
 
     #[test]
