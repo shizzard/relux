@@ -14,6 +14,7 @@ mod overlay;
 mod prefix;
 mod punctuation;
 mod stmt;
+pub mod syntax_kind;
 mod test_def;
 mod timeout;
 mod token;
@@ -29,6 +30,12 @@ use chumsky::input::MappedInput;
 use chumsky::prelude::*;
 
 use relux_lexer::Token;
+
+pub use syntax_kind::ReluxLanguage;
+pub use syntax_kind::SyntaxElement;
+pub use syntax_kind::SyntaxKind;
+pub use syntax_kind::SyntaxNode;
+pub use syntax_kind::SyntaxToken;
 
 pub type Span = relux_core::Span;
 
