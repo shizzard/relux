@@ -91,11 +91,8 @@ impl<'a> Parser<'a> {
     /// differ for `Token::Escape`, and T01 and T03 both fixed leaf text as
     /// the slice.
     pub fn nth_text(&self, n: usize) -> &'a str {
-        // Copy the `&'a str` out of `self` first: indexing through `&self`
-        // would tie the result to the borrow of `self` rather than to `'a`.
-        let source: &'a str = self.source;
         match self.tokens.get(self.pos + n) {
-            Some(token) => &source[token.span.start()..token.span.end()],
+            Some(token) => &self.source[token.span.start()..token.span.end()],
             None => "",
         }
     }
@@ -113,8 +110,12 @@ impl<'a> Parser<'a> {
     /// Consume the current token into the innermost open node.
     ///
     /// Every consumed token is recorded, so no token is ever dropped on the
-    /// floor. There is deliberately no whitespace-skipping variant here --
-    /// see the module traps.
+    /// floor -- that is what makes the resulting tree lossless. There is
+    /// deliberately no whitespace-skipping variant: whitespace is
+    /// grammatically significant in Relux, so skipping it at the cursor
+    /// would make those distinctions unexpressible. Whitespace helpers
+    /// belong in the grammar, where they consume into the open node rather
+    /// than discarding.
     pub fn advance(&mut self) {
         assert!(!self.eof(), "advance past the end of input");
         self.pos += 1;
@@ -281,6 +282,9 @@ mod tests {
 
         assert!(p.eat(SyntaxKind::FN_KW));
         assert!(p.eof());
+
+        let (_, events) = p.finish();
+        assert_eq!(events, vec![Event::Advance]);
     }
 
     /// `EOF` is a sentinel, not a token: matching it must not reach `advance`
