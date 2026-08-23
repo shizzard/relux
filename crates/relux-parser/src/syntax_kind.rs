@@ -8,7 +8,11 @@
 use relux_lexer::Token;
 
 macro_rules! syntax_kinds {
-    (leaves: [$($leaf:ident),* $(,)?], nodes: [$($node:ident),* $(,)?] $(,)?) => {
+    (
+        leaves: [$($leaf:ident),* $(,)?],
+        nodes: [$($node:ident),* $(,)?],
+        specials: [$($(#[$smeta:meta])* $special:ident),* $(,)?] $(,)?
+    ) => {
         /// Every kind a CST element can have.
         ///
         /// Leaf kinds map 1:1 onto `relux_lexer::Token`. Node kinds mirror the
@@ -19,11 +23,7 @@ macro_rules! syntax_kinds {
         pub enum SyntaxKind {
             $($leaf,)*
             $($node,)*
-            /// A node covering text the parser could not fit into the grammar.
-            ERROR,
-            /// Placeholder written by the parser's marker machinery. Never
-            /// present in a finished tree.
-            TOMBSTONE,
+            $($(#[$smeta])* $special,)*
         }
 
         impl SyntaxKind {
@@ -34,8 +34,7 @@ macro_rules! syntax_kinds {
             pub const ALL: &'static [SyntaxKind] = &[
                 $(SyntaxKind::$leaf,)*
                 $(SyntaxKind::$node,)*
-                SyntaxKind::ERROR,
-                SyntaxKind::TOMBSTONE,
+                $(SyntaxKind::$special,)*
             ];
         }
     };
@@ -92,6 +91,13 @@ syntax_kinds! {
         TIMEOUT,
 
         IDENT_VAR, IDENT_FN, IDENT_EFFECT, IDENT_MODULE,
+    ],
+    specials: [
+        /// A node covering text the parser could not fit into the grammar.
+        ERROR,
+        /// Placeholder written by the parser's marker machinery. Never
+        /// present in a finished tree.
+        TOMBSTONE,
     ],
 }
 
@@ -150,7 +156,7 @@ impl rowan::Language for ReluxLanguage {
     }
 
     fn kind_to_raw(kind: Self::Kind) -> rowan::SyntaxKind {
-        rowan::SyntaxKind(kind as u16)
+        kind.into()
     }
 }
 
@@ -332,5 +338,46 @@ mod tests {
         assert!(SyntaxKind::AS_KW.is_keyword());
         assert!(!SyntaxKind::WORD.is_keyword());
         assert!(!SyntaxKind::MODULE.is_keyword());
+    }
+
+    /// The 13 keyword kinds, listed independently of `is_keyword`'s own
+    /// `matches!` so the two can disagree.
+    const KEYWORDS: [SyntaxKind; 13] = [
+        SyntaxKind::FN_KW,
+        SyntaxKind::PURE_KW,
+        SyntaxKind::EFFECT_KW,
+        SyntaxKind::TEST_KW,
+        SyntaxKind::SHELL_KW,
+        SyntaxKind::LET_KW,
+        SyntaxKind::START_KW,
+        SyntaxKind::EXPECT_KW,
+        SyntaxKind::EXPOSE_KW,
+        SyntaxKind::VAR_KW,
+        SyntaxKind::IMPORT_KW,
+        SyntaxKind::CLEANUP_KW,
+        SyntaxKind::AS_KW,
+    ];
+
+    #[test]
+    fn every_keyword_is_classified() {
+        for kw in KEYWORDS {
+            assert!(kw.is_keyword(), "{kw:?} should be a keyword");
+        }
+        for &k in SyntaxKind::ALL.iter().filter(|k| !KEYWORDS.contains(k)) {
+            assert!(!k.is_keyword(), "{k:?} wrongly classified as a keyword");
+        }
+    }
+
+    #[test]
+    fn a_green_tree_round_trips_through_the_language_binding() {
+        let mut b = rowan::GreenNodeBuilder::new();
+        b.start_node(SyntaxKind::MODULE.into());
+        b.token(SyntaxKind::TEST_KW.into(), "test");
+        b.token(SyntaxKind::SPACE.into(), " ");
+        b.finish_node();
+        let root = SyntaxNode::new_root(b.finish());
+        assert_eq!(root.kind(), SyntaxKind::MODULE);
+        assert_eq!(root.text().to_string(), "test ");
+        assert!(root.children_with_tokens().all(|e| e.kind().is_leaf()));
     }
 }
