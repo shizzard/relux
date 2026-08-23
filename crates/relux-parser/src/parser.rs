@@ -640,4 +640,42 @@ mod tests {
             p.advance();
         }
     }
+
+    /// T09's contiguity rule. `~5s` is a timeout; `~ 5s` is an error. The
+    /// discrimination is a token-sequence check, not a span comparison --
+    /// consecutive token spans are always contiguous, so a span comparison
+    /// could never distinguish these.
+    #[test]
+    fn timeout_contiguity_is_visible_as_a_token_sequence() {
+        let contiguous = Parser::new("~5s");
+        assert_eq!(contiguous.nth(0), SyntaxKind::TILDE);
+        assert_eq!(contiguous.nth(1), SyntaxKind::TEXT);
+        assert_eq!(contiguous.nth_text(1), "5s");
+
+        let spaced = Parser::new("~ 5s");
+        assert_eq!(spaced.nth(0), SyntaxKind::TILDE);
+        assert_eq!(spaced.nth(1), SyntaxKind::SPACE);
+    }
+
+    /// T15's `==` rejection. `x == y` is an error; `x = = y` is legal, a
+    /// pattern beginning with `=`. The check has to happen before any
+    /// whitespace is consumed, or the two become indistinguishable.
+    #[test]
+    fn double_eq_is_distinguishable_from_spaced_eq() {
+        let mut rejected = Parser::new("x == y");
+        rejected.advance(); // TEXT  "x"
+        rejected.advance(); // SPACE
+        rejected.expect(SyntaxKind::EQ);
+        assert!(
+            rejected.at(SyntaxKind::EQ),
+            "`==` must show a second EQ with no whitespace between"
+        );
+
+        let mut legal = Parser::new("x = = y");
+        legal.advance(); // TEXT  "x"
+        legal.advance(); // SPACE
+        legal.expect(SyntaxKind::EQ);
+        assert!(!legal.at(SyntaxKind::EQ));
+        assert!(legal.at(SyntaxKind::SPACE));
+    }
 }
