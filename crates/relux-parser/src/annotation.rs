@@ -300,6 +300,32 @@ mod tests {
     }
 
     #[test]
+    fn marker_condition_crlf_has_no_carriage_return() {
+        let source = "# skip if MY_VAR ? \\d+\r\n";
+        let m = parse_marker(source);
+        assert!(matches!(m.kind, AstMarkerKind::Skip { .. }));
+        let cond = m.condition.unwrap();
+        assert!(matches!(cond.modifier, AstCondModifier::If { .. }));
+        match cond.body {
+            AstMarkerCondBody::Regex {
+                expr: AstExpr::Var { name: ref v, .. },
+                ref pattern,
+                ..
+            } => {
+                assert_eq!(v, "MY_VAR", "CR leaked into the marker condition variable");
+                assert_eq!(pattern.parts.len(), 1);
+                match &pattern.parts[0] {
+                    AstStringPart::Literal { value, .. } => {
+                        assert_eq!(value, r"\d+", "CR leaked into the marker regex pattern");
+                    }
+                    other => panic!("expected Literal, got {other:?}"),
+                }
+            }
+            _ => panic!("expected Regex condition, got {:?}", cond.body),
+        }
+    }
+
+    #[test]
     fn marker_skip_if_function_call() {
         let m = parse_marker("# skip if which(\"jq\")\n");
         assert!(matches!(m.kind, AstMarkerKind::Skip { .. }));
