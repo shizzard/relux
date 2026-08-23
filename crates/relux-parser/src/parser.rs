@@ -122,13 +122,20 @@ impl<'a> Parser<'a> {
     }
 
     /// Consume the current token if it is of kind `k`. Returns whether it was.
+    ///
+    /// `EOF` is zero-width: matching it consumes nothing, because it is a
+    /// sentinel rather than a token. Without that, `eat(EOF)` would reach
+    /// `advance` and panic on its past-the-end assertion precisely when the
+    /// match succeeded.
     pub fn eat(&mut self, k: SyntaxKind) -> bool {
-        if self.at(k) {
-            self.advance();
-            true
-        } else {
-            false
+        if !self.at(k) {
+            return false;
         }
+        if k == SyntaxKind::EOF {
+            return true;
+        }
+        self.advance();
+        true
     }
 
     /// Consume a token of kind `k`, or record an error.
@@ -274,6 +281,53 @@ mod tests {
 
         assert!(p.eat(SyntaxKind::FN_KW));
         assert!(p.eof());
+    }
+
+    /// `EOF` is a sentinel, not a token: matching it must not reach `advance`
+    /// and trip its past-the-end assertion. Covers both empty input and
+    /// input fully consumed down to the end.
+    #[test]
+    fn eat_eof_succeeds_without_advancing_or_panicking() {
+        let mut empty = Parser::new("");
+        assert!(empty.eat(SyntaxKind::EOF));
+        let (_, events) = empty.finish();
+        assert!(events.is_empty(), "matching EOF must not record an Advance");
+
+        let mut consumed = Parser::new("fn");
+        consumed.advance();
+        assert!(consumed.eat(SyntaxKind::EOF));
+        let (_, events) = consumed.finish();
+        assert_eq!(events, vec![Event::Advance], "no second Advance for EOF");
+    }
+
+    /// `expect(EOF)` is the obvious spelling of "nothing may be left"; it
+    /// must succeed silently at the true end of input and record exactly one
+    /// error when tokens remain, without panicking either way.
+    #[test]
+    fn expect_eof_succeeds_at_the_end_and_errors_otherwise() {
+        let mut empty = Parser::new("");
+        empty.expect(SyntaxKind::EOF);
+        let (_, events) = empty.finish();
+        assert!(events.is_empty(), "expect(EOF) at EOF records nothing");
+
+        let mut consumed = Parser::new("fn");
+        consumed.advance();
+        consumed.expect(SyntaxKind::EOF);
+        let (_, events) = consumed.finish();
+        assert_eq!(
+            events,
+            vec![Event::Advance],
+            "expect(EOF) at EOF records nothing"
+        );
+
+        let mut remaining = Parser::new("fn");
+        remaining.expect(SyntaxKind::EOF);
+        assert!(
+            remaining.at(SyntaxKind::FN_KW),
+            "cursor must not have moved"
+        );
+        let (_, events) = remaining.finish();
+        assert_eq!(errors_of(&events).len(), 1);
     }
 
     #[test]
