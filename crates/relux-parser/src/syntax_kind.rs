@@ -56,8 +56,10 @@ syntax_kinds! {
         QUESTION, TILDE, AT, BACKSLASH, ESCAPE, HASH, L_BRACKET, R_BRACKET,
         COMMA, SLASH, DASH, DOT, COLON,
 
-        // Whitespace. These are real leaves, not rowan trivia -- see the
-        // story doc. NEWLINE covers `\n` or `\r\n`, so it is one byte or two.
+        // Whitespace. These are real CST leaves, not rowan trivia: whitespace
+        // is grammatically significant in Relux, so the grammar consumes it
+        // into whichever node is open rather than letting a trivia pass
+        // reattach it. NEWLINE covers `\n` or `\r\n`, so it is one byte or two.
         SPACE, TAB, NEWLINE,
 
         // Everything else, including unmatched bytes.
