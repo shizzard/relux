@@ -2390,5 +2390,53 @@ test "basic" {
             assert_eq!(sp.first().unwrap().start, 0);
             assert_eq!(sp.last().unwrap().end, input.len());
         }
+
+        #[test]
+        fn multiline_module_crlf() {
+            let lf = r#"import lib/db
+
+fn setup() {
+    > echo ready
+    <? ^ready$
+}
+
+test "basic" {
+    shell s {
+        > echo hello
+        <= hello
+    }
+}
+"#;
+            // Synthesized, never committed as a file: with no .gitattributes,
+            // a checked-in CRLF fixture is at the mercy of core.autocrlf.
+            let crlf = lf.replace('\n', "\r\n");
+
+            // Same token kinds, in the same order.
+            assert_eq!(tokens(&crlf), tokens(lf));
+
+            let sp = spans(&crlf);
+
+            // No empty spans.
+            for (i, s) in sp.iter().enumerate() {
+                assert!(s.start < s.end, "empty span at token {i}: {s:?}");
+            }
+
+            // Contiguous.
+            for i in 1..sp.len() {
+                assert_eq!(
+                    sp[i - 1].end,
+                    sp[i].start,
+                    "gap between token {} and {}: {:?} vs {:?}",
+                    i - 1,
+                    i,
+                    sp[i - 1],
+                    sp[i]
+                );
+            }
+
+            // Covering the whole input.
+            assert_eq!(sp.first().unwrap().start, 0);
+            assert_eq!(sp.last().unwrap().end, crlf.len());
+        }
     }
 }
