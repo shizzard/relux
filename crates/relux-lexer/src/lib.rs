@@ -492,6 +492,7 @@ mod tests {
         #[test]
         fn lone_cr_at_eof() {
             assert_eq!(tokens("hello\r"), vec![Token::Text("hello\r")]);
+            assert_eq!(spans("hello\r"), vec![0..6]);
         }
 
         #[test]
@@ -900,6 +901,13 @@ mod tests {
             // ending an LF line: a bare Backslash, then the terminator.
             assert_eq!(tokens("\\\r\n"), vec![Token::Backslash, Token::Newline]);
             assert_eq!(spans("\\\r\n"), vec![0..1, 1..3]);
+        }
+
+        #[test]
+        fn backslash_before_lone_cr() {
+            // A bare CR is content, so it does not form an Escape either.
+            assert_eq!(tokens("\\\ra"), vec![Token::Backslash, Token::Text("\ra")]);
+            assert_eq!(spans("\\\ra"), vec![0..1, 1..3]);
         }
 
         #[test]
@@ -2336,6 +2344,16 @@ test "basic" {
             // Covering the whole input.
             assert_eq!(sp.first().unwrap().start, 0);
             assert_eq!(sp.last().unwrap().end, crlf.len());
+
+            for s in lex(&crlf) {
+                if matches!(s.node, Token::Newline) {
+                    assert_eq!(
+                        s.span.end() - s.span.start(),
+                        2,
+                        "CRLF newline must be 2 bytes"
+                    );
+                }
+            }
         }
     }
 }
