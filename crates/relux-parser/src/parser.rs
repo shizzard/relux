@@ -4,6 +4,8 @@
 //! No grammar lives here. T03's builder turns the event stream into a rowan
 //! green tree; the productions that emit the events arrive in T06 onward.
 
+use std::cell::Cell;
+
 use relux_core::Span;
 
 use crate::syntax_kind::SyntaxKind;
@@ -62,6 +64,11 @@ pub struct Completed {
     pos: usize,
 }
 
+/// Lookahead operations allowed between two `advance` calls. Any real
+/// production needs a handful; exhausting this many means the parser is not
+/// making progress.
+const FUEL: u32 = 256;
+
 /// Walks a token stream, recording `Event`s. Grammar productions are written
 /// as free functions taking `&mut Parser`.
 pub struct Parser<'a> {
@@ -69,6 +76,8 @@ pub struct Parser<'a> {
     tokens: Vec<relux_lexer::Spanned<'a>>,
     pos: usize,
     events: Vec<Event>,
+    /// A `Cell` so that `nth(&self)` can spend fuel through a shared borrow.
+    fuel: Cell<u32>,
 }
 
 impl<'a> Parser<'a> {
@@ -79,6 +88,7 @@ impl<'a> Parser<'a> {
             tokens: relux_lexer::lex(source),
             pos: 0,
             events: Vec::new(),
+            fuel: Cell::new(FUEL),
         }
     }
 
@@ -95,7 +105,18 @@ impl<'a> Parser<'a> {
     }
 
     /// The kind `n` tokens ahead of the cursor, or `EOF` past the end.
+    ///
+    /// Spends one unit of fuel. See `FUEL`.
     pub fn nth(&self, n: usize) -> SyntaxKind {
+        let fuel = self.fuel.get();
+        assert!(
+            fuel > 0,
+            "parser is stuck at token {} ({:?})",
+            self.pos,
+            self.tokens.get(self.pos).map(|t| &t.node)
+        );
+        self.fuel.set(fuel - 1);
+
         match self.tokens.get(self.pos + n) {
             Some(token) => crate::syntax_kind::kind_of(&token.node),
             None => SyntaxKind::EOF,
@@ -130,11 +151,12 @@ impl<'a> Parser<'a> {
     /// floor -- that is what makes the resulting tree lossless. There is
     /// deliberately no whitespace-skipping variant: whitespace is
     /// grammatically significant in Relux, so skipping it at the cursor
-    /// would make those distinctions unexpressible. Whitespace helpers
+    /// would make those distinctions inexpressible. Whitespace helpers
     /// belong in the grammar, where they consume into the open node rather
     /// than discarding.
     pub fn advance(&mut self) {
         assert!(!self.eof(), "advance past the end of input");
+        self.fuel.set(FUEL);
         self.pos += 1;
         self.events.push(Event::Advance);
     }
@@ -591,5 +613,31 @@ mod tests {
             .count();
         let closes = events.iter().filter(|e| **e == Event::Close).count();
         assert_eq!(opens, closes);
+    }
+
+    #[test]
+    #[should_panic(expected = "parser is stuck")]
+    fn a_non_advancing_loop_trips_the_fuel_counter() {
+        let p = Parser::new("fn a");
+
+        // The shape of a real bug: a production that inspects the cursor
+        // forever without ever consuming a token.
+        loop {
+            let _ = p.nth(0);
+        }
+    }
+
+    #[test]
+    fn advance_refills_the_fuel() {
+        let mut p = Parser::new("fn a b c d e f g h");
+
+        // Comfortably more lookahead than one tank of fuel holds, but each
+        // advance refills it, so this must not panic.
+        for _ in 0..8 {
+            for _ in 0..200 {
+                let _ = p.nth(0);
+            }
+            p.advance();
+        }
     }
 }
