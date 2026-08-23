@@ -4,7 +4,6 @@ use std::process;
 use relux_core::config;
 use relux_ir::Plan;
 use relux_lexer::lex;
-use relux_lexer::normalize;
 use relux_parser::parse;
 use relux_resolver::resolve;
 
@@ -15,8 +14,7 @@ use super::read_file;
 pub fn cmd_dump_tokens(matches: &clap::ArgMatches) {
     let path: &PathBuf = matches.get_one("file").unwrap();
     let source = read_file(path);
-    let normalized = normalize(&source);
-    for spanned in lex(&normalized) {
+    for spanned in lex(&source) {
         print!("{:?} ", spanned.node);
     }
     println!();

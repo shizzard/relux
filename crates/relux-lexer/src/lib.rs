@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::fmt;
 
 use logos::Logos;
@@ -162,16 +161,6 @@ impl fmt::Debug for Token<'_> {
             Token::Escape(s) => write!(f, "escape({s:?})"),
             _ => write!(f, "'{self}'"),
         }
-    }
-}
-
-// --- Input Normalization ---------------------------------
-
-pub fn normalize(source: &str) -> Cow<'_, str> {
-    if source.contains('\r') {
-        Cow::Owned(source.replace("\r\n", "\n").replace('\r', ""))
-    } else {
-        Cow::Borrowed(source)
     }
 }
 
@@ -1004,96 +993,6 @@ mod tests {
             assert_eq!(tokens("\u{ff1d}"), vec![Token::Text("\u{ff1d}")]);
             // Fullwidth left paren U+FF08 is NOT '('
             assert_eq!(tokens("\u{ff08}"), vec![Token::Text("\u{ff08}")]);
-        }
-    }
-
-    // ---------------------------------------------------------
-    // Input normalization
-    // ---------------------------------------------------------
-
-    mod normalization {
-        use super::*;
-
-        #[test]
-        fn empty() {
-            assert_eq!(normalize(""), Cow::Borrowed(""));
-        }
-
-        #[test]
-        fn crlf() {
-            assert_eq!(normalize("a\r\nb"), Cow::<str>::Owned("a\nb".into()));
-        }
-
-        #[test]
-        fn stray_cr() {
-            assert_eq!(normalize("a\rb"), Cow::<str>::Owned("ab".into()));
-        }
-
-        #[test]
-        fn no_cr() {
-            assert_eq!(normalize("a\nb"), Cow::Borrowed("a\nb"));
-        }
-
-        #[test]
-        fn multiple_crlf() {
-            assert_eq!(
-                normalize("a\r\nb\r\nc"),
-                Cow::<str>::Owned("a\nb\nc".into())
-            );
-        }
-
-        #[test]
-        fn mixed_crlf_and_stray_cr() {
-            assert_eq!(normalize("a\r\nb\rc"), Cow::<str>::Owned("a\nbc".into()));
-        }
-
-        #[test]
-        fn only_cr() {
-            assert_eq!(normalize("\r"), Cow::<str>::Owned("".into()));
-        }
-
-        #[test]
-        fn only_crlf() {
-            assert_eq!(normalize("\r\n"), Cow::<str>::Owned("\n".into()));
-        }
-
-        #[test]
-        fn cr_at_eof() {
-            assert_eq!(normalize("hello\r"), Cow::<str>::Owned("hello".into()));
-        }
-
-        #[test]
-        fn then_lex() {
-            let source = "let x\r\n";
-            let norm = normalize(source);
-            let toks: Vec<Token<'_>> = lex(&norm).into_iter().map(|s| s.node).collect();
-            assert_eq!(
-                toks,
-                vec![
-                    Token::Let,
-                    Token::Space(" "),
-                    Token::Text("x"),
-                    Token::Newline,
-                ]
-            );
-        }
-
-        #[test]
-        fn then_lex_multiline_spans() {
-            let source = "let x\r\nlet y\r\n";
-            let norm = normalize(source);
-            let toks = lex(&norm);
-            // After normalization: "let x\nlet y\n" (12 bytes)
-            let sp: Vec<std::ops::Range<usize>> =
-                toks.iter().map(|s| std::ops::Range::from(s.span)).collect();
-            assert_eq!(sp[0], 0..3); // let
-            assert_eq!(sp[1], 3..4); // space
-            assert_eq!(sp[2], 4..5); // x
-            assert_eq!(sp[3], 5..6); // \n
-            assert_eq!(sp[4], 6..9); // let
-            assert_eq!(sp[5], 9..10); // space
-            assert_eq!(sp[6], 10..11); // y
-            assert_eq!(sp[7], 11..12); // \n
         }
     }
 
