@@ -95,6 +95,7 @@ pub enum Token<'a> {
     #[regex("\t+")]
     Tab(&'a str),
     #[token("\n")]
+    #[token("\r\n")]
     Newline,
 
     // --- Text (catch-all, produced by post-lex squashing) ---
@@ -431,6 +432,58 @@ mod tests {
         #[test]
         fn newline_at_start() {
             assert_eq!(tokens("\nlet"), vec![Token::Newline, Token::Let]);
+        }
+    }
+
+    // ---------------------------------------------------------
+    // Line endings
+    // ---------------------------------------------------------
+
+    mod line_endings {
+        use super::*;
+
+        #[test]
+        fn crlf_is_one_newline_token() {
+            assert_eq!(tokens("\r\n"), vec![Token::Newline]);
+            assert_eq!(spans("\r\n"), vec![0..2]);
+        }
+
+        #[test]
+        fn crlf_between_text() {
+            assert_eq!(
+                tokens("a\r\nb"),
+                vec![Token::Text("a"), Token::Newline, Token::Text("b")]
+            );
+            assert_eq!(spans("a\r\nb"), vec![0..1, 1..3, 3..4]);
+        }
+
+        #[test]
+        fn lf_still_one_byte() {
+            assert_eq!(
+                tokens("a\nb"),
+                vec![Token::Text("a"), Token::Newline, Token::Text("b")]
+            );
+            assert_eq!(spans("a\nb"), vec![0..1, 1..2, 2..3]);
+        }
+
+        #[test]
+        fn mixed_endings_in_one_file() {
+            assert_eq!(
+                tokens("a\r\nb\nc"),
+                vec![
+                    Token::Text("a"),
+                    Token::Newline,
+                    Token::Text("b"),
+                    Token::Newline,
+                    Token::Text("c"),
+                ]
+            );
+            assert_eq!(spans("a\r\nb\nc"), vec![0..1, 1..3, 3..4, 4..5, 5..6]);
+        }
+
+        #[test]
+        fn crlf_after_keyword() {
+            assert_eq!(tokens("let\r\n"), vec![Token::Let, Token::Newline]);
         }
     }
 

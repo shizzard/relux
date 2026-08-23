@@ -328,6 +328,21 @@ line two
     }
 
     #[test]
+    fn docstring_crlf_matches_lf() {
+        fn parse_docstring(source: &str) -> String {
+            let pairs = lex_to_pairs(source);
+            let input = make_input(&pairs, source.len());
+            docstring().parse(input).into_result().unwrap().node
+        }
+
+        let lf = parse_docstring("\"\"\"\nline one\nline two\n\"\"\"");
+        let crlf = parse_docstring("\"\"\"\r\nline one\r\nline two\r\n\"\"\"");
+
+        assert_eq!(crlf, lf, "docstring content differs by line ending");
+        assert!(!crlf.contains('\r'), "CR leaked into docstring content");
+    }
+
+    #[test]
     fn docstring_empty() {
         let source = r#""""""""#;
         let pairs = lex_to_pairs(source);
