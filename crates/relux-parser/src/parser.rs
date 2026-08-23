@@ -371,6 +371,14 @@ mod tests {
     }
 
     #[test]
+    fn at_any_matches_eof_past_the_end() {
+        let p = Parser::new("");
+
+        assert!(p.at_any(&[SyntaxKind::TEST_KW, SyntaxKind::EOF]));
+        assert!(!p.at_any(&[SyntaxKind::TEST_KW, SyntaxKind::FN_KW]));
+    }
+
+    #[test]
     fn advance_moves_the_cursor_and_records_an_event() {
         let mut p = Parser::new("fn a");
 
@@ -706,8 +714,11 @@ mod tests {
         let p = Parser::new("fn a");
 
         // The shape of a real bug: a production that inspects the cursor
-        // forever without ever consuming a token.
-        loop {
+        // forever without ever consuming a token. Bounded rather than an
+        // unconditional `loop` -- if a future change breaks fuel bookkeeping,
+        // this must fail fast, not hang the test binary and wedge CI, which
+        // is exactly the failure mode this test exists to catch elsewhere.
+        for _ in 0..(FUEL as usize + 8) {
             let _ = p.nth(0);
         }
     }
