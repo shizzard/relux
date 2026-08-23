@@ -45,9 +45,68 @@ pub fn errors_of(events: &[Event]) -> Vec<SyntaxError> {
         .collect()
 }
 
+/// Walks a token stream, recording `Event`s. Grammar productions are written
+/// as free functions taking `&mut Parser`.
+pub struct Parser<'a> {
+    tokens: Vec<relux_lexer::Spanned<'a>>,
+    pos: usize,
+    events: Vec<Event>,
+}
+
+impl<'a> Parser<'a> {
+    /// Lex `source` and position the cursor at its first token.
+    pub fn new(source: &'a str) -> Parser<'a> {
+        Parser {
+            tokens: relux_lexer::lex(source),
+            pos: 0,
+            events: Vec::new(),
+        }
+    }
+
+    /// Consume the parser, yielding the tokens and the recorded events.
+    /// T03's `build_tree` needs both: the events give it the tree shape, the
+    /// tokens give it the leaf spans.
+    pub fn finish(self) -> (Vec<relux_lexer::Spanned<'a>>, Vec<Event>) {
+        (self.tokens, self.events)
+    }
+
+    /// True once every token has been consumed.
+    pub fn eof(&self) -> bool {
+        self.pos >= self.tokens.len()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_lexes_the_source() {
+        let (tokens, events) = Parser::new("test \"a\"").finish();
+
+        assert!(!tokens.is_empty());
+        assert!(events.is_empty(), "constructing must not record events");
+    }
+
+    #[test]
+    fn eof_is_true_for_empty_input() {
+        assert!(Parser::new("").eof());
+    }
+
+    #[test]
+    fn eof_is_false_with_tokens_remaining() {
+        assert!(!Parser::new("fn").eof());
+    }
+
+    #[test]
+    fn finish_returns_the_tokens_it_lexed() {
+        let source = "fn a";
+        let expected = relux_lexer::lex(source).len();
+
+        let (tokens, _) = Parser::new(source).finish();
+
+        assert_eq!(tokens.len(), expected);
+    }
 
     #[test]
     fn errors_of_returns_errors_in_source_order() {
