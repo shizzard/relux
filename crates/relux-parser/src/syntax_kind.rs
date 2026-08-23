@@ -98,6 +98,9 @@ syntax_kinds! {
         /// Placeholder written by the parser's marker machinery. Never
         /// present in a finished tree.
         TOMBSTONE,
+        /// Returned by the cursor past the end of input. Never present in a
+        /// finished tree.
+        EOF,
     ],
 }
 
@@ -301,6 +304,7 @@ mod tests {
         assert!(!SyntaxKind::TEST_DEF.is_leaf());
         assert!(!SyntaxKind::ERROR.is_leaf());
         assert!(!SyntaxKind::TOMBSTONE.is_leaf());
+        assert!(!SyntaxKind::EOF.is_leaf());
     }
 
     #[test]
