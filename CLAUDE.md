@@ -77,11 +77,11 @@ AST type definitions: `AstModule`, `AstItem`, `AstTestDef`, `AstEffectDef`, `Ast
 
 ### `relux-lexer` (`crates/relux-lexer/`)
 
-Logos-based tokenizer. `Token` enum with keyword/operator/literal variants. Multi-mode lexing and `normalize()` for whitespace normalization.
+Logos-based tokenizer. `Token` enum with keyword/operator/literal variants. Line endings are handled in the lexer itself -- `\r\n` lexes as a single `Newline` token, a lone `\r` is content -- so spans always index into raw file bytes with no normalization pass.
 
 ### `relux-parser` (`crates/relux-parser/`)
 
-Chumsky combinator parser. Split into focused modules: `module.rs` (top-level), `fn_def.rs`, `effect.rs`, `test_def.rs`, `stmt.rs`, `expr.rs`, `operator.rs`, `interpolation.rs`, `overlay.rs`, `block.rs`, `import.rs`, `need.rs`, `ident.rs`, `prefix.rs`, `timeout.rs`, `annotation.rs`, `punctuation.rs`, `ws.rs`, `token.rs`, `error.rs`.
+Chumsky combinator parser. Split into focused modules: `module.rs` (top-level), `fn_def.rs`, `effect.rs`, `test_def.rs`, `stmt.rs`, `expr.rs`, `operator.rs`, `interpolation.rs`, `overlay.rs`, `block.rs`, `import.rs`, `need.rs`, `ident.rs`, `prefix.rs`, `timeout.rs`, `annotation.rs`, `punctuation.rs`, `ws.rs`, `token.rs`, `error.rs`, `syntax_kind.rs` (the CST vocabulary and `rowan::Language` binding; not used by the chumsky parser yet).
 
 ### `relux-ir` (`crates/relux-ir/`)
 
