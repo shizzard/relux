@@ -485,6 +485,32 @@ mod tests {
         fn crlf_after_keyword() {
             assert_eq!(tokens("let\r\n"), vec![Token::Let, Token::Newline]);
         }
+
+        #[test]
+        fn lone_cr_is_text_not_a_terminator() {
+            // Deliberate divergence from the deleted normalize(), which
+            // stripped lone CRs. A bare CR in the middle of a line is data.
+            assert_eq!(tokens("a\rb"), vec![Token::Text("a\rb")]);
+            assert_eq!(spans("a\rb"), vec![0..3]);
+        }
+
+        #[test]
+        fn lone_cr_alone() {
+            assert_eq!(tokens("\r"), vec![Token::Text("\r")]);
+            assert_eq!(spans("\r"), vec![0..1]);
+        }
+
+        #[test]
+        fn lone_cr_at_eof() {
+            assert_eq!(tokens("hello\r"), vec![Token::Text("hello\r")]);
+        }
+
+        #[test]
+        fn cr_before_cr_lf() {
+            // Only the final pair is a terminator; the first CR is content.
+            assert_eq!(tokens("\r\r\n"), vec![Token::Text("\r"), Token::Newline]);
+            assert_eq!(spans("\r\r\n"), vec![0..1, 1..3]);
+        }
     }
 
     // ---------------------------------------------------------
