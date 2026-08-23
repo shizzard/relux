@@ -70,7 +70,7 @@ pub enum Token<'a> {
     At,
     #[token("\\")]
     Backslash,
-    #[regex(r"\\.", priority = 10, callback = |lex| &lex.source()[lex.span().start+1..lex.span().end])]
+    #[regex(r"\\[^\r\n]", priority = 10, callback = |lex| &lex.source()[lex.span().start+1..lex.span().end])]
     Escape(&'a str),
     #[token("#")]
     Hash,
@@ -877,6 +877,14 @@ mod tests {
         fn backslash_before_newline() {
             // Real newline is not captured by Escape (regex `.` excludes \n)
             assert_eq!(tokens("\\\n"), vec![Token::Backslash, Token::Newline]);
+        }
+
+        #[test]
+        fn backslash_before_crlf() {
+            // A backslash ending a CRLF line must behave exactly as it does
+            // ending an LF line: a bare Backslash, then the terminator.
+            assert_eq!(tokens("\\\r\n"), vec![Token::Backslash, Token::Newline]);
+            assert_eq!(spans("\\\r\n"), vec![0..1, 1..3]);
         }
 
         #[test]
