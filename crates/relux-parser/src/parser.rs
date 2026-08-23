@@ -45,6 +45,23 @@ pub fn errors_of(events: &[Event]) -> Vec<SyntaxError> {
         .collect()
 }
 
+/// A node that has been opened but whose kind is not yet decided.
+///
+/// Dropping one leaves a `TOMBSTONE` in the event stream that does not fail
+/// until T03's builder asserts on it -- by which point the failure looks like
+/// a builder bug rather than a grammar bug.
+#[must_use = "a dropped Marker leaves a TOMBSTONE in the event stream"]
+pub struct Marker {
+    pos: usize,
+}
+
+/// A node that has been opened and closed. Only useful as the argument to
+/// `open_before`.
+#[derive(Debug, Clone, Copy)]
+pub struct Completed {
+    pos: usize,
+}
+
 /// Walks a token stream, recording `Event`s. Grammar productions are written
 /// as free functions taking `&mut Parser`.
 pub struct Parser<'a> {
@@ -165,6 +182,42 @@ impl<'a> Parser<'a> {
             Some(token) => token.span,
             None => Span::new(self.source.len(), self.source.len()),
         }
+    }
+
+    /// Open a node whose kind will be decided by `close`.
+    pub fn open(&mut self) -> Marker {
+        let pos = self.events.len();
+        self.events.push(Event::Open {
+            kind: SyntaxKind::TOMBSTONE,
+        });
+        Marker { pos }
+    }
+
+    /// Close `m`, deciding its kind.
+    pub fn close(&mut self, m: Marker, k: SyntaxKind) -> Completed {
+        self.events[m.pos] = Event::Open { kind: k };
+        self.events.push(Event::Close);
+        Completed { pos: m.pos }
+    }
+
+    /// Open a new node that will enclose the already-completed `c`.
+    ///
+    /// This is what makes left-associative reinterpretation possible without
+    /// backtracking: parse an expression, then on seeing `=` or `?`, wrap the
+    /// finished expression node in a `PURE_MATCH_STMT`.
+    ///
+    /// **Invalidates markers.** It inserts into the event vector, so every
+    /// `Marker` and `Completed` holding a `pos >= c.pos` silently shifts by
+    /// one and now points at the wrong event. Only ever call it on the most
+    /// recently completed node.
+    pub fn open_before(&mut self, c: Completed) -> Marker {
+        self.events.insert(
+            c.pos,
+            Event::Open {
+                kind: SyntaxKind::TOMBSTONE,
+            },
+        );
+        Marker { pos: c.pos }
     }
 }
 
@@ -444,5 +497,99 @@ mod tests {
         };
 
         assert_eq!(err.to_string(), "expected newline");
+    }
+
+    #[test]
+    fn close_patches_the_kind_into_the_open_event() {
+        let mut p = Parser::new("fn");
+        let m = p.open();
+        p.advance();
+        p.close(m, SyntaxKind::FN_DEF);
+
+        let (_, events) = p.finish();
+
+        assert_eq!(
+            events,
+            vec![
+                Event::Open {
+                    kind: SyntaxKind::FN_DEF
+                },
+                Event::Advance,
+                Event::Close,
+            ]
+        );
+    }
+
+    /// An unclosed marker is exactly the bug `#[must_use]` warns about: the
+    /// `TOMBSTONE` survives into the stream and only fails later, inside
+    /// T03's builder.
+    #[test]
+    fn an_unclosed_marker_leaves_a_tombstone() {
+        let mut p = Parser::new("fn");
+        let _dropped = p.open();
+        p.advance();
+
+        let (_, events) = p.finish();
+
+        assert_eq!(
+            events,
+            vec![
+                Event::Open {
+                    kind: SyntaxKind::TOMBSTONE
+                },
+                Event::Advance,
+            ]
+        );
+    }
+
+    /// The reason events exist at all: a node's kind can be decided after its
+    /// children are parsed. Here an expression is reinterpreted as the left
+    /// side of a pure match once the `=` is seen.
+    #[test]
+    fn open_before_wraps_a_completed_node() {
+        let mut p = Parser::new("fn");
+        let m = p.open();
+        p.advance();
+        let completed = p.close(m, SyntaxKind::VAR_EXPR);
+
+        let outer = p.open_before(completed);
+        p.close(outer, SyntaxKind::PURE_MATCH_STMT);
+
+        let (_, events) = p.finish();
+
+        assert_eq!(
+            events,
+            vec![
+                Event::Open {
+                    kind: SyntaxKind::PURE_MATCH_STMT
+                },
+                Event::Open {
+                    kind: SyntaxKind::VAR_EXPR
+                },
+                Event::Advance,
+                Event::Close,
+                Event::Close,
+            ]
+        );
+    }
+
+    #[test]
+    fn nested_nodes_balance() {
+        let mut p = Parser::new("fn a");
+        let outer = p.open();
+        p.advance();
+        let inner = p.open();
+        p.advance();
+        p.close(inner, SyntaxKind::IDENT_FN);
+        p.close(outer, SyntaxKind::FN_DEF);
+
+        let (_, events) = p.finish();
+
+        let opens = events
+            .iter()
+            .filter(|e| matches!(e, Event::Open { .. }))
+            .count();
+        let closes = events.iter().filter(|e| **e == Event::Close).count();
+        assert_eq!(opens, closes);
     }
 }
