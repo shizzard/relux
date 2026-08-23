@@ -109,6 +109,55 @@ impl<'a> Parser<'a> {
     pub fn at_any(&self, ks: &[SyntaxKind]) -> bool {
         ks.contains(&self.nth(0))
     }
+
+    /// Consume the current token into the innermost open node.
+    ///
+    /// Every consumed token is recorded, so no token is ever dropped on the
+    /// floor. There is deliberately no whitespace-skipping variant here --
+    /// see the module traps.
+    pub fn advance(&mut self) {
+        assert!(!self.eof(), "advance past the end of input");
+        self.pos += 1;
+        self.events.push(Event::Advance);
+    }
+
+    /// Consume the current token if it is of kind `k`. Returns whether it was.
+    pub fn eat(&mut self, k: SyntaxKind) -> bool {
+        if self.at(k) {
+            self.advance();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Consume a token of kind `k`, or record an error.
+    ///
+    /// **Does not advance on mismatch.** A production that needs to make
+    /// progress regardless must advance itself; T22's recovery loops do.
+    pub fn expect(&mut self, k: SyntaxKind) {
+        if self.eat(k) {
+            return;
+        }
+        self.error(format!("expected {k:?}"));
+    }
+
+    /// Record an error at the current token, or at the end of the source when
+    /// the cursor is past the last token.
+    pub fn error(&mut self, msg: impl Into<String>) {
+        let span = self.current_span();
+        self.events.push(Event::Error {
+            msg: msg.into(),
+            span,
+        });
+    }
+
+    fn current_span(&self) -> Span {
+        match self.tokens.get(self.pos) {
+            Some(token) => token.span,
+            None => Span::new(self.source.len(), self.source.len()),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -206,6 +255,87 @@ mod tests {
     #[test]
     fn at_matches_eof_at_the_end() {
         assert!(Parser::new("").at(SyntaxKind::EOF));
+    }
+
+    #[test]
+    fn advance_moves_the_cursor_and_records_an_event() {
+        let mut p = Parser::new("fn a");
+
+        p.advance();
+
+        assert_eq!(p.nth(0), SyntaxKind::SPACE);
+        let (_, events) = p.finish();
+        assert_eq!(events, vec![Event::Advance]);
+    }
+
+    #[test]
+    fn eat_consumes_a_match_and_reports_it() {
+        let mut p = Parser::new("fn");
+
+        assert!(p.eat(SyntaxKind::FN_KW));
+        assert!(p.eof());
+    }
+
+    #[test]
+    fn eat_leaves_a_mismatch_alone() {
+        let mut p = Parser::new("fn");
+
+        assert!(!p.eat(SyntaxKind::TEST_KW));
+        assert!(p.at(SyntaxKind::FN_KW), "cursor must not have moved");
+        let (_, events) = p.finish();
+        assert!(events.is_empty(), "a failed eat records nothing");
+    }
+
+    #[test]
+    fn expect_consumes_a_match_silently() {
+        let mut p = Parser::new("fn");
+
+        p.expect(SyntaxKind::FN_KW);
+
+        let (_, events) = p.finish();
+        assert_eq!(events, vec![Event::Advance]);
+    }
+
+    /// The API decision most likely to be assumed backwards. `expect` records
+    /// the error and leaves the cursor where it was; assuming otherwise builds
+    /// a loop that never advances, which Task 7's fuel counter then catches.
+    #[test]
+    fn expect_does_not_advance_on_mismatch() {
+        let mut p = Parser::new("fn");
+
+        p.expect(SyntaxKind::TEST_KW);
+
+        assert!(p.at(SyntaxKind::FN_KW), "cursor must not have moved");
+        let (_, events) = p.finish();
+        assert_eq!(errors_of(&events).len(), 1);
+    }
+
+    #[test]
+    fn error_spans_the_current_token() {
+        let mut p = Parser::new("fn a");
+        p.advance();
+        p.advance();
+
+        p.error("bad identifier");
+
+        let (_, events) = p.finish();
+        let errors = errors_of(&events);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].msg, "bad identifier");
+        assert_eq!(errors[0].span, Span::new(3, 4));
+    }
+
+    #[test]
+    fn error_at_eof_is_an_empty_span_at_the_end_of_source() {
+        let source = "fn";
+        let mut p = Parser::new(source);
+        p.advance();
+
+        p.error("unexpected end of input");
+
+        let (_, events) = p.finish();
+        let errors = errors_of(&events);
+        assert_eq!(errors[0].span, Span::new(source.len(), source.len()));
     }
 
     #[test]
