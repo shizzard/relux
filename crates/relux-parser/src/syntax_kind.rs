@@ -5,6 +5,8 @@
 //! Leaves occupy discriminants `0..LEAF_COUNT` by construction, which is what
 //! makes `is_leaf` a comparison and `from_u16` a slice index.
 
+use relux_lexer::Token;
+
 macro_rules! syntax_kinds {
     (leaves: [$($leaf:ident),* $(,)?], nodes: [$($node:ident),* $(,)?] $(,)?) => {
         /// Every kind a CST element can have.
@@ -159,5 +161,176 @@ pub type SyntaxElement = rowan::SyntaxElement<ReluxLanguage>;
 impl From<SyntaxKind> for rowan::SyntaxKind {
     fn from(kind: SyntaxKind) -> rowan::SyntaxKind {
         rowan::SyntaxKind(kind as u16)
+    }
+}
+
+/// Map a lexer token to its leaf kind. Exhaustive by construction.
+pub fn kind_of(token: &Token<'_>) -> SyntaxKind {
+    match token {
+        Token::Fn => SyntaxKind::FN_KW,
+        Token::Pure => SyntaxKind::PURE_KW,
+        Token::Effect => SyntaxKind::EFFECT_KW,
+        Token::Test => SyntaxKind::TEST_KW,
+        Token::Shell => SyntaxKind::SHELL_KW,
+        Token::Let => SyntaxKind::LET_KW,
+        Token::Start => SyntaxKind::START_KW,
+        Token::Expect => SyntaxKind::EXPECT_KW,
+        Token::Expose => SyntaxKind::EXPOSE_KW,
+        Token::Var => SyntaxKind::VAR_KW,
+        Token::Import => SyntaxKind::IMPORT_KW,
+        Token::Cleanup => SyntaxKind::CLEANUP_KW,
+        Token::As => SyntaxKind::AS_KW,
+        Token::Word(_) => SyntaxKind::WORD,
+        Token::Dollar => SyntaxKind::DOLLAR,
+        Token::BraceOpen => SyntaxKind::L_BRACE,
+        Token::BraceClose => SyntaxKind::R_BRACE,
+        Token::ParenOpen => SyntaxKind::L_PAREN,
+        Token::ParenClose => SyntaxKind::R_PAREN,
+        Token::Quote => SyntaxKind::QUOTE,
+        Token::Lt => SyntaxKind::LT,
+        Token::Gt => SyntaxKind::GT,
+        Token::Eq => SyntaxKind::EQ,
+        Token::Bang => SyntaxKind::BANG,
+        Token::Question => SyntaxKind::QUESTION,
+        Token::Tilde => SyntaxKind::TILDE,
+        Token::At => SyntaxKind::AT,
+        Token::Backslash => SyntaxKind::BACKSLASH,
+        Token::Escape(_) => SyntaxKind::ESCAPE,
+        Token::Hash => SyntaxKind::HASH,
+        Token::BracketOpen => SyntaxKind::L_BRACKET,
+        Token::BracketClose => SyntaxKind::R_BRACKET,
+        Token::Comma => SyntaxKind::COMMA,
+        Token::Slash => SyntaxKind::SLASH,
+        Token::Dash => SyntaxKind::DASH,
+        Token::Dot => SyntaxKind::DOT,
+        Token::Colon => SyntaxKind::COLON,
+        Token::Space(_) => SyntaxKind::SPACE,
+        Token::Tab(_) => SyntaxKind::TAB,
+        Token::Newline => SyntaxKind::NEWLINE,
+        Token::Text(_) => SyntaxKind::TEXT,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every `Token` variant, once. Kept in the same order as the enum in
+    /// `relux-lexer` so a diff against it is readable.
+    fn every_token() -> Vec<Token<'static>> {
+        vec![
+            Token::Fn,
+            Token::Pure,
+            Token::Effect,
+            Token::Test,
+            Token::Shell,
+            Token::Let,
+            Token::Start,
+            Token::Expect,
+            Token::Expose,
+            Token::Var,
+            Token::Import,
+            Token::Cleanup,
+            Token::As,
+            Token::Word("w"),
+            Token::Dollar,
+            Token::BraceOpen,
+            Token::BraceClose,
+            Token::ParenOpen,
+            Token::ParenClose,
+            Token::Quote,
+            Token::Lt,
+            Token::Gt,
+            Token::Eq,
+            Token::Bang,
+            Token::Question,
+            Token::Tilde,
+            Token::At,
+            Token::Backslash,
+            Token::Escape("n"),
+            Token::Hash,
+            Token::BracketOpen,
+            Token::BracketClose,
+            Token::Comma,
+            Token::Slash,
+            Token::Dash,
+            Token::Dot,
+            Token::Colon,
+            Token::Space(" "),
+            Token::Tab("\t"),
+            Token::Newline,
+            Token::Text("t"),
+        ]
+    }
+
+    #[test]
+    fn every_token_maps_to_a_distinct_leaf() {
+        let kinds: Vec<SyntaxKind> = every_token().iter().map(kind_of).collect();
+
+        let mut unique = kinds.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(
+            unique.len(),
+            kinds.len(),
+            "kind_of is not injective: two tokens share a leaf kind"
+        );
+
+        for kind in &kinds {
+            assert!(kind.is_leaf(), "{kind:?} is not classified as a leaf");
+        }
+    }
+
+    #[test]
+    fn leaf_count_matches_the_token_enum() {
+        // If this fails, `leaves:` and `Token` have drifted apart: either a
+        // token was added without a kind, or a kind was added that no token
+        // produces.
+        assert_eq!(SyntaxKind::LEAF_COUNT, every_token().len());
+    }
+
+    #[test]
+    fn nodes_and_specials_are_not_leaves() {
+        assert!(!SyntaxKind::MODULE.is_leaf());
+        assert!(!SyntaxKind::TEST_DEF.is_leaf());
+        assert!(!SyntaxKind::ERROR.is_leaf());
+        assert!(!SyntaxKind::TOMBSTONE.is_leaf());
+    }
+
+    #[test]
+    fn raw_conversion_round_trips_for_every_kind() {
+        use rowan::Language;
+
+        for &kind in SyntaxKind::ALL {
+            let raw = ReluxLanguage::kind_to_raw(kind);
+            assert_eq!(ReluxLanguage::kind_from_raw(raw), kind, "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn from_u16_rejects_out_of_range() {
+        assert_eq!(SyntaxKind::from_u16(0), Some(SyntaxKind::ALL[0]));
+        assert_eq!(SyntaxKind::from_u16(SyntaxKind::ALL.len() as u16), None);
+        assert_eq!(SyntaxKind::from_u16(u16::MAX), None);
+    }
+
+    #[test]
+    fn all_is_in_discriminant_order() {
+        for (i, &kind) in SyntaxKind::ALL.iter().enumerate() {
+            assert_eq!(kind as usize, i, "{kind:?} is out of order in ALL");
+        }
+    }
+
+    #[test]
+    fn whitespace_and_keyword_classification() {
+        assert!(SyntaxKind::SPACE.is_whitespace());
+        assert!(SyntaxKind::TAB.is_whitespace());
+        assert!(SyntaxKind::NEWLINE.is_whitespace());
+        assert!(!SyntaxKind::TEXT.is_whitespace());
+
+        assert!(SyntaxKind::FN_KW.is_keyword());
+        assert!(SyntaxKind::AS_KW.is_keyword());
+        assert!(!SyntaxKind::WORD.is_keyword());
+        assert!(!SyntaxKind::MODULE.is_keyword());
     }
 }
