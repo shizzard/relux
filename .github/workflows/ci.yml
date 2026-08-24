@@ -19,6 +19,11 @@ jobs:
 
       - name: Restore file timestamps
         uses: chetan/git-restore-mtime-action@v2
+        with:
+          # Author dates survive a rebase, so a rebased branch's sources look
+          # older than a target/ cache restored from another branch and cargo
+          # keeps the stale artifacts. Commit dates move on every rebase.
+          args: --commit-time
 
       # Cheap and toolchain-free, so it runs before anything is installed.
       - name: ASCII check
@@ -113,6 +118,11 @@ jobs:
 
       - name: Restore file timestamps
         uses: chetan/git-restore-mtime-action@v2
+        with:
+          # Author dates survive a rebase, so a rebased branch's sources look
+          # older than a target/ cache restored from another branch and cargo
+          # keeps the stale artifacts. Commit dates move on every rebase.
+          args: --commit-time
 
       - uses: dtolnay/rust-toolchain@1.98.0
 
@@ -175,6 +185,11 @@ jobs:
 
       - name: Restore file timestamps
         uses: chetan/git-restore-mtime-action@v2
+        with:
+          # Author dates survive a rebase, so a rebased branch's sources look
+          # older than a target/ cache restored from another branch and cargo
+          # keeps the stale artifacts. Commit dates move on every rebase.
+          args: --commit-time
 
       - uses: dtolnay/rust-toolchain@1.98.0
 
@@ -213,6 +228,11 @@ jobs:
 
       - name: Restore file timestamps
         uses: chetan/git-restore-mtime-action@v2
+        with:
+          # Author dates survive a rebase, so a rebased branch's sources look
+          # older than a target/ cache restored from another branch and cargo
+          # keeps the stale artifacts. Commit dates move on every rebase.
+          args: --commit-time
 
       - uses: dtolnay/rust-toolchain@1.98.0
 
