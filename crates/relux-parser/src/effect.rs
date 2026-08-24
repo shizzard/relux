@@ -420,9 +420,12 @@ fn is_sentinel_comment(item: &AstEffectItem) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(feature = "cst-frontend"))]
     use crate::lex_to_pairs;
+    #[cfg(not(feature = "cst-frontend"))]
     use crate::make_input;
 
+    #[cfg(not(feature = "cst-frontend"))]
     fn parse_effect(source: &str) -> AstEffectDef {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
@@ -432,6 +435,11 @@ mod tests {
             .into_result()
             .unwrap()
             .node
+    }
+
+    #[cfg(feature = "cst-frontend")]
+    fn parse_effect(source: &str) -> AstEffectDef {
+        crate::entry::effect(source).unwrap()
     }
 
     #[test]

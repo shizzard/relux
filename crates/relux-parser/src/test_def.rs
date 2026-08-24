@@ -294,7 +294,9 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
+    #[cfg(not(feature = "cst-frontend"))]
     use crate::lex_to_pairs;
+    #[cfg(not(feature = "cst-frontend"))]
     use crate::make_input;
     use relux_ast::AstTimeout;
 
@@ -302,6 +304,7 @@ mod tests {
         try_parse_test(source).expect("parse failed")
     }
 
+    #[cfg(not(feature = "cst-frontend"))]
     fn try_parse_test(source: &str) -> Option<AstTestDef> {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
@@ -311,6 +314,11 @@ mod tests {
             .into_result()
             .ok()
             .map(|s| s.node)
+    }
+
+    #[cfg(feature = "cst-frontend")]
+    fn try_parse_test(source: &str) -> Option<AstTestDef> {
+        crate::entry::test_def(source).ok()
     }
 
     #[test]

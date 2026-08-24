@@ -179,16 +179,28 @@ mod tests {
     use relux_ast::AstExpr;
     use relux_ast::AstStringPart;
 
+    #[cfg(not(feature = "cst-frontend"))]
     fn parse_comment(source: &str) -> String {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
         comment().parse(input).into_result().unwrap()
     }
 
+    #[cfg(feature = "cst-frontend")]
+    fn parse_comment(source: &str) -> String {
+        crate::entry::comment(source).unwrap()
+    }
+
+    #[cfg(not(feature = "cst-frontend"))]
     fn parse_marker(source: &str) -> AstMarkerDecl {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
         marker().parse(input).into_result().unwrap().node
+    }
+
+    #[cfg(feature = "cst-frontend")]
+    fn parse_marker(source: &str) -> AstMarkerDecl {
+        crate::entry::marker(source).unwrap()
     }
 
     #[test]
@@ -355,10 +367,16 @@ line two
 
     #[test]
     fn docstring_crlf_matches_lf() {
+        #[cfg(not(feature = "cst-frontend"))]
         fn parse_docstring(source: &str) -> String {
             let pairs = lex_to_pairs(source);
             let input = make_input(&pairs, source.len());
             docstring().parse(input).into_result().unwrap().node
+        }
+
+        #[cfg(feature = "cst-frontend")]
+        fn parse_docstring(source: &str) -> String {
+            crate::entry::docstring(source).unwrap()
         }
 
         let lf = parse_docstring("\"\"\"\nline one\nline two\n\"\"\"");

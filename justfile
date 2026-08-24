@@ -83,8 +83,8 @@ build-release: build-viewer
 
 ## Check targets
 
-# Run all checks: cargo check + clippy + fmt + viewer + ASCII + vscode
-check: check-ascii check-clippy check-fmt check-viewer check-vscode
+# Run all checks: cargo check + clippy + fmt + viewer + ASCII + vscode + CST conformance
+check: check-ascii check-clippy check-fmt check-viewer check-vscode check-cst-conformance
 
 # Fail if any tracked source file contains non-ASCII bytes
 check-ascii:
@@ -102,6 +102,14 @@ check-fmt:
 check-viewer:
     docker run --rm -v {{justfile_directory()}}/viewer:/src -w /src node:lts-slim \
         sh -c 'npm ci && npm run check'
+
+# Verify the cst-frontend configuration against the known-failing list.
+# This builds and runs the whole suite a second time, so it is by far the
+# slowest check. The pre-commit hook calls cargo directly rather than going
+# through `just check`, so commit time is unaffected.
+check-cst-conformance:
+    ./.scripts/check-cst-conformance-selftest.sh
+    ./.scripts/check-cst-conformance.sh
 
 ## Test targets
 

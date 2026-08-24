@@ -159,10 +159,16 @@ mod tests {
     use crate::lex_to_pairs;
     use crate::make_input;
 
+    #[cfg(not(feature = "cst-frontend"))]
     fn parse_expr(source: &str) -> AstExpr {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
         expr().parse(input).into_result().unwrap().node
+    }
+
+    #[cfg(feature = "cst-frontend")]
+    fn parse_expr(source: &str) -> AstExpr {
+        crate::entry::expr(source).unwrap()
     }
 
     #[test]

@@ -2,6 +2,7 @@ mod annotation;
 mod block;
 pub mod builder;
 mod effect;
+pub mod entry;
 pub mod error;
 mod expr;
 mod fn_def;
@@ -122,7 +123,11 @@ fn format_rich_error(e: &Rich<'_, Token<'_>>) -> String {
 
 // --- Public API ------------------------------------------
 
-pub fn parse(source: &str) -> Result<relux_ast::AstModule, ParseError> {
+/// The chumsky front end. Retained as the differential oracle for Story 0
+/// (T05) and deleted in T27. Public unconditionally: under `cst-frontend`
+/// nothing else calls `module::module()`, and a private version would make
+/// every combinator below it dead code.
+pub fn parse_chumsky(source: &str) -> Result<relux_ast::AstModule, ParseError> {
     let pairs = lex_to_pairs(source);
     let input = make_input(&pairs, source.len());
     module::module()
@@ -143,4 +148,63 @@ pub fn parse(source: &str) -> Result<relux_ast::AstModule, ParseError> {
                 error: SyntaxError::custom(span, message),
             }
         })
+}
+
+/// Parse a Relux module.
+///
+/// Routes through the hand-written CST front end under the `cst-frontend`
+/// feature and through chumsky otherwise. The signature stays stable for the
+/// whole of Story 0 so the existing tests serve as a conformance harness
+/// against either front end; T23 is what changes it to return `Parse`.
+pub fn parse(source: &str) -> Result<relux_ast::AstModule, ParseError> {
+    dispatch(source)
+}
+
+// Two gated free functions with one call site, rather than a `#[cfg]` block
+// inside one body. Not for the reason usually given: `#[cfg]` strips before
+// type checking, so an inactive arm may reference things that do not exist.
+// The real reasons are that an attributed block does not work as a tail
+// expression, and that `cfg!()` -- the macro it is easy to reach for instead --
+// keeps both arms in the program and does require both to typecheck.
+#[cfg(not(feature = "cst-frontend"))]
+fn dispatch(source: &str) -> Result<relux_ast::AstModule, ParseError> {
+    parse_chumsky(source)
+}
+
+#[cfg(feature = "cst-frontend")]
+fn dispatch(source: &str) -> Result<relux_ast::AstModule, ParseError> {
+    entry::module(source)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SRC: &str = "fn dummy() {}\n";
+
+    #[cfg(not(feature = "cst-frontend"))]
+    #[test]
+    fn parse_delegates_to_chumsky_when_the_feature_is_off() {
+        assert_eq!(parse(SRC).unwrap(), parse_chumsky(SRC).unwrap());
+    }
+
+    #[cfg(feature = "cst-frontend")]
+    #[test]
+    fn parse_routes_through_the_cst_front_end_when_the_feature_is_on() {
+        let m = parse(SRC).unwrap();
+        assert!(
+            m.items.is_empty(),
+            "T04 lowers to an empty module; T06 is what fills it in"
+        );
+        assert_eq!(m.span, Span::new(0, SRC.len()));
+    }
+
+    #[cfg(feature = "cst-frontend")]
+    #[test]
+    fn the_chumsky_front_end_is_still_reachable_under_the_feature() {
+        // T05's differential oracle calls this directly. Its absence would
+        // also make twenty modules of combinators dead code, which fails
+        // clippy only in the configuration a developer runs least often.
+        assert!(parse_chumsky(SRC).is_ok());
+    }
 }

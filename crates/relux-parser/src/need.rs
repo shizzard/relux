@@ -43,10 +43,16 @@ mod tests {
     use crate::lex_to_pairs;
     use crate::make_input;
 
+    #[cfg(not(feature = "cst-frontend"))]
     fn parse_start(source: &str) -> AstStartDecl {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
         start_decl().parse(input).into_result().unwrap().node
+    }
+
+    #[cfg(feature = "cst-frontend")]
+    fn parse_start(source: &str) -> AstStartDecl {
+        crate::entry::start_decl(source).unwrap()
     }
 
     #[test]

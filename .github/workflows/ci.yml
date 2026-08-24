@@ -143,6 +143,53 @@ jobs:
           RUST_BACKTRACE: "1"
         run: cargo test --workspace
 
+  # Its own job rather than a step in `test`, for the reason given above the
+  # `vscode` job: as a trailing step it would have no check of its own in the
+  # pull request list, and any earlier failure would skip it exactly when
+  # something is already wrong. During Story 0 this is the only thing standing
+  # between the CST front end and silent rot between grammar tasks.
+  cst-conformance:
+    name: CST Conformance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Restore file timestamps
+        uses: chetan/git-restore-mtime-action@v2
+        with:
+          # Author dates survive a rebase, so a rebased branch's sources look
+          # older than a target/ cache restored from another branch and cargo
+          # keeps the stale artifacts. Commit dates move on every rebase.
+          args: --commit-time
+
+      - uses: dtolnay/rust-toolchain@1.98.0
+
+      # No bare `-cargo-cst-` restore key. The other jobs carry one and it is a
+      # known hole: it permits restoring a target/ built from a different
+      # Cargo.lock. Every epic branch changes the lockfile, so this job -- added
+      # during exactly such an epic -- starts without it.
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-cst-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('crates/**', 'Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-cst-${{ hashFiles('**/Cargo.lock') }}-
+
+      - name: Clippy (cst-frontend)
+        run: cargo clippy --workspace --all-targets --features relux-parser/cst-frontend -- -D warnings
+
+      - name: Conformance harness self-test
+        run: ./.scripts/check-cst-conformance-selftest.sh
+
+      - name: CST conformance
+        run: ./.scripts/check-cst-conformance.sh
+
   intellij:
     name: IntelliJ Plugin
     runs-on: ubuntu-latest

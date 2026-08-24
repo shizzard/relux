@@ -94,13 +94,21 @@ pub fn import<'a>()
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(feature = "cst-frontend"))]
     use crate::lex_to_pairs;
+    #[cfg(not(feature = "cst-frontend"))]
     use crate::make_input;
 
+    #[cfg(not(feature = "cst-frontend"))]
     fn parse_import(source: &str) -> AstImport {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
         import().parse(input).into_result().unwrap().node
+    }
+
+    #[cfg(feature = "cst-frontend")]
+    fn parse_import(source: &str) -> AstImport {
+        crate::entry::import(source).unwrap()
     }
 
     #[test]

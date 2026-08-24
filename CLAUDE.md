@@ -39,12 +39,15 @@ just history                    # Analyze e2e run history
 ### Fix
 
 ```bash
-just check                      # Run ASCII + clippy + fmt + viewer checks
+just check                      # Run ASCII + clippy + fmt + viewer + CST conformance
 just check-ascii                # Fail if any tracked source contains non-ASCII bytes
 just check-clippy               # cargo clippy (includes cargo check)
 just check-fmt                  # rustfmt check
+just check-cst-conformance      # Check the cst-frontend config against known_failing.txt
 just fix                        # Fix clippy warnings and format code
 ```
+
+For the duration of Story 0, `just check` builds and runs the whole workspace suite a second time under `--features relux-parser/cst-frontend`, so it is far slower than the compile-only checks it used to be. The pre-commit hook invokes cargo directly rather than going through `just check`, so commit time is unaffected.
 
 ### Clean
 
@@ -81,7 +84,7 @@ Logos-based tokenizer. `Token` enum with keyword/operator/literal variants. Line
 
 ### `relux-parser` (`crates/relux-parser/`)
 
-Chumsky combinator parser. Split into focused modules: `module.rs` (top-level), `fn_def.rs`, `effect.rs`, `test_def.rs`, `stmt.rs`, `expr.rs`, `operator.rs`, `interpolation.rs`, `overlay.rs`, `block.rs`, `import.rs`, `need.rs`, `ident.rs`, `prefix.rs`, `timeout.rs`, `annotation.rs`, `punctuation.rs`, `ws.rs`, `token.rs`, `error.rs`, `syntax_kind.rs` (the CST vocabulary and `rowan::Language` binding), `parser.rs` (the CST parser core: cursor, event stream, markers), `grammar.rs` (the recursive-descent grammar, a stub production consuming the whole file into one `MODULE` node until the module skeleton lands), `builder.rs` (replays a parser event stream into a `rowan::GreenNode`). None is used by the chumsky parser yet -- they are the foundation of the hand-written front end that replaces it. `tests/corpus.rs` walks every `.relux` file under `tests/relux` and `docs` and asserts the built tree reproduces its source byte for byte.
+Chumsky combinator parser. Split into focused modules: `module.rs` (top-level), `fn_def.rs`, `effect.rs`, `test_def.rs`, `stmt.rs`, `expr.rs`, `operator.rs`, `interpolation.rs`, `overlay.rs`, `block.rs`, `import.rs`, `need.rs`, `ident.rs`, `prefix.rs`, `timeout.rs`, `annotation.rs`, `punctuation.rs`, `ws.rs`, `token.rs`, `error.rs`, `syntax_kind.rs` (the CST vocabulary and `rowan::Language` binding), `parser.rs` (the CST parser core: cursor, event stream, markers), `grammar.rs` (the recursive-descent grammar, a stub production consuming the whole file into one `MODULE` node until the module skeleton lands), `builder.rs` (replays a parser event stream into a `rowan::GreenNode`), `entry.rs` (fragment entry points for the CST front end -- `module`/`module_green` are real, the rest are `unimplemented!()` shims naming the grammar task that replaces them). Under the `cst-frontend` feature `parse()` routes through `entry::module`; with the feature off it routes through `parse_chumsky`, which stays public for the duration of Story 0 as the differential oracle. `tests/corpus.rs` walks every `.relux` file under `tests/relux` and `docs` and asserts the built tree reproduces its source byte for byte.
 
 ### `relux-ir` (`crates/relux-ir/`)
 
@@ -205,6 +208,7 @@ In-repo Claude Code plugin packaging composable skills for authoring, running, a
 - **Changes to user-facing DSL syntax** (new keywords, operators, interpolation forms, etc.) **must be reflected in the editor plugins** — update `editors/vscode/syntaxes/relux.tmLanguage.json` and `editors/intellij/src/main/java/eu/spawnlink/relux/ReluxLexer.flex` (plus related token/highlighter files) — and in the canonical hljs grammar at `crates/relux-runtime/src/report/highlight-relux.js` (shared by the viewer and the mdbooks)
 - **Changes to structured-log types** (`crates/relux-runtime/src/observe/structured/`) require regenerating viewer TypeScript bindings via `just build-viewer`; the vendored `crates/relux-runtime/vendor/relux-viewer.js.gz` must be committed in the same change. The pre-commit hook + CI verify the vendored bytes stay in sync.
 - **PRs are squash-merged** — the final squash commit message must be a single conventional commit (type, optional scope, description, and body)
+- **The workspace has two test configurations for the duration of Story 0** -- default (chumsky) and `--features relux-parser/cst-frontend`. Both must pass clippy, and both are checked in CI. The CST configuration is expected to have failing tests; the exact set is pinned in `crates/relux-parser/tests/known_failing.txt` and enforced by `just check-cst-conformance`, which fails if the set grows *or* shrinks without the list being updated. Shrink it with `.scripts/check-cst-conformance.sh --bless`.
 
 ## RFCs
 

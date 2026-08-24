@@ -136,19 +136,33 @@ pub fn cleanup_block<'a>()
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(feature = "cst-frontend"))]
     use crate::lex_to_pairs;
+    #[cfg(not(feature = "cst-frontend"))]
     use crate::make_input;
 
+    #[cfg(not(feature = "cst-frontend"))]
     fn parse_shell(source: &str) -> AstShellBlock {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
         shell_block().parse(input).into_result().unwrap().node
     }
 
+    #[cfg(feature = "cst-frontend")]
+    fn parse_shell(source: &str) -> AstShellBlock {
+        crate::entry::shell_block(source).unwrap()
+    }
+
+    #[cfg(not(feature = "cst-frontend"))]
     fn parse_cleanup(source: &str) -> AstCleanupBlock {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
         cleanup_block().parse(input).into_result().unwrap().node
+    }
+
+    #[cfg(feature = "cst-frontend")]
+    fn parse_cleanup(source: &str) -> AstCleanupBlock {
+        crate::entry::cleanup_block(source).unwrap()
     }
 
     #[test]
@@ -312,6 +326,7 @@ mod tests {
 
     // --- Qualified shell blocks --------------------------
 
+    #[cfg(not(feature = "cst-frontend"))]
     fn parse_qualified(source: &str) -> AstShellBlock {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
@@ -320,6 +335,11 @@ mod tests {
             .into_result()
             .unwrap()
             .node
+    }
+
+    #[cfg(feature = "cst-frontend")]
+    fn parse_qualified(source: &str) -> AstShellBlock {
+        crate::entry::qualified_shell_block(source).unwrap()
     }
 
     #[test]

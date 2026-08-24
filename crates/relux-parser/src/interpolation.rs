@@ -225,6 +225,7 @@ mod tests {
     use crate::lex_to_pairs;
     use crate::make_input;
 
+    #[cfg(not(feature = "cst-frontend"))]
     fn parse_literal(source: &str) -> AstInterpolation {
         // Simulate a payload terminated by newline
         let full = format!("{source}\n");
@@ -238,6 +239,13 @@ mod tests {
             .node
     }
 
+    #[cfg(feature = "cst-frontend")]
+    fn parse_literal(source: &str) -> AstInterpolation {
+        let full = format!("{source}\n");
+        crate::entry::interp_literal(&full).unwrap()
+    }
+
+    #[cfg(not(feature = "cst-frontend"))]
     fn parse_regex(source: &str) -> AstInterpolation {
         let full = format!("{source}\n");
         let pairs = lex_to_pairs(&full);
@@ -248,6 +256,12 @@ mod tests {
             .into_result()
             .unwrap()
             .node
+    }
+
+    #[cfg(feature = "cst-frontend")]
+    fn parse_regex(source: &str) -> AstInterpolation {
+        let full = format!("{source}\n");
+        crate::entry::interp_regex(&full).unwrap()
     }
 
     /// Compare only the structural content of parts, ignoring spans.

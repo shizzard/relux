@@ -91,13 +91,21 @@ pub fn module<'a>()
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(feature = "cst-frontend"))]
     use crate::lex_to_pairs;
+    #[cfg(not(feature = "cst-frontend"))]
     use crate::make_input;
 
+    #[cfg(not(feature = "cst-frontend"))]
     fn parse_module(source: &str) -> AstModule {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
         module().parse(input).into_result().unwrap()
+    }
+
+    #[cfg(feature = "cst-frontend")]
+    fn parse_module(source: &str) -> AstModule {
+        crate::entry::module(source).unwrap()
     }
 
     #[test]

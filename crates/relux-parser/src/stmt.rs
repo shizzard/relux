@@ -529,12 +529,19 @@ mod tests {
     use relux_ast::AstStmt;
     use relux_ast::AstTimeout;
 
+    #[cfg(not(feature = "cst-frontend"))]
     fn parse_stmt(source: &str) -> AstStmt {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
         stmt().parse(input).into_result().unwrap().node
     }
 
+    #[cfg(feature = "cst-frontend")]
+    fn parse_stmt(source: &str) -> AstStmt {
+        crate::entry::stmt(source).unwrap()
+    }
+
+    #[cfg(not(feature = "cst-frontend"))]
     fn parse_stmt_err(source: &str) -> String {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
@@ -546,6 +553,11 @@ mod tests {
             .map(|e| e.to_string())
             .collect::<Vec<_>>()
             .join("; ")
+    }
+
+    #[cfg(feature = "cst-frontend")]
+    fn parse_stmt_err(source: &str) -> String {
+        crate::entry::stmt(source).unwrap_err().to_string()
     }
 
     #[test]
