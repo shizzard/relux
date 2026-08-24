@@ -1,9 +1,11 @@
 mod annotation;
 mod block;
+pub mod builder;
 mod effect;
 pub mod error;
 mod expr;
 mod fn_def;
+pub mod grammar;
 mod ident;
 mod import;
 mod interpolation;
@@ -11,9 +13,11 @@ mod module;
 mod need;
 mod operator;
 mod overlay;
+pub mod parser;
 mod prefix;
 mod punctuation;
 mod stmt;
+pub mod syntax_kind;
 mod test_def;
 mod timeout;
 mod token;
@@ -29,6 +33,12 @@ use chumsky::input::MappedInput;
 use chumsky::prelude::*;
 
 use relux_lexer::Token;
+
+pub use syntax_kind::ReluxLanguage;
+pub use syntax_kind::SyntaxElement;
+pub use syntax_kind::SyntaxKind;
+pub use syntax_kind::SyntaxNode;
+pub use syntax_kind::SyntaxToken;
 
 pub type Span = relux_core::Span;
 

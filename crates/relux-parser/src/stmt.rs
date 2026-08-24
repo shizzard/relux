@@ -563,6 +563,40 @@ mod tests {
     }
 
     #[test]
+    fn send_payload_crlf_has_no_carriage_return() {
+        let s = parse_stmt("> echo hello\r\n");
+        match s {
+            AstStmt::Send { payload, .. } => {
+                assert_eq!(payload.parts.len(), 1);
+                match &payload.parts[0] {
+                    AstStringPart::Literal { value, .. } => {
+                        assert_eq!(value, "echo hello", "CR leaked into the send payload");
+                    }
+                    other => panic!("expected Literal, got {other:?}"),
+                }
+            }
+            _ => panic!("expected Send, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn match_pattern_crlf_has_no_carriage_return() {
+        let s = parse_stmt("<? ^ready$\r\n");
+        match s {
+            AstStmt::MatchRegex { pattern, .. } => {
+                assert_eq!(pattern.parts.len(), 1);
+                match &pattern.parts[0] {
+                    AstStringPart::Literal { value, .. } => {
+                        assert_eq!(value, "^ready$", "CR leaked into the match pattern");
+                    }
+                    other => panic!("expected Literal, got {other:?}"),
+                }
+            }
+            _ => panic!("expected MatchRegex, got {s:?}"),
+        }
+    }
+
+    #[test]
     fn send_raw_statement() {
         let s = parse_stmt("=> raw data\n");
         match s {

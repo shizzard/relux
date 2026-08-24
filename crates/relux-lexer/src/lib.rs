@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::fmt;
 
 use logos::Logos;
@@ -70,7 +69,7 @@ pub enum Token<'a> {
     At,
     #[token("\\")]
     Backslash,
-    #[regex(r"\\.", priority = 10, callback = |lex| &lex.source()[lex.span().start+1..lex.span().end])]
+    #[regex(r"\\[^\r\n]", priority = 10, callback = |lex| &lex.source()[lex.span().start+1..lex.span().end])]
     Escape(&'a str),
     #[token("#")]
     Hash,
@@ -95,6 +94,7 @@ pub enum Token<'a> {
     #[regex("\t+")]
     Tab(&'a str),
     #[token("\n")]
+    #[token("\r\n")]
     Newline,
 
     // --- Text (catch-all, produced by post-lex squashing) ---
@@ -161,16 +161,6 @@ impl fmt::Debug for Token<'_> {
             Token::Escape(s) => write!(f, "escape({s:?})"),
             _ => write!(f, "'{self}'"),
         }
-    }
-}
-
-// --- Input Normalization ---------------------------------
-
-pub fn normalize(source: &str) -> Cow<'_, str> {
-    if source.contains('\r') {
-        Cow::Owned(source.replace("\r\n", "\n").replace('\r', ""))
-    } else {
-        Cow::Borrowed(source)
     }
 }
 
@@ -431,6 +421,85 @@ mod tests {
         #[test]
         fn newline_at_start() {
             assert_eq!(tokens("\nlet"), vec![Token::Newline, Token::Let]);
+        }
+    }
+
+    // ---------------------------------------------------------
+    // Line endings
+    // ---------------------------------------------------------
+
+    mod line_endings {
+        use super::*;
+
+        #[test]
+        fn crlf_is_one_newline_token() {
+            assert_eq!(tokens("\r\n"), vec![Token::Newline]);
+            assert_eq!(spans("\r\n"), vec![0..2]);
+        }
+
+        #[test]
+        fn crlf_between_text() {
+            assert_eq!(
+                tokens("a\r\nb"),
+                vec![Token::Text("a"), Token::Newline, Token::Text("b")]
+            );
+            assert_eq!(spans("a\r\nb"), vec![0..1, 1..3, 3..4]);
+        }
+
+        #[test]
+        fn lf_still_one_byte() {
+            assert_eq!(
+                tokens("a\nb"),
+                vec![Token::Text("a"), Token::Newline, Token::Text("b")]
+            );
+            assert_eq!(spans("a\nb"), vec![0..1, 1..2, 2..3]);
+        }
+
+        #[test]
+        fn mixed_endings_in_one_file() {
+            assert_eq!(
+                tokens("a\r\nb\nc"),
+                vec![
+                    Token::Text("a"),
+                    Token::Newline,
+                    Token::Text("b"),
+                    Token::Newline,
+                    Token::Text("c"),
+                ]
+            );
+            assert_eq!(spans("a\r\nb\nc"), vec![0..1, 1..3, 3..4, 4..5, 5..6]);
+        }
+
+        #[test]
+        fn crlf_after_keyword() {
+            assert_eq!(tokens("let\r\n"), vec![Token::Let, Token::Newline]);
+        }
+
+        #[test]
+        fn lone_cr_is_text_not_a_terminator() {
+            // Deliberate divergence from the deleted normalize(), which
+            // stripped lone CRs. A bare CR in the middle of a line is data.
+            assert_eq!(tokens("a\rb"), vec![Token::Text("a\rb")]);
+            assert_eq!(spans("a\rb"), vec![0..3]);
+        }
+
+        #[test]
+        fn lone_cr_alone() {
+            assert_eq!(tokens("\r"), vec![Token::Text("\r")]);
+            assert_eq!(spans("\r"), vec![0..1]);
+        }
+
+        #[test]
+        fn lone_cr_at_eof() {
+            assert_eq!(tokens("hello\r"), vec![Token::Text("hello\r")]);
+            assert_eq!(spans("hello\r"), vec![0..6]);
+        }
+
+        #[test]
+        fn cr_before_cr_lf() {
+            // Only the final pair is a terminator; the first CR is content.
+            assert_eq!(tokens("\r\r\n"), vec![Token::Text("\r"), Token::Newline]);
+            assert_eq!(spans("\r\r\n"), vec![0..1, 1..3]);
         }
     }
 
@@ -827,6 +896,21 @@ mod tests {
         }
 
         #[test]
+        fn backslash_before_crlf() {
+            // A backslash ending a CRLF line must behave exactly as it does
+            // ending an LF line: a bare Backslash, then the terminator.
+            assert_eq!(tokens("\\\r\n"), vec![Token::Backslash, Token::Newline]);
+            assert_eq!(spans("\\\r\n"), vec![0..1, 1..3]);
+        }
+
+        #[test]
+        fn backslash_before_lone_cr() {
+            // A bare CR is content, so it does not form an Escape either.
+            assert_eq!(tokens("\\\ra"), vec![Token::Backslash, Token::Text("\ra")]);
+            assert_eq!(spans("\\\ra"), vec![0..1, 1..3]);
+        }
+
+        #[test]
         fn bare_backslash_at_eof() {
             assert_eq!(tokens("\\"), vec![Token::Backslash]);
         }
@@ -917,96 +1001,6 @@ mod tests {
             assert_eq!(tokens("\u{ff1d}"), vec![Token::Text("\u{ff1d}")]);
             // Fullwidth left paren U+FF08 is NOT '('
             assert_eq!(tokens("\u{ff08}"), vec![Token::Text("\u{ff08}")]);
-        }
-    }
-
-    // ---------------------------------------------------------
-    // Input normalization
-    // ---------------------------------------------------------
-
-    mod normalization {
-        use super::*;
-
-        #[test]
-        fn empty() {
-            assert_eq!(normalize(""), Cow::Borrowed(""));
-        }
-
-        #[test]
-        fn crlf() {
-            assert_eq!(normalize("a\r\nb"), Cow::<str>::Owned("a\nb".into()));
-        }
-
-        #[test]
-        fn stray_cr() {
-            assert_eq!(normalize("a\rb"), Cow::<str>::Owned("ab".into()));
-        }
-
-        #[test]
-        fn no_cr() {
-            assert_eq!(normalize("a\nb"), Cow::Borrowed("a\nb"));
-        }
-
-        #[test]
-        fn multiple_crlf() {
-            assert_eq!(
-                normalize("a\r\nb\r\nc"),
-                Cow::<str>::Owned("a\nb\nc".into())
-            );
-        }
-
-        #[test]
-        fn mixed_crlf_and_stray_cr() {
-            assert_eq!(normalize("a\r\nb\rc"), Cow::<str>::Owned("a\nbc".into()));
-        }
-
-        #[test]
-        fn only_cr() {
-            assert_eq!(normalize("\r"), Cow::<str>::Owned("".into()));
-        }
-
-        #[test]
-        fn only_crlf() {
-            assert_eq!(normalize("\r\n"), Cow::<str>::Owned("\n".into()));
-        }
-
-        #[test]
-        fn cr_at_eof() {
-            assert_eq!(normalize("hello\r"), Cow::<str>::Owned("hello".into()));
-        }
-
-        #[test]
-        fn then_lex() {
-            let source = "let x\r\n";
-            let norm = normalize(source);
-            let toks: Vec<Token<'_>> = lex(&norm).into_iter().map(|s| s.node).collect();
-            assert_eq!(
-                toks,
-                vec![
-                    Token::Let,
-                    Token::Space(" "),
-                    Token::Text("x"),
-                    Token::Newline,
-                ]
-            );
-        }
-
-        #[test]
-        fn then_lex_multiline_spans() {
-            let source = "let x\r\nlet y\r\n";
-            let norm = normalize(source);
-            let toks = lex(&norm);
-            // After normalization: "let x\nlet y\n" (12 bytes)
-            let sp: Vec<std::ops::Range<usize>> =
-                toks.iter().map(|s| std::ops::Range::from(s.span)).collect();
-            assert_eq!(sp[0], 0..3); // let
-            assert_eq!(sp[1], 3..4); // space
-            assert_eq!(sp[2], 4..5); // x
-            assert_eq!(sp[3], 5..6); // \n
-            assert_eq!(sp[4], 6..9); // let
-            assert_eq!(sp[5], 9..10); // space
-            assert_eq!(sp[6], 10..11); // y
-            assert_eq!(sp[7], 11..12); // \n
         }
     }
 
@@ -2302,6 +2296,64 @@ test "basic" {
             // Verify spans cover the entire input
             assert_eq!(sp.first().unwrap().start, 0);
             assert_eq!(sp.last().unwrap().end, input.len());
+        }
+
+        #[test]
+        fn multiline_module_crlf() {
+            let lf = r#"import lib/db
+
+fn setup() {
+    > echo ready
+    <? ^ready$
+}
+
+test "basic" {
+    shell s {
+        > echo hello
+        <= hello
+    }
+}
+"#;
+            // Synthesized, never committed as a file: with no .gitattributes,
+            // a checked-in CRLF fixture is at the mercy of core.autocrlf.
+            let crlf = lf.replace('\n', "\r\n");
+
+            // Same token kinds, in the same order.
+            assert_eq!(tokens(&crlf), tokens(lf));
+
+            let sp = spans(&crlf);
+
+            // No empty spans.
+            for (i, s) in sp.iter().enumerate() {
+                assert!(s.start < s.end, "empty span at token {i}: {s:?}");
+            }
+
+            // Contiguous.
+            for i in 1..sp.len() {
+                assert_eq!(
+                    sp[i - 1].end,
+                    sp[i].start,
+                    "gap between token {} and {}: {:?} vs {:?}",
+                    i - 1,
+                    i,
+                    sp[i - 1],
+                    sp[i]
+                );
+            }
+
+            // Covering the whole input.
+            assert_eq!(sp.first().unwrap().start, 0);
+            assert_eq!(sp.last().unwrap().end, crlf.len());
+
+            for s in lex(&crlf) {
+                if matches!(s.node, Token::Newline) {
+                    assert_eq!(
+                        s.span.end() - s.span.start(),
+                        2,
+                        "CRLF newline must be 2 bytes"
+                    );
+                }
+            }
         }
     }
 }
