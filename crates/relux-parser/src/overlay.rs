@@ -94,10 +94,16 @@ mod tests {
     use crate::make_input;
     use relux_ast::AstExpr;
 
+    #[cfg(not(feature = "cst-frontend"))]
     fn parse_overlay(source: &str) -> Vec<Spanned<AstOverlayEntry>> {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
         overlay().parse(input).into_result().unwrap()
+    }
+
+    #[cfg(feature = "cst-frontend")]
+    fn parse_overlay(source: &str) -> Vec<Spanned<AstOverlayEntry>> {
+        crate::entry::overlay(source).unwrap()
     }
 
     #[test]

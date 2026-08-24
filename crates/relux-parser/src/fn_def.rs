@@ -179,10 +179,13 @@ pub fn def_pure_fn<'a>()
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(feature = "cst-frontend"))]
     use crate::lex_to_pairs;
+    #[cfg(not(feature = "cst-frontend"))]
     use crate::make_input;
     use relux_ast::AstMarkerKind;
 
+    #[cfg(not(feature = "cst-frontend"))]
     fn parse_fn(source: &str) -> AstFnDef {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
@@ -194,6 +197,12 @@ mod tests {
             .node
     }
 
+    #[cfg(feature = "cst-frontend")]
+    fn parse_fn(source: &str) -> AstFnDef {
+        crate::entry::fn_def(source).unwrap()
+    }
+
+    #[cfg(not(feature = "cst-frontend"))]
     fn parse_pure_fn(source: &str) -> AstPureFnDef {
         let pairs = lex_to_pairs(source);
         let input = make_input(&pairs, source.len());
@@ -203,6 +212,11 @@ mod tests {
             .into_result()
             .unwrap()
             .node
+    }
+
+    #[cfg(feature = "cst-frontend")]
+    fn parse_pure_fn(source: &str) -> AstPureFnDef {
+        crate::entry::pure_fn_def(source).unwrap()
     }
 
     #[test]
