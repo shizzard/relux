@@ -18,6 +18,7 @@ test "timeout set inside function does not persist in caller" ~3s {
     shell s {
         ~3s
         set_timeout_inside()
+        match_ok()
         > sh -c 'sleep 0.1 && echo delayed'
         <? ^delayed$
     }
@@ -30,6 +31,7 @@ test "fail pattern set inside function does not persist in caller" ~3s {
     """
     shell s {
         set_fail_pattern_inside()
+        match_ok()
         > echo "BOOM is safe now"
         <? ^BOOM is safe now$
     }

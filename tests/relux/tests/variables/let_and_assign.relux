@@ -28,6 +28,7 @@ test "reassignment updates value" {
         let x := "before"
         > echo ${x}
         <? ^before$
+        match_ok()
         x := "after"
         > echo ${x}
         <? ^after$

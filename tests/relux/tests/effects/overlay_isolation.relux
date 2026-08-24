@@ -13,6 +13,7 @@ effect Child {
     shell c {
         > echo "parent_var='$$PARENT_VAR'"
         <? ^parent_var=''$
+        match_ok()
         > echo "child ready"
         <? ^child ready$
     }

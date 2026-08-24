@@ -26,6 +26,7 @@ test "function local does not leak to caller" {
     """
     shell s {
         set_var("test")
+        match_ok()
         > echo "local='${local}'"
         <? ^local=''$
     }
@@ -39,6 +40,7 @@ test "function let shadows without mutating outer" {
     shell s {
         let x := "outer"
         shadow_outer()
+        match_ok()
         > echo "x=${x}"
         <? ^x=outer$
     }

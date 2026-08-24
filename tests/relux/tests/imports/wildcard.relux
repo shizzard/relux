@@ -7,6 +7,7 @@ test "wildcard import makes all functions available" {
     """
     shell s {
         greet("world")
+        match_ok()
         farewell("world")
     }
 }

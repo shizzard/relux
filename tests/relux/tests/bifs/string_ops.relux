@@ -73,6 +73,7 @@ test "split extracts element by index" {
         let val := split("a,b,c", ",", 0)
         > echo "${val}"
         <? ^a$
+        match_ok()
         let val := split("a,b,c", ",", 2)
         > echo "${val}"
         <? ^c$

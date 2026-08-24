@@ -34,6 +34,7 @@ test "inline timeout is one-shot" ~3s {
         ~200ms
         > sh -c 'sleep 0.1 && echo delayed'
         <~3s? ^delayed$
+        match_ok()
         > echo immediate
         <? ^immediate$
     }

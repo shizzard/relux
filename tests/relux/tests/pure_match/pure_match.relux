@@ -43,6 +43,7 @@ test "pure match inside a function body binds captures" {
     """
     shell s {
         let got := extract_id("item-99")
+        match_ok()
         > echo "got=${got}"
         <? ^got=found-99$
     }

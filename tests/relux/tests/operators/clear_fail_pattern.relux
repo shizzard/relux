@@ -37,6 +37,7 @@ test "fail pattern is active before clearing" {
         !? BOOM
         > echo safe
         <? ^safe$
+        match_ok()
         !?
         > echo BOOM
         <? ^BOOM$

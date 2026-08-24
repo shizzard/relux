@@ -6,6 +6,7 @@ test "which finds an executable on PATH" {
         let path := which("sh")
         > test -n "${path}" && echo "found"
         <? ^found$
+        match_ok()
         > test -x "${path}" && echo "executable"
         <? ^executable$
     }
