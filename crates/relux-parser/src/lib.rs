@@ -1,9 +1,11 @@
 mod annotation;
 mod block;
+pub mod builder;
 mod effect;
 pub mod error;
 mod expr;
 mod fn_def;
+pub mod grammar;
 mod ident;
 mod import;
 mod interpolation;

@@ -81,7 +81,7 @@ Logos-based tokenizer. `Token` enum with keyword/operator/literal variants. Line
 
 ### `relux-parser` (`crates/relux-parser/`)
 
-Chumsky combinator parser. Split into focused modules: `module.rs` (top-level), `fn_def.rs`, `effect.rs`, `test_def.rs`, `stmt.rs`, `expr.rs`, `operator.rs`, `interpolation.rs`, `overlay.rs`, `block.rs`, `import.rs`, `need.rs`, `ident.rs`, `prefix.rs`, `timeout.rs`, `annotation.rs`, `punctuation.rs`, `ws.rs`, `token.rs`, `error.rs`, `syntax_kind.rs` (the CST vocabulary and `rowan::Language` binding), `parser.rs` (the CST parser core: cursor, event stream, markers). Neither is used by the chumsky parser yet -- they are the foundation of the hand-written front end that replaces it.
+Chumsky combinator parser. Split into focused modules: `module.rs` (top-level), `fn_def.rs`, `effect.rs`, `test_def.rs`, `stmt.rs`, `expr.rs`, `operator.rs`, `interpolation.rs`, `overlay.rs`, `block.rs`, `import.rs`, `need.rs`, `ident.rs`, `prefix.rs`, `timeout.rs`, `annotation.rs`, `punctuation.rs`, `ws.rs`, `token.rs`, `error.rs`, `syntax_kind.rs` (the CST vocabulary and `rowan::Language` binding), `parser.rs` (the CST parser core: cursor, event stream, markers), `grammar.rs` (the recursive-descent grammar, a stub production consuming the whole file into one `MODULE` node until the module skeleton lands), `builder.rs` (replays a parser event stream into a `rowan::GreenNode`). None is used by the chumsky parser yet -- they are the foundation of the hand-written front end that replaces it. `tests/corpus.rs` walks every `.relux` file under `tests/relux` and `docs` and asserts the built tree reproduces its source byte for byte.
 
 ### `relux-ir` (`crates/relux-ir/`)
 
