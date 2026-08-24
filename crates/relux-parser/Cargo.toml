@@ -15,3 +15,11 @@ chumsky     = { workspace = true }
 thiserror   = { workspace = true }
 humantime   = { workspace = true }
 rowan       = { workspace = true }
+
+[features]
+default = []
+# Route parse() through the hand-written CST front end. Off during Story 0 so
+# master is never broken by an incomplete grammar. Enabled workspace-wide with
+# `--features relux-parser/cst-frontend`; no pass-through feature is needed in
+# the crates that depend on this one.
+cst-frontend = []
