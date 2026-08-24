@@ -81,7 +81,7 @@ Logos-based tokenizer. `Token` enum with keyword/operator/literal variants. Line
 
 ### `relux-parser` (`crates/relux-parser/`)
 
-Chumsky combinator parser. Split into focused modules: `module.rs` (top-level), `fn_def.rs`, `effect.rs`, `test_def.rs`, `stmt.rs`, `expr.rs`, `operator.rs`, `interpolation.rs`, `overlay.rs`, `block.rs`, `import.rs`, `need.rs`, `ident.rs`, `prefix.rs`, `timeout.rs`, `annotation.rs`, `punctuation.rs`, `ws.rs`, `token.rs`, `error.rs`, `syntax_kind.rs` (the CST vocabulary and `rowan::Language` binding; not used by the chumsky parser yet).
+Chumsky combinator parser. Split into focused modules: `module.rs` (top-level), `fn_def.rs`, `effect.rs`, `test_def.rs`, `stmt.rs`, `expr.rs`, `operator.rs`, `interpolation.rs`, `overlay.rs`, `block.rs`, `import.rs`, `need.rs`, `ident.rs`, `prefix.rs`, `timeout.rs`, `annotation.rs`, `punctuation.rs`, `ws.rs`, `token.rs`, `error.rs`, `syntax_kind.rs` (the CST vocabulary and `rowan::Language` binding), `parser.rs` (the CST parser core: cursor, event stream, markers). Neither is used by the chumsky parser yet -- they are the foundation of the hand-written front end that replaces it.
 
 ### `relux-ir` (`crates/relux-ir/`)
 

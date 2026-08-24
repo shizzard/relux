@@ -11,6 +11,7 @@ mod module;
 mod need;
 mod operator;
 mod overlay;
+pub mod parser;
 mod prefix;
 mod punctuation;
 mod stmt;

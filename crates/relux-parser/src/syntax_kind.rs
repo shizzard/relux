@@ -56,8 +56,10 @@ syntax_kinds! {
         QUESTION, TILDE, AT, BACKSLASH, ESCAPE, HASH, L_BRACKET, R_BRACKET,
         COMMA, SLASH, DASH, DOT, COLON,
 
-        // Whitespace. These are real leaves, not rowan trivia -- see the
-        // story doc. NEWLINE covers `\n` or `\r\n`, so it is one byte or two.
+        // Whitespace. These are real CST leaves, not rowan trivia: whitespace
+        // is grammatically significant in Relux, so the grammar consumes it
+        // into whichever node is open rather than letting a trivia pass
+        // reattach it. NEWLINE covers `\n` or `\r\n`, so it is one byte or two.
         SPACE, TAB, NEWLINE,
 
         // Everything else, including unmatched bytes.
@@ -98,6 +100,9 @@ syntax_kinds! {
         /// Placeholder written by the parser's marker machinery. Never
         /// present in a finished tree.
         TOMBSTONE,
+        /// Returned by the cursor past the end of input. Never present in a
+        /// finished tree.
+        EOF,
     ],
 }
 
@@ -301,6 +306,7 @@ mod tests {
         assert!(!SyntaxKind::TEST_DEF.is_leaf());
         assert!(!SyntaxKind::ERROR.is_leaf());
         assert!(!SyntaxKind::TOMBSTONE.is_leaf());
+        assert!(!SyntaxKind::EOF.is_leaf());
     }
 
     #[test]
