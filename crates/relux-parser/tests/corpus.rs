@@ -99,6 +99,36 @@ fn corpus_is_the_tracked_fixture_set() {
     );
 }
 
+/// The size ceiling only notices a missing `out/` skip on a machine that has
+/// actually run `just test-e2e`; on a clean checkout there are no artifacts to
+/// pull in, so deleting the skip leaves every test green. Assert the skip
+/// directly against a synthetic tree, so its removal is caught everywhere.
+#[test]
+fn collect_skips_e2e_run_artifacts() {
+    // `CARGO_TARGET_TMPDIR` is cargo's scratch directory for integration tests,
+    // so this never writes into the repository the walker is pointed at.
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("collect_skips_e2e_run_artifacts");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("out").join("run-1")).expect("creating the fixture tree");
+    std::fs::write(root.join("kept.relux"), "").expect("writing kept.relux");
+    std::fs::write(root.join("ignored.md"), "").expect("writing ignored.md");
+    std::fs::write(root.join("out").join("run-1").join("artifact.relux"), "")
+        .expect("writing artifact.relux");
+
+    let mut found = Vec::new();
+    collect(&root, &mut found);
+
+    assert_eq!(
+        found,
+        vec![root.join("kept.relux")],
+        "`collect` must skip `out/` and take only `.relux`: an e2e run copies \
+         the fixtures into `out/`, so walking it makes the corpus depend on \
+         whether this machine has run `just test-e2e`"
+    );
+
+    std::fs::remove_dir_all(&root).expect("cleaning up the fixture tree");
+}
+
 /// Parse `source` with the stub grammar and assert the tree reproduces it byte
 /// for byte.
 ///
