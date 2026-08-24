@@ -123,6 +123,20 @@ impl<'a> Parser<'a> {
     ///
     /// Spends one unit of fuel. See `FUEL`.
     pub fn nth(&self, n: usize) -> SyntaxKind {
+        self.spend_fuel();
+
+        match self.tokens.get(self.pos + n) {
+            Some(token) => crate::syntax_kind::kind_of(&token.node),
+            None => SyntaxKind::EOF,
+        }
+    }
+
+    /// Spend one unit of fuel, panicking if the tank is already empty.
+    ///
+    /// Shared by every lookahead method: the budget is meant to catch a
+    /// stuck production regardless of which lookahead it happens to call, so
+    /// `nth` and `nth_text` must not have separate tanks.
+    fn spend_fuel(&self) {
         let fuel = self.fuel.get();
         assert!(
             fuel > 0,
@@ -131,11 +145,6 @@ impl<'a> Parser<'a> {
             self.tokens.get(self.pos).map(|t| &t.node)
         );
         self.fuel.set(fuel - 1);
-
-        match self.tokens.get(self.pos + n) {
-            Some(token) => crate::syntax_kind::kind_of(&token.node),
-            None => SyntaxKind::EOF,
-        }
     }
 
     /// The source text of the token `n` ahead, or `""` past the end.
@@ -143,7 +152,15 @@ impl<'a> Parser<'a> {
     /// This is the raw source slice, never the token's payload -- the two
     /// differ for `Token::Escape`, and T01 and T03 both fixed leaf text as
     /// the slice.
+    ///
+    /// Spends one unit of fuel, same as `nth`. A production that only ever
+    /// inspects text without consuming it must still be caught by the same
+    /// mechanism; hang-prevention is the entire point of `FUEL`, and 256 is
+    /// generous regardless of which lookahead method a stuck loop happens to
+    /// call.
     pub fn nth_text(&self, n: usize) -> &'a str {
+        self.spend_fuel();
+
         match self.tokens.get(self.pos + n) {
             Some(token) => &self.source[token.span.start()..token.span.end()],
             None => "",
@@ -896,6 +913,19 @@ mod tests {
         // is exactly the failure mode this test exists to catch elsewhere.
         for _ in 0..(FUEL as usize + 8) {
             let _ = p.nth(0);
+        }
+    }
+
+    /// `nth_text` must be caught by the same budget as `nth` -- a stuck
+    /// production that only ever inspects text, never kind, must still get a
+    /// located panic instead of a hang.
+    #[test]
+    #[should_panic(expected = "parser is stuck")]
+    fn a_non_advancing_loop_over_nth_text_trips_the_fuel_counter() {
+        let p = Parser::new("fn a");
+
+        for _ in 0..(FUEL as usize + 8) {
+            let _ = p.nth_text(0);
         }
     }
 
