@@ -79,7 +79,9 @@ test "same name different arity" {
     """
     shell s {
         no_args()
+        match_ok()
         one_arg("a")
+        match_ok()
         two_args("a", "b")
     }
 }
@@ -91,6 +93,7 @@ test "function parameter does not leak to caller" {
     """
     shell s {
         say("test")
+        match_ok()
         > echo "msg='${msg}'"
         <? ^msg=''$
     }
@@ -103,6 +106,7 @@ test "function local does not leak to caller" {
     """
     shell s {
         greet()
+        match_ok()
         > echo "local='${local}'"
         <? ^local=''$
     }
@@ -116,6 +120,7 @@ test "function let shadows without mutating outer" {
     shell s {
         let x := "outer"
         say(x)
+        match_ok()
         > echo "x=${x}"
         <? ^x=outer$
     }

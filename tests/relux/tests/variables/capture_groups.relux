@@ -5,6 +5,7 @@ test "single capture group" {
     shell s {
         > echo "version=3"
         <? ^version=(\d+)$
+        match_ok()
         > echo "got ${1}"
         <? ^got 3$
     }
@@ -17,6 +18,7 @@ test "full match via capture group zero" {
     shell s {
         > echo "hello world"
         <? ^(hello) (world)$
+        match_ok()
         > echo "full='${0}' first='${1}' second='${2}'"
         <? ^full='hello world' first='hello' second='world'$
     }
@@ -29,6 +31,7 @@ test "multiple capture groups" {
     shell s {
         > echo "2026-03-08"
         <? ^(\d{4})-(\d{2})-(\d{2})$
+        match_ok()
         > echo "year=${1} month=${2} day=${3}"
         <? ^year=2026 month=03 day=08$
     }
@@ -42,10 +45,13 @@ test "captures overwritten by next match" {
     shell s {
         > echo "key=abc val=xyz"
         <? ^key=(\w+) val=(\w+)$
+        match_ok()
         > echo "g1=${1} g2=${2}"
         <? ^g1=abc g2=xyz$
+        match_ok()
         > echo "only=one"
         <? ^only=(\w+)$
+        match_ok()
         > echo "g1=${1} g2='${2}'"
         <? ^g1=one g2=''$
     }
@@ -58,6 +64,7 @@ test "missing capture group returns empty string" {
     shell s {
         > echo "one=1"
         <? ^one=(\d+)$
+        match_ok()
         > echo "five='${5}'"
         <? ^five=''$
     }
@@ -71,9 +78,11 @@ test "capture into variable" {
     shell s {
         > echo "key=alpha"
         <? ^key=(\w+)$
+        match_ok()
         let saved := $1
         > echo "other=beta"
         <? ^other=(\w+)$
+        match_ok()
         > echo "saved=${saved} current=${1}"
         <? ^saved=alpha current=beta$
     }

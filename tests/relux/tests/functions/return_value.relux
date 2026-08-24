@@ -44,6 +44,7 @@ test "return value ignored when not captured" {
     """
     shell s {
         get_greeting()
+        match_ok()
         > echo "done"
         <? ^done$
     }

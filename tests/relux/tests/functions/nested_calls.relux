@@ -42,6 +42,7 @@ test "function calls another function" {
     """
     shell s {
         let result := outer("hello")
+        match_ok()
         > echo "final=${result}"
         <? ^final=outer-inner-hello$
     }

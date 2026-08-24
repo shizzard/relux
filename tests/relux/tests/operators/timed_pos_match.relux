@@ -28,6 +28,7 @@ test "inline timeout is one-shot for positive match" ~5s {
         ~100ms
         > echo fast
         <~3s? ^fast$
+        match_ok()
         > echo second
         <? ^second$
     }

@@ -11,6 +11,7 @@ test "sleep pauses execution" {
         sleep("50ms")
         > T2=$$(date +%s%3N) && echo "T1=$$T1; T2=$$T2; elapsed=$$(( $$T2 - ${before} ))"
         <? elapsed=([0-9]+)$
+        match_ok()
         let diff := $1
         > test ${diff} -ge 50 && echo "ok"
         <? ^ok$
