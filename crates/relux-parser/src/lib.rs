@@ -1,5 +1,6 @@
 mod annotation;
 mod block;
+pub mod builder;
 mod effect;
 pub mod error;
 mod expr;
