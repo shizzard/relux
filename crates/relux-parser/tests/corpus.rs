@@ -98,3 +98,56 @@ fn corpus_is_the_tracked_fixture_set() {
         files.len()
     );
 }
+
+/// Parse `source` with the stub grammar and assert the tree reproduces it byte
+/// for byte.
+///
+/// Losslessness is a property of the raw file bytes. T01 deleted
+/// `relux_lexer::normalize()` and made `\r\n` a single two-byte `Newline`, so
+/// offsets agree with the file on disk and with a client's editor buffer.
+/// Never route a fixture through anything that rewrites line endings.
+fn assert_lossless(source: &str, label: &str) {
+    let mut p = relux_parser::parser::Parser::new(source);
+    relux_parser::grammar::module(&mut p);
+    let (tokens, events) = p.finish();
+
+    let green = relux_parser::builder::build_tree(source, &tokens, &events);
+
+    assert_eq!(
+        green.to_string(),
+        source,
+        "tree is not lossless for {label}"
+    );
+}
+
+#[test]
+fn lossless_over_the_corpus() {
+    for (path, source) in corpus() {
+        assert_lossless(&source, &path.display().to_string());
+    }
+}
+
+#[test]
+fn lossless_over_edge_cases() {
+    let cases = [
+        ("empty", ""),
+        ("spaces only", "   "),
+        ("tabs and newlines", "\t\n\t\n"),
+        ("no trailing newline", "test \"a\""),
+        ("crlf", "test\r\n  send \"x\"\r\n"),
+        ("lone cr", "a\rb"),
+        ("single unmatched byte", "$"),
+        ("garbage", "}{)(><!?~@#][,/-.:"),
+        // Leaf text is `&source[start..end]`, which panics outright if a token
+        // span lands off a char boundary. Nothing else in this set would catch
+        // that. Written with escapes because sources are ASCII-only.
+        (
+            "multi byte utf8",
+            "send \"caf\u{00e9} \u{4e2d}\u{6587} \u{1f600}\"",
+        ),
+    ];
+
+    for (name, source) in cases {
+        assert_lossless(source, name);
+    }
+}
