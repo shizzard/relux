@@ -23,6 +23,12 @@ use crate::syntax_kind::kind_of;
 /// Takes `events` by reference so the caller keeps the stream that
 /// `crate::parser::errors_of` reads the syntax errors out of.
 ///
+/// `events` must be a whole-file stream: exactly one root node, and every
+/// token consumed. A single production's events are neither, so this cannot be
+/// pointed at one directly -- a unit test for, say, `timeout` over `"~5s\n"`
+/// has to wrap the production in a node of its own and drain the parser to EOF
+/// first, or it trips the dropped-token assertion on the trailing newline.
+///
 /// `tokens` must be `relux_lexer::lex(source)` for this same `source`: leaf
 /// text is sliced out of `source` at each token's span, so a stale pairing
 /// yields garbage leaves or panics on a char boundary. The assertion messages
@@ -104,7 +110,8 @@ pub fn build_tree(source: &str, tokens: &[Spanned<'_>], events: &[Event]) -> Gre
     debug_assert!(
         roots == 1,
         "the event stream produced {roots} root node(s), expected exactly 1: \
-         the grammar owns the root and must open exactly one MODULE"
+         a whole-file stream has a single root, which for the real grammar is \
+         MODULE"
     );
     debug_assert!(
         idx == tokens.len(),
@@ -348,6 +355,47 @@ mod tests {
         assert_eq!(build_tree(source, &tokens, &events).to_string(), source);
     }
 
+    /// `open_before` retrofits a parent around an already-closed node, which is
+    /// how T15 turns a parsed expression into the left operand of the operator
+    /// that follows it. It inserts an `Open` into the middle of the stream, so
+    /// the builder sees a node begin before events it has already replayed --
+    /// the one event ordering nothing else on this branch produces.
+    ///
+    /// The assertion is the rust-analyzer-style dump, which prints kinds,
+    /// ranges and nesting in one go. `{:#?}` on a `SyntaxNode` gives it for
+    /// free.
+    #[test]
+    fn a_retrofitted_parent_nests_the_node_it_wrapped() {
+        let source = "a=b";
+        let mut p = Parser::new(source);
+
+        let root = p.open();
+        let lhs = p.open();
+        p.advance();
+        let lhs = p.close(lhs, SyntaxKind::VAR_EXPR);
+        // Retroactively make the closed VAR_EXPR the first child of a
+        // statement that did not exist when it was parsed.
+        let stmt = p.open_before(lhs);
+        p.advance();
+        p.advance();
+        p.close(stmt, SyntaxKind::PURE_MATCH_STMT);
+        p.close(root, SyntaxKind::MODULE);
+
+        let (tokens, events) = p.finish();
+        let green = build_tree(source, &tokens, &events);
+
+        assert_eq!(green.to_string(), source, "still lossless");
+        assert_eq!(
+            format!("{:#?}", SyntaxNode::new_root(green)),
+            "MODULE@0..3\n  \
+               PURE_MATCH_STMT@0..3\n    \
+                 VAR_EXPR@0..1\n      \
+                   TEXT@0..1 \"a\"\n    \
+                 EQ@1..2 \"=\"\n    \
+                 TEXT@2..3 \"b\"\n"
+        );
+    }
+
     /// The invariants are `debug_assert!`, so the tests that trip them are
     /// compiled only in a debug profile -- which is what `cargo test` builds by
     /// default. Under `--release` the assertion does not run, and a
@@ -397,8 +445,13 @@ mod tests {
 
         /// The mirror image of the dropped-token case: a dispatch loop that
         /// advances after closing the node it meant to fill.
+        ///
+        /// The expectation runs through the cursor parenthetical: stopping at
+        /// the token ordinal passes with `at_token` and its argument deleted
+        /// from the message, which is the whole point of routing them here.
         #[test]
-        #[should_panic(expected = "is consumed outside any node")]
+        #[should_panic(expected = "token 0 (byte 0, \"fn\") is consumed \
+                                   outside any node")]
         fn advancing_after_the_root_closed_is_rejected() {
             build(
                 "fn",
@@ -408,7 +461,8 @@ mod tests {
 
         /// And a loop that consumes a token before opening its node.
         #[test]
-        #[should_panic(expected = "is consumed outside any node")]
+        #[should_panic(expected = "token 0 (byte 0, \"fn\") is consumed \
+                                   outside any node")]
         fn advancing_before_any_node_opens_is_rejected() {
             build(
                 "fn",
@@ -434,8 +488,12 @@ mod tests {
             );
         }
 
+        /// The source is empty, so this also pins the past-the-end arm of
+        /// `at_token` as it is actually rendered into a message.
         #[test]
-        #[should_panic(expected = "unbalanced Close")]
+        #[should_panic(expected = "unbalanced Close: no node is open, while \
+                                   the token cursor was at 0 (past the end of \
+                                   a 0-token stream)")]
         fn an_unbalanced_close_is_rejected() {
             build("", &[open(SyntaxKind::MODULE), Event::Close, Event::Close]);
         }
@@ -467,7 +525,8 @@ mod tests {
         }
 
         #[test]
-        #[should_panic(expected = "dropped 1 token(s) starting at 0")]
+        #[should_panic(expected = "dropped 1 token(s) starting at 0 \
+                                   (byte 0, \"fn\")")]
         fn a_dropped_token_is_rejected() {
             build("fn", &[open(SyntaxKind::MODULE), Event::Close]);
         }

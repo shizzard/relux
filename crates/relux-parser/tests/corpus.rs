@@ -1,9 +1,17 @@
-//! Corpus enumeration shared by every property test, and the losslessness
-//! property itself.
+//! Corpus enumeration and the losslessness property.
 //!
-//! T05 extends `corpus` with `.relux` fenced blocks from `docs/**/*.md` and a
-//! CRLF twin per entry, and adds the truncation property and the differential
-//! oracle against chumsky.
+//! `corpus` is `pub`, but each file under `tests/` is its own crate, so nothing
+//! outside this one can call it as things stand -- the `pub` is inert until
+//! some other test module pulls this file in with `#[path = "corpus.rs"] mod
+//! corpus;`, which also recompiles the `#[test]` fns below into that consumer.
+//! T05 needs `corpus` for its truncation property and its differential oracle
+//! against chumsky, and owns the decision of how to share it: `#[path]` and
+//! live with the duplicated tests, or lift the enumeration into a
+//! `tests/corpus/mod.rs` helper that carries no tests of its own. The `pub`
+//! stays either way -- it is harmless and correct under `#[path]`.
+//!
+//! T05 also extends `corpus` with `.relux` fenced blocks from `docs/**/*.md`
+//! and a CRLF twin per entry.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -38,8 +46,14 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
 
     for entry in entries.flatten() {
         let path = entry.path();
+        // `file_type` does not follow symlinks, where `path.is_dir()` does: a
+        // link back to an ancestor would otherwise recurse until the stack
+        // overflows. There are none in the repository today.
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
 
-        if path.is_dir() {
+        if file_type.is_dir() {
             // `tests/relux/.gitignore` is exactly `out/`: these hold e2e run
             // output, including copies of the fixtures themselves.
             if path.file_name().is_some_and(|name| name == "out") {
@@ -97,6 +111,18 @@ fn corpus_is_the_tracked_fixture_set() {
          `collect` is probably gone, pulling in e2e run artifacts",
         files.len()
     );
+
+    // `tests/relux` alone clears the floor with 55 files to spare, so losing a
+    // whole root is invisible to a count. Name each root here rather than
+    // sharing a list with `corpus`: a list they both read would lose the root
+    // from both at once, and this assertion would go on passing.
+    for root in ["tests/relux", "docs"] {
+        let prefix = workspace_root().join(root);
+        assert!(
+            files.iter().any(|(path, _)| path.starts_with(&prefix)),
+            "no corpus file under {root}; the root is gone from `corpus`"
+        );
+    }
 }
 
 /// The size ceiling only notices a missing `out/` skip on a machine that has
