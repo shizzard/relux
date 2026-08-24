@@ -22,6 +22,10 @@ use crate::syntax_kind::kind_of;
 ///
 /// Takes `events` by reference so the caller keeps the stream that
 /// `crate::parser::errors_of` reads the syntax errors out of.
+///
+/// `tokens` must be `relux_lexer::lex(source)` for this same `source`: leaf
+/// text is sliced out of `source` at each token's span, so a stale pairing
+/// yields garbage leaves or panics on a char boundary.
 pub fn build_tree(source: &str, tokens: &[Spanned<'_>], events: &[Event]) -> GreenNode {
     let mut builder = GreenNodeBuilder::new();
     let mut idx = 0usize;
@@ -33,8 +37,15 @@ pub fn build_tree(source: &str, tokens: &[Spanned<'_>], events: &[Event]) -> Gre
             Event::Open { kind } => {
                 debug_assert!(
                     *kind != SyntaxKind::TOMBSTONE,
-                    "a TOMBSTONE reached the builder at token {idx}: a Marker \
-                     was opened and never closed"
+                    "a TOMBSTONE reached the builder at token {idx} ({}): a \
+                     Marker was opened and never closed",
+                    at_token(source, tokens, idx)
+                );
+                debug_assert!(
+                    !kind.is_leaf() && *kind != SyntaxKind::EOF,
+                    "Open with the non-node kind {kind:?} at token {idx} ({}): \
+                     only an inner-node kind can open a node",
+                    at_token(source, tokens, idx)
                 );
                 if depth == 0 {
                     roots += 1;
@@ -45,9 +56,11 @@ pub fn build_tree(source: &str, tokens: &[Spanned<'_>], events: &[Event]) -> Gre
             Event::Close => {
                 debug_assert!(
                     depth > 0,
-                    "unbalanced Close at token {idx}: no node is open"
+                    "unbalanced Close: no node is open, while the token cursor \
+                     was at {idx} ({})",
+                    at_token(source, tokens, idx)
                 );
-                depth = depth.saturating_sub(1);
+                depth -= 1;
                 builder.finish_node();
             }
             Event::Advance => {
@@ -59,6 +72,13 @@ pub fn build_tree(source: &str, tokens: &[Spanned<'_>], events: &[Event]) -> Gre
                 );
                 let token = &tokens[idx];
                 let kind = kind_of(&token.node);
+                debug_assert!(
+                    depth > 0,
+                    "token {idx} ({:?}) is consumed outside any node: the \
+                     grammar advanced before opening a node or after closing \
+                     the last one",
+                    token.node
+                );
                 debug_assert!(
                     kind != SyntaxKind::WORD,
                     "a WORD leaf reached the builder at token {idx}: lex() \
@@ -96,12 +116,30 @@ pub fn build_tree(source: &str, tokens: &[Spanned<'_>], events: &[Event]) -> Gre
     builder.finish()
 }
 
+/// Describe where the token cursor is, for an assertion message. A token
+/// ordinal alone is close to unactionable on a real file -- it counts every
+/// space, tab and newline -- so the byte offset and the source text go with it.
+///
+/// `idx` may sit past the end of `tokens`, which is why this takes it by value
+/// rather than a token.
+fn at_token(source: &str, tokens: &[Spanned<'_>], idx: usize) -> String {
+    match tokens.get(idx) {
+        Some(token) => format!(
+            "byte {}, {:?}",
+            token.span.start(),
+            &source[token.span.start()..token.span.end()]
+        ),
+        None => format!("past the end of the {} token(s)", tokens.len()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     use relux_core::Span;
 
+    use crate::parser::Parser;
     use crate::syntax_kind::SyntaxNode;
 
     /// Build a tree from hand-written events over the real lexing of `source`.
@@ -133,6 +171,45 @@ mod tests {
         ];
 
         assert_eq!(build(source, &events).to_string(), source);
+    }
+
+    /// Text alone does not pin the tree down: every leaf could carry the wrong
+    /// kind and `to_string` would be unchanged. Whitespace is a real leaf here,
+    /// not rowan trivia, so it appears in the sequence.
+    #[test]
+    fn leaves_carry_the_kind_of_their_token() {
+        let source = "fn a";
+        let events = [
+            open(SyntaxKind::MODULE),
+            Event::Advance,
+            Event::Advance,
+            Event::Advance,
+            Event::Close,
+        ];
+
+        let root = SyntaxNode::new_root(build(source, &events));
+        let kinds: Vec<SyntaxKind> = root
+            .children_with_tokens()
+            .map(|element| element.kind())
+            .collect();
+
+        assert_eq!(
+            kinds,
+            vec![SyntaxKind::FN_KW, SyntaxKind::SPACE, SyntaxKind::TEXT]
+        );
+    }
+
+    /// Leaf text is sliced by raw byte offset, so a token span landing off a
+    /// char boundary panics outright. Covers 2-, 3- and 4-byte characters.
+    #[test]
+    fn multi_byte_characters_survive_slicing() {
+        let source = "send \"caf\u{00e9} \u{4e2d}\u{6587} \u{1f600}\"";
+        let tokens = relux_lexer::lex(source);
+        let mut events = vec![open(SyntaxKind::MODULE)];
+        events.extend(tokens.iter().map(|_| Event::Advance));
+        events.push(Event::Close);
+
+        assert_eq!(build_tree(source, &tokens, &events).to_string(), source);
     }
 
     /// Leaf text is the source slice, never the token payload. The two differ
@@ -197,78 +274,131 @@ mod tests {
         );
     }
 
-    // The assertions below are `debug_assert!`, so these tests are meaningful
-    // only in a debug profile. That is the default for `cargo test`; a
-    // `--release` run reports them as passing without executing the assertion.
-
+    /// The grammar and the builder are each other's only real client, and
+    /// losslessness is the property they hold jointly. Neither module's own
+    /// tests can see that.
     #[test]
-    #[should_panic(expected = "a TOMBSTONE reached the builder")]
-    fn a_tombstone_is_rejected() {
-        build("", &[open(SyntaxKind::TOMBSTONE), Event::Close]);
+    fn the_stub_grammar_and_the_builder_round_trip_a_source() {
+        let source = "test \"a\"\n  send \"b\"\n";
+        let mut p = Parser::new(source);
+
+        crate::grammar::module(&mut p);
+
+        let (tokens, events) = p.finish();
+        assert_eq!(build_tree(source, &tokens, &events).to_string(), source);
     }
 
-    #[test]
-    #[should_panic(expected = "a WORD leaf reached the builder")]
-    fn a_word_leaf_is_rejected() {
-        // `lex()` rewrites every `Word` into `Text`, so this token has to be
-        // built by hand. Taking `tokens` as a parameter is what makes that
-        // possible.
-        let tokens = vec![Spanned::new(
-            relux_lexer::Token::Word("fn"),
-            Span::new(0, 2),
-        )];
+    /// The invariants are `debug_assert!`, so the tests that trip them are
+    /// compiled only in a debug profile -- which is what `cargo test` builds by
+    /// default. Under `--release` the assertion does not run, and a
+    /// `should_panic` test that does not panic fails, so these must not exist
+    /// there at all.
+    #[cfg(debug_assertions)]
+    mod assertions {
+        use super::*;
 
-        build_tree(
-            "fn",
-            &tokens,
-            &[open(SyntaxKind::MODULE), Event::Advance, Event::Close],
-        );
-    }
+        #[test]
+        #[should_panic(expected = "a TOMBSTONE reached the builder")]
+        fn a_tombstone_is_rejected() {
+            build("", &[open(SyntaxKind::TOMBSTONE), Event::Close]);
+        }
 
-    #[test]
-    #[should_panic(expected = "unbalanced Close")]
-    fn an_unbalanced_close_is_rejected() {
-        build("", &[open(SyntaxKind::MODULE), Event::Close, Event::Close]);
-    }
+        #[test]
+        #[should_panic(expected = "Open with the non-node kind SPACE")]
+        fn opening_a_node_with_a_leaf_kind_is_rejected() {
+            build("", &[open(SyntaxKind::SPACE), Event::Close]);
+        }
 
-    #[test]
-    #[should_panic(expected = "1 node(s) left open")]
-    fn an_unclosed_node_is_rejected() {
-        build("", &[open(SyntaxKind::MODULE)]);
-    }
+        #[test]
+        #[should_panic(expected = "Open with the non-node kind EOF")]
+        fn opening_a_node_with_eof_is_rejected() {
+            build("", &[open(SyntaxKind::EOF), Event::Close]);
+        }
 
-    #[test]
-    #[should_panic(expected = "produced 0 root node(s)")]
-    fn an_empty_event_stream_is_rejected() {
-        build("", &[]);
-    }
+        /// The mirror image of the dropped-token case: a dispatch loop that
+        /// advances after closing the node it meant to fill.
+        #[test]
+        #[should_panic(expected = "is consumed outside any node")]
+        fn advancing_after_the_root_closed_is_rejected() {
+            build(
+                "fn",
+                &[open(SyntaxKind::MODULE), Event::Close, Event::Advance],
+            );
+        }
 
-    #[test]
-    #[should_panic(expected = "produced 2 root node(s)")]
-    fn two_roots_are_rejected() {
-        build(
-            "",
-            &[
-                open(SyntaxKind::MODULE),
-                Event::Close,
-                open(SyntaxKind::MODULE),
-                Event::Close,
-            ],
-        );
-    }
+        /// And a loop that consumes a token before opening its node.
+        #[test]
+        #[should_panic(expected = "is consumed outside any node")]
+        fn advancing_before_any_node_opens_is_rejected() {
+            build(
+                "fn",
+                &[Event::Advance, open(SyntaxKind::MODULE), Event::Close],
+            );
+        }
 
-    #[test]
-    #[should_panic(expected = "dropped 1 token(s) starting at 0")]
-    fn a_dropped_token_is_rejected() {
-        build("fn", &[open(SyntaxKind::MODULE), Event::Close]);
-    }
+        #[test]
+        #[should_panic(expected = "a WORD leaf reached the builder")]
+        fn a_word_leaf_is_rejected() {
+            // `lex()` rewrites every `Word` into `Text`, so this token has to
+            // be built by hand. Taking `tokens` as a parameter is what makes
+            // that possible.
+            let tokens = vec![Spanned::new(
+                relux_lexer::Token::Word("fn"),
+                Span::new(0, 2),
+            )];
 
-    #[test]
-    #[should_panic(expected = "advances past the end of the token stream")]
-    fn advancing_past_the_tokens_is_rejected() {
-        build(
-            "",
-            &[open(SyntaxKind::MODULE), Event::Advance, Event::Close],
-        );
+            build_tree(
+                "fn",
+                &tokens,
+                &[open(SyntaxKind::MODULE), Event::Advance, Event::Close],
+            );
+        }
+
+        #[test]
+        #[should_panic(expected = "unbalanced Close")]
+        fn an_unbalanced_close_is_rejected() {
+            build("", &[open(SyntaxKind::MODULE), Event::Close, Event::Close]);
+        }
+
+        #[test]
+        #[should_panic(expected = "1 node(s) left open")]
+        fn an_unclosed_node_is_rejected() {
+            build("", &[open(SyntaxKind::MODULE)]);
+        }
+
+        #[test]
+        #[should_panic(expected = "produced 0 root node(s)")]
+        fn an_empty_event_stream_is_rejected() {
+            build("", &[]);
+        }
+
+        #[test]
+        #[should_panic(expected = "produced 2 root node(s)")]
+        fn two_roots_are_rejected() {
+            build(
+                "",
+                &[
+                    open(SyntaxKind::MODULE),
+                    Event::Close,
+                    open(SyntaxKind::MODULE),
+                    Event::Close,
+                ],
+            );
+        }
+
+        #[test]
+        #[should_panic(expected = "dropped 1 token(s) starting at 0")]
+        fn a_dropped_token_is_rejected() {
+            build("fn", &[open(SyntaxKind::MODULE), Event::Close]);
+        }
+
+        #[test]
+        #[should_panic(expected = "advances past the end of the token stream")]
+        fn advancing_past_the_tokens_is_rejected() {
+            build(
+                "",
+                &[open(SyntaxKind::MODULE), Event::Advance, Event::Close],
+            );
+        }
     }
 }
