@@ -52,16 +52,25 @@ pub fn errors_of(events: &[Event]) -> Vec<SyntaxError> {
 /// Dropping one leaves a `TOMBSTONE` in the event stream that does not fail
 /// until T03's builder asserts on it -- by which point the failure looks like
 /// a builder bug rather than a grammar bug.
+///
+/// `pos` is only valid as of `seq` inserts into the event stream; `resolve`
+/// repairs it against however many `open_before` calls have happened since,
+/// so a `Marker` stays valid across an `open_before` performed on some other,
+/// unrelated node.
 #[must_use = "a dropped Marker leaves a TOMBSTONE in the event stream"]
 pub struct Marker {
     pos: usize,
+    seq: usize,
 }
 
 /// A node that has been opened and closed. Only useful as the argument to
 /// `open_before`.
+///
+/// See `Marker` for what `seq` is for.
 #[derive(Debug, Clone, Copy)]
 pub struct Completed {
     pos: usize,
+    seq: usize,
 }
 
 /// Lookahead operations allowed between two `advance` calls. Any real
@@ -78,6 +87,11 @@ pub struct Parser<'a> {
     events: Vec<Event>,
     /// A `Cell` so that `nth(&self)` can spend fuel through a shared borrow.
     fuel: Cell<u32>,
+    /// Positions at which `open_before` has inserted into `events`, in the
+    /// order the inserts happened. A `Marker`/`Completed` records how many
+    /// entries were here when it was created (`seq`); `resolve` replays only
+    /// the inserts that happened after that point to repair its index.
+    inserts: Vec<usize>,
 }
 
 impl<'a> Parser<'a> {
@@ -89,6 +103,7 @@ impl<'a> Parser<'a> {
             pos: 0,
             events: Vec::new(),
             fuel: Cell::new(FUEL),
+            inserts: Vec::new(),
         }
     }
 
@@ -206,39 +221,63 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Repair `pos` against every `open_before` insert that happened after
+    /// `seq` was recorded and landed at or before `pos`.
+    ///
+    /// Each such insert shoves `pos` (and everything from it onward) one
+    /// slot to the right, so replaying the ones at or before it in order
+    /// yields the position's current, correct location.
+    fn resolve(&self, pos: usize, seq: usize) -> usize {
+        let mut at = pos;
+        for &insert in &self.inserts[seq..] {
+            if insert <= at {
+                at += 1;
+            }
+        }
+        at
+    }
+
     /// Open a node whose kind will be decided by `close`.
     pub fn open(&mut self) -> Marker {
         let pos = self.events.len();
         self.events.push(Event::Open {
             kind: SyntaxKind::TOMBSTONE,
         });
-        Marker { pos }
+        Marker {
+            pos,
+            seq: self.inserts.len(),
+        }
     }
 
     /// Close `m`, deciding its kind.
     ///
-    /// Panics if `m.pos` no longer holds an unclaimed `TOMBSTONE`. `open`
-    /// always pushes a `TOMBSTONE` and hands back that index, `Marker` is not
-    /// `Copy` so it cannot be closed twice, and nested markers patch distinct
-    /// slots -- so the only way this slot is not a tombstone is that an
-    /// `open_before` called after `m` was opened shifted the index out from
-    /// under it. See `open_before`'s doc comment for the actual constraint.
+    /// Panics if `m`'s repaired position does not hold an unclaimed
+    /// `TOMBSTONE`. That should be unreachable -- `resolve` is what keeps it
+    /// reachable-in-practice equal to true -- so a failure here means the
+    /// repair bookkeeping itself is wrong, not that the grammar misused the
+    /// marker.
     pub fn close(&mut self, m: Marker, k: SyntaxKind) -> Completed {
+        let at = self.resolve(m.pos, m.seq);
         assert!(
             matches!(
-                self.events[m.pos],
+                self.events[at],
                 Event::Open {
                     kind: SyntaxKind::TOMBSTONE
                 }
             ),
-            "stale Marker at event {}: expected an unclaimed TOMBSTONE, found {:?}. \
-             An open_before after this marker was opened shifted its index.",
+            "Marker repair is broken: event {} (from pos {}, seq {}) expected an \
+             unclaimed TOMBSTONE, found {:?}.",
+            at,
             m.pos,
-            self.events[m.pos]
+            m.seq,
+            self.events[at]
         );
-        self.events[m.pos] = Event::Open { kind: k };
+        self.events[at] = Event::Open { kind: k };
         self.events.push(Event::Close);
-        Completed { pos: m.pos }
+        Completed {
+            pos: at,
+            seq: self.inserts.len(),
+        }
     }
 
     /// Open a new node that will enclose the already-completed `c`.
@@ -247,29 +286,34 @@ impl<'a> Parser<'a> {
     /// backtracking: parse an expression, then on seeing `=` or `?`, wrap the
     /// finished expression node in a `PURE_MATCH_STMT`.
     ///
-    /// **Invalidates markers.** It inserts into the event vector, so every
-    /// `Marker` and `Completed` holding a `pos >= c.pos` silently shifts by
-    /// one and now points at the wrong event. It is safe to call only when no
-    /// marker opened after `c` was completed is still live -- "call it on the
-    /// most recently completed node" is necessary but not sufficient, since a
-    /// marker opened afterward and not yet closed is exactly such a survivor.
-    /// `close` asserts on the violation for `Marker`; this method asserts on
-    /// it for `Completed`.
+    /// Inserting into the event vector would otherwise shift every other
+    /// live `Marker`/`Completed` out from under itself, but `c`'s position is
+    /// resolved against `inserts` before use and every insert this call
+    /// performs is recorded there, so outstanding markers stay valid across
+    /// it regardless of open/close order. There is no ordering constraint on
+    /// which node this may be called on.
     pub fn open_before(&mut self, c: Completed) -> Marker {
+        let at = self.resolve(c.pos, c.seq);
         assert!(
-            matches!(self.events[c.pos], Event::Open { .. }),
-            "stale Marker at event {}: expected an Open event, found {:?}. \
-             An open_before after this node was completed shifted its index.",
+            matches!(self.events[at], Event::Open { .. }),
+            "Marker repair is broken: event {} (from pos {}, seq {}) expected an \
+             Open event, found {:?}.",
+            at,
             c.pos,
-            self.events[c.pos]
+            c.seq,
+            self.events[at]
         );
         self.events.insert(
-            c.pos,
+            at,
             Event::Open {
                 kind: SyntaxKind::TOMBSTONE,
             },
         );
-        Marker { pos: c.pos }
+        self.inserts.push(at);
+        Marker {
+            pos: at,
+            seq: self.inserts.len(),
+        }
     }
 }
 
@@ -633,17 +677,14 @@ mod tests {
         );
     }
 
-    /// `open_before`'s doc comment used to say "only call this on the most
-    /// recently completed node," but that is not the actual constraint: `c0`
-    /// here *is* the most recently completed node, and the sequence still
-    /// corrupts the stream, because `m2` -- opened after `c0` was completed
-    /// -- is still live when `open_before` shifts everything at or after
-    /// `c0.pos`. `close(m2, ..)` then patches whatever now sits at the
-    /// stale index, which happens to be the `Close` that `close(w, ..)` just
-    /// pushed. `close` must detect this rather than silently overwrite it.
+    /// `m2` is opened after `c0` is completed and is still open when
+    /// `open_before(c0)` shifts the event stream. A pure shape check on
+    /// `m2.pos` cannot tell that its slot moved -- `resolve` is what makes
+    /// `close(m2, ..)` land on `m2`'s real tombstone instead of silently
+    /// overwriting whatever the `open_before`/`close(w, ..)` pair left
+    /// behind at the old index.
     #[test]
-    #[should_panic(expected = "stale Marker")]
-    fn close_detects_a_marker_invalidated_by_open_before() {
+    fn close_repairs_a_marker_survivor_across_open_before() {
         let mut p = Parser::new("fn a b");
 
         let m1 = p.open();
@@ -657,17 +698,37 @@ mod tests {
         p.close(w, SyntaxKind::PURE_MATCH_STMT);
 
         p.close(m2, SyntaxKind::FN_DEF);
+
+        let (_, events) = p.finish();
+        assert_eq!(
+            events,
+            vec![
+                Event::Open {
+                    kind: SyntaxKind::PURE_MATCH_STMT
+                },
+                Event::Open {
+                    kind: SyntaxKind::VAR_EXPR
+                },
+                Event::Advance,
+                Event::Close,
+                Event::Open {
+                    kind: SyntaxKind::FN_DEF
+                },
+                Event::Advance,
+                Event::Close,
+                Event::Close,
+            ]
+        );
     }
 
-    /// The other half of the same hazard: `open_before` itself must refuse a
-    /// stale `Completed`, not just `close`. `c2` is completed after `c0`, so
-    /// wrapping `c0` (an out-of-order `open_before`, itself a misuse) shifts
-    /// `c2.pos` to land on the `Close` event that used to sit one slot
-    /// earlier -- not an `Open` at all. `open_before(c2)` must catch that
-    /// rather than silently inserting into the middle of an unrelated node.
+    /// The other half of the same repair: `open_before` itself must resolve
+    /// a `Completed` whose position shifted, not just `close` a `Marker`.
+    /// `c2` is completed after `c0`; wrapping `c0` first (out of order)
+    /// shifts `c2`'s index, and `open_before(c2)` must still land on `c2`'s
+    /// real, already-decided `Open` event rather than on whatever now sits
+    /// at the old index.
     #[test]
-    #[should_panic(expected = "stale Marker")]
-    fn open_before_detects_a_stale_completed() {
+    fn open_before_repairs_a_completed_survivor() {
         let mut p = Parser::new("fn a");
 
         let m1 = p.open();
@@ -679,13 +740,128 @@ mod tests {
         let c2 = p.close(m2, SyntaxKind::IDENT_FN);
 
         // Out of order: c0 is not the most recently completed node (c2 is).
-        // This shifts c2.pos out from under it.
+        // This shifts c2's real position by one.
         let w = p.open_before(c0);
         p.close(w, SyntaxKind::PURE_MATCH_STMT);
 
-        // c2 is stale now; using it again must be caught, not silently
-        // accepted.
-        let _ = p.open_before(c2);
+        let w2 = p.open_before(c2);
+        p.close(w2, SyntaxKind::FN_DEF);
+
+        let (_, events) = p.finish();
+        assert_eq!(
+            events,
+            vec![
+                Event::Open {
+                    kind: SyntaxKind::PURE_MATCH_STMT
+                },
+                Event::Open {
+                    kind: SyntaxKind::VAR_EXPR
+                },
+                Event::Advance,
+                Event::Close,
+                Event::Open {
+                    kind: SyntaxKind::FN_DEF
+                },
+                Event::Open {
+                    kind: SyntaxKind::IDENT_FN
+                },
+                Event::Advance,
+                Event::Close,
+                Event::Close,
+                Event::Close,
+            ]
+        );
+    }
+
+    /// The two-survivor case: `_ghost` and `victim` are both opened after
+    /// `c0` is completed and both still open when `open_before(c0)` shifts
+    /// the stream. A shape check alone cannot tell them apart -- `_ghost`'s
+    /// slot is a perfectly genuine unclaimed `TOMBSTONE`, just not
+    /// `victim`'s. `resolve` must repair `victim`'s index to its own
+    /// tombstone and leave `_ghost`'s alone.
+    #[test]
+    fn close_repairs_the_correct_survivor_among_several() {
+        let mut p = Parser::new("fn a b");
+
+        let m0 = p.open();
+        p.advance();
+        let c0 = p.close(m0, SyntaxKind::VAR_EXPR);
+
+        let _ghost = p.open();
+        let victim = p.open();
+        p.advance();
+
+        let w = p.open_before(c0);
+        p.close(w, SyntaxKind::PURE_MATCH_STMT);
+
+        p.close(victim, SyntaxKind::FN_DEF);
+
+        let (_, events) = p.finish();
+        assert_eq!(
+            events,
+            vec![
+                Event::Open {
+                    kind: SyntaxKind::PURE_MATCH_STMT
+                },
+                Event::Open {
+                    kind: SyntaxKind::VAR_EXPR
+                },
+                Event::Advance,
+                Event::Close,
+                Event::Open {
+                    kind: SyntaxKind::TOMBSTONE
+                },
+                Event::Open {
+                    kind: SyntaxKind::FN_DEF
+                },
+                Event::Advance,
+                Event::Close,
+                Event::Close,
+            ]
+        );
+    }
+
+    /// The ancestor case: `stmt` opens before `e` (its own child expression)
+    /// is even parsed, so `stmt.pos` is *smaller* than the position
+    /// `open_before(e)` inserts at. `stmt` was never actually invalidated --
+    /// this is the pattern a naive generation counter would have broken by
+    /// rejecting every `close` that happened after any `open_before`,
+    /// anywhere. `resolve` must leave an ancestor's position untouched when
+    /// the insert landed after it.
+    #[test]
+    fn close_leaves_an_unaffected_ancestor_alone() {
+        let mut p = Parser::new("fn");
+
+        let stmt = p.open();
+
+        let m1 = p.open();
+        p.advance();
+        let e = p.close(m1, SyntaxKind::VAR_EXPR);
+
+        let w = p.open_before(e);
+        p.close(w, SyntaxKind::PURE_MATCH_STMT);
+
+        p.close(stmt, SyntaxKind::EXPR_STMT);
+
+        let (_, events) = p.finish();
+        assert_eq!(
+            events,
+            vec![
+                Event::Open {
+                    kind: SyntaxKind::EXPR_STMT
+                },
+                Event::Open {
+                    kind: SyntaxKind::PURE_MATCH_STMT
+                },
+                Event::Open {
+                    kind: SyntaxKind::VAR_EXPR
+                },
+                Event::Advance,
+                Event::Close,
+                Event::Close,
+                Event::Close,
+            ]
+        );
     }
 
     #[test]
