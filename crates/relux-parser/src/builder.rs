@@ -25,7 +25,10 @@ use crate::syntax_kind::kind_of;
 ///
 /// `tokens` must be `relux_lexer::lex(source)` for this same `source`: leaf
 /// text is sliced out of `source` at each token's span, so a stale pairing
-/// yields garbage leaves or panics on a char boundary.
+/// yields garbage leaves or panics on a char boundary. The assertion messages
+/// slice `source` too, so a violation can panic while one of them is being
+/// formatted -- a panic inside a panic, which aborts the process without
+/// reporting either.
 pub fn build_tree(source: &str, tokens: &[Spanned<'_>], events: &[Event]) -> GreenNode {
     let mut builder = GreenNodeBuilder::new();
     let mut idx = 0usize;
@@ -74,10 +77,10 @@ pub fn build_tree(source: &str, tokens: &[Spanned<'_>], events: &[Event]) -> Gre
                 let kind = kind_of(&token.node);
                 debug_assert!(
                     depth > 0,
-                    "token {idx} ({:?}) is consumed outside any node: the \
+                    "token {idx} ({}) is consumed outside any node: the \
                      grammar advanced before opening a node or after closing \
                      the last one",
-                    token.node
+                    at_token(source, tokens, idx)
                 );
                 debug_assert!(
                     kind != SyntaxKind::WORD,
@@ -105,12 +108,11 @@ pub fn build_tree(source: &str, tokens: &[Spanned<'_>], events: &[Event]) -> Gre
     );
     debug_assert!(
         idx == tokens.len(),
-        "the grammar dropped {} token(s) starting at {} ({:?} {:?}); the tree \
-         would not be lossless",
+        "the grammar dropped {} token(s) starting at {} ({}); the tree would \
+         not be lossless",
         tokens.len() - idx,
         idx,
-        tokens[idx].node,
-        &source[tokens[idx].span.start()..tokens[idx].span.end()]
+        at_token(source, tokens, idx)
     );
 
     builder.finish()
@@ -129,7 +131,7 @@ fn at_token(source: &str, tokens: &[Spanned<'_>], idx: usize) -> String {
             token.span.start(),
             &source[token.span.start()..token.span.end()]
         ),
-        None => format!("past the end of the {} token(s)", tokens.len()),
+        None => format!("past the end of a {}-token stream", tokens.len()),
     }
 }
 
@@ -274,6 +276,64 @@ mod tests {
         );
     }
 
+    /// `at_token` renders the parenthetical that every cursor-position message
+    /// carries. Nothing else pins its shape: a `should_panic` expectation that
+    /// stops at the token ordinal still passes with the whole parenthetical
+    /// deleted, so the feature needs a test of its own.
+    #[test]
+    fn at_token_names_the_byte_offset_and_the_source_text() {
+        let source = "fn a";
+        let tokens = relux_lexer::lex(source);
+
+        assert_eq!(at_token(source, &tokens, 0), "byte 0, \"fn\"");
+        assert_eq!(at_token(source, &tokens, 1), "byte 2, \" \"");
+        assert_eq!(at_token(source, &tokens, 2), "byte 3, \"a\"");
+    }
+
+    /// A production that stops one token early, before its trailing newline,
+    /// is the likeliest way into these messages, so the newline token is the
+    /// likeliest thing to be rendered. Escaping it keeps the message on one
+    /// line -- `Token`'s own `Debug` does not.
+    #[test]
+    fn at_token_escapes_a_newline_rather_than_breaking_the_line() {
+        let source = "a\nb";
+        let tokens = relux_lexer::lex(source);
+
+        let rendered = at_token(source, &tokens, 1);
+
+        assert_eq!(rendered, "byte 1, \"\\n\"");
+        assert!(!rendered.contains('\n'), "the message must be one line");
+    }
+
+    /// The offset is a byte offset, so the text beside it must still be cut on
+    /// a char boundary: a whole character, never a byte prefix of one.
+    #[test]
+    fn at_token_slices_multi_byte_text_whole() {
+        let source = "caf\u{00e9} \u{4e2d}\u{6587}";
+        let tokens = relux_lexer::lex(source);
+
+        assert_eq!(at_token(source, &tokens, 0), "byte 0, \"caf\u{00e9}\"");
+        assert_eq!(at_token(source, &tokens, 2), "byte 6, \"\u{4e2d}\u{6587}\"");
+    }
+
+    /// Every end-of-stream assertion reports from a cursor at or past the last
+    /// token, and the token list itself can be empty.
+    #[test]
+    fn at_token_reports_a_cursor_past_the_end() {
+        let source = "fn a";
+        let tokens = relux_lexer::lex(source);
+
+        assert_eq!(
+            at_token(source, &tokens, tokens.len()),
+            "past the end of a 3-token stream"
+        );
+        assert_eq!(
+            at_token(source, &tokens, 99),
+            "past the end of a 3-token stream"
+        );
+        assert_eq!(at_token("", &[], 0), "past the end of a 0-token stream");
+    }
+
     /// The grammar and the builder are each other's only real client, and
     /// losslessness is the property they hold jointly. Neither module's own
     /// tests can see that.
@@ -301,6 +361,26 @@ mod tests {
         #[should_panic(expected = "a TOMBSTONE reached the builder")]
         fn a_tombstone_is_rejected() {
             build("", &[open(SyntaxKind::TOMBSTONE), Event::Close]);
+        }
+
+        /// Pins the whole rendered message over a non-empty source, so the
+        /// cursor parenthetical is covered end to end rather than only in
+        /// `at_token`'s own tests.
+        #[test]
+        #[should_panic(expected = "a TOMBSTONE reached the builder at token 1 \
+                                   (byte 2, \" \"): a Marker was opened and \
+                                   never closed")]
+        fn an_assertion_message_names_where_the_cursor_is() {
+            build(
+                "fn a",
+                &[
+                    open(SyntaxKind::MODULE),
+                    Event::Advance,
+                    open(SyntaxKind::TOMBSTONE),
+                    Event::Close,
+                    Event::Close,
+                ],
+            );
         }
 
         #[test]
